@@ -8,4 +8,6 @@ TUI 覆盖率实测：行 95.28%、分支 80.00%，日志 artifacts/tui-coverage
 
 发布尝试：23 项自动测试通过，Windows 真实终端 /config /model /help /exit smoke 通过，tarball 隔离安装及 npm shim 通过，Gitleaks 未发现泄漏。npm PUT 因 2FA 返回 403，随后查询 0.1.0 仍 E404；当前等待官方浏览器认证，不标 published。独立代码审查未发现重要问题，审查复测 14 项通过；真实终端 Ctrl+C 尚无交互自动化证据，API 取消/超时有回归覆盖。Git 提交与推送已完成并核实。
 
-账号 2FA 已配置完成；刷新登录后 npm 已进入 /auth/cli 的发布专用认证流程，当前进程等待用户浏览器确认。尚不记录公开发布成功。
+账号 2FA 已配置完成；刷新登录后 npm 已进入 /auth/cli 的发布专用认证流程，该认证未完成，最终轮询返回认证会话 404。随后 npm view budingx@0.1.0 再次返回 E404，确认版本未发布；台账保留 prepared，不重复上传。用户可在本机交互终端运行发布命令并及时完成浏览器验证。
+
+Git 回执：bootstrap 代码 f3c4675、交付记录 6647943 均已推送，GitHub API 验证与本地 SHA 一致。本记录随后追加认证失效结果，不改动产品代码或版本。
