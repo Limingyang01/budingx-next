@@ -22,3 +22,5 @@
 当前单仓布局：外层管理文档/SP/Skills 和编排，产品统一放 src/，不建子仓或 packages/；见 [仓库布局](docs/repository-layout.md)。产品用户数据统一使用当前用户 home 下 ~/.budingx，不读取 ~/.claude。版本按 [SemVer/SP 规范](docs/versioning.md)管理。
 
 推荐 TUI 发布方式现为 [GitHub Actions + npm Trusted Publishing](docs/github-actions-npm.md)：在 Actions 手动 Run workflow，无需 NPM_TOKEN secret。首次建包及账号授信仍需维护者在个人可信设备上验证，未配置前不宣称可发布。
+
+TUI 0.1.0 已发布到 [npm](https://www.npmjs.com/package/budingx/v/0.1.0)，可执行 `npm install -g budingx` 安装，再用 `budingx --version` 核对。当前仍是聊天预览，完整编码 Agent 按迭代规划实施。

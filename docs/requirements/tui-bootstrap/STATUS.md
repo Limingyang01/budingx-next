@@ -19,3 +19,15 @@ Actions 配置本地验证：31 项测试通过（技能 9、TUI 11、发布/工
 CI 修复（2026-11-16）：运行 #2（https://github.com/Limingyang01/budingx-next/actions/runs/43805958514）中 Windows 通过、Linux 的多轮对话测试失败。已在 Ubuntu/WSL + Node 24.15.0 复现真实 stderr：`readline was closed`；stdin EOF 关闭接口后，异步模型响应完成仍调用 prompt，导致非零退出。新增延迟响应/EOF 回归，修复仅在输入仍开放时提示，不丢弃已排队消息或吞掉错误。原多轮失败恢复断言同时带出 stderr 以便诊断。
 
 修复后 Windows Node 22.22.0/npm 10.9.4 与 Ubuntu/WSL Node 24.15.0/npm 11.12.1 的完整 dry-run 各 32 项通过（技能 9、TUI 12、发布 11），包含真实 tarball 安装与 HTTP smoke。日志在 artifacts/windows-publish-verification.log 和 artifacts/linux-publish-verification.log（本地忽略）。GitHub 的 npm 11.21.2 双平台实测将使用修复提交重新执行；正式 npm 发布仍待账号授权，不由本地测试通过推导。
+
+## 首发成功与最终收尾（2026-11-16）
+
+- GitHub 运行 #3：https://github.com/Limingyang01/budingx-next/actions/runs/43812845334 ，源码 97fb43d，Windows/Linux 验证均通过；publish job skipped（dry-run）。
+- 维护者怀疑旧的本地 Passkey 曾被删除；重新注册新 Passkey 后，通过 npm 官方认证完成普通会话首发。未新增/保留任何 OTP 或安全密钥内容到仓库。
+- 官方 npm 已公开 budingx@0.1.0，latest=0.1.0，integrity 与上传 tarball 完全一致；在 Node 22.22.0 下从官方源重新隔离安装，npm shim --version 和真实本地 HTTP 流式 smoke 均通过。外部真实 Provider 仍未用测试凭据实测。
+- 本次上传曾因 npm 处理延迟，在 uploaded-awaiting-receipt 暂停；没有重复上传。手动续验后原报告已更新 published-and-installed，路径 artifacts/release/0.1.0-1794811652432/report.json（本地忽略），release-ledger.json 已保存公开回执。
+- npm trust 已创建并再次查询核对：Limingyang01/budingx-next / publish-tui.yml / npm-publish，包含直接发布及 staged 权限。该配置尚未通过一次真实 OIDC 上传验证；environment 分支保护需维护者核对，不能凭 trust 已建立宣称全部 CI 发布验证完成。
+- 已移除未提交的 publish:otp 入口、实现、专用测试和使用文档；它不属于已发布 TUI 包。保留 Passkey 会话发布和 OIDC 工作流。
+- 发布脚本新增有限的远端版本可见性查询，覆盖本次真实处理延迟；认证错误/错误 JSON 不重试，超时明确禁止重复上传。收尾本地 npm test 共 36 项通过（技能 9、TUI 12、发布 15）。
+
+产品仍为 bootstrap，不代表任何 SP 或高级 Agent 功能已经完成。后续从真实新版本执行 OIDC 发布，不能重发 0.1.0。

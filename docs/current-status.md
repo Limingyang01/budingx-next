@@ -18,7 +18,7 @@
 
 首发使用 Node.js >=22.18、TypeScript 和 Node test runner，当前真实命令见 package.json。禁止引入 Bun；不能把旧项目版本 0.5.0、旧测试成绩或 Git 发布状态当作本仓事实。
 
-用户已授权简易 TUI 验证后发布 npm，并确认 MIT；正式发布状态以 release-ledger.json 和 registry 回执为准。没有读取旧用户配置或凭据。未来用户数据统一通过当前用户 home 解析为 ~/.budingx，禁止使用 ~/.claude；首发只用显式参数/环境变量，暂不写用户数据。
+用户已授权简易 TUI 验证后发布 npm，并确认 MIT；0.1.0 已公开发布，latest 指向 0.1.0，发布状态及 integrity 见 release-ledger.json。没有读取旧用户配置或凭据。未来用户数据统一通过当前用户 home 解析为 ~/.budingx，禁止使用 ~/.claude；首发只用显式参数/环境变量，暂不写用户数据。
 
 ## 验证范围
 
@@ -28,4 +28,4 @@
 
 ## 发布方式调整
 
-已新增 [publish-tui 工作流](../.github/workflows/publish-tui.yml)及 [账号/操作指南](github-actions-npm.md)：Windows/Linux dry-run 门禁、master 手动触发、npm OIDC、只读 GitHub 内容权限、artifact 回执和 release:sync。账号侧首次包/Trusted Publisher/environment 设置、GitHub-hosted 运行和真实 OIDC 上传仍为 UNVERIFIED，当前 0.1.0 仍 prepared。首发不再要求在非个人电脑上绑定本机凭据。
+已新增 [publish-tui 工作流](../.github/workflows/publish-tui.yml)及 [账号/操作指南](github-actions-npm.md)：Windows/Linux dry-run 门禁、master 手动触发、npm OIDC、只读 GitHub 内容权限、artifact 回执和 release:sync。0.1.0 首发与官方源隔离安装、Windows/Linux 的 GitHub 运行 #3 及 npm Trusted Publisher 均已核实；0.1.0 台账为 published。真实 OIDC 新版本上传和 GitHub environment 分支保护设置仍需实测/确认，不把本次会话首发当成 OIDC 上传证据。首发不再要求在非个人电脑上绑定本机凭据。

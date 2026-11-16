@@ -2,6 +2,13 @@
 
 本项目的推荐发布入口是 [Publish TUI to npm](https://github.com/Limingyang01/budingx-next/actions/workflows/publish-tui.yml)。配置文件见 [.github/workflows/publish-tui.yml](../.github/workflows/publish-tui.yml)。本指南说明仓库已实现的流程，以及账号端必须由维护者完成的设置；写入工作流不等于 npm 信任关系已建立或真实发布已验证。
 
+## 已验证状态（2026-11-16）
+
+- budingx@0.1.0 已通过普通账号会话和 Passkey 完成首发，latest=0.1.0；registry integrity 与已验证 tarball 一致，已从官方源隔离安装、验证 npm 命令入口和 HTTP smoke。
+- [GitHub 运行 #3](https://github.com/Limingyang01/budingx-next/actions/runs/43812845334) 基于 97fb43d，Windows/Linux 的验证均成功；该运行是 dry-run，发布 job 跳过，不能当作真实 OIDC 上传证明。
+- npm Trusted Publisher 已创建并通过 trust list 核对：Limingyang01/budingx-next、publish-tui.yml、environment npm-publish，允许直接发布和 staged 发布。尚未以新版本执行首次真实 OIDC 发布验证；新配置有效期要求仍见下文。
+- 发布台账已记 published。0.1.0 不可再次上传；下次按实际变更准备新版本。publish:otp 已移除，不再维护专用六位码发布路径。
+
 ## 已配置的仓库能力
 
 - 仅 workflow_dispatch 手动触发，明确选择 master、输入与 src/tui/package.json 完全相同的版本、latest/next 和 dry_run；默认 dry_run=true。
@@ -15,7 +22,7 @@
 
 ### 1. 首次建立 budingx 包
 
-当前 budingx@0.1.0 还未公开发布。npm 要求包已经存在，才能创建它的 Trusted Publisher；所以不能用一个尚未配置的 OIDC 工作流绕过首次建包。[npm trust 前置条件](https://docs.npmjs.com/cli/v11/commands/npm-trust/)
+本项目已完成 0.1.0 首发及授信，budingx 无需重复本节操作。以下保留为尚未建包项目的一次性操作说明：npm 要求包已经存在，才能创建 Trusted Publisher；不能用尚未配置的 OIDC 工作流绕过首次建包。[npm trust 前置条件](https://docs.npmjs.com/cli/v11/commands/npm-trust/)
 
 请在个人可信设备上完成一次实际首发及账号验证。使用个人设备已绑定的通行密钥（本机 PIN/指纹）或个人实体安全密钥，可以不扫码；不要在非个人电脑上新增本机凭据。邮件登录验证码不替代发布 2FA，npm 已停止新增 Google Authenticator/TOTP 绑定。[认证变更](https://github.blog/changelog/2025-10-10-strengthening-npm-security-important-changes-to-authentication-and-token-management/)
 
@@ -97,4 +104,4 @@ npm run version:prepare -- minor --iteration SP001
 
 ## 当前证据边界
 
-本地新增逻辑测试、workflow YAML/权限回归及实际 dry-run 可以验证；GitHub-hosted Windows/Linux 的运行结果、npm trust 的账号设置和真实 OIDC 公开发布须在对应平台实际执行后记录。没有这些回执前保持 UNVERIFIED，不因配置文件已存在声称“远端已发布”。
+GitHub-hosted Windows/Linux 运行、首发公开安装和 npm trust 设置已核实，证据见本页顶部与首发 STATUS；真实 OIDC 公开上传仍为 UNVERIFIED。后续新版本需实际执行工作流，不能以本次会话首发冒充 OIDC 发布成功。

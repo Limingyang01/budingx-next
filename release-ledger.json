@@ -1,4 +1,18 @@
 {
   "schemaVersion": 1,
-  "releases": [{ "version": "0.1.0", "iteration": "bootstrap", "status": "prepared" }]
+  "releases": [
+    {
+      "version": "0.1.0",
+      "iteration": "bootstrap",
+      "status": "published",
+      "publishedAt": "2026-11-16T06:52:58.553Z",
+      "verifiedAt": "2026-11-16T06:57:03.426Z",
+      "registry": "https://registry.npmjs.org",
+      "tag": "latest",
+      "integrity": "sha512-e0dHOst1ok3XYptDwhNo9eZG4rXsvCx+7/E/mDsiQQo48tXxcsBbVOwFLGxvnZJiaE1E1hb2nLEjzWOBeemomg==",
+      "authMode": "session",
+      "validationRun": "https://github.com/Limingyang01/budingx-next/actions/runs/43812845334",
+      "sourceCommit": null
+    }
+  ]
 }

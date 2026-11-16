@@ -6,6 +6,7 @@ import { npm } from './process.mjs'
 import { smokeInstalled } from './smoke.mjs'
 import { validateRelease } from './version.mjs'
 import { parseReleaseOptions, validatePublishContext } from './options.mjs'
+import { waitForRegistryVersion } from './registry.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const registry = 'https://registry.npmjs.org'
@@ -175,8 +176,27 @@ try {
     )
     report.state = 'uploaded-awaiting-receipt'
     save()
-    const remote = JSON.parse(
-      (await npm(['view', `${pkg.name}@${pkg.version}`, '--json', ...args])).out
+    const remote = await waitForRegistryVersion(
+      async () => {
+        const output = (
+          await npm([
+            'view',
+            `${pkg.name}@${pkg.version}`,
+            '--json',
+            '--prefer-online',
+            '--fetch-timeout=10000',
+            ...args
+          ])
+        ).out.trim()
+        return output ? JSON.parse(output) : null
+      },
+      pkg.version,
+      {
+        onPending: (attempt, attempts) =>
+          console.log(
+            `Upload accepted; waiting for npm visibility (${attempt}/${attempts})`
+          )
+      }
     )
     if (
       remote.dist?.integrity !== integrity ||
