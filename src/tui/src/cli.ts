@@ -33,6 +33,7 @@ async function main() {
   const messages: Message[] = []
   let active: AbortController | undefined
   let exiting = false
+  let inputClosed = false
   let rl: ReturnType<typeof createInterface> | undefined
   const interrupt = () => {
     if (active) active.abort()
@@ -93,6 +94,9 @@ async function main() {
       terminal: Boolean(process.stdin.isTTY && process.stdout.isTTY)
     })
     rl.on('SIGINT', interrupt)
+    rl.on('close', () => {
+      inputClosed = true
+    })
     rl.setPrompt('you> ')
     rl.prompt()
     for await (const line of rl) {
@@ -133,7 +137,7 @@ async function main() {
             safe(error instanceof Error ? error.message : 'Request failed')
         )
       }
-      if (!exiting) rl.prompt()
+      if (!exiting && !inputClosed) rl.prompt()
     }
   } finally {
     rl?.close()

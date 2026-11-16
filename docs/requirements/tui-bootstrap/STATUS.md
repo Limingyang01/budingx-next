@@ -15,3 +15,7 @@ Git 回执：bootstrap 代码 f3c4675、交付记录 6647943 均已推送，GitH
 后续调整（2026-11-16）：用户选择 GitHub Actions + npm Trusted Publishing。仓库新增手动 master 工作流、OIDC 模式、双平台验证编排和回执同步；账号设置步骤见 Actions 指南。此前 npm 登录/验证过期记录是历史，不代表正在进行本机发包。当前没有再次启动交互发布；账号端和远端 CI 的实际结果另行核实。
 
 Actions 配置本地验证：31 项测试通过（技能 9、TUI 11、发布/工作流/回执 11），实际 tarball/隔离安装/npm shim/HTTP smoke 通过，Gitleaks 未发现泄漏；发布链路独立代码审查无重要问题。原始 dry-run 报告 artifacts/release/0.1.0-1794803380638/report.json（忽略目录）。尚未触发 GitHub-hosted 工作流或配置 npm 账号信任，OIDC 实际上传仍 UNVERIFIED，包台账仍 prepared。
+
+CI 修复（2026-11-16）：运行 #2（https://github.com/Limingyang01/budingx-next/actions/runs/43805958514）中 Windows 通过、Linux 的多轮对话测试失败。已在 Ubuntu/WSL + Node 24.15.0 复现真实 stderr：`readline was closed`；stdin EOF 关闭接口后，异步模型响应完成仍调用 prompt，导致非零退出。新增延迟响应/EOF 回归，修复仅在输入仍开放时提示，不丢弃已排队消息或吞掉错误。原多轮失败恢复断言同时带出 stderr 以便诊断。
+
+修复后 Windows Node 22.22.0/npm 10.9.4 与 Ubuntu/WSL Node 24.15.0/npm 11.12.1 的完整 dry-run 各 32 项通过（技能 9、TUI 12、发布 11），包含真实 tarball 安装与 HTTP smoke。日志在 artifacts/windows-publish-verification.log 和 artifacts/linux-publish-verification.log（本地忽略）。GitHub 的 npm 11.21.2 双平台实测将使用修复提交重新执行；正式 npm 发布仍待账号授权，不由本地测试通过推导。

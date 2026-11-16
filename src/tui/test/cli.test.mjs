@@ -87,7 +87,7 @@ test('real CLI sends only successful turns in history and can continue after a f
     BUDINGX_BASE_URL: `http://127.0.0.1:${server.address().port}/v1`,
     BUDINGX_MODEL: 'fixture'
   })
-  assert.equal(result.code, 0)
+  assert.equal(result.code, 0, result.err)
   assert.match(result.out, /你好/)
   assert.match(result.err, /500/)
   assert.equal(calls.length, 3)
@@ -95,4 +95,33 @@ test('real CLI sends only successful turns in history and can continue after a f
     calls[2].map((message) => message.content),
     ['first', '你好', 'second']
   )
+})
+
+test('piped EOF during an asynchronous reply completes the turn and exits normally', async (t) => {
+  let calls = 0
+  const server = createServer(async (req, res) => {
+    for await (const _chunk of req) {
+      /* consume request before delayed response */
+    }
+    calls++
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    res.end(
+      'data: {"choices":[{"delta":{"content":"finished after EOF"}}]}\n\ndata: [DONE]\n\n'
+    )
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  t.after(() => {
+    server.closeAllConnections()
+    server.close()
+  })
+  const result = await run([], 'single message\n', {
+    BUDINGX_BASE_URL: `http://127.0.0.1:${server.address().port}/v1`,
+    BUDINGX_MODEL: 'fixture'
+  })
+  assert.equal(result.code, 0, result.err)
+  assert.match(result.out, /finished after EOF/)
+  assert.doesNotMatch(result.err, /readline was closed/)
+  assert.equal(calls, 1)
 })
