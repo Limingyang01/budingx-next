@@ -4,10 +4,11 @@
 
 ## 已验证状态（2026-11-16）
 
-- budingx@0.1.0 已通过普通账号会话和 Passkey 完成首发，latest=0.1.0；registry integrity 与已验证 tarball 一致，已从官方源隔离安装、验证 npm 命令入口和 HTTP smoke。
+- budingx@0.1.0 已通过普通账号会话和 Passkey 完成首发，当时 latest=0.1.0；registry integrity 与已验证 tarball 一致，已从官方源隔离安装、验证 npm 命令入口和 HTTP smoke。
 - [GitHub 运行 #3](https://github.com/Limingyang01/budingx-next/actions/runs/43812845334) 基于 97fb43d，Windows/Linux 的验证均成功；该运行是 dry-run，发布 job 跳过，不能当作真实 OIDC 上传证明。
-- npm Trusted Publisher 已创建并通过 trust list 核对：Limingyang01/budingx-next、publish-tui.yml、environment npm-publish，允许直接发布和 staged 发布。尚未以新版本执行首次真实 OIDC 发布验证；新配置有效期要求仍见下文。
-- 发布台账已记 published。0.1.0 不可再次上传；下次按实际变更准备新版本。publish:otp 已移除，不再维护专用六位码发布路径。
+- [GitHub 运行 #6](https://github.com/Limingyang01/budingx-next/actions/runs/43826550093) 基于 49857ad，Windows/Linux 验证及 OIDC 发布全部成功，budingx@0.1.1 已公开，latest=0.1.1。npm 元数据的 Trusted Publisher、已验证的 provenance、源码 SHA 与运行地址对应一致；官方源隔离安装、npm shim、HTTP 流式 smoke 和 npm audit signatures 均通过。
+- npm Trusted Publisher：Limingyang01/budingx-next、publish-tui.yml、environment npm-publish，允许直接发布；首次真实 OIDC 上传已验证，GitHub environment 已限制 master。
+- 发布台账已记 published。0.1.0、0.1.1 均不可再次上传；下次按实际变更准备新版本。publish:otp 已移除，不再维护专用六位码发布路径。
 
 ## 已配置的仓库能力
 
@@ -73,7 +74,7 @@ npx --yes npm@11.21.2 trust github budingx --repo Limingyang01/budingx-next --fi
 1. 先准备并审阅产品版本和发行说明，提交推送到 master。每个新 SP 交付至少 minor，同轮修复 patch，见 [版本规范](versioning.md)。
 2. 在 Actions 选择 **Publish TUI to npm → Run workflow**，branch 选 master，输入该版本，tag 选 latest 或 next。
 3. 首次可以保持 dry_run 勾选以验证 CI 环境；它不会上传，也不证明 OIDC 授权已成功。
-4. 正式发布取消 dry_run，点击 Run workflow。授信允许 direct publish 后，不需要每次 npm 扫码/动态码；GitHub 登录和可选环境审批仍遵守你的账号策略。
+4. 正式发布取消 dry_run，点击 Run workflow 新建运行；不要用 Re-run jobs 改参数，它会沿用原输入。若发布 job skipped，不能以整体绿色认定已发布。授信允许 direct publish 后，不需要每次 npm 扫码/动态码；GitHub 登录和可选环境审批仍遵守你的账号策略。
 5. 确认 publish job 成功，查看 artifact tui-publication-receipt 的 report.json：state 必须是 published-and-installed。仅 verify job 成功、artifact 上传成功、stage 成功都不等于公开发布。
 
 第一次手工发出 0.1.0 后，应按实际新交付准备下一个版本再测 OIDC；不能用同一个 0.1.0 再验证上传，也不自动 bump 一个空版本。workflow version 输入没有固定默认值，防止后续迭代误发旧版。
@@ -104,4 +105,4 @@ npm run version:prepare -- minor --iteration SP001
 
 ## 当前证据边界
 
-GitHub-hosted Windows/Linux 运行、首发公开安装和 npm trust 设置已核实，证据见本页顶部与首发 STATUS；真实 OIDC 公开上传仍为 UNVERIFIED。后续新版本需实际执行工作流，不能以本次会话首发冒充 OIDC 发布成功。
+GitHub-hosted Windows/Linux 验证、0.1.1 OIDC 公开发布、官方源安装及 registry signature/attestation 已实测，证据见本页顶部、发布台账与首发 STATUS。本次未下载原始 CI artifact；台账依据公开运行结果、npm provenance 和本机独立安装验证更新，未伪造或导入 CI report.json。原始报告仍在运行 #6 的 tui-publication-receipt artifact。外部真实模型、macOS 和完整 Agent 能力不在本次验证范围。

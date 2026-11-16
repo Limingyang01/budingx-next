@@ -25,7 +25,7 @@ npm test 执行技能维护、TUI 编译/回归及版本管理测试。dry-run �
 npm run version:prepare -- minor --iteration SP001
 ```
 
-该命令只准备版本、台账和发行说明，不提交/推送/tag。填完真实变更与验收后，在已有发布授权范围内执行 npm run publish。根维护包保持 private，只发 src/tui 白名单 tarball。推荐通过 GitHub Actions/OIDC 发布，详见 [Actions 设置与操作](github-actions-npm.md)。本机登录/2FA 仅用于首次建包或显式交互发布；CI 信任配置和全能力发布仍须实测。详见 [发布方案](npm-release-plan.md)。
+该命令只准备版本、台账和发行说明，不提交/推送/tag。填完真实变更与验收后，在已有发布授权范围内执行 npm run publish。根维护包保持 private，只发 src/tui 白名单 tarball。推荐通过 GitHub Actions/OIDC 发布，详见 [Actions 设置与操作](github-actions-npm.md)。本机登录/2FA 仅用于首次建包或显式交互发布；0.1.1 已实测 CI/OIDC 发布；完整 Agent 全能力发布仍待后续迭代。详见 [发布方案](npm-release-plan.md)。
 
 ## 验证边界
 

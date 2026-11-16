@@ -1,6 +1,6 @@
 # 当前状态
 
-日期：2026-11-16。阶段：简易聊天 TUI 首发准备；全部 21 轮完整 Agent 迭代仍未启动。
+日期：2026-11-16。阶段：简易聊天 TUI 已发布，OIDC 发布链路已实测；全部 21 轮完整 Agent 迭代仍未启动。
 
 ## 已有
 
@@ -9,7 +9,7 @@
 - 4 个适配本仓的项目流程技能，以及 MIT 许可的 15 个 Superpowers 开发技能。
 - 面向 `.agents`、`.claude`、`.budingx` 的发现入口和维护脚本。
 - 用于维护的私有 package.json；其 `0.0.0` 不是产品发布版本。
-- `src/tui` 下独立编写的 MIT 聊天 TUI，产品版本 0.1.0；配置/流式对话/内存会话，无运行时第三方依赖。
+- `src/tui` 下独立编写的 MIT 聊天 TUI，产品版本 0.1.1；配置/流式对话/内存会话，无运行时第三方依赖。
 - 实际 Node/TypeScript 构建、测试、版本准备与发布编排，实际 tarball 隔离安装 smoke 已通过。
 
 ## 未实现
@@ -18,7 +18,7 @@
 
 首发使用 Node.js >=22.18、TypeScript 和 Node test runner，当前真实命令见 package.json。禁止引入 Bun；不能把旧项目版本 0.5.0、旧测试成绩或 Git 发布状态当作本仓事实。
 
-用户已授权简易 TUI 验证后发布 npm，并确认 MIT；0.1.0 已公开发布，latest 指向 0.1.0，发布状态及 integrity 见 release-ledger.json。没有读取旧用户配置或凭据。未来用户数据统一通过当前用户 home 解析为 ~/.budingx，禁止使用 ~/.claude；首发只用显式参数/环境变量，暂不写用户数据。
+用户已授权简易 TUI 验证后发布 npm，并确认 MIT；0.1.0、0.1.1 已公开发布，latest 指向 0.1.1，发布状态及 integrity 见 release-ledger.json。没有读取旧用户配置或凭据。未来用户数据统一通过当前用户 home 解析为 ~/.budingx，禁止使用 ~/.claude；首发只用显式参数/环境变量，暂不写用户数据。
 
 ## 验证范围
 
@@ -28,4 +28,4 @@
 
 ## 发布方式调整
 
-已新增 [publish-tui 工作流](../.github/workflows/publish-tui.yml)及 [账号/操作指南](github-actions-npm.md)：Windows/Linux dry-run 门禁、master 手动触发、npm OIDC、只读 GitHub 内容权限、artifact 回执和 release:sync。0.1.0 首发与官方源隔离安装、Windows/Linux 的 GitHub 运行 #3 及 npm Trusted Publisher 均已核实；0.1.0 台账为 published。真实 OIDC 新版本上传和 GitHub environment 分支保护设置仍需实测/确认，不把本次会话首发当成 OIDC 上传证据。首发不再要求在非个人电脑上绑定本机凭据。
+已新增 [publish-tui 工作流](../.github/workflows/publish-tui.yml)及 [账号/操作指南](github-actions-npm.md)：Windows/Linux dry-run 门禁、master 手动触发、npm OIDC、只读 GitHub 内容权限、artifact 回执和 release:sync。0.1.0 首发与官方源隔离安装、Windows/Linux 的 GitHub 运行 #3 及 npm Trusted Publisher 均已核实；0.1.0 台账为 published。[运行 #6](https://github.com/Limingyang01/budingx-next/actions/runs/43826550093) 从 49857ad 完成 Windows/Linux 验证及 0.1.1 真实 OIDC 发布；npm 公开元数据标记 GitHub Trusted Publisher，provenance 对应同一源码与运行。官方包本机隔离安装、npm shim、HTTP 流式 smoke 及 registry signature/attestation 验证通过。GitHub environment 已限制 master 分支。首发不再要求在非个人电脑上绑定本机凭据。

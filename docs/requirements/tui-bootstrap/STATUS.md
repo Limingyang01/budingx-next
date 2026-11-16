@@ -37,3 +37,12 @@ CI 修复（2026-11-16）：运行 #2（https://github.com/Limingyang01/budingx-
 用户已授权将发布流程修复整理为 0.1.1，并通过 GitHub Actions 实际验证 OIDC 与官方 npm 安装。版本为 bootstrap 阶段的 patch，不启动 SP；版本工具新增 bootstrap 回归，产品 README 更新 Windows/Linux 验证范围，根发行说明列明 registry 可见性等待和发布回执链路。初始本地完整 dry-run 37 项通过，包含 tarball 安装与 HTTP smoke；报告 artifacts/0.1.1-local-dry-run.log（忽略目录）。GitHub 运行及实际 registry 状态尚待执行，不预记 published。
 
 用户指定由其手动触发 Actions，禁止 computer-use；Agent 只通过 API 跟进。准备提交需先推送到 master，发布完成后再提交实际回执。当前 0.1.1 台账为 prepared，未请求或使用任何 npm 个人令牌。
+
+## 0.1.1 OIDC 实际发布完成（2026-11-16）
+
+- 准备提交 49857ad3d7b94aebc2d2b722078bc2c880403bb2 已推送；运行 #5 的 Windows/Linux 通过但 publish skipped，未据此标记成功。
+- 用户重新以 master、0.1.1、latest、dry_run=false 触发 [运行 #6](https://github.com/Limingyang01/budingx-next/actions/runs/43826550093)。Windows Node 22/Linux Node 24 验证和 Publish verified TUI using npm OIDC 全部 success。该源码的完整本地 dry-run 共 37 项通过（技能 9、TUI 12、发布 16）。
+- 官方 npm 公开 0.1.1，latest=0.1.1；发布者为 GitHub Actions，trustedPublisher.id=github。provenance 的源码 SHA、工作流、运行地址和 tarball SHA512 对应一致，npm audit signatures 验证 1 个 registry signature 与 1 个 attestation 均通过。
+- 本机 Node 22 从官方源在隔离目录重新安装精确版本，npm shim --version=0.1.1，真实本地 HTTP 流式 smoke 通过；不修改全局安装。独立验证证据在 artifacts/0.1.1-registry-verification/verification.json，公开证明保存在 artifacts/0.1.1-attestations.json（均忽略）。
+- release-ledger.json 依据公开 GitHub 结果、npm 元数据/已验证 provenance 和本机独立安装更新 published。未下载原始 CI artifact，未冒充原始报告；它保留在运行 #6 的 tui-publication-receipt 中。0.1.0 历史字段保留。
+- 本次 API 跟进和安装验证未使用 computer-use、个人 npm Token 或额外账号验证。外部真实模型仍 UNVERIFIED，macOS 未认证；未启动 SP 或扩大聊天 TUI 功能。
