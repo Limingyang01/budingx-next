@@ -11,3 +11,7 @@ TUI 覆盖率实测：行 95.28%、分支 80.00%，日志 artifacts/tui-coverage
 账号 2FA 已配置完成；刷新登录后 npm 已进入 /auth/cli 的发布专用认证流程，该认证未完成，最终轮询返回认证会话 404。随后 npm view budingx@0.1.0 再次返回 E404，确认版本未发布；台账保留 prepared，不重复上传。用户可在本机交互终端运行发布命令并及时完成浏览器验证。
 
 Git 回执：bootstrap 代码 f3c4675、交付记录 6647943 均已推送，GitHub API 验证与本地 SHA 一致。本记录随后追加认证失效结果，不改动产品代码或版本。
+
+后续调整（2026-11-16）：用户选择 GitHub Actions + npm Trusted Publishing。仓库新增手动 master 工作流、OIDC 模式、双平台验证编排和回执同步；账号设置步骤见 Actions 指南。此前 npm 登录/验证过期记录是历史，不代表正在进行本机发包。当前没有再次启动交互发布；账号端和远端 CI 的实际结果另行核实。
+
+Actions 配置本地验证：31 项测试通过（技能 9、TUI 11、发布/工作流/回执 11），实际 tarball/隔离安装/npm shim/HTTP smoke 通过，Gitleaks 未发现泄漏；发布链路独立代码审查无重要问题。原始 dry-run 报告 artifacts/release/0.1.0-1794803380638/report.json（忽略目录）。尚未触发 GitHub-hosted 工作流或配置 npm 账号信任，OIDC 实际上传仍 UNVERIFIED，包台账仍 prepared。

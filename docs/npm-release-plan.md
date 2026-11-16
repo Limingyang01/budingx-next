@@ -1,10 +1,14 @@
 # TUI 的 npm 打包与一键发布计划
 
-状态：bootstrap 实现及后续扩展计划；r2；2026-11-16。用户已确认 MIT/简易聊天范围并授权验证后发布；本地发布编排与安装 smoke 已实现，正式状态见 release-ledger.json。范围为 TUI/CLI，不把 Desktop、VSIX、维护仓和技能资料整体发布到 npm。
+状态：bootstrap 实现及后续扩展计划；r3；2026-11-16。用户已确认 MIT/简易聊天范围并授权验证后发布；本地发布编排与安装 smoke 已实现，正式状态见 release-ledger.json。范围为 TUI/CLI，不把 Desktop、VSIX、维护仓和技能资料整体发布到 npm。
 
-## 目标命令与命令边界
+## 推荐入口：GitHub Actions + Trusted Publishing
 
-当前本地发布入口是在仓库根目录执行 **`npm run publish`**，由跨平台 Node 发布入口完成检查、构建、打包、实际安装测试和 registry 发布，再核对回执。无参数的稳定发布使用已准备且经审阅的版本，默认发布到 https://registry.npmjs.org；不静默自增版本、不顺带提交/推送/tag。
+现在推荐从 [Publish TUI to npm](https://github.com/Limingyang01/budingx-next/actions/workflows/publish-tui.yml) 手动一键触发。精确账号配置、首次建包限制、environment、direct publish 权限和回执同步见 [Actions 配置指南](github-actions-npm.md)。当前只完成仓库工作流/脚本，账号端信任及真实 OIDC 发布仍待实测。
+
+## 本机命令与命令边界
+
+首发 bootstrap 或明确授权的本机交互发布入口是在仓库根目录执行 **`npm run publish`**，由跨平台 Node 发布入口完成检查、构建、打包、实际安装测试和 registry 发布，再核对回执。无参数的稳定发布使用已准备且经审阅的版本，默认发布到 https://registry.npmjs.org；不静默自增版本、不顺带提交/推送/tag。
 
 当前命令（需要 prepared 版本台账）：
 
@@ -46,7 +50,7 @@ npm run publish                              # 已准备的稳定版本，发布
 
 本机一键路径使用届时有效的 npm 登录和所需 2FA；不把 OTP/token/密码写脚本、仓库或日志，也不把此前“已登录”当作未来登录永远有效。“一键”是免手工拼接构建/打包/上传命令，不承诺绕过 npm 验证。[npm 发布 2FA 要求](https://docs.npmjs.com/requiring-2fa-for-package-publishing-and-settings-modification/)
 
-可选 CI 路径后续采用 npm 支持的 OIDC trusted publishing，并固定 workflow/repository/environment、受支持 runner 和 Node/npm 版本；首次包建立及信任配置单独处理。按 npm 当时支持的直接发布或 staged 发布策略记录结果；若要求人工批准，上传至 staged 不等于已经在公共 registry 可安装，不绕过该要求。CI 不是本地一键路径的前置条件。[npm trusted publishing](https://docs.npmjs.com/trusted-publishers/)
+CI 已配置 npm OIDC Trusted Publishing，并固定仓库、master、publish-tui.yml、npm-publish environment、hosted runner 和 npm 版本；首次建包和账号信任设置仍需单独完成。按 npm 当时支持的直接发布或 staged 发布策略记录结果；若要求人工批准，上传至 staged 不等于已经在公共 registry 可安装，不绕过该要求。正式 CI 入口允许 direct publish；stage-only 授权不能实现无 npm 人工审批的公开发布。CI 中不检查 npm whoami，也不回退到个人发布 token。[npm trusted publishing](https://docs.npmjs.com/trusted-publishers/)
 
 ## 必须实现的验收场景
 
@@ -66,4 +70,4 @@ npm 的上传、文件选择、版本和 tag 行为以官方命令为准；本�
 
 ## 尚未完成的前置条件
 
-bootstrap 产品及 tarball 已建立，MIT/0.1.0/Node >=22.18 已确定并获本轮发布授权。真实外部模型、其他平台认证、CI/OIDC、完整升级迁移和上传不确定时的自动恢复尚未完成，不能把首发脚本等同于所有发布工程要求已满足。当前脚本遇已存在版本拒绝上传，上传后回执失败需依据报告先查询版本/integrity，再人工核对台账，不盲重试。
+bootstrap 产品及 tarball 已建立，MIT/0.1.0/Node >=22.18 已确定并获本轮发布授权。真实外部模型、其他平台认证、CI/OIDC 的真实平台验收、完整升级迁移和上传不确定时的自动恢复尚未完成，不能把首发脚本等同于所有发布工程要求已满足。当前脚本遇已存在版本拒绝上传，上传后回执失败需依据报告先查询版本/integrity，再人工核对台账，不盲重试。

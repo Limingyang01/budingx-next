@@ -25,3 +25,7 @@
 历史迁移验证见 [迁移记录](migration/README.md)。首发新增配置/Provider、真实 CLI 子进程多轮对话和 tarball 安装 smoke；真实外部模型无测试凭据，仍为 UNVERIFIED。首发真实数量和发布回执见 [首发状态](requirements/tui-bootstrap/STATUS.md)。
 
 规划已完善至 [路线图 r3](iteration-plan.md)，配套 [能力矩阵](agent-capability-matrix.md)、[高级功能计划](advanced-capabilities-plan.md)、[npm 发布方案](npm-release-plan.md)与 [版本规范](versioning.md)。21 轮均未启动；bootstrap 是单独授权的简易首发，不启动完整 SDD 开发。
+
+## 发布方式调整
+
+已新增 [publish-tui 工作流](../.github/workflows/publish-tui.yml)及 [账号/操作指南](github-actions-npm.md)：Windows/Linux dry-run 门禁、master 手动触发、npm OIDC、只读 GitHub 内容权限、artifact 回执和 release:sync。账号侧首次包/Trusted Publisher/environment 设置、GitHub-hosted 运行和真实 OIDC 上传仍为 UNVERIFIED，当前 0.1.0 仍 prepared。首发不再要求在非个人电脑上绑定本机凭据。

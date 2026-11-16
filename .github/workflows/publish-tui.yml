@@ -1,0 +1,117 @@
+name: Publish TUI to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact prepared version in src/tui/package.json
+        required: true
+        type: string
+      tag:
+        description: npm dist-tag
+        required: true
+        type: choice
+        options: [latest, next]
+        default: latest
+      dry_run:
+        description: Verify only; do not publish
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tui-npm-release
+  cancel-in-progress: false
+
+env:
+  NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+  NPM_CONFIG_AUDIT: 'false'
+  NPM_CONFIG_FUND: 'false'
+
+jobs:
+  verify:
+    name: Verify (${{ matrix.os }})
+    if: github.ref == 'refs/heads/master' && github.repository == 'Limingyang01/budingx-next'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            node: '22.22.0'
+          - os: ubuntu-24.04
+            node: '24'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - name: Pin publishing CLI
+        run: npm install --global npm@11.21.2 --ignore-scripts
+      - name: Install locked development dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Check, pack and install the actual tarball
+        shell: bash
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: npm run publish -- --dry-run --expected-version "$EXPECTED_VERSION" --tag "$RELEASE_TAG"
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tui-verification-${{ matrix.os }}
+          path: |
+            artifacts/release/*/report.json
+            artifacts/release/*/*.tgz
+          if-no-files-found: warn
+          retention-days: 14
+
+  publish:
+    name: Publish verified TUI using npm OIDC
+    needs: verify
+    if: ${{ !inputs.dry_run && github.ref == 'refs/heads/master' && github.repository == 'Limingyang01/budingx-next' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Pin publishing CLI
+        run: npm install --global npm@11.21.2 --ignore-scripts
+      - name: Install locked development dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Publish exact tested tarball and verify registry installation
+        shell: bash
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          NODE_AUTH_TOKEN: ''
+          NPM_TOKEN: ''
+        run: npm run publish -- --auth-mode oidc --expected-version "$EXPECTED_VERSION" --tag "$RELEASE_TAG"
+      - name: Upload publication receipt and release ledger
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tui-publication-receipt
+          path: |
+            artifacts/release/*/report.json
+            artifacts/release/*/*.tgz
+            release-ledger.json
+          if-no-files-found: warn
+          retention-days: 30

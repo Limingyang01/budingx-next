@@ -16,3 +16,7 @@
 规范依据：[npm SemVer 说明](https://docs.npmjs.com/about-semantic-versioning/)。
 
 当前实际入口：`npm run version:prepare -- minor --iteration SP001`（同轮修复 patch）。要求当前版本有 published 回执且无未处理 prepared 版本；保留台账未知字段。命令不修改根维护包版本或执行 Git 写操作。
+
+## Actions 发布回执
+
+推荐的远端发布入口及首次授信见 [Actions 指南](github-actions-npm.md)。CI 只有 GitHub 内容只读权限，更新的台账作为 artifact 交付。下载正确运行的 report.json，用 `npm run release:sync -- --receipt <path>` 核对公共 npm 版本/integrity 后导入；审阅提交后才能 version:prepare。CI 不为 publish 自动 bump、提交或创建 tag。导入信任维护者选择的 artifact，不是独立 GitHub attestation 验证。

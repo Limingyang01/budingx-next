@@ -5,19 +5,17 @@ import { fileURLToPath } from 'node:url'
 import { npm } from './process.mjs'
 import { smokeInstalled } from './smoke.mjs'
 import { validateRelease } from './version.mjs'
+import { parseReleaseOptions, validatePublishContext } from './options.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const registry = 'https://registry.npmjs.org'
-const flags = process.argv.slice(2)
-let dryRun = false,
-  tag = 'latest'
-for (let i = 0; i < flags.length; i++) {
-  if (flags[i] === '--dry-run') dryRun = true
-  else if (flags[i] === '--tag' && flags[i + 1]) tag = flags[++i]
-  else throw new Error('Usage: npm run publish -- [--dry-run] [--tag next]')
-}
+const options = parseReleaseOptions(process.argv.slice(2))
+const { dryRun, tag, authMode, expectedVersion } = options
+validatePublishContext(options, process.env)
 const product = path.join(root, 'src/tui')
 const pkg = JSON.parse(readFileSync(path.join(product, 'package.json'), 'utf8'))
+if (expectedVersion !== undefined && expectedVersion !== pkg.version)
+  throw new Error('Expected version does not match src/tui/package.json')
 const ledgerFile = path.join(root, 'release-ledger.json')
 const ledger = JSON.parse(readFileSync(ledgerFile, 'utf8'))
 const entry = validateRelease(pkg, ledger, tag)
@@ -43,7 +41,12 @@ const report = {
   tag,
   dryRun,
   state: 'checking',
-  sourceCommit: null,
+  authMode,
+  sourceCommit: process.env.GITHUB_SHA || null,
+  workflowRun:
+    authMode === 'oidc'
+      ? `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+      : null,
   externalProvider: 'UNVERIFIED'
 }
 const save = () =>
@@ -132,7 +135,8 @@ try {
   if (dryRun)
     console.log(`Dry run passed; no publication. Report: ${reportFile}`)
   else {
-    await npm(['whoami', ...args], { cwd: destination })
+    if (authMode === 'session')
+      await npm(['whoami', ...args], { cwd: destination })
     let existing = false
     try {
       await npm([
@@ -229,7 +233,9 @@ try {
       publishedAt: new Date().toISOString(),
       registry,
       tag,
-      integrity
+      integrity,
+      sourceCommit: report.sourceCommit,
+      workflowRun: report.workflowRun
     })
     writeFileSync(ledgerFile + '.tmp', JSON.stringify(current, null, 2) + '\n')
     renameSync(ledgerFile + '.tmp', ledgerFile)

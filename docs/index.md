@@ -21,3 +21,5 @@
 首发使用与交付：[TUI README](../src/tui/README.md)、[版本管理](versioning.md)、[首发状态](requirements/tui-bootstrap/STATUS.md)。
 
 源码模块组织见 [仓库布局](repository-layout.md)。
+
+推荐发布入口：[GitHub Actions + npm Trusted Publishing](github-actions-npm.md)。

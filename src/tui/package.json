@@ -17,7 +17,8 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Limingyang01/budingx-next.git"
+    "url": "git+https://github.com/Limingyang01/budingx-next.git",
+    "directory": "src/tui"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org",
