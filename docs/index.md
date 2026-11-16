@@ -4,7 +4,7 @@
 
 1. [当前状态](current-status.md)：已有资产、未实现内容及真实验证范围。
 2. [产品目标](product-brief.md)：用户确认目标、建议 MVP 与待决定项。
-3. [独立实现边界](independent-development.md)：来源台账、允许复用的条件及开发隔离。
+3. [独立实现边界](independent-development.md)：参考实现定位（严格参考本地 budingWorkerSpace、行为复刻不抄代码）、来源台账、允许复用的条件及开发隔离。
 4. [架构方向草案](architecture.md)：稳定责任边界，尚不是已批准实施规格。
 5. [开发指南](development.md)：当前可运行的维护命令和未来测试选择。
 6. [文档约定](documentation.md)：需求、设计、计划、证据和历史材料的身份。

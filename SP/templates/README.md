@@ -9,6 +9,6 @@
 | [状态](requirement/STATUS.md) | SP/SPnnn/slug/STATUS.md | 与需求同时建立 |
 | [验证报告](requirement/test-report.md) | SP/SPnnn/slug/test-report.md | 需要正式验证记录 |
 
-设计/实施计划不在此预填虚假接口。正式设计阶段按 [设计与计划大纲](../../skills/buding-sdd/references/design-and-plan.md)建立 design/ 的中英文件，以当轮批准的实际范围为依据。
+设计/实施计划不在此预填虚假接口。正式设计阶段按 [设计与计划大纲](../../skills/buding-sdd/references/design-and-plan.md)建立 design/ 的中文 `design.zh.md` 与批准后生成的 `plan.zh.md`，不产出英文版本，以当轮批准的实际范围为依据。
 
 复制后核对编号、slug、来源、基线、AC、依赖和链接；所有未执行项保留 UNVERIFIED。小任务可以说明不适用的段落，不填造数据。

@@ -1,6 +1,6 @@
 ---
 name: buding-merge
-description: Use when the user requests a scoped local commit, cherry-pick, merge, push, or review of proposed integration. Reading, installing, or migrating this skill does not authorize Git integration or publication.
+description: Use when a scoped local commit, cherry-pick, merge, push, or integration review is needed, including the buding-sdd closing merge of a completed feature branch into master. Reading, installing, or migrating this skill does not authorize Git integration or publication.
 ---
 
 # budingx-next 集成与发布边界
@@ -11,7 +11,7 @@ description: Use when the user requests a scoped local commit, cherry-pick, merg
 
 ## 1. 固定授权和现场
 
-从当前对话绑定仓库、源、目标、文件/提交范围与允许动作：审查、stage/commit、cherry-pick/merge、push、远端设置、tag、npm 发布、部署、分支/worktree 删除分别判断。已有明确授权持续有效，缺关键目标或范围才询问，不重复审批同一动作。
+从当前对话绑定仓库、源、目标、文件/提交范围与允许动作：审查、stage/commit、cherry-pick/merge、push、远端设置、tag、npm 发布、部署、分支/worktree 删除分别判断。已有明确授权持续有效，缺关键目标或范围才询问，不重复审批同一动作。正式 SDD 收口时从 master 建分支与完成后合入 master 属于设计批准范围，按本规程安全执行；其余合并仍分别取得授权。
 
 文档/技能迁移、安装本技能、通过测试或用户要求开发不自动授权提交/发布。旧仓保持只读；不要把源仓合并进新仓来迁移技能，也不沿用旧版本号、成绩或发布状态。用户已授权 MIT 聊天 TUI 验证后首发 npm，以及本次 Git 提交/推送；不得依据旧暂停状态重复审批。后续动作仍遵守各自实际授权。
 

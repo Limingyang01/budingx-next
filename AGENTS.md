@@ -5,7 +5,8 @@
 ## 工作边界
 
 - 每次编辑前检查 `git status --short`。保留用户已有文件和改动；只处理明确授权范围。
-- 旧项目只读。不得直接复制旧 Agent 源码、系统提示词、内部 SDK 类型、全局状态、生成 bundle、配置或历史记录到新仓库，也不要通过改名/AI 逐文件改写来宣称独立来源。
+- 参考实现定位（用户 2026-11-16 确认）：本仓设计与主要核心逻辑必须严格参考本地 `budingWorkerSpace` 参考项目，重点参考其 TUI 命令设计、Agent 主循环与核心工具；文档不写死绝对路径，知道存在该参考即可，位置以用户当前环境为准。设计文档、计划文档与真实开发全程对照该参考，不允许脱离参考开发；允许优化，但核心逻辑不得背离，使用体验不得下降。复刻按 SP001 决定 3「读机制、不抄代码」：实现须独立编写、可改动实现方式，不逐字照抄，效果一致即可。
+- 旧项目仓库只读，且其仓内无 LICENSE 文件、package.json 无 license 字段（视为未开源）。复刻的合规前提：本仓制品保持自有 MIT 独立可发布，只参考机制与行为事实，不嵌入旧代码；若日后确认参考材料带 MIT 许可，按其规则保留版权声明与许可文本并登记台账。不得直接复制旧 Agent 源码、系统提示词、内部 SDK 类型、全局状态、生成 bundle、配置或历史记录到新仓库，也不要通过改名/AI 逐文件改写来宣称独立来源。边界细则见 [独立实现与复用边界](docs/independent-development.md)。
 - 可独立迁移的模块需记录来源、许可、依赖和处理决定；独立开发流程不等于法律洁净室认证。许可状态见 [第三方声明](THIRD-PARTY-NOTICES.md)。
 - 不读取或迁移真实 API Key、OAuth、聊天历史、用户技能/MCP/插件配置。旧数据导入需另行设计、明确授权、备份和旧 fixture 验证。
 - 保留用户确认的需求；技术建议必须标为提议。三端独立运行、共享模型/历史及未来移动接入是产品方向，文件存在不证明这些能力已经实现。
@@ -21,7 +22,7 @@
 | 未来 UI/状态/API 客户端验证 | [buding-frontend-testing](skills/buding-frontend-testing/SKILL.md) |
 | 未来 Core/Provider/工具/存储/进程验证 | [buding-runtime-testing](skills/buding-runtime-testing/SKILL.md) |
 | TUI 构建、版本准备、Actions/OIDC npm 发布与回执 | [buding-npm-release](skills/buding-npm-release/SKILL.md) |
-| 明确授权的提交、集成和发布 | [buding-merge](skills/buding-merge/SKILL.md) |
+| 集成安全规程（含 SDD 收口合入）与授权动作边界 | [buding-merge](skills/buding-merge/SKILL.md) |
 
 开发流程按需读取 [项目 Superpowers](skills/superpowers/using-superpowers/SKILL.md) 及相关阶段。用户既有授权优先，不重复请求同一范围的许可；上游技能中的自动提交、清理、发布建议不能扩大当前授权。普通文档迁移不自动开启产品架构实施。
 
@@ -45,12 +46,12 @@
 
 ## 迭代管理
 
-后续迭代统一按 [SP 管理说明](SP/README.md) 和 [docs 迭代路线图](docs/iteration-plan.md)管理。本项目没有需求 ID，按 `SP/SPnnn/<功能或优化slug>/` 保存需求、状态和证据；AC 编号仅标记验收条件。当前规划 SP001–SP021，均未启动。路线图配套 [能力矩阵](docs/agent-capability-matrix.md)和 [npm 发布方案](docs/npm-release-plan.md)须一并阅读。bootstrap 已单独授权实现简易 TUI 和 npm 发布，npm run publish 为真实命令；SP006/SP011 继续扩展完整 Agent 发布能力，SP020/SP021 验收全能力制品及效果。路线图本身不授权开发，实际启动时才建当轮目录。
+后续迭代统一按 [SP 管理说明](SP/README.md) 和 [docs 迭代路线图](docs/iteration-plan.md)管理。本项目没有需求 ID，按 `SP/SPnnn/<功能或优化slug>/` 保存需求、状态和证据；每轮迭代在 `SP/SPnnn/requirements-summary.md` 维护进度入口，配合功能 STATUS 支持断线快速续接；AC 编号仅标记验收条件。当前规划 SP001–SP021，均未启动。路线图配套 [能力矩阵](docs/agent-capability-matrix.md)和 [npm 发布方案](docs/npm-release-plan.md)须一并阅读。bootstrap 已单独授权实现简易 TUI 和 npm 发布，npm run publish 为真实命令；SP006/SP011 继续扩展完整 Agent 发布能力，SP020/SP021 验收全能力制品及效果。路线图本身不授权开发，实际启动时才建当轮目录。
 
 ## Git 与授权
 
 - 默认主分支为 `master`，没有历史提交；不创建或沿用 `main`。不要因为初始化迁移而自动提交、添加远端、推送或打标签。
 - 新开发分支默认 `feature/<description>`；用户指定迭代后才使用 `feature/SP<三位编号>/<description>`，不得凭旧仓 SP 目录推定新仓迭代。
-- 提交、合并、推送、npm 发布、远端设置、分支/worktree 删除分别绑定用户授权；同一动作的已有明确授权持续有效，不重复确认。
+- 正式 SDD 中设计文档批准即包含：从 master 创建 feature 分支、计划/实施/测试/交付的自主推进、各阶段完成后的本地提交（提交说明使用中文）以及完成后按 buding-merge 规程合入 master；推送、npm 发布、远端设置、打标签、分支/worktree 删除仍分别绑定用户授权。其余场景的提交与合并单独绑定授权；同一动作的已有明确授权持续有效，不重复确认。
 - 集成前固定实际源/目标与 outgoing 范围，保护无关暂存和本地工作。禁止 force-push、自动 stash/reset、绕过服务端检查或批量删除未知路径。
 - 不提交依赖、日志、凭据、缓存或产物。旧产品源码及历史数据迁移仍需独立审计和授权；新简易 TUI 的 MIT、npm 首发及本次 Git 提交/推送已获用户明确授权，不沿用历史暂停状态重复审批。
