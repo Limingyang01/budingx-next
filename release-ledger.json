@@ -13,6 +13,11 @@
       "authMode": "session",
       "validationRun": "https://github.com/Limingyang01/budingx-next/actions/runs/43812845334",
       "sourceCommit": null
+    },
+    {
+      "version": "0.1.1",
+      "iteration": "bootstrap",
+      "status": "prepared"
     }
   ]
 }

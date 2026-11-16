@@ -31,3 +31,9 @@ CI 修复（2026-11-16）：运行 #2（https://github.com/Limingyang01/budingx-
 - 发布脚本新增有限的远端版本可见性查询，覆盖本次真实处理延迟；认证错误/错误 JSON 不重试，超时明确禁止重复上传。收尾本地 npm test 共 36 项通过（技能 9、TUI 12、发布 15）。
 
 产品仍为 bootstrap，不代表任何 SP 或高级 Agent 功能已经完成。后续从真实新版本执行 OIDC 发布，不能重发 0.1.0。
+
+## 0.1.1 发布准备（2026-11-16）
+
+用户已授权将发布流程修复整理为 0.1.1，并通过 GitHub Actions 实际验证 OIDC 与官方 npm 安装。版本为 bootstrap 阶段的 patch，不启动 SP；版本工具新增 bootstrap 回归，产品 README 更新 Windows/Linux 验证范围，根发行说明列明 registry 可见性等待和发布回执链路。初始本地完整 dry-run 37 项通过，包含 tarball 安装与 HTTP smoke；报告 artifacts/0.1.1-local-dry-run.log（忽略目录）。GitHub 运行及实际 registry 状态尚待执行，不预记 published。
+
+用户指定由其手动触发 Actions，禁止 computer-use；Agent 只通过 API 跟进。准备提交需先推送到 master，发布完成后再提交实际回执。当前 0.1.1 台账为 prepared，未请求或使用任何 npm 个人令牌。

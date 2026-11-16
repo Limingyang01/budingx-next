@@ -1,6 +1,6 @@
 {
   "name": "budingx",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "An independent Node.js terminal chat client for OpenAI-compatible APIs. Early preview; coding tools are not included.",
   "type": "module",
   "license": "MIT",

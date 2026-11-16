@@ -1,6 +1,6 @@
 # budingx
 
-An independent **MIT** terminal chat client for OpenAI-compatible APIs. Version 0.1.0 is an early chat-only preview, not a full coding Agent.
+An independent **MIT** terminal chat client for OpenAI-compatible APIs. Version 0.1.1 is an early chat-only preview, not a full coding Agent.
 
 ## Install
 
@@ -45,6 +45,10 @@ Input is line-based. Session history stays in memory and is lost when you exit. 
 
 The future managed user-data root is resolved from the current user's home as ~/.budingx (never a hard-coded username). This preview does not write user data there, and never reads ~/.claude.
 
-Initial verification is on Windows. macOS/Linux support is not yet installation-certified. Update with npm install -g budingx@latest; uninstall with npm uninstall -g budingx. Uninstalling does not delete unrelated user data.
+The release workflow verifies Windows and Linux tests plus real tarball installation. macOS installation is not yet certified. Update with npm install -g budingx@latest; uninstall with npm uninstall -g budingx. Uninstalling does not delete unrelated user data.
 
 Source and roadmap: https://github.com/Limingyang01/budingx-next
+
+## 0.1.1 maintenance release
+
+Chat behavior and the feature scope are unchanged. This patch consolidates the release workflow, registry-propagation checks and version-management fixes, and is intended for publication through GitHub Actions with npm OIDC.

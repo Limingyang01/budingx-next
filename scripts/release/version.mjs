@@ -42,8 +42,8 @@ export function validateRelease(pkg, ledger, tag) {
   return entries[0]
 }
 export function prepareVersion(root, kind, iteration) {
-  if (!/^SP\d{3}$/.test(iteration))
-    throw new Error('Specify iteration as SP001, SP002, ...')
+  if (!/^(?:SP\d{3}|bootstrap)$/.test(iteration))
+    throw new Error('Specify iteration as bootstrap or SP001, SP002, ...')
   const pkgPath = path.join(root, 'src/tui/package.json')
   const ledgerPath = path.join(root, 'release-ledger.json')
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
