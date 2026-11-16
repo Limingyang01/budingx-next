@@ -6,7 +6,7 @@
 
 正式多步骤功能保存需求、双语设计/计划及 STATUS；小修复用最小方案和真实回归，不生成空模板。已有同版设计与授权继续有效，修正排版不重开审批循环。仅因文件已存在不能视为获批。
 
-本项目按 SP 迭代版本号及具体功能/优化目录管理，没有需求 ID。统一使用 [SP 管理说明与模板](../SP/README.md)，总安排见 [迭代路线图](iteration-plan.md)。当前已规划 SP001–SP012，均未启动开发；不得继承旧仓同编号的历史。未归属迭代的材料可放 `docs/requirements/<slug>/`，归档规则见 [SP 约定](../skills/buding-sdd/references/sp-records.md)。
+本项目按 SP 迭代版本号及具体功能/优化目录管理，没有需求 ID。统一使用 [SP 管理说明与模板](../SP/README.md)，总安排见 [迭代路线图](iteration-plan.md)。当前已规划 SP001–SP021；SP001 已启动（规格轮，仅规格），其余未启动开发；不得继承旧仓同编号的历史。未归属迭代的材料可放 `docs/requirements/<slug>/`，归档规则见 [SP 约定](../skills/buding-sdd/references/sp-records.md)。
 
 ## 内容与证据
 

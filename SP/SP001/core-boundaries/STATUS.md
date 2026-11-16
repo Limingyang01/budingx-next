@@ -1,11 +1,11 @@
 # 核心边界与架构不变量 状态
 
-生命周期：VERIFYING（AC 已走查完毕，待用户验收）｜更新：2026-11-16｜负责人：待指定
+生命周期：ACCEPTED（用户 2026-11-16 验收通过；规格轮，产品零实现）｜更新：2026-11-16｜负责人：待指定
 
 ## 当前范围与依据
 
 - 需求/AC：[requirements.md](requirements.md) v1（AC-01…AC-13，均为 MODEL_PROPOSED）
-- 设计/计划：[design.zh.md](../design/design.zh.md) v1 draft §3.2 ／ [design.en.md](../design/design.en.md) v1 draft §3.2；[plan.zh.md](../design/plan.zh.md) v1 ／ [plan.en.md](../design/plan.en.md) v1
+- 设计/计划：[design.zh.md](../design/design.zh.md) v1 **approved** §3.2（用户 2026-11-16 批准）／ [design.en.md](../design/design.en.md) v1 approved §3.2；[plan.zh.md](../design/plan.zh.md) v1 ／ [plan.en.md](../design/plan.en.md) v1（已执行完毕）
 - 基线：仓库 HEAD `2ced5e4`；`src/` 下目前只有 `tui/` 一个模块，**尚无** `core/`、`provider/`、`tools/`、`storage/`、`host/`
 - 相关既有文档：`docs/architecture.md`（逻辑边界草案，DRAFT）、`docs/repository-layout.md`
 - 当前批准范围：**仅规格**。用户 2026-11-16 批准本轮交付规格，并确认「Core 零框架，TUI 层允许 MIT 终端框架」与「基于 node，不要依赖于 bun」；未批准实现、提交、合并、推送或发布
@@ -21,8 +21,7 @@
   - 禁止迁入清单（旧仓 Agent 循环、提示词、SDK 类型、全局状态、bundle）
   - T-003 步骤 1 执行完毕：`docs/repository-layout.md` 已与 §3.2 蓝图对齐，归一了 `providers/`→`provider/`、`protocol/`→`host/`，并登记后续迭代模块名（desktop/vscode/gateway/adapters/scheduler/mobile），避免后续改名
 - 待做：
-  - 用户验收确认后把本需求转 ACCEPTED
-  - I-01/I-09 的可执行检查（依赖白名单 + lint）由 SP002 落地
+  - 无本轮待做；I-01/I-09 的可执行检查（依赖白名单 + lint）由 SP002 落地
 - 阻塞/恢复条件：
   - OPEN-01：Core 是否独立成 npm 包（默认同仓 `src/core` 目录，SP002 确认）
   - OPEN-02：跨端共享存储的并发模型（默认会话级单写者 + 其他端只读观察，SP010 落地）
@@ -46,6 +45,6 @@
 ## 交接与历史
 
 - 下一位 Agent 先读：[requirements.md](requirements.md)、[design.zh.md](../design/design.zh.md) §3.2、[docs/architecture.md](../../../docs/architecture.md)。
-- 最早未完成步骤：无未完成的执行步骤；等用户验收确认。
+- 最早未完成步骤：无；本轮已验收，下一步为 SP002（需用户授权启动）。
 - 剩余风险：Core 零框架若无强制检查会被打破；边界过细会产生大量接口层（本轮按四层 + 四个契约方向保持最小）。
-- 批准历史：2026-11-16 用户确认「Core 零框架、TUI 层允许 MIT 终端框架」与 Node-only；同轮批准本轮交付规格。
+- 批准历史：2026-11-16 用户确认「Core 零框架、TUI 层允许 MIT 终端框架」与 Node-only；同轮批准本轮交付规格；同日第二批：验收通过（转 ACCEPTED）、设计 v1 批准；门禁复跑用户确认暂不执行。未批准实现与任何 Git 动作。

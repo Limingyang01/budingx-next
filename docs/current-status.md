@@ -1,6 +1,6 @@
 # 当前状态
 
-日期：2026-11-16。阶段：简易聊天 TUI 已发布，OIDC 发布链路已实测；SP001 已启动（规格轮），未启动任何产品实现；其余 20 轮完整 Agent 迭代仍未启动。
+日期：2026-11-16。阶段：简易聊天 TUI 已发布，OIDC 发布链路已实测；SP001 已验收（规格轮，用户 2026-11-16 验收通过），未启动任何产品实现；其余 20 轮完整 Agent 迭代仍未启动。
 
 ## 已有
 
@@ -26,7 +26,7 @@
 
 规划已完善至 [路线图 r3](iteration-plan.md)，配套 [能力矩阵](agent-capability-matrix.md)、[高级功能计划](advanced-capabilities-plan.md)、[npm 发布方案](npm-release-plan.md)与 [版本规范](versioning.md)。bootstrap 是单独授权的简易首发。
 
-SP001 已启动且**仅限规格**：已产出 [能力基线、核心边界与发布范围](../SP/SP001/requirements-summary.md)（[能力清单 v1](../SP/SP001/capability-baseline/capability-manifest.md) 共 85 项、必交 53 项；核心边界与不变量；评测集规格与[任务清单](../SP/SP001/evaluation-suite/task-inventory.md)；发布范围与待决项）。本轮**不含产品代码**，47 条 AC 全部 UNVERIFIED。按用户 2026-11-16 的决定，对照基线只做**静态盘点**、不运行原 Agent，因此**不存在原产品效果基线**，「达到水平」目前只能表述为能力清单覆盖度。其余 20 轮仍为 PLANNED。
+SP001 **仅限规格且已验收**（用户 2026-11-16 验收通过，设计 v1 批准）：已产出 [能力基线、核心边界与发布范围](../SP/SP001/requirements-summary.md)（[能力清单 v1](../SP/SP001/capability-baseline/capability-manifest.md) 共 85 项、必交 53 项；核心边界与不变量；评测集规格与[任务清单](../SP/SP001/evaluation-suite/task-inventory.md)；发布范围与待决项）。本轮**不含产品代码**；47 条 AC 已逐条走查：46 PASS / 1 NOT_APPLICABLE（指规格条款被满足，不代表任何产品能力已实现），逐条依据见[验证报告](../SP/SP001/test-report.md)。用户同日拍板：**O1=A** 完整 Agent 制品沿用 npm `budingx` 同名（发布轮须提供破坏性升级/迁移说明）；**O2=A** 只声明 Windows 已验证，macOS/Linux 于 SP011 后逐个验证；**O5=B** 不采集原产品效果基线——对照基线只做**静态盘点**、不运行原 Agent，效果对比永久采用「自有能力测量 + 能力清单覆盖度」口径，5 个百分点非劣门槛废除，「已对齐」措辞永久禁止。其余 20 轮仍为 PLANNED，SP002 待用户授权启动。
 
 ## 发布方式调整
 

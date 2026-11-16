@@ -4,10 +4,10 @@
 | --- | --- |
 | Requirements | SP001 (4: capability-baseline / evaluation-suite / core-boundaries / release-scope) |
 | Version | v1 |
-| Status | **draft — pending user approval** |
+| Status | **approved — user approval 2026-11-16 (v1); O1=A / O2=A / O5=B decided the same day; all four requirements accepted** |
 | Updated | 2026-11-16 |
 | Execution basis | This file. `design.zh.md` is an equivalent Chinese version with identical ACs and decisions |
-| Material sources | USER_CONFIRMED (user decisions of 2026-11-16 + `AGENTS.md` + `docs/iteration-plan.md` r3) │ MODEL_PROPOSED (everything in this document not marked as user-confirmed) │ OPEN (see §6) |
+| Material sources | USER_CONFIRMED (user's two batches of decisions on 2026-11-16 + `AGENTS.md` + `docs/iteration-plan.md` r3) │ MODEL_PROPOSED (everything in this document not marked as user-confirmed) │ OPEN (see §6; O1/O2/O5 resolved) |
 
 > **Structural note (MODEL_PROPOSED)**: SP001's four requirements interlock (baseline defines "the level" → boundaries decide feasibility → evaluation decides proof → release scope decides delivery). Splitting them into four separate designs would create heavy duplication and contradictions. This iteration therefore uses **one iteration-level design plus four requirement documents**, each linking to its section here. This is the first SP actually started in this repo, so this layout sets the precedent for later iterations; it can be reverted to "one `design/` per slug" before approval if you prefer.
 
@@ -209,23 +209,23 @@ src/
 
 **Blind-test discipline**: blind tasks must not be used for repeated tuning before sealing; after analysing failures they enter the next version's regression set, and a **new independent blind set is reserved** at the same time.
 
-**Statistical discipline**: four mandatory reports — number of independent tasks, correlation across repeated runs, per-group results, and variability intervals. When the result interval straddles the 5-percentage-point threshold, the verdict is "**insufficient evidence**"; expand the sample or keep running. Point estimates alone are forbidden.
+**Statistical discipline**: four mandatory reports — number of independent tasks, correlation across repeated runs, per-group results, and variability intervals. When the result interval straddles the applicable threshold, the verdict is "**insufficient evidence**"; expand the sample or keep running. Point estimates alone are forbidden. (The former "5-percentage-point non-inferiority threshold against the reference product" was abolished by user decision O5=B; this discipline applies to self-measurement thresholds fixed in later iterations.)
 
 **Reference-product baseline gap** (the most important fact of this iteration):
 
 - You chose a static survey without running the reference Agent ⇒ **no reference success-rate baseline exists**.
-- Therefore the "≤ 5 percentage-point drop against the reference on the comparable set" gate is **not computable this iteration**.
+- Therefore the "≤ 5 percentage-point drop against the reference on the comparable set" gate is **not computable this iteration**, and has been abolished by user decision O5=B (below).
 - What this iteration can deliver: the evaluation-suite specification, task inventory, assertion semantics, budgets and blind discipline, plus the new repo's own repeatable measurement capability (the runner arrives with SP002+ code).
-- Recovery condition: separate authorisation to run the reference Agent + usable credentials + the reference version and entry point pinned (currently `budingx` 0.5.0; the exact commit was not collected).
-- Until then, the words "aligned with the reference Agent" or "reached the same effect level" are **forbidden** in documents, reports and commit messages.
+- **User decision (2026-11-16, O5=B)**: authorisation to collect the reference-product effect baseline is **not granted**. Effect comparison permanently uses "own capability measurement + capability-manifest coverage"; the "≤ 5 percentage points against the reference" threshold is abolished and is no longer an exit gate for any iteration. The former recovery condition (separate authorisation + usable credentials + pinned version and entry point) is voided by this decision; if you change your mind later, it must be registered in the iteration summary change log.
+- The words "aligned with the reference Agent" or "reached the same effect level" are **permanently forbidden** in documents, reports and commit messages.
 
 ### 3.4 Release scope (release-scope)
 
 | Item | Conclusion | Status |
 | --- | --- | --- |
 | Artifact shape | npm-published TUI (primary), desktop app (SP008), VS Code extension (SP009) | MODEL_PROPOSED |
-| npm package name | Published `budingx` (0.1.1) is a bootstrap preview. The full Agent artifact **defaults to a new package name published in parallel**, pending your decision | **OPEN-01** |
-| Supported platforms | **Verified: Windows** (the existing release pipeline only dry-ran on Windows/Linux; the product itself is not certified on macOS/Linux). Planned: verified one by one after SP011 packaging engineering | **OPEN-02** |
+| npm package name | Published `budingx` (0.1.1) is a bootstrap preview. The full Agent artifact **keeps the same `budingx` name** (user decision O1=A, 2026-11-16); preview users receive a breaking upgrade, so the release iterations (SP006/SP011) must ship upgrade/migration notes and gate the `latest` upgrade path | **USER_CONFIRMED** |
+| Supported platforms | **Verified: Windows** (the existing release pipeline only dry-ran on Windows/Linux; the product itself is not certified on macOS/Linux). Planned: verified one by one after SP011 packaging engineering (user decision O2=A keeps this default) | **USER_CONFIRMED** |
 | Runtime conditions | Node >= 22.18; Bun forbidden; terminals need TTY, and capability detection plus fallback paths must be explicit | USER_CONFIRMED |
 | Model access | Credentials injected via environment variables or the system keychain — never in the package, logs, or ordinary shared JSON | MODEL_PROPOSED |
 | User data | Sole root `~/.budingx`; never read `~/.claude`; no user data shipped inside the package | USER_CONFIRMED |
@@ -236,7 +236,7 @@ src/
 
 **Release cadence**: SP006 establishes the npm dry-run skeleton (no upload) → SP011 completes the "one `npm run publish`" gate and artifact identity → SP020 re-verifies the full-capability artifact → SP021 performs the full-substitution acceptance.
 
-**Four items requiring your decision** (details in the [release-scope requirements](../release-scope/requirements.md) open questions): package-name strategy, platform expansion, publishing account and signing ownership, desktop/extension distribution channel.
+**The four items originally requiring your decision** (details in the [release-scope requirements](../release-scope/requirements.md) open questions): package-name strategy (**resolved O1=A: same name**), platform expansion (**resolved O2=A: Windows first**), publishing account and signing ownership (O3 open, default keeps the existing path), desktop/extension distribution channel (O4 open, default guarantees installable artifacts only).
 
 ### 3.5 Source ledger and handling decisions
 
@@ -306,12 +306,12 @@ scripts/spec/check-spec.test.mjs                      # proposed new: self-test 
 
 | AC | Requirement | Design section | Verification | Status |
 | --- | --- | --- | --- | --- |
-| AC-01…AC-10 (baseline) | [capability-baseline](../capability-baseline/requirements.md) | §3.1, §3.5 | manual manifest review + link check | UNVERIFIED (pending approval) |
-| AC-01…AC-12 (evaluation) | [evaluation-suite](../evaluation-suite/requirements.md) | §3.3 | manual review of spec and task inventory | UNVERIFIED |
-| AC-01…AC-13 (boundaries) | [core-boundaries](../core-boundaries/requirements.md) | §3.2 | manual design review | UNVERIFIED |
-| AC-01…AC-12 (release) | [release-scope](../release-scope/requirements.md) | §3.4 | manual design review | UNVERIFIED |
+| AC-01…AC-10 (baseline) | [capability-baseline](../capability-baseline/requirements.md) | §3.1, §3.5 | manual manifest review + link check | PASS 9 / NOT_APPLICABLE 1 |
+| AC-01…AC-12 (evaluation) | [evaluation-suite](../evaluation-suite/requirements.md) | §3.3 | manual review of spec and task inventory | PASS 12 |
+| AC-01…AC-13 (boundaries) | [core-boundaries](../core-boundaries/requirements.md) | §3.2 | manual design review | PASS 13 |
+| AC-01…AC-12 (release) | [release-scope](../release-scope/requirements.md) | §3.4 | manual design review | PASS 12 |
 
-ACs map one-to-one onto design sections with no orphan ACs. **No AC is verified as PASS in this iteration**; all verification is recorded in the corresponding `STATUS.md`, and anything not executed stays `UNVERIFIED`.
+ACs map one-to-one onto design sections with no orphan ACs. All 47 ACs have been walked item by item: **46 PASS / 1 NOT_APPLICABLE** (capability-baseline AC-09's precondition never triggered); per-item basis in the [test report](../test-report.md); user acceptance passed on 2026-11-16. PASS means the specification clause is satisfied, not that any product capability is implemented.
 
 ---
 
@@ -321,16 +321,16 @@ ACs map one-to-one onto design sections with no orphan ACs. **No AC is verified 
 | --- | --- | --- | --- |
 | R1 | Risk | Whether 53 mandatory capabilities fit in 21 iterations is not schedule-verified; the baseline's TUI layer alone is ~166k lines | Slice each iteration's exit gate by manifest; if one iteration cannot land, append an SP number rather than shrink mandatory scope |
 | R2 | Risk | Replacing the baseline's self-built renderer with an upstream terminal framework may lack equivalent capability (selection / search highlight / layout / alternate screen) | SP002 selection carries a **measured gate**: prove equivalence item by item against CAP-L1-01/02/03/04/05/14/15's acceptance methods; only then introduce controlled extensions |
-| R3 | Risk | No reference effect baseline ⇒ the effect dimension is unprovable | Written into §3.3 and AC-09; recovery conditions stated; "aligned" wording forbidden |
+| R3 | Risk | No reference effect baseline ⇒ the effect dimension is unprovable | Written into §3.3 and AC-09; user decision O5=B: no reference baseline will be collected; the effect criterion is permanently own measurement + coverage; "aligned" wording permanently forbidden |
 | R4 | Risk | A task set written after the feature exists becomes a test written to fit the implementation | Task definitions must be version-frozen before the corresponding feature starts |
-| R5 | Risk | The `budingx` name is taken, colliding with the full Agent artifact naming | OPEN-01 is yours to decide; default drafting uses a new name |
+| R5 | Risk | The `budingx` name is taken, colliding with the full Agent artifact naming | Resolved by user O1=A: the full artifact keeps the same name; the risk becomes a breaking upgrade — SP006/SP011 must ship upgrade/migration notes and gate the `latest` path |
 | R6 | Risk | Manifest granularity mismatching implementation granularity causes acceptance disputes | Manifest changes go through the iteration summary change log, never silent edits |
 | R7 | Risk | A static survey cannot find capabilities that exist but do not work | That class of problem surfaces through the evaluation suite and real-process smoke, not through the manifest |
-| O1 | OPEN | npm package-name strategy | Your decision; default drafting uses a new name |
-| O2 | OPEN | Platform scope beyond Windows | Your decision; default claims only Windows as verified |
+| O1 | **RESOLVED** | npm package-name strategy | User decision 2026-11-16 (A): keep the same `budingx` name; release iterations must ship breaking-upgrade/migration notes |
+| O2 | **RESOLVED** | Platform scope beyond Windows | User decision 2026-11-16 (A): only Windows claimed as verified; macOS/Linux verified one by one after SP011 packaging engineering |
 | O3 | OPEN | Publishing account and signing ownership | Default: keep the existing Trusted Publishing path and account |
 | O4 | OPEN | Desktop/extension distribution channel (store listing) | Default: guarantee installable artifacts only |
-| O5 | OPEN | Authorisation and timing for collecting the reference effect baseline | Default: request separately at SP002 or later |
+| O5 | **RESOLVED** | Authorisation and timing for collecting the reference effect baseline | User decision 2026-11-16 (B): not authorised; effect comparison permanently uses own measurement + coverage; the 5-percentage-point non-inferiority threshold is abolished |
 | O6 | OPEN | Whether Core becomes its own npm package | Default: same-repo `src/core` directory, confirmed at SP002 |
 | O7 | OPEN | Concurrency model for cross-end shared storage | Default: single writer per session + read-only observation, landed at SP010 |
 | O8 | OPEN | Concrete terminal UI framework selection | Decided at SP002, with licence registration |
@@ -340,7 +340,8 @@ ACs map one-to-one onto design sections with no orphan ACs. **No AC is verified 
 ## 7. Delivery and Next Steps
 
 - This iteration delivers specification and manifests only, **no product code**.
-- Next steps (two things needed from you first):
-  1. Approve this design (v1) and the ACs of the four requirements;
-  2. Decide O1 (package name), O2 (platforms) and O5 (authorisation to run the reference Agent) — O1/O2 belong to release scope; O5 decides whether the evaluation can exist at all.
-- After approval, execute `plan.en.md`; execution still grants no Git commit, merge, push or publish authorisation by itself.
+- Completed (2026-11-16):
+  1. You approved this design (v1) and the ACs of the four requirements; acceptance passed (46 PASS / 1 NOT_APPLICABLE);
+  2. You decided O1=A (keep the `budingx` name), O2=A (Windows first) and O5=B (no reference effect baseline; the effect criterion is permanently own measurement + coverage).
+- Next step: start SP002 (model and session loop) once you authorise it, taking capability manifest v1, invariants I-01…I-12, the task schema and budget table, and this release scope as inputs. O3/O4/O6/O7/O8 keep their defaults until their owning iterations.
+- Execution and acceptance still grant no Git commit, merge, push or publish authorisation by themselves.

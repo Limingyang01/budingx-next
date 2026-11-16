@@ -1,6 +1,6 @@
 # 核心边界与架构不变量 · core-boundaries
 
-状态：DRAFT｜版本：v1｜迭代：SP001｜来源身份：MODEL_PROPOSED
+状态：APPROVED（规格已验收，2026-11-16；实现未批准）｜版本：v1｜迭代：SP001｜来源身份：MODEL_PROPOSED + USER_CONFIRMED（Core 零框架、Node-only）
 
 ## 来源与目标
 
@@ -77,6 +77,6 @@
 
 ## 批准与变更
 
-- 需求本身：**未批准实施**。用户已批准本轮交付规格（2026-11-16），未批准实现、提交、合并、推送或发布。
-- 设计文档版本：`SP/SP001/design/design.zh.md` v1（draft），待用户批准。
+- 需求本身：**规格已验收**（用户 2026-11-16 验收通过）；**未批准实施**，未批准实现、提交、合并、推送或发布。
+- 设计文档版本：`SP/SP001/design/design.zh.md` v1（**approved**，用户 2026-11-16 批准）。
 - 变更记录：见 [STATUS](STATUS.md) 与 [迭代汇总](../requirements-summary.md)。

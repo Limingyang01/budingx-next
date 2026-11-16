@@ -1,12 +1,12 @@
 # 能力盘点与基线 状态
 
-生命周期：VERIFYING（AC 已走查完毕，待用户验收）｜更新：2026-11-16｜负责人：待指定
+生命周期：ACCEPTED（用户 2026-11-16 验收通过；规格轮，产品零实现）｜更新：2026-11-16｜负责人：待指定
 
 ## 当前范围与依据
 
 - 需求/AC：[requirements.md](requirements.md) v1（AC-01…AC-10，均为 MODEL_PROPOSED）
 - 核心产物：[capability-manifest.md](capability-manifest.md) v1（85 项；必交 53 / 建议 22 / 可选 9 / 范围外 1）
-- 设计/计划：[design.zh.md](../design/design.zh.md) v1 draft ／ [design.en.md](../design/design.en.md) v1 draft（英文为执行依据）；[plan.zh.md](../design/plan.zh.md) v1 ／ [plan.en.md](../design/plan.en.md) v1
+- 设计/计划：[design.zh.md](../design/design.zh.md) v1 **approved**（用户 2026-11-16 批准）／ [design.en.md](../design/design.en.md) v1 approved（英文为执行依据）；[plan.zh.md](../design/plan.zh.md) v1 ／ [plan.en.md](../design/plan.en.md) v1（已执行完毕）
 - 基线：仓库 HEAD `2ced5e4`（`feat : npm release package workflow`）；工作区有用户既有未提交改动，未触碰。对照基线为 `D:\extra_project\buding-worker-space`（`budingx` 0.5.0，私有未开源），只读盘点，未读取源码内容 / `.env` / 聊天历史，未运行，未写入
 - 当前批准范围：**仅规格**。用户 2026-11-16 批准本轮交付规格，未批准实现、提交、合并、推送、发布或建分支
 
@@ -19,13 +19,12 @@
   - 新增 `npm run spec:check` / `spec:test` 门禁，把「必交能力被静默降级」从「无测试会失败」变成有可执行拦截
   - 用户授权原话登记（四项决定 + Node-only 追加）
 - 待做：
-  - 用户验收确认后把本需求转 ACCEPTED
-  - OPEN-01/02/03 仍待用户决定，不阻塞本轮规格成立
+  - 无本轮待做；OPEN-01/03 留待后续轮次按默认处理
 - 阻塞/恢复条件：
-  - 本轮**无原产品效果基线**（用户选择静态盘点，不运行旧 Agent）。因此「达到水平」在本轮只能是能力清单覆盖度，不是效果结论。恢复条件：单独取得运行原 Agent 的授权 + 可用凭据 + 原产品版本与入口固定（当前 `budingx` 0.5.0，具体 commit 未采集）
-  - OPEN-01：`建议`/`可选` 项是否升格为 `必交`（默认不升格）
-  - OPEN-02：原产品效果基线的采集授权与时点（默认 SP002+ 单独申请）
-  - OPEN-03：是否记录原产品的具体 commit 作为可追溯锚点（本轮未采集旧仓 Git 历史）
+  - 本轮**无原产品效果基线**（用户选择静态盘点，不运行旧 Agent）。**用户决议（2026-11-16，O5=B）：不授权采集原产品效果基线**；效果对比永久采用「自有能力测量 + 能力清单覆盖度」口径，原恢复条件（单独授权 + 凭据 + 版本固定）失效
+  - OPEN-01：`建议`/`可选` 项是否升格为 `必交`（默认不升格，升格需用户确认）
+  - OPEN-02：原产品效果基线的采集授权与时点 —— **已决（O5=B，不授权采集）**
+  - OPEN-03：是否记录原产品的具体 commit 作为可追溯锚点（本轮未采集旧仓 Git 历史；O5=B 后无对照需求，维持现状）
 
 ## 验证与验收
 
@@ -44,6 +43,6 @@
 ## 交接与历史
 
 - 下一位 Agent 先读：[requirements.md](requirements.md)、[capability-manifest.md](capability-manifest.md)、[design.zh.md](../design/design.zh.md) §3.1 与 §3.5。
-- 最早未完成步骤：无未完成的执行步骤；等用户验收确认。
+- 最早未完成步骤：无；本轮已验收，下一步为 SP002（需用户授权启动）。
 - 剩余风险：清单粒度与实现粒度不匹配（R6）；静态盘点无法发现「有但不可用」的能力（R7，由评测集与真实进程 smoke 兜底）。
-- 批准历史：2026-11-16 用户批准本轮交付规格与四项取证/技术决定；未批准实现与任何 Git 动作。
+- 批准历史：2026-11-16 用户批准本轮交付规格与四项取证/技术决定；同日第二批：验收通过（转 ACCEPTED）、设计 v1 批准、O1=A（包名沿用）、O2=A（Windows 先行）、O5=B（不采集原产品基线）；门禁复跑用户确认暂不执行（本轮改动为纯文档）。未批准实现与任何 Git 动作。

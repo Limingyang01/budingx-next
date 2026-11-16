@@ -1,6 +1,6 @@
 # SP001 · 能力基线、核心边界与发布范围
 
-状态：ACTIVE（规格轮）｜更新：2026-11-16｜负责人：待指定
+状态：ACCEPTED（规格轮，用户 2026-11-16 验收通过；产品零实现）｜更新：2026-11-16｜负责人：待指定
 
 ## 本轮目标与边界
 
@@ -8,7 +8,7 @@
 - 不包含：任何产品代码实现；运行原 Agent 或采集其效果数据；终端 UI 框架的具体选型；API 字段 / 事件 schema / 存储 schema / 权限规则语法；插件框架、微服务、常驻网关；Git 提交、合并、推送、发布、建分支、远端设置。
 - 输入基线：仓库 HEAD `2ced5e4`（`feat : npm release package workflow`），工作区有用户既有未提交改动（本轮未触碰）。对照基线为 `D:\extra_project\buding-worker-space`（`budingx` 0.5.0，私有未开源），**只读盘点**：未读取源码内容、未读取 `.env`、未运行、未写入。
 - 依赖与启动条件：无前置 SP 依赖。本轮需用户先批准设计并拍板三项待决：**O1**（npm 包名策略，见 release-scope OPEN-01）、**O2**（Windows 之外的平台范围，见 release-scope OPEN-02）、**O5**（原产品效果基线的采集授权，见 evaluation-suite OPEN-01）。待决编号以设计 §6 的 O1–O8 为全局索引，各需求正文内的 OPEN-xx 为该需求内的局部编号。
-- 计划/批准身份：**MODEL_PROPOSED**（设计与计划 v1 draft）；**USER_CONFIRMED**（用户 2026-11-16 的四项决定 + Node-only 追加 + `AGENTS.md` 既有约定）。设计**尚未获批准**。
+- 计划/批准身份：**USER_CONFIRMED**（用户 2026-11-16 第一批四项决定 + Node-only 追加 + 第二批验收/批准/决议 + `AGENTS.md` 既有约定）；设计 v1 已获用户批准（**approved**），计划 v1 已执行完毕。其余技术细节仍为 MODEL_PROPOSED。
 
 ### 本轮用户决定（USER_CONFIRMED，2026-11-16）
 
@@ -20,14 +20,25 @@
 
 > 决定 2 的直接后果：**本轮不存在原产品效果基线**。因此「达到水平」在本轮只能是能力清单覆盖度，不能是效果结论；相关措辞被禁用（AC-09）。
 
+### 本轮用户决定 · 第二批（USER_CONFIRMED，2026-11-16，验收会话）
+
+6. **门禁复跑**：暂不复跑（本轮改动为纯文档，无代码）；复跑保持 UNVERIFIED，用户知情。
+7. **用户验收**：通过。四项需求 VERIFYING → ACCEPTED。
+8. **设计批准**：design v1（zh/en）批准，draft → approved。
+9. **O1=A（npm 包名策略）**：完整 Agent 制品沿用 `budingx` 同名；预览版用户将收到破坏性升级，SP006/SP011 必须提供升级/迁移说明并把关 `latest` 升级路径。
+10. **O2=A（平台范围）**：只声明 Windows 已验证；macOS/Linux 于 SP011 打包工程后逐个验证。
+11. **O5=B（原产品效果基线）**：不授权采集。效果对比永久采用「自有能力测量 + 能力清单覆盖度」口径；「相对原产品 ≤ 5 个百分点」非劣门槛废除，不再作为任何轮次出口门槛；「已对齐/同等效果」措辞永久禁止。原恢复条件失效，未来改变决定须另行登记。
+
+> 决定 11 的直接后果：SP012 中期检查与 SP021 最终验收**不再以原产品为对照**；验收依据为能力清单覆盖度（分母 53）、自有任务集测量、保护用例全通过与用户真实试用。第二组可延后待决项（O3/O4/O6/O7/O8 及凭据、升格、commit 锚点）用户未另行拍板，维持各默认处理。
+
 ## 需求索引
 
 | 功能/优化目录 | 来源 / 身份 | 验收目标 | 责任范围 | 阶段 | 需求 / 设计 / 计划 / STATUS | 验证 | 集成状态 | 下一步 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `capability-baseline` | USER_CONFIRMED（目标）+ MODEL_PROPOSED（切分） | AC-01…AC-10：产出 85 项能力清单、必交分母固定 53、来源台账登记 | 能力盘点与基线定义 | VERIFYING | [需求](capability-baseline/requirements.md) ／ [清单](capability-baseline/capability-manifest.md) ／ 设计 §3.1 §3.5 ／ 计划 T-001 ／ [STATUS](capability-baseline/STATUS.md) | PASS 9 / N/A 1 | 未执行 | 用户验收后转 ACCEPTED |
-| `evaluation-suite` | MODEL_PROPOSED（继承路线图 r3 的量） | AC-01…AC-12：任务 schema、30+30+20 配额、盲测与统计纪律、原产品基线缺口的诚实处理 | 评测方法与效果度量 | VERIFYING | [需求](evaluation-suite/requirements.md) ／ [任务清单](evaluation-suite/task-inventory.md) ／ 计划 T-002 ／ 设计 §3.3 ／ [STATUS](evaluation-suite/STATUS.md) | PASS 12 | 未执行 | 用户验收后转 ACCEPTED |
-| `core-boundaries` | USER_CONFIRMED（Core 零框架、Node-only） | AC-01…AC-13：目录蓝图、I-01…I-12 不变量、契约方向、端无关与可取消要求 | 架构责任边界 | VERIFYING | [需求](core-boundaries/requirements.md) ／ 设计 §3.2 ／ 计划 T-003 ／ [STATUS](core-boundaries/STATUS.md) | PASS 13 | 未执行 | 用户验收后转 ACCEPTED |
-| `release-scope` | USER_CONFIRMED（Node-only、发布须授权） | AC-01…AC-12：制品形态、包名策略、三态平台矩阵、运行条件、凭据与许可边界、待决项 | 发布形态与运行条件 | VERIFYING | [需求](release-scope/requirements.md) ／ 设计 §3.4 ／ 计划 T-004 ／ [STATUS](release-scope/STATUS.md) | PASS 12 | 未执行 | 用户拍板 OPEN-01…OPEN-04 并验收 |
+| `capability-baseline` | USER_CONFIRMED（目标）+ MODEL_PROPOSED（切分） | AC-01…AC-10：产出 85 项能力清单、必交分母固定 53、来源台账登记 | 能力盘点与基线定义 | ACCEPTED | [需求](capability-baseline/requirements.md) ／ [清单](capability-baseline/capability-manifest.md) ／ 设计 §3.1 §3.5 ／ 计划 T-001 ／ [STATUS](capability-baseline/STATUS.md) | PASS 9 / N/A 1 | 未执行 | 已验收（2026-11-16）；OPEN-01/03 按默认处理 |
+| `evaluation-suite` | MODEL_PROPOSED（继承路线图 r3 的量） | AC-01…AC-12：任务 schema、30+30+20 配额、盲测与统计纪律、原产品基线缺口的诚实处理 | 评测方法与效果度量 | ACCEPTED | [需求](evaluation-suite/requirements.md) ／ [任务清单](evaluation-suite/task-inventory.md) ／ 计划 T-002 ／ 设计 §3.3 ／ [STATUS](evaluation-suite/STATUS.md) | PASS 12 | 未执行 | 已验收（2026-11-16）；O5=B 已决，运行器随 SP002+ |
+| `core-boundaries` | USER_CONFIRMED（Core 零框架、Node-only） | AC-01…AC-13：目录蓝图、I-01…I-12 不变量、契约方向、端无关与可取消要求 | 架构责任边界 | ACCEPTED | [需求](core-boundaries/requirements.md) ／ 设计 §3.2 ／ 计划 T-003 ／ [STATUS](core-boundaries/STATUS.md) | PASS 13 | 未执行 | 已验收（2026-11-16）；I-01/I-09 检查由 SP002 落地 |
+| `release-scope` | USER_CONFIRMED（Node-only、发布须授权） | AC-01…AC-12：制品形态、包名策略、三态平台矩阵、运行条件、凭据与许可边界、待决项 | 发布形态与运行条件 | ACCEPTED | [需求](release-scope/requirements.md) ／ 设计 §3.4 ／ 计划 T-004 ／ [STATUS](release-scope/STATUS.md) | PASS 12 | 未执行 | 已验收（2026-11-16）；OPEN-01=A / OPEN-02=A 已决，OPEN-03/04 留待对应轮次 |
 
 设计正本：[design.zh.md](design/design.zh.md) ／ [design.en.md](design/design.en.md)（英文为执行依据，v1 draft）
 实施计划：[plan.zh.md](design/plan.zh.md) ／ [plan.en.md](design/plan.en.md)（v1 draft）
@@ -35,7 +46,7 @@
 ## 验收与交接
 
 - 本轮出口门槛（对照路线图 SP001）：固定「水平」的定义与任务集/盲测/预算口径、公开契约与数据共享/凭据边界、来源台账；npm 包名/平台/运行条件列出待决项；五类高级必交能力不得降级；逐项登记实际行为、目标平台与对照场景。
-- 实际验收：**规格部分 PASS**。47 条 AC 全部逐条走查完毕 —— **46 PASS / 0 FAIL / 0 UNVERIFIED / 1 NOT_APPLICABLE**（capability-baseline AC-09，前置条件「基线不可访问」未成立）。逐条记录见 [验证报告](test-report.md)。
+- 实际验收：**规格部分 PASS，用户已验收（2026-11-16）**。47 条 AC 全部逐条走查完毕 —— **46 PASS / 0 FAIL / 0 UNVERIFIED / 1 NOT_APPLICABLE**（capability-baseline AC-09，前置条件「基线不可访问」未成立）。逐条记录见 [验证报告](test-report.md)。设计 v1 同日获批准；O1=A / O2=A / O5=B 同日拍板（见第二批决定）。
 - **范围提醒（不得误读）**：本轮是**规格轮**，交付物是规格与清单，**零产品代码**。上述 PASS 指**规格条款被满足**，**不代表任何产品能力已实现**，也**不代表已达成与原 Agent 的效果对齐** —— 原产品效果基线从未采集。
 - 实际检查（本会话，cwd 均为仓库根）：
   - **`npm run spec:check` PASS（exit 0）**：能力清单 85 项（必交 53 / 建议 22 / 可选 9 / 范围外 1）、任务清单 基本 30 / 高级 30 / 保护 12、盲测 20，全部自洽
@@ -50,19 +61,21 @@
   - `plan.*.md` 中 2 处链接语法示例被既有链接检查判为断链（既有门禁在本轮第一次真实拦住文档）
   - 3 处肯定式「已对齐」表述 + 1 处未限定引用
 
-- 未完成/延期项：
-  - `evaluation-suite` 的 `task-inventory.md`（60 条任务槽位）未编写 —— 依赖设计批准
-  - 文档链接检查脚本未实现 —— 属计划 T-005
-  - 原产品效果基线 —— 未采集，且需单独授权（OPEN-05）
-  - 仓库文档同步（`docs/index.md` / `current-status.md` / `iteration-plan.md` / `agent-capability-matrix.md`）—— 属计划 T-007
+- 未完成/延期项（2026-11-16 验收后更新）：
+  - 本轮无未完成执行步骤；四项需求已 ACCEPTED，设计 v1 已 approved，O1/O2/O5 已决
+  - 留待后续轮次的待决项（默认处理已就位）：O3 发布账号与签名归属（SP006）、O4 分发渠道（SP008/SP009）、O6 Core 独立成包（SP002）、O7 跨端并发模型（SP010）、O8 终端框架选型（SP002）、live Provider 凭据与预算（SP002）、建议/可选升格（默认不升格）
+  - 原产品效果基线 —— **用户决议 O5=B：不授权采集**，效果口径永久为自有测量 + 覆盖度；不再列为待恢复缺口
+  - 记录修正与验收落盘后的门禁复跑（`npm test` / `npm run spec:check`）—— UNVERIFIED（用户确认暂不复跑，本轮改动为纯文档）；既有 44 项通过证据见验证报告，对应规格执行时点
+  - 本次验收会话的文档改动尚未提交（提交授权未给出）
+  - 历史说明：本段旧版曾把 task-inventory、链接检查、文档同步列为未完成；三者实际已随 T-002/T-005/T-007 完成（见变更记录），旧列表未随执行更新，现已修正
 - 下一轮输入：能力清单 v1（CAP ID 空间 + 必交分母 53）、不变量 I-01…I-12、任务 schema 与预算表、发布范围与待决项。
 - 风险/回退：
   - R1 53 项必交能力在 21 轮内是否够，未排期验证 —— 某轮切不动就追加 SP 编号，不缩减必交范围
   - R2 上游终端框架可能缺少基线自研渲染器的等价能力 —— SP002 选型设实测门槛，逐项对照 CAP-L1-01/02/03/04/05/14/15
-  - R3 无原产品效果基线 —— 效果维度不可证，禁止「已对齐」措辞
-  - R5 `budingx` 包名冲突 —— OPEN-01 未决前不发布
+  - R3 无原产品效果基线 —— 用户决议 O5=B：不采集；效果口径永久为自有测量 + 覆盖度，「已对齐」措辞永久禁止
+  - R5 `budingx` 包名冲突 —— 已决 O1=A：沿用同名；风险转化为破坏性升级，SP006/SP011 必须提供升级/迁移说明并把关 `latest` 路径
   - 回退：规格文档为纯新增文件，删除 `SP/SP001/` 即可完全回退，不影响现有产品代码与发布链路
-- Git/产品发布：**未执行**。未 stage、未 commit、未 push、未建分支、未改远端、未发版。
+- Git/产品发布：规格执行会话内**未执行**任何 Git 写操作。后续状态（2026-11-16 复核会话快照）：HEAD 已为 `e1f4981`（`feat : SP001 update`）、工作区干净，SP001 产物已在仓库中；该提交非本会话执行，其内容逐文件核对 UNVERIFIED（复核会话无法运行 git 命令）。产品发布仍未执行，版本仍为 0.1.1。
 
 ## 变更记录
 
@@ -80,3 +93,5 @@
 | 2026-11-16 | 新增 `scripts/spec/` 门禁（`spec:check` / `spec:test`）并并入 `npm test` | 复审重点第 1 条「无任何测试会失败」 | 把「必交能力被静默降级」从无覆盖变成有可执行拦截；本轮真实拦下 4 类缺陷 |
 | 2026-11-16 | 新增禁用措辞检查（「已对齐」仅允许出现在明确禁止它的句子中） | 复审重点第 2 条 | 防止无基线情况下出现达成声明；本轮修掉 4 处 |
 | 2026-11-16 | 47 条 AC 全部走查完毕：46 PASS / 0 FAIL / 0 UNVERIFIED / 1 NOT_APPLICABLE | T-008 执行 | 规格部分具备验收依据；**产品部分仍为零实现** |
+| 2026-11-16 | 复核修正交付记录：汇总「未完成/延期项」旧列表、`docs/current-status.md` 与 `docs/iteration-plan.md` 的「47 条 AC 全部 UNVERIFIED」、`docs/index.md` 与 `docs/documentation.md` 的「尚未启动」过时措辞 | T-002/T-005/T-007/T-008 执行后旧状态措辞未同步，与 test-report（46 PASS / 1 N/A）矛盾 | 统一为「AC 走查完毕、待用户验收」；按 STATUS 与 test-report 既有证据回填 `plan.*.md` 勾选；`docs/documentation.md` 不在 T-007 文件清单内，属同类过时状态事实，一并最小修正。未改任何规格内容、清单或任务表；修正后门禁复跑 UNVERIFIED（复核会话命令执行受限） |
+| 2026-11-16 | 用户验收通过：四项需求 ACCEPTED，设计 v1 approved；O1=A（沿用 `budingx` 同名）、O2=A（Windows 先行）、O5=B（不采集原产品效果基线） | 用户验收会话逐项答复（第二批决定 6–11） | 设计 §3.3/§3.4/§5/§6/§7、四份需求正文、任务清单 §9/§13、四份 STATUS、本汇总与验证报告同步决议；**5 个百分点非劣门槛废除**，SP012/SP021 不再以原产品为对照，验收口径改为覆盖度 + 自有测量 + 保护用例 + 用户试用；路线图与能力矩阵同步加注。门禁复跑用户确认暂不执行（UNVERIFIED）；本会话文档改动未提交（授权未给出） |
