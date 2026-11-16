@@ -26,7 +26,8 @@ function filesIn(directory) {
 
 test('every managed skill is discoverable through all generated entry families', () => {
   assert.deepEqual(syncEntries(root, { check: true }), [])
-  assert.equal(SKILLS.length, 19)
+  assert.ok(SKILLS.includes('buding-npm-release'))
+  assert.equal(SKILLS.length, 20)
   for (const family of FAMILIES) {
     for (const name of SKILLS) {
       const file = `${family}/skills/${name}/SKILL.md`

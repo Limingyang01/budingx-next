@@ -19,6 +19,68 @@
 - 发布前校验身份/分支/工作流、预期版本、prepared 台账、发行说明及文件白名单；发布后核对 registry integrity、dist-tag 和隔离安装。
 - Actions artifact 保存 tarball、report.json 和 runner 上更新的 release-ledger.json。不会给机器人 Git 写权限或自动提交版本，不改版本号后再偷偷发布。
 
+## 从构建到发布：每轮操作清单
+
+本节适用于新版本交付，不需要重复配置已建立的账号信任。Agent 使用 [buding-npm-release](../skills/buding-npm-release/SKILL.md)，版本规则见 [版本规范](versioning.md)。执行目录是本仓根目录；示例 SP001 仅在该迭代实际交付后使用，不表示现在启动 SP。
+
+### 1. 准备版本与发行说明
+
+先检查工作区、当前包版本和台账。上一版必须 published，且不能遗留 prepared 版本；如果上传状态未知，先按本文恢复流程查清。新 SP 完成交付至少 minor，同轮修复 patch：
+
+```powershell
+git status --short
+Get-Content src/tui/package.json
+Get-Content release-ledger.json
+npm run version:prepare -- minor --iteration SP001
+# bootstrap 维护修复的替代命令（只选择符合本次交付的一条）：
+# npm run version:prepare -- patch --iteration bootstrap
+```
+
+prepare 同步产品版本、台账和根发行说明草稿。填完 `release-notes/v<version>.md` 的真实变更、验收和限制，按实际影响更新 README、STATUS 和使用文档。不要把根 private 包的 0.0.0 当作产品版本，不手工复用已经公开的版本。
+
+### 2. 锁定安装、构建与发布预演
+
+```powershell
+npm ci --ignore-scripts --no-audit --no-fund
+$releaseVersion = (Get-Content src/tui/package.json -Raw | ConvertFrom-Json).version
+npm run publish -- --dry-run --expected-version $releaseVersion --tag latest
+```
+
+逐条确认命令退出码为 0 后再继续；预演失败时不要提交发布准备或触发正式上传。它调用 npm test（技能、TUI 编译/回归、发布工具测试），然后 pack 并隔离安装真实 tarball，检查 npm 命令入口与本地 HTTP 流式 smoke。只需编译时用 `npm run build`；编译不能替代完整发布预演。预演报告位于忽略目录 `artifacts/release/<version>-<timestamp>/report.json`，不会上传 npm。
+
+TUI 制品仅含 package.json、README.md、LICENSE 和 dist 下 cli.js/config.js/provider.js 六个文件；不包含源码仓、开发依赖或用户配置。发布预演用当前 Node；Windows Node 22、Linux Node 24 的托管门禁仍由 Actions 分别执行。
+
+### 3. 提交准备、正式运行与公开核实
+
+在已授权范围内审阅、提交并推送准备变更，核对远端 master 的 SHA；触发方式见下文“一键发布”。使用当前 $releaseVersion 和选定 tag，正式运行须取消 dry_run。两端验证及 publish job 均 success 后，再核对官方源：
+
+```powershell
+npm view "budingx@$releaseVersion" version dist.integrity _npmUser dist.attestations --json --registry=https://registry.npmjs.org
+npm view budingx dist-tags --json --registry=https://registry.npmjs.org
+```
+
+latest/next 应指向本次所选版本，发布身份应为 GitHub Trusted Publisher。provenance 的源码 SHA、工作流路径、运行地址与这次 Actions 匹配；该证明与实际下载 tarball 的完整性必须一致。不能仅凭总状态绿色或包存在就宣称 OIDC 已验证。
+
+### 4. 从官方源独立安装复验
+
+以下安装到本次新建的临时目录，不修改全局 budingx，也不使用其他工具的配置或密钥；先沿用上面读取的精确 $releaseVersion：
+
+```powershell
+$verifyRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("budingx-npm-verify-" + [guid]::NewGuid())
+npm install --prefix $verifyRoot --ignore-scripts --no-audit --no-fund "budingx@$releaseVersion" --registry=https://registry.npmjs.org
+npm exec --offline --prefix $verifyRoot -- budingx --version
+npm audit signatures --prefix $verifyRoot --registry=https://registry.npmjs.org
+node --input-type=module -e "import {smokeInstalled} from './scripts/release/smoke.mjs'; console.log(await smokeInstalled(process.argv[1], process.cwd()))" (Join-Path $verifyRoot 'node_modules/budingx')
+```
+
+安装后命令版本必须匹配，签名/attestation 和 HTTP smoke 均应通过；任一失败应保留现场诊断，不盲目重发。该 smoke 使用当前 Node、临时本地 HTTP 模型，不读取真实 API Key；外部真实 Provider 需另外授权配置和验证。临时目录路径可保存到本地验收记录；本流程不清理未知目录。
+
+### 5. 保存发布证据并收尾
+
+按下文导入该运行的原始 CI 回执；随后更新 release-ledger、当轮 STATUS、当前状态及发行说明，记录源码 SHA、运行 URL、制品 integrity、安装/来源验证与缺口。收尾文档提交晚于发布源码是正常情况，无需重新发布同一版本。经授权提交推送后核对远端 SHA，才算完成本轮交付。
+
+如果日志/artifact API 要求登录，可由维护者下载正确运行的 artifact。无法下载时不伪造 CI report：可像 0.1.1 一样，基于公开成功运行、已验证 provenance、官方 registry integrity 和独立安装更新台账，明确记录 `verificationSource` 及未取得原始 artifact 的限制。证据不足就保留待核实状态。
+
 ## 首次启用：需要你在账号侧做什么
 
 ### 1. 首次建立 budingx 包

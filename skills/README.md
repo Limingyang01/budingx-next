@@ -3,7 +3,7 @@
 本目录只维护一份 canonical 正文，发现入口按相对路径引用：
 
 ```text
-skills/buding-*/                    4 个适配新仓的项目流程
+skills/buding-*/                    5 个适配新仓的项目流程
 skills/superpowers/<name>/         15 个 MIT Superpowers 7.0.0 技能及辅助资源
 .agents/skills/<entry>/SKILL.md     Codex 等助手的发现入口
 .claude/skills/<entry>/SKILL.md     Claude Code 助手发现入口
@@ -20,12 +20,13 @@ skills/superpowers/<name>/         15 个 MIT Superpowers 7.0.0 技能及辅助�
 | [buding-frontend-testing](buding-frontend-testing/SKILL.md) | 产品出现后所属 UI/状态/API 客户端验证 |
 | [buding-runtime-testing](buding-runtime-testing/SKILL.md) | Core、Provider、工具、进程、存储、制品验证 |
 | [buding-merge](buding-merge/SKILL.md) | 用户明确授权的 Git 集成/发布与审查 |
+| [buding-npm-release](buding-npm-release/SKILL.md) | TUI 构建、版本准备、Actions/OIDC 发布、官方安装验证与回执 |
 
 Superpowers 入口使用 `superpowers-<name>`；上游文中的 `superpowers:<name>` 映射为本地入口，使用前必须读取 canonical 正文和适用资源。
 
 ## 当前项目规则优先
 
-主分支 `master`，Node.js + TypeScript，不依赖 Bun。产品尚未实现；先读取实际 package/配置，不套用旧仓命令、框架、路径或测试成绩。
+主分支 `master`，Node.js + TypeScript，不依赖 Bun。已有简易聊天 TUI，完整 Agent 尚未实现；先读取实际 package/配置，不套用旧仓命令、框架、路径或测试成绩。
 
 上游技能原文的 main、其他语言/框架、提交/分支清理和 Bash/Python 辅助脚本是通用工作流材料，不改变本仓项目规则或自动扩大授权。只有使用相关辅助资源时才检查对应解释器；本仓真实维护命令使用 Node。未安装全局插件、hooks 或全局设置。
 
@@ -38,6 +39,6 @@ npm run skills:check
 npm run skills:test
 ```
 
-修改 4 个项目技能的元数据后重新生成发现入口，不手写三份正文。同步器只处理管理清单，拒绝覆盖未知手写入口或跟随 symlink。Superpowers 保留完整原文/目录关系、[MIT 许可证](superpowers/LICENSE) 和 [UPSTREAM 哈希](superpowers/UPSTREAM.json)；升级需复核版本、许可、资源、哈希和别名，不能把本地补充规则写进上游文件后仍宣称原哈希有效。
+修改 5 个项目技能的元数据后重新生成发现入口，不手写三份正文。同步器只处理管理清单，拒绝覆盖未知手写入口或跟随 symlink。Superpowers 保留完整原文/目录关系、[MIT 许可证](superpowers/LICENSE) 和 [UPSTREAM 哈希](superpowers/UPSTREAM.json)；升级需复核版本、许可、资源、哈希和别名，不能把本地补充规则写进上游文件后仍宣称原哈希有效。
 
 验证工具检查实际生成入口、canonical 引用、文档链接、上游完整性及新仓边界。它们不执行产品、辅助 server 或 Git/npm 发布。来源与本次范围见 [迁移记录](../docs/migration/README.md)。

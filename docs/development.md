@@ -32,3 +32,5 @@ npm run version:prepare -- minor --iteration SP001
 维护检查不证明产品，fixture 不证明真实外部模型，编译不证明安装。真实 Provider 需要经授权的测试配置，不读取旧用户目录。运行时检查见 Node 测试和首发记录；测试环境使用临时目录和本地测试端口，只管理自己创建的资源。
 
 CI 发布成功后下载 report.json，执行 `npm run release:sync -- --receipt <path>` 核对 npm integrity 并同步台账，审阅提交后再准备下一迭代版本。该命令不需要发布 token，不自动写 Git。
+
+构建到 npm 的逐轮清单、隔离安装复验与失败恢复统一维护在 [发布操作手册](github-actions-npm.md)，Agent 执行使用 [buding-npm-release](../skills/buding-npm-release/SKILL.md)。

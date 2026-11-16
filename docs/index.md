@@ -22,4 +22,4 @@
 
 源码模块组织见 [仓库布局](repository-layout.md)。
 
-推荐发布入口：[GitHub Actions + npm Trusted Publishing](github-actions-npm.md)。
+构建与发布手册：[GitHub Actions + npm Trusted Publishing](github-actions-npm.md)；Agent 执行入口：[buding-npm-release](../skills/buding-npm-release/SKILL.md)。

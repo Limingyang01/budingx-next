@@ -20,6 +20,7 @@
 | 需求、设计、实施计划和证据 | [buding-sdd](skills/buding-sdd/SKILL.md) |
 | 未来 UI/状态/API 客户端验证 | [buding-frontend-testing](skills/buding-frontend-testing/SKILL.md) |
 | 未来 Core/Provider/工具/存储/进程验证 | [buding-runtime-testing](skills/buding-runtime-testing/SKILL.md) |
+| TUI 构建、版本准备、Actions/OIDC npm 发布与回执 | [buding-npm-release](skills/buding-npm-release/SKILL.md) |
 | 明确授权的提交、集成和发布 | [buding-merge](skills/buding-merge/SKILL.md) |
 
 开发流程按需读取 [项目 Superpowers](skills/superpowers/using-superpowers/SKILL.md) 及相关阶段。用户既有授权优先，不重复请求同一范围的许可；上游技能中的自动提交、清理、发布建议不能扩大当前授权。普通文档迁移不自动开启产品架构实施。
