@@ -9,11 +9,12 @@ npm ci --ignore-scripts --no-audit --no-fund
 npm run build
 npm start
 npm run skills:check
+npm run spec:check
 npm test
 npm run publish -- --dry-run
 ```
 
-npm test 执行技能维护、TUI 编译/回归及版本管理测试。dry-run 另生成实际 tarball，在仓库外安装并验证 npm 命令 shim 与本地真实 HTTP 流式请求；不上传。当前没有 Desktop/VSIX 构建，不照搬旧仓命令。
+npm test 执行技能维护、规格自洽性、TUI 编译/回归及版本管理测试。`npm run spec:check` 校验 SP001 的能力清单与评测任务清单是否自洽（配额、编号连续性、盲测数量、场景覆盖、统计与实算一致），用于拦住「必交能力被静默降级」这类不会让任何其他测试失败的改动。dry-run 另生成实际 tarball，在仓库外安装并验证 npm 命令 shim 与本地真实 HTTP 流式请求；不上传。当前没有 Desktop/VSIX 构建，不照搬旧仓命令。
 
 配置和限制见 [TUI README](../src/tui/README.md)。只用显式参数/BUDINGX_MODEL、BUDINGX_BASE_URL、BUDINGX_API_KEY；首发不落盘，不从其他工具寻找凭据。未来用户数据统一通过当前用户 home 解析到 ~/.budingx，不读写 ~/.claude。
 

@@ -17,7 +17,20 @@ budingx-next/
       tsconfig.json
 ```
 
-后续建议在 src/ 下按责任增加 core/、providers/、storage/、protocol/、desktop/、vscode/、mobile/、gateway/、adapters/、scheduler/ 等模块；这是边界建议，不为尚未实现的端创建空工程。各端的具体框架和构建目录在对应迭代设计，不能把此清单当已实现结构。
+后续在 src/ 下按责任增加以下模块；这是边界约定，**不为尚未实现的端创建空工程**，各端的具体框架和构建目录在对应迭代设计，不能把此清单当已实现结构。
+
+```text
+src/
+  core/        # Agent 循环、上下文预算、工具调度、终态（零 UI 依赖）
+  provider/    # 公开模型协议适配
+  tools/       # 工具实现、输入校验、输出上限
+  storage/     # 会话/配置/凭据仓库；唯一数据根 ~/.budingx
+  host/        # 宿主契约（进程内/stdio/WS），供 TUI、桌面、VS Code 复用
+  tui/         # 已实现
+  desktop/ vscode/ gateway/ adapters/ scheduler/ mobile/   # 属后续迭代，只登记名字
+```
+
+命名以 [SP001 设计 §3.2](../SP/SP001/design/design.zh.md) 为准：本文件早期建议的 `providers/` 归一为 `provider/`（与既有的单数 `src/tui/` 一致），`protocol/` 归一为 `host/`（宿主与传输协议契约层），远程网关另立 `gateway/`。归一目的是避免同一职责出现两个目录名。
 
 Core 和公开协议不能依赖某个 UI；各端共享业务逻辑但各自启动/打包；共享代码从明确接口引用，不把 TUI 进程作为其他端运行前置，不复制 Core。需要独立 npm 包的模块可以有自己的 package.json，但“有 package.json”不等于必须放 packages/。根 package 保持 private，TUI 发布只选 src/tui 白名单。
 

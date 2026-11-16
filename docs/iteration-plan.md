@@ -76,7 +76,7 @@ SP008/SP009 只有在 Core、宿主协议和验证资源稳定后才可并行；
 
 ## 后续 Agent 的执行入口
 
-当前状态：21 轮均 PLANNED，未启动；没有实际 SP001–SP021 产品需求目录。功能范围已由用户确认纳入，技术方案及验收阈值待审阅；未启动 SDD 或开发。
+当前状态：**SP001 已启动（规格轮，仅出规格，未启动产品实现）**；其余 20 轮仍为 PLANNED。SP001 已产出[能力基线、核心边界与发布范围](../SP/SP001/requirements-summary.md)，含[能力清单 v1](../SP/SP001/capability-baseline/capability-manifest.md)（85 项，必交 53 项）、核心边界与不变量、评测集规格与[任务清单](../SP/SP001/evaluation-suite/task-inventory.md)、发布范围与待决项。47 条 AC 全部 UNVERIFIED。功能范围已由用户确认纳入，技术方案及验收阈值待审阅。
 
 1. 用户授权启动时，从 SP001 开始，不跳过基线直接搭三端 UI；若用户改变顺序，记录影响并保留新决定。
 2. 在 SP/SP001/requirements-summary.md 列具体功能/优化目录，不创建需求 ID；按模板补来源、AC、依赖和状态。

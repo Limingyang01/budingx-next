@@ -1,6 +1,6 @@
 # 当前状态
 
-日期：2026-11-16。阶段：简易聊天 TUI 已发布，OIDC 发布链路已实测；全部 21 轮完整 Agent 迭代仍未启动。
+日期：2026-11-16。阶段：简易聊天 TUI 已发布，OIDC 发布链路已实测；SP001 已启动（规格轮），未启动任何产品实现；其余 20 轮完整 Agent 迭代仍未启动。
 
 ## 已有
 
@@ -24,7 +24,9 @@
 
 历史迁移验证见 [迁移记录](migration/README.md)。首发新增配置/Provider、真实 CLI 子进程多轮对话和 tarball 安装 smoke；真实外部模型无测试凭据，仍为 UNVERIFIED。首发真实数量和发布回执见 [首发状态](requirements/tui-bootstrap/STATUS.md)。
 
-规划已完善至 [路线图 r3](iteration-plan.md)，配套 [能力矩阵](agent-capability-matrix.md)、[高级功能计划](advanced-capabilities-plan.md)、[npm 发布方案](npm-release-plan.md)与 [版本规范](versioning.md)。21 轮均未启动；bootstrap 是单独授权的简易首发，不启动完整 SDD 开发。
+规划已完善至 [路线图 r3](iteration-plan.md)，配套 [能力矩阵](agent-capability-matrix.md)、[高级功能计划](advanced-capabilities-plan.md)、[npm 发布方案](npm-release-plan.md)与 [版本规范](versioning.md)。bootstrap 是单独授权的简易首发。
+
+SP001 已启动且**仅限规格**：已产出 [能力基线、核心边界与发布范围](../SP/SP001/requirements-summary.md)（[能力清单 v1](../SP/SP001/capability-baseline/capability-manifest.md) 共 85 项、必交 53 项；核心边界与不变量；评测集规格与[任务清单](../SP/SP001/evaluation-suite/task-inventory.md)；发布范围与待决项）。本轮**不含产品代码**，47 条 AC 全部 UNVERIFIED。按用户 2026-11-16 的决定，对照基线只做**静态盘点**、不运行原 Agent，因此**不存在原产品效果基线**，「达到水平」目前只能表述为能力清单覆盖度。其余 20 轮仍为 PLANNED。
 
 ## 发布方式调整
 
