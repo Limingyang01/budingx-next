@@ -18,7 +18,7 @@
 
 首发使用 Node.js >=22.18、TypeScript 和 Node test runner，当前真实命令见 package.json。禁止引入 Bun；不能把旧项目版本 0.5.0、旧测试成绩或 Git 发布状态当作本仓事实。
 
-用户 2026-11-16 补充确认参考实现定位：本仓设计与主要核心逻辑必须严格参考本地 `budingWorkerSpace` 项目（现路径 `D:\my_project\budingWorkerSpace`，SP001 早期文档所写 `D:\extra_project\buding-worker-space` 已失效），重点参考其 TUI 命令设计、Agent 主循环与核心工具，按「读机制、不抄代码」独立编写实现并对齐行为与效果。该仓无 LICENSE 声明，本仓制品保持自有 MIT 独立可发布、不嵌入旧代码；细则见 [独立实现与复用边界](independent-development.md)。此条不改变各 SP 的启动授权状态。
+用户 2026-11-16 确认参考实现定位：本仓设计与主要核心逻辑必须严格参考本地 `budingWorkerSpace` 参考项目（文档不写死绝对路径，位置以用户环境为准），重点参考其 TUI 命令设计、Agent 主循环与核心工具；设计文档、计划文档和真实开发全程对照该参考，不允许脱离参考开发，允许优化但核心逻辑不得背离、使用体验不得下降；按「读机制、不抄代码」独立编写实现并对齐效果。该参考仓无 LICENSE 声明，本仓制品保持自有 MIT 独立可发布、不嵌入参考代码；细则见 [独立实现与复用边界](independent-development.md)。此条不改变各 SP 的启动授权状态。
 
 用户已授权简易 TUI 验证后发布 npm，并确认 MIT；0.1.0、0.1.1 已公开发布，latest 指向 0.1.1，发布状态及 integrity 见 release-ledger.json。没有读取旧用户配置或凭据。未来用户数据统一通过当前用户 home 解析为 ~/.budingx，禁止使用 ~/.claude；首发只用显式参数/环境变量，暂不写用户数据。
 
