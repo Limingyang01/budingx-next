@@ -1,0 +1,4 @@
+* text=auto eol=lf
+
+# Preserve the licensed upstream snapshot byte-for-byte for its SHA-256 manifest.
+skills/superpowers/** -text

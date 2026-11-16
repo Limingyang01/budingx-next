@@ -1,0 +1,39 @@
+# 需求与状态记录
+
+本项目没有需求 ID；按 SP 迭代版本号 → 具体功能或优化目录组织。功能 slug 使用清楚的描述性名称，AC 编号只用于验收条件。迭代模板和操作规范统一见 [SP 管理入口](../../../SP/README.md)，总体安排见 [迭代路线图](../../../docs/iteration-plan.md)。用户已授权安排 SP001–SP021，但编号存在不表示启动开发。后续调整依据用户授权或已有明确记录，不由旧仓编号、日期或分支猜测。没有 SP 的正式需求放 `docs/requirements/<slug>/`，日后归入真实迭代时保留来源和链接。
+
+```text
+docs/requirements/<slug>/   # 无已确认 SP
+  requirements.md
+  design/design.en.md      # 正式 SDD 才需要双语设计/计划
+  design/design.zh.md
+  design/plan.en.md
+  design/plan.zh.md
+  STATUS.md
+  test-report.md           # 需要正式验证记录时建立
+
+SP/SP<已确认编号>/          # 只有实际迭代才建立
+  requirements-summary.md
+  <功能或优化slug>/           # 内部同上
+```
+
+不为小 README、链接或技能迁移生成空模板；可在现有文档和聊天中交付。已有明确布局优先复用，附件只保存实际需要且已脱敏的材料。slug 只能是单个目录名，拒绝路径穿越；正文使用相对链接。
+
+新分支默认 `feature/<description>`。只有用户确认 SP 才用 `feature/SP<三位编号>/<description>`，例如已确认 SP1 可规范为 SP001；不要发明编号或自动建分支。
+
+## 索引与需求
+
+SP 汇总是索引，不是第二份设计。记录真实编号、更新时间、有效范围，并逐行维护需求/来源、目标、责任层、基线、阶段、设计/计划/AC、验证、集成状态和下一步。每行链接需求正文与 STATUS。无 SP 不生成 SP 汇总。
+
+`requirements.md` 保存原始材料引用、用户补充、目标/边界、稳定 AC 和开放问题。来源用 `USER_CONFIRMED / MODEL_PROPOSED / OPEN`，模型提议不冒充用户决定。撤回/替代需求保留历史与原因，多需求共享变更说明依赖与归属。
+
+## STATUS 与证据
+
+1. 当前有效范围、设计/计划版本、AC 和阶段。
+2. 已完成/待做、阻塞与下一步；设计批准与实现完成分别记录。
+3. 用户批准原话或精确来源、文件版本（SHA 或哈希）及允许的动作；保留被替代记录。
+4. 任务→文件→cwd/命令→实际数量和结果→证据。提交/合并/推送仅在真正执行后写入，恢复时核对实时 refs；初始空仓可以没有 SHA。
+
+结果为 `PASS / FAIL / UNVERIFIED / NOT_APPLICABLE`，需有依据。零测试/全部 skip 不能 PASS；未运行记 UNVERIFIED。不适用要说明原因。测试报告区分逻辑 fixture、协议、真实进程、UI、live Provider 和安装证据。
+
+原始日志、coverage、截图等使用本地忽略的 `artifacts/quality-runs/<slug>/<run>/` 或已约定目录；正式记录引用脱敏摘要和证据位置，本地路径不意味着可公开获取。不要迁移旧成绩、真实聊天、密钥或用户配置。集成状态不能推导部署或用户验收。

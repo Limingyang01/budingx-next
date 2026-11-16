@@ -1,0 +1,18 @@
+# 产品版本与 SP 管理
+
+用户已确认：每个迭代交付更新产品版本。采用 SemVer，产品版本与 SP 编号分别管理，不修改已发布版本、不以目录创建触发发包。
+
+- 首个启动版本为 0.1.0（bootstrap），只含 OpenAI 兼容流式聊天 TUI，不表示任何 SP 已验收。
+- 每个新 SP 完成并交付时至少增加 minor，例如 SP001 首次交付 0.2.0；同一 SP 的修复增加 patch。实际版本以发布台账为准，不将 SP021 硬编码为某个版本。
+- 兼容破坏增加 major（在 0.x 开发阶段也可按 minor 体现，必须显式记录迁移）；1.0.0 必须满足完整替代验收，不能因 SP 编号自然到达。
+- prepare 只准备版本、台账和发行说明，不提交、不打 tag、不上传。发布命令不自行 bump，版本重复拒绝，预发布用明确 tag。
+- 同一 SP 可多次发布，SP 状态、产品版本、发布状态分开记录；发布失败不把已占用版本重新使用。
+- src/tui/package.json 的 version 是产品版本源；release-ledger.json 记录迭代及 prepared/published 状态；release-notes/v<version>.md 记录用户变化、限制和验收。根维护包版本不是产品版本。
+
+未来三端产品加入时，从已准备 release manifest 同步公共兼容版本；各端制品/发布通道和是否交付分别记录，不因 TUI 发包宣称 Desktop/VSIX 已发布。协议/存储 schema 版本独立演进并提供迁移，不能用 npm 版本代替数据版本。
+
+后续 Agent：完成当轮验收后准备新版本，更新 SP 汇总/STATUS 与发行说明；执行用户授权的发布，再保存 registry 版本/integrity/tag 回执。只有已核实结果才记 published，上传状态不确定先查询，不盲重试。
+
+规范依据：[npm SemVer 说明](https://docs.npmjs.com/about-semantic-versioning/)。
+
+当前实际入口：`npm run version:prepare -- minor --iteration SP001`（同轮修复 patch）。要求当前版本有 published 回执且无未处理 prepared 版本；保留台账未知字段。命令不修改根维护包版本或执行 Git 写操作。

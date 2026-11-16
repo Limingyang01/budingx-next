@@ -1,0 +1,32 @@
+{
+  "name": "budingx",
+  "version": "0.1.0",
+  "description": "An independent Node.js terminal chat client for OpenAI-compatible APIs. Early preview; coding tools are not included.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "bin": {
+    "budingx": "dist/cli.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Limingyang01/budingx-next.git"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "keywords": [
+    "tui",
+    "terminal",
+    "openai-compatible",
+    "chat"
+  ]
+}

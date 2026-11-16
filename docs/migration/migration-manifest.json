@@ -1,0 +1,54 @@
+{
+  "kind": "development-assets-only",
+  "date": "2026-11-16",
+  "target_main_branch": "master",
+  "runtime_direction": "Node.js + TypeScript; no Bun",
+  "source_revision": "b5c9be8d15e5dab153fe1607c0d653d464bdb3e5",
+  "third_party": {
+    "superpowers": {
+      "repository": "https://github.com/obra/superpowers",
+      "revision": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+      "version": "7.0.0",
+      "license": "MIT",
+      "files_verified": 75
+    }
+  },
+  "byte_copied": [
+    {
+      "source": "skills/superpowers/",
+      "target": "skills/superpowers/",
+      "purpose": "MIT-licensed developer workflows and resources"
+    },
+    {
+      "source": "scripts/skills/sync-entries.mjs",
+      "target": "scripts/skills/sync-entries.mjs",
+      "purpose": "developer skill discovery maintenance"
+    },
+    {
+      "source": "scripts/skills/sync-entries.test.mjs",
+      "target": "scripts/skills/sync-entries.test.mjs",
+      "purpose": "maintenance regression tests"
+    }
+  ],
+  "adapted": [
+    "skills/buding-sdd/",
+    "skills/buding-frontend-testing/",
+    "skills/buding-runtime-testing/",
+    "skills/buding-merge/"
+  ],
+  "new_from_confirmed_goals": [
+    "README.md",
+    "AGENTS.md",
+    "docs/"
+  ],
+  "not_migrated": [
+    "src/ product implementation",
+    "desktop/ product implementation",
+    "vscode_plugin/ product implementation",
+    "adapters/ product implementation",
+    "product system prompts and SDK types",
+    "old runtime/architecture documents as current implementation",
+    "old verification reports and release state",
+    "node_modules, binaries, credentials, user data, caches and source graphs"
+  ]
+}
