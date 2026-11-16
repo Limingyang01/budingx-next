@@ -1,6 +1,6 @@
 # SP002 设计 · 模型与会话闭环
 
-版本：**v0.2 draft（待批准）**——v0.1 经独立 builder 复核（9 问 + 勘误），处理见 §10｜更新：2026-11-16｜覆盖需求：provider-streaming / model-management / session-lifecycle / tui-conversation（四份 v0.1 需求均已获用户批准 2026-11-16）
+版本：**v0.3 approved**——v0.2 draft 经独立 builder 复核（9 问 + 勘误），处理见 §10；**用户 2026-11-16 会话批准「继续SP002,我批准了设计」**，正文自 v0.2 起无实质变更，本版仅登记批准身份｜更新：2026-11-16｜覆盖需求：provider-streaming / model-management / session-lifecycle / tui-conversation（四份 v0.1 需求均已获用户批准 2026-11-16）
 基线：master `3c166cb` + 未提交的 SP002 记录文件；本轮设计/计划为**中文单份**（按新版 SP 规范）。
 原始材料：[迭代汇总](../requirements-summary.md)、[旧仓机制盘点](../attachments/old-repo-mechanism-inventory.md)（内部参考，禁入制品）、[O8 调研·Ink](../attachments/o8-research-ink.md)、[O8 调研·替代路线](../attachments/o8-research-alternatives.md)、[能力清单](../../SP001/capability-baseline/capability-manifest.md)、[仓库布局](../../../docs/repository-layout.md)、[npm 发布方案](../../../docs/npm-release-plan.md)。
 
@@ -240,6 +240,7 @@ M0 脚手架+边界检查 → M1 垂直切片（provider fixture 闭环+状态�
 | --- | --- | --- |
 | 2026-11-16 | v0.1 draft 提交审阅；O8 依 U5 关闭为 Ink 8.0.0（spike 豁免，R1 承接）；O6 确认同仓目录 | Agent 综合 SP001 交接、双路调研与用户决定 |
 | 2026-11-16 | v0.2 draft：builder 复核 9 问全部处理（无上抛未决项，其中 Ctrl+C 变更、queue 400ms 驻留、maxIterations=32、probe 形态、string-width 入白名单为 Agent 代决可否决）；3 处勘误修正 | 独立 builder 复核代理（ink/chalk tarball 实包取证） |
+| 2026-11-16 | **v0.3 approved**：用户会话批准「继续SP002,我批准了设计」；正文无实质变更（仅登记批准身份与授权范围） | USER_CONFIRMED（用户 2026-11-16 会话原话） | 批准覆盖：计划编写、实现、测试、交付记录与各阶段本地提交（提交说明中文），以及完成后按 buding-merge 规程合入 master；**不含**用户验收、推送、打标签、npm 发布、远端设置、分支/worktree 清理 |
 
 ## 10. Builder 复核意见处理（v0.1→v0.2）
 
