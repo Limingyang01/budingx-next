@@ -3,10 +3,17 @@ import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { test } from 'node:test'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const cli = fileURLToPath(new URL('../dist/tui/cli.js', import.meta.url))
+
+// The CLI reads ~/.budingx from the real user home; without isolation the
+// "missing model" case depends on whatever the local user has configured
+// (and could hit a real endpoint). Pin HOME/USERPROFILE to a fresh temp dir.
+const isolatedHome = mkdtempSync(join(tmpdir(), 'budingx-cli-test-'))
 
 function run(args = [], input = '', env = {}) {
   return new Promise((resolve, reject) => {
@@ -16,6 +23,8 @@ function run(args = [], input = '', env = {}) {
         BUDINGX_API_KEY: '',
         BUDINGX_MODEL: '',
         BUDINGX_BASE_URL: '',
+        HOME: isolatedHome,
+        USERPROFILE: isolatedHome,
         ...env
       },
       windowsHide: true

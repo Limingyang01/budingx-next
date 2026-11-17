@@ -216,3 +216,10 @@ node scripts/release/pack-smoke.mjs
 | 打包隔离 smoke | `node scripts/release/pack-smoke.mjs` | PASS（33 文件） |
 
 关于「模型名称」：首屏模型行取自配置（`BUDINGX_MODEL` / `--model` / 档案 + `/model`），属 SP002 已实现能力（MM-03）；未配置态显示「模型：未配置」是诚实状态而非缺口。从服务端拉取可用模型列表不在 SP002 AC，也未在路线图排期（如需要另行登记待决）。
+
+## 12. CLI 测试 home 隔离修复与并行会话观察（2026-11-17）
+
+- **缺陷**：`cli.test.mjs`  spawn 真实 CLI 时只清空 `BUDINGX_*`、未隔离用户 home。本机 `~/.budingx` 存在真实档案后，「缺模型明确报错」用例前提失效（走真实请求得 401）。与[实现缺口核查 §6](implementation-gap-audit.md)（并行会话产出）结论一致。
+- **修复（仅测试设施）**：`run()` 以 `mkdtempSync` 新建临时 home 并 pin `HOME`/`USERPROFILE`；产品代码未动。复跑 `node --test src/tui/test/cli.test.mjs` **5/5 PASS**。
+- **门禁快照（修复后即刻）**：`npm test` = skills 9 + spec 7 + unit **122/124** + checks PASS + release 16；pack smoke PASS（34 文件）。**2 项 FAIL 不归因本修复或排查文档**：`probe 探测可达性并按需检查工具能力`（openai.test）与 `G05/G06 能力修改及显式孤儿清理`（commands.test 新增）—— workspace 存在**并行会话的在途 SP002 缺口修复**（`src/provider/openai.ts`、`src/tui/{cli,commands,runtime}.ts`、`src/core/session.ts` 及对应测试已被其修改，未提交），失败源于其在途变更。本会话不集成、不提交该部分 diff。
+- **边界**：并行会话的 `implementation-gap-audit.md` / `design/gap-closure-plan.md` 保持未跟踪、未触碰；SP002 验收应在其缺口修复收口后统一进行（G01 密钥录入、G04 切换同步请求配置等为其报告 P1 项）。
