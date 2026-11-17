@@ -155,6 +155,7 @@ export class Session {
   clearHistory(): void {
     if (this.state !== 'idle') return
     this.messages.length = 0
+    this.emit({ type: 'conversation_cleared' })
   }
 
   /** Move queued input back to the host (SP002 design §3.3 idle Esc). */
@@ -242,6 +243,7 @@ export class Session {
     if (this.tools.length > 0 && snapshot.capabilities.tools) {
       request.tools = this.tools.map((tool) => ({
         name: tool.name,
+        parameters: tool.parameters ?? { type: 'object', properties: {} },
         description: tool.summary ?? tool.describe({})
       }))
     }

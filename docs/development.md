@@ -47,3 +47,11 @@ src/
 CI 发布成功后下载 report.json，执行 `npm run release:sync -- --receipt <path>` 核对 npm integrity 并同步台账，审阅提交后再准备下一迭代版本。该命令不需要发布 token，不自动写 Git。
 
 构建到 npm 的逐轮清单、隔离安装复验与失败恢复统一维护在 [发布操作手册](github-actions-npm.md)，Agent 执行使用 [buding-npm-release](../skills/buding-npm-release/SKILL.md)。
+
+## 显式 opt-in 的真实模型 e2e
+
+先构建，再将 scripts/testing/e2e.env.example 复制到仓库根目录 .env.e2e.local；填写 Base URL、模型、Key、允许的美元预算、请求/输出上限和工具能力。只提交空模板，真实本地文件被 Git 忽略。npm test 不读取该文件，也不会自动调用真实服务。
+
+用户授权测试费用后，运行 node scripts/testing/live-provider.mjs。脚本执行流式 UI、工具审批回合（支持 tools 时）、用户取消入口及无效 Key 错误；只使用临时存储及自有 echo 测试桩，不读取旧客户端数据。请求计数和脱敏回执保存在忽略的 artifacts/SP002-e2e/。
+
+失败后可用 --resume --only-tools 只续测工具项并累计既有请求数；只有取得用户新授权，才用 --request-cap NUMBER 覆盖原请求上限。预算字段记录用户授权，不代替供应商计费限额；实际费用需用户核对账单。该脚本不证明系统终端 IME 或鼠标体验。

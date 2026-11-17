@@ -60,3 +60,5 @@
 ## 2026-11-17 缺口收尾补充
 
 用户要求按 [实现缺口报告](implementation-gap-audit.md) 先 P1 后其余项实施。G01…G17 已进入同分支收尾，计划见 [gap-closure-plan.md](design/gap-closure-plan.md)，逐项修正及本次验证记录见 [test-report §14](test-report.md#14-2026-11-17-缺口收尾g01g17)。本地实现、自动测试与真实环境验收分别记录：历史阶段勾选不能替代该节证据；live Provider 和 Windows Terminal/ConHost 人工项仍未验收。未准备版本、未发布。
+
+2026-11-17 e2e 补证据：PS-08 真实服务四场景已验证；清屏、工具 schema 两项缺陷已完成失败复现与修复，详见 [验证报告 §16](test-report.md#16-真实模型与扩展端到端验证2026-11-17)。真实终端人工项仍独立保留 UNVERIFIED。

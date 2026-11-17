@@ -83,6 +83,7 @@ export type TurnFinalizedEvent = {
 }
 
 export type SessionEvent =
+  | { type: 'conversation_cleared' }
   | { type: 'turn_started'; turnId: string; snapshot: TurnSnapshot }
   | { type: 'text_delta'; turnId: string; messageId: string; text: string }
   | { type: 'thinking_delta'; turnId: string; messageId: string; text: string }

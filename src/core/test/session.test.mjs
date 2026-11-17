@@ -735,3 +735,24 @@ test('G17 非法工具参数回填错误后续跑', async () => {
   assert.equal(calls.length, 2)
   assert.ok(session.history.some((m) => m.role === 'tool' && m.blocks[0].isError))
 })
+
+test('live 回归：工具 schema 从 handler 传到实际 Provider 请求', async () => {
+  const { provider, calls } = scriptProvider([
+    [{ type: 'message_completed', finishReason: 'stop' }]
+  ])
+  const parameters = {
+    type: 'object',
+    properties: { text: { type: 'string' } },
+    required: ['text']
+  }
+  const session = new Session({
+    provider,
+    approval: approvalGateway({ outcome: 'allow', via: 'user' }).gateway,
+    resolveSnapshot: () => SNAPSHOT,
+    tools: [{ name: 'echo', parameters, describe: () => '', execute: async () => 'ok' }]
+  })
+  const end = waitFor(session, (e) => e.type === 'turn_finalized')
+  session.submit('test')
+  await end
+  assert.deepEqual(calls[0].tools[0].parameters, parameters)
+})

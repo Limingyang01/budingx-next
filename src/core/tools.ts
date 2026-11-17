@@ -7,6 +7,7 @@ export type ToolContext = {
 
 export type ToolHandler = {
   name: string
+  parameters?: Record<string, unknown>
   /** Short static description used for the provider tool specification. */
   summary?: string
   describe(input: unknown): string

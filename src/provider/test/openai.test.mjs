@@ -385,3 +385,32 @@ test('PS-06 思考与工具参数同受响应上限限制', async () => {
     assert.equal(events.at(-1).error.code, 'BUDINGX_PROVIDER_014')
   }
 })
+
+test('live 回归：无参数工具也发送显式 object schema', async () => {
+  let captured
+  const provider = createOpenAiProvider({
+    baseUrl: 'https://fixture.invalid',
+    limits: { maxAttempts: 1 },
+    fetchImpl: async (_url, options) => {
+      captured = JSON.parse(options.body)
+      if (!captured.tools[0].function.parameters)
+        return Response.json(
+          { error: { message: 'function parameters is empty' } },
+          { status: 400 }
+        )
+      return new Response(sse({ choices: [{ delta: { content: 'ok' } }] }), {
+        headers: { 'Content-Type': 'text/event-stream' }
+      })
+    }
+  })
+  const events = await collect(provider, {
+    model: 'm',
+    messages: [],
+    tools: [{ name: 'echo', description: 'echo' }]
+  })
+  assert.equal(events.at(-1).type, 'message_completed')
+  assert.deepEqual(captured.tools[0].function.parameters, {
+    type: 'object',
+    properties: {}
+  })
+})

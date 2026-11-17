@@ -62,6 +62,8 @@ export function reduceFrame(
   }
 
   switch (event.type) {
+    case 'conversation_cleared':
+      return { ...initialFrame(), queue: frame.queue }
     case 'turn_started': {
       next.liveText = ''
       next.liveThinking = ''

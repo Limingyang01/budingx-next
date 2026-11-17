@@ -234,6 +234,7 @@ node scripts/release/pack-smoke.mjs
 - **边界不变**：IME preedit、真 ConHost/WT 观感、鼠标选区仍 UNVERIFIED（§5 人工清单）；harness 绿不冒充真终端验收。
 
 ## 14. 2026-11-17 缺口收尾（G01…G17）
+
 用户授权：按 implementation-gap-audit.md 先 P1、再其余项与测试。沿用设计 v0.3；继续原 feature 分支。开始 HEAD c57d51a；执行期间外部新增 7e5dcea（CLI 测试 home 隔离），已保留，未重写该提交。
 
 ### 14.1 实现与回归映射
@@ -292,3 +293,52 @@ PS-08 live Provider 仍为 UNVERIFIED：未使用真实凭据或费用预算。T
 5. **bug 闭环**：队列 drain unref（§7）、ASCII 兜底非 ASCII `·`（§13 S4 RED→修复）、CLI 测试 home 未隔离（§12）、G01–G17（§14）、门禁表头误报（4cde2f7）——均 RED/复现→修复→复绿。
 6. **风险与回退**：live 与真终端证据缺口已登记恢复条件；产品版本仍 0.1.1（无发布授权）；回退＝master 上 revert 本次 merge 提交，feature 分支保留不删。
 7. **合入决策**：门禁 GREEN + 自审通过 → 按 buding-merge 规程合入 master（委托范围内）。**push/打标签/npm 发布不在委托内，不执行**。
+
+## 16. 真实模型与扩展端到端验证（2026-11-17）
+
+用户明确要求应用 buding-frontend-testing 执行 e2e，发现 Bug 立即修复。基线含屏幕 harness 提交 87d34e2；执行期间门禁委托及自审文档的同期提交保留。测试范围为 L1 实际 Ink 帧/键流、L1+真实本地 HTTP 全链路、L2 CLI 子进程和制品、真实外部 Provider，分别下结论。
+
+### 16.1 本轮缺陷与红绿证据
+
+| 缺陷                                               | 首次失败证据                                                                                                                   | 修复与复验                                                                                                                                            |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| clear 只清上下文，旧回答仍在屏幕                   | S10：history 已为空，但末帧仍含 fixture-old-answer，断言预期失败                                                               | Core 发 conversation_cleared，reducer 重置可见内容并保留尚未执行的排队项；S10 复绿。                                                                  |
+| 真实服务拒绝工具请求：function parameters is empty | 外部 Provider 连续两次 HTTP 400；随后两个离线回归分别验证 Core 请求 schema 为 undefined、无 schema 工具被本地严格 fixture 拒绝 | ToolHandler 可携带 parameters，Core 传到 Provider；无参数工具显式发送 object/properties 空 schema；离线回归复绿，真实工具审批+结果回传+模型续答通过。 |
+| truecolor 测试夹具 pin 颜色晚于 Chalk 初始化       | S11 实际 ANSI 不含品牌 truecolor 转义                                                                                          | FORCE_COLOR 在动态加载 Ink/App 之前设置；S11 复绿。属于夹具修正，不改变产品颜色策略。                                                                 |
+| 真实错误诊断先截断再脱敏可能留下密钥前缀           | 独立 reviewer 用合成密钥跨第 2000 字符的离线 fixture 证明                                                                      | 改为先完整脱敏再截断，新增纯函数回归通过；不为该日志修正额外发送真实请求。                                                                            |
+
+### 16.2 新增/扩展自动化
+
+- screen-e2e：S1…S12，包含清屏、真实 truecolor ANSI、完成后长回答缩放重排；既有首屏/ASCII/中文流/打断/排队/退出/resize 用例保留。
+- wire-e2e：W1 配置与密钥隐藏录入→双端点/模型/凭据切换→默认存储；W2 真实 HTTP 鉴权失败与恢复、历史不污染；W3 真实 reader 取消及续聊；W4 工具审批允许/拒绝两种路径及 Provider 续跑。全程使用临时存储和自己启动的 localhost HTTP 服务。
+- 扩展 mount-tty 的 sessionFactory，复用产品 createConfiguredSession，避免只用假 Provider 证明线路行为。真实进程仍由 cli.test 覆盖；不以该进程内流假装系统控制台。
+
+### 16.3 真实 Provider 回执
+
+仅在用户说明已配置完成后，读取明确授权的根目录 .env.e2e.local。初始限额为 6 次、5 美元；用户随后明确允许增至最多 12 次，费用仍限 5 美元。输出 cap 为每请求 max_tokens=128，生成路径 maxAttempts=1。没有读取其他用户配置、旧产品凭据或历史。
+
+| 场景                         | 最终结果 | 证据范围                                                                                                       |
+| ---------------------------- | -------- | -------------------------------------------------------------------------------------------------------------- |
+| live-stream-ui               | PASS     | 实际外部请求、text delta、实际 Ink/UI；密钥不出现在 raw 帧。                                                   |
+| live-tool-approval-roundtrip | PASS     | 模型实际返回工具调用，TUI 允许审批，执行自有 echo 测试桩，tool_result 回传后模型续答；不是工作区真实编码工具。 |
+| live-stream-cancel           | PASS     | 首个流事件后经 Session 用户取消入口中断，Provider 停止、终态 cancelled；Esc 键流另由本地 HTTP+Ink W3 证明。    |
+| live-tool-empty-schema       | PASS     | 未提供 handler schema，实际服务接受默认空 object schema，并完成审批与工具续答。                                |
+| live-invalid-key             | PASS     | 使用故意无效的测试 key，实际服务返回 auth 错误；没有把真实 key 用作错误示例。                                  |
+
+**累计 9 次 HTTP 请求**：包含修复前的两次工具 400 和修复后的有参数、无参数两组工具回合（各两请求），未超用户授权的 12 次。未读取供应商账单，实际费用为 UNVERIFIED，不声称已核实实际花费。当前限额与用户授权记录保存在忽略的 artifacts/SP002-e2e/live-summary.json；历史失败保留在 previousRuns。正式报告不记录端点、模型标识、凭据或原始聊天内容。
+
+真实测试为显式 opt-in 脚本 scripts/testing/live-provider.mjs；npm test 不会自动发送真实请求。空模板位于 scripts/testing/e2e.env.example。真实 .env.e2e.local 仍被 Git 忽略且未跟踪，不纳入任何提交。
+
+### 16.4 未验证边界与恢复条件
+
+PS-08 真实 Provider 四类行为已取得本节证据；其他型号/供应商未测。L3 Windows Terminal/ConHost 的中文 IME preedit、候选窗、鼠标选区和实际观感仍为 UNVERIFIED；恢复条件是在对应真实控制台执行 §5 人工清单。供应商账单费用 UNVERIFIED，恢复条件为用户自行核对供应商账单；本轮不访问其账号账单。
+
+本轮独立审查只读、未读真实配置、未发外部请求；其日志脱敏反馈已修复。PRODUCT 与 TUI README 已同步 clear 语义、schema 兼容性及验证状态；产品版本未升级，未推送或 npm 发布。完整门禁与制品复验结果在本节追加。
+
+### 16.5 最终自动化与自审
+
+- npm test：技能 9/9、规格 7/7、产品 161/161、发布 16/16、集成门禁单元 4/4，**合计 197 项通过，0 失败、0 跳过**；模块边界检查通过。真实 Provider 是独立显式执行的 5 项，不计入该 197 项。
+- 专项 e2e 覆盖屏幕 S1…S12、App 8 项、真实 HTTP W1…W4、runtime 3 项和 CLI 子进程 5 项（各层见上文），真实服务验证按 16.3 单列。
+- Prettier 3.6.2 用固定选项格式化本次 JS/TS/Markdown；未引入产品依赖。env 示例无所属 formatter，空模板手工核对。真实配置及 artifacts 不提交。
+- 自审：读取当前 scoped diff、契约生产与消费两端及 Node bin 布局；独立 reviewer 的日志边界反馈已修复并补离线断言。颜色断言修复测试夹具初始化时序；没有为绿测修改产品颜色语义或降低断言。
+- 本轮不更改版本、不推送、不发布。按已有集成委托，只有 merge:gate GREEN 且自审通过后才合入 master；精确门禁回执保存在 artifacts/merge-gate，合入结果以 Git ancestry 为准。

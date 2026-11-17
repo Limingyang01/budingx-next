@@ -64,7 +64,7 @@ Each profile owns its own key, bound to the profile id **and** the base URL host
 - /provider default NAME — persist the startup default
 - /provider tools NAME on|off — set the profile tool capability flag
 - /provider orphans [clean] — count orphan credentials; explicitly clean with `clean`
-- /clear — clear the in-memory conversation
+- /clear — clear the in-memory conversation and its visible transcript (input history and pending prompts remain)
 - /exit or /quit — exit
 
 ## Keys

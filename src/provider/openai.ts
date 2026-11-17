@@ -140,7 +140,7 @@ function toolSpecs(tools: ToolSpec[] | undefined) {
     function: {
       name: tool.name,
       description: tool.description,
-      ...(tool.parameters ? { parameters: tool.parameters } : {})
+      parameters: tool.parameters ?? { type: 'object', properties: {} }
     }
   }))
 }

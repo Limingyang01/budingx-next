@@ -10,8 +10,6 @@ import { mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createElement } from 'react'
-import { render } from 'ink'
-import { App } from '../../dist/tui/app.js'
 import { Session } from '../../dist/core/session.js'
 import { InkApprovalGateway } from '../../dist/tui/approval.js'
 import { ConfigStore } from '../../dist/storage/config-store.js'
@@ -19,6 +17,9 @@ import { CredentialStore } from '../../dist/storage/credentials.js'
 
 // Deterministic truecolor so color assertions are possible in CI.
 process.env.FORCE_COLOR = '3'
+// Chalk reads color capability at module initialization, so pin before Ink/App.
+const { render } = await import('ink')
+const { App } = await import('../../dist/tui/app.js')
 
 const pause = (ms = 60) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -37,6 +38,7 @@ export async function mountTty(t, options = {}) {
     tools = [],
     config: initialConfig,
     commandOverrides = {},
+    sessionFactory,
     columns = 100,
     strategy = 'pixel',
     onExit = () => {}
@@ -69,23 +71,25 @@ export async function mountTty(t, options = {}) {
     source: 'env',
     ...initialConfig
   }
-  const session = new Session({
-    provider,
-    tools,
-    approval: gateway,
-    resolveSnapshot: () => ({
-      modelId: config.profileId ?? 'session',
-      model: config.model,
-      baseUrlHost: (() => {
-        try {
-          return new URL(config.baseUrl).host
-        } catch {
-          return ''
-        }
-      })(),
-      capabilities: { tools: tools.length > 0 }
-    })
-  })
+  const session = sessionFactory
+    ? sessionFactory({ ...stores, gateway, getConfig: () => config })
+    : new Session({
+        provider,
+        tools,
+        approval: gateway,
+        resolveSnapshot: () => ({
+          modelId: config.profileId ?? 'session',
+          model: config.model,
+          baseUrlHost: (() => {
+            try {
+              return new URL(config.baseUrl).host
+            } catch {
+              return ''
+            }
+          })(),
+          capabilities: { tools: tools.length > 0 }
+        })
+      })
 
   const stdin = new PassThrough()
   stdin.isTTY = true
@@ -153,9 +157,9 @@ export async function mountTty(t, options = {}) {
       // Deliver keys the way a terminal does: printable runs and control
       // sequences as separate reads. A combined "abc\r" chunk loses the
       // Enter in Ink's keypress parser.
-      const pieces =
-        text.match(/\x1b\[[0-9;]*[A-Za-z~]|[\x00-\x1f]|[^\x00-\x1f\x1b]+/g) ??
-        [text]
+      const pieces = text.match(
+        /\x1b\[[0-9;]*[A-Za-z~]|[\x00-\x1f]|[^\x00-\x1f\x1b]+/g
+      ) ?? [text]
       for (const piece of pieces) {
         stdin.write(piece)
         await pause(10)

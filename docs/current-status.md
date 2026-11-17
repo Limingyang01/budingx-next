@@ -48,3 +48,7 @@ SP001 **仅限规格且已验收**（用户 2026-11-16 验收通过，设计 v1 
 已新增 [publish-tui 工作流](../.github/workflows/publish-tui.yml)及[账号/操作指南](github-actions-npm.md)：Windows/Linux dry-run 门禁、master 手动触发、npm OIDC、只读 GitHub 内容权限、artifact 回执和 release:sync。0.1.0 首发与官方源隔离安装、Windows/Linux 的 GitHub 运行 #3 及 npm Trusted Publisher 均已核实；0.1.0 台账为 published。[运行 #6](https://github.com/Limingyang01/budingx-next/actions/runs/43826550093) 从 49857ad 完成 Windows/Linux 验证及 0.1.1 真实 OIDC 发布；npm 公开元数据标记 GitHub Trusted Publisher，provenance 对应同一源码与运行。官方包本机隔离安装、npm shim、HTTP 流式 smoke 及 registry signature/attestation 验证通过。GitHub environment 已限制 master 分支。首发不再要求在非个人电脑上绑定本机凭据。
 
 SP002 的制品布局已变更（bin 由 `dist/cli.js` 改为 `dist/tui/cli.js`，新增四个编译模块），发布轮须按 O1=A 提供破坏性升级/迁移说明。
+
+## 2026-11-17 e2e 与真实 Provider 补证据
+
+真实 Provider 的 PS-08 四场景已通过，累计 9 次请求（用户授权最多 12 次、5 美元）；已修复 clear 未清可见内容及工具 schema 遗失导致真实 HTTP 400。证据见 [SP002 验证报告 §16](../SP/SP002/test-report.md#16-真实模型与扩展端到端验证2026-11-17)。较早段落中的 live UNVERIFIED 保留历史身份，以本节最新回执为准。真实 Windows Terminal/ConHost IME/观感仍 UNVERIFIED；实际账单未读取。真实 .env.e2e.local 被忽略且不提交。
