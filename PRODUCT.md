@@ -1,0 +1,193 @@
+# budingx 产品说明书
+
+> **产品版本**：0.1.1（npm `budingx` 已发布，`latest` 指向此版本）
+> **仓库当前源码**：0.1.1 + SP002「模型与会话闭环」实现（已本地验证，待用户验收；验收后按[版本规范](docs/versioning.md)准备 0.2.0）
+> **说明书版本**：v1.0
+> **更新日期**：2026-11-17
+> **产品形态**：独立 MIT 许可的终端 Coding Agent（Node.js ≥ 22.18 + TypeScript，不依赖 Bun）
+
+本文件是面向使用者的产品说明书，回答「这是什么、能做什么、怎么用、还差什么」。仓库协作约定见 [AGENTS.md](AGENTS.md)，开发命令见 [开发指南](docs/development.md)，迭代明细见 [SP 目录](SP/README.md)。
+
+**维护约定**：任何改变用户可见行为、命令、配置、按键、数据路径、依赖或能力范围的产品变更（代码或文档），都必须在同一次变更中同步更新本文件的「版本与功能」「使用说明」「已知限制」「版本历史」对应章节，并在交付记录里写明本次更新点或「说明书无需更新」的理由。详见 [文档约定](docs/documentation.md#产品说明书同步)。
+
+---
+
+## 1. 这是什么
+
+budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终端里完成定位问题、修改代码、运行测试、提交前审查的完整编码闭环，并逐步提供独立的 Desktop、VS Code 与未来移动端接入。
+
+当前发布的是 **0.1.1 聊天预览版**：能配置任意 OpenAI 兼容服务、进行流式对话。SP002 在此基础上补齐了模型档案、会话状态机、工具回合契约、双中断与排队等核心机制，但**尚未发布**；完整的编码工具（读写文件、执行命令）在 SP003/SP004 才落地。
+
+与被参考的旧实现的关系：本仓只参考公开机制与可观察行为，代码独立编写，不含旧产品源码、提示词或构建产物。详见 [独立实现与复用边界](docs/independent-development.md)。
+
+---
+
+## 2. 版本与功能（按迭代归类）
+
+### 2.1 已交付
+
+| 阶段 / 迭代 | 版本 | 功能目录 | 交付内容 | 状态 |
+| --- | --- | --- | --- | --- |
+| bootstrap | 0.1.0 / 0.1.1 | 简易聊天 TUI | OpenAI 兼容端点配置、SSE 流式对话、内存会话、多行输入、斜杠命令族、npm Trusted Publishing 发布链路、tarball 隔离安装 smoke | 已发布（npm `budingx@0.1.1`） |
+| SP001 | —（规格轮） | capability-baseline、evaluation-suite、core-boundaries、release-scope | 能力清单 v1（85 项，必交 53 项）、核心边界与不变量、评测集规格与任务清单、发布范围与待决项 | 已验收，**不含产品代码** |
+| SP002 | 待发布 0.2.0 | provider-streaming、model-management、session-lifecycle、tui-conversation | OpenAI 兼容流解析与 tool_calls 装配、错误分类/有界重试/取消/限额、模型档案与凭据仓库、会话状态机与终态契约、工具回合、双中断与排队、Ink 8 多行对话界面 | 已实现并本地验证，**待用户验收** |
+
+### 2.2 规划中（尚未启动，路线图见 [迭代计划](docs/iteration-plan.md)）
+
+| 迭代 | 目标 | 主要功能目录 |
+| --- | --- | --- |
+| SP003 | 工作区与安全修改 | workspace-tools、change-preview、permission-controls、file-context |
+| SP004 | 真实编码任务 | command-execution、coding-task-loop、git-worktree-safety、task-planning |
+| SP005 | 长会话与数据可靠性 | context-budget、session-recovery、failure-recovery、project-memory |
+| SP006 | 日常开发与 TUI 候选 | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging |
+| SP007 | Agent 质量与扩展 | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context |
+| SP008 | Desktop 独立工作台 | desktop-host、desktop-coding-workflow、multi-project-sessions |
+| SP009 | VS Code 独立端 | vscode-host、workspace-integration |
+| SP010 | 跨端共享与接入 | shared-models-and-history、session-ownership、transport-boundaries |
+| SP011 | 独立交付与 npm 发布工程 | tui-distribution、desktop-distribution、vscode-distribution、upgrade-compatibility、npm-publish-pipeline |
+| SP012 | 中期编码效果检查 | coding-parity-checkpoint、core-reliability |
+| SP013 | 多代理团队 | team-lifecycle、task-coordination、team-messaging、worktree-isolation |
+| SP014 | 浏览器操作 | browser-session、page-actions、browser-artifacts |
+| SP015 | Computer Use | computer-permissions、screen-actions、desktop-control-recovery |
+| SP016 | 远程访问与 H5 | gateway-auth、remote-session、h5-client、remote-recovery |
+| SP017 | IM 基础与 Telegram/飞书 | im-adapter-contract、identity-binding、telegram、feishu |
+| SP018 | 微信/钉钉与 IM 完整性 | wechat、dingtalk、im-cross-channel |
+| SP019 | 定时任务 | schedule-management、durable-scheduler、scheduled-agent-run |
+| SP020 | 全能力集成与交付 | cross-surface-integration、advanced-distribution、full-upgrade |
+| SP021 | 完整替代验收 | full-agent-parity、long-running-reliability、final-release-evidence |
+
+> 上表为 MODEL_PROPOSED 的阶段安排，功能范围本身已由用户确认纳入；每轮的实际需求与设计在启动时才细化。
+
+---
+
+## 3. 安装
+
+需要 **Node.js ≥ 22.18** 与 npm。不需要 Bun，也不依赖任何常驻桌面服务。
+
+```powershell
+npm install -g budingx
+budingx --version
+```
+
+升级 `npm install -g budingx@latest`，卸载 `npm uninstall -g budingx`。
+
+---
+
+## 4. 配置与运行
+
+### 4.1 环境变量（当前唯一可用的密钥入口）
+
+```powershell
+$env:BUDINGX_BASE_URL = "https://api.openai.com/v1"
+$env:BUDINGX_MODEL = "YOUR_MODEL_NAME"
+$env:BUDINGX_API_KEY = "YOUR_API_KEY"
+budingx
+```
+
+- Base URL 是服务商 API 前缀，客户端自行追加 `/chat/completions`；服务商必须返回 `text/event-stream` SSE 并以 `[DONE]` 结束。
+- 仅读取 `BUDINGX_*` 变量，不会从其他工具发现密钥或配置。
+- 请使用可信的 HTTPS 端点；HTTP 只允许显式的 localhost/loopback 开发端点。
+- 真实密钥永远不要写进命令行参数或提交进仓库。
+
+### 4.2 命令行参数
+
+```powershell
+budingx --model YOUR_MODEL_NAME --base-url https://YOUR_PROVIDER/v1
+budingx --prompt "Hello" --timeout 120000
+```
+
+配置优先级：**命令行参数 > `BUDINGX_*` 环境变量 > 已存档案**。
+
+### 4.3 模型档案
+
+档案存放在 `~/.budingx`（由当前用户 home 解析，绝不使用 `~/.claude`）：配置在 `~/.budingx/config.json`，密钥单独存于 `~/.budingx/credentials.json`，导出或分享配置不会带上密钥。
+
+```powershell
+budingx
+/provider add work https://api.example.com/v1 my-model
+/models
+/model work
+/provider rm work
+```
+
+每个档案的密钥同时绑定**档案 id 与 Base URL 主机**：换主机即解除绑定，密钥不会被转发到另一台服务器。`/config` 只回显密钥末四位。
+
+---
+
+## 5. 使用说明
+
+### 5.1 斜杠命令
+
+| 命令 | 作用 |
+| --- | --- |
+| `/help` | 帮助 |
+| `/config` | 显示端点、模型、密钥状态（掩码）与配置来源 |
+| `/models` | 列出已存模型档案 |
+| `/model NAME` | 切换模型；**保留会话历史**，自**下一回合**起生效 |
+| `/provider add\|edit\|rm\|check` | 管理并验证模型档案 |
+| `/clear` | 清空内存中的会话 |
+| `/exit` / `/quit` | 退出 |
+
+### 5.2 按键
+
+| 按键 | 行为 |
+| --- | --- |
+| Enter | 提交；回合进行中时输入进入队列，在下一个安全边界注入 |
+| Shift+Enter | 插入换行 |
+| Esc | 打断当前回合；空闲时把排队内容退回输入框 |
+| Ctrl+C | 回合执行中为打断；在输入框连按两次退出 |
+| ↑ / ↓ | 召回历史输入 |
+| y / n | 允许或拒绝待审批的工具调用 |
+
+### 5.3 会话语义
+
+- 被取消的回合**保留已产出的文本**；在任何输出前取消则把原始请求还原回输入框。
+- 失败的回合**不写入历史**，模型不会看到它答不了的提示；原始输入仍可用 ↑ 召回。
+- 回合进行中切换模型不影响本回合，下一回合才使用新模型。
+- 会话只存在内存中，退出即丢失（持久化与恢复属 SP005）。
+
+---
+
+## 6. 数据与隐私
+
+- 产品数据统一落在 `~/.budingx`；不读取、不回退、不写入 `~/.claude`。
+- 配置文件与凭据文件分离；密钥不作为普通共享明文配置保存，也不出现在日志与 UI 回显中。
+- 仓库与文档不包含真实密钥、真实会话与用户身份信息。
+
+---
+
+## 7. 已知限制与未验证项
+
+| 项 | 现状 | 计划 |
+| --- | --- | --- |
+| 编码工具（文件读写、终端命令） | 未实现，仅有注册接口与测试桩 | SP003 / SP004 |
+| 密钥录入命令 | **TUI 目前没有录入 API key 的命令**，密钥只能通过 `BUDINGX_API_KEY` 提供；`/provider check` 因凭据库无写入入口而无法验证档案 | 待补（model-management 遗留） |
+| 会话持久化与恢复 | 未实现，退出即丢失 | SP005 |
+| 权限规则与沙箱 | 未实现 | SP003 / SP004 |
+| Desktop / VS Code / 移动端 | 未实现 | SP008 / SP009 / SP016 |
+| 真实服务 live 证据 | 未验证（无凭据与预算，PS-08 记 UNVERIFIED） | 验收时补 |
+| 真终端 CJK/IME 与 resize 体验 | 未验证（需 Windows Terminal + ConHost 人工 smoke） | 验收时补 |
+| macOS / Linux | 仅声明 Windows 已验证 | SP011 后逐个平台验证 |
+
+---
+
+## 8. 版本历史
+
+| 版本 | 日期 | 变化 | 状态 |
+| --- | --- | --- | --- |
+| 0.1.0 | 2026-11-16 | 首个发布版：OpenAI 兼容流式聊天 TUI | 已发布 |
+| 0.1.1 | 2026-11-16 | 发布链路修复与维护版（OIDC Trusted Publishing 实测） | 已发布，`latest` |
+| （未发布） | 2026-11-17 | SP002：provider 流解析、模型档案与凭据、会话状态机与工具回合、双中断与排队、Ink 8 对话界面 | 本地验证通过，待验收 |
+| 0.2.0 | 待定 | SP002 首次交付版本 | 验收后按版本规范准备 |
+
+发布台账以 [release-ledger.json](release-ledger.json) 为准，发行说明见 `release-notes/`。
+
+---
+
+## 9. 仓库与开发入口
+
+- 协作约定：[AGENTS.md](AGENTS.md)｜文档导航：[docs/index.md](docs/index.md)
+- 当前状态：[docs/current-status.md](docs/current-status.md)｜迭代路线图：[docs/iteration-plan.md](docs/iteration-plan.md)
+- 开发指南：[docs/development.md](docs/development.md)｜架构：[docs/architecture.md](docs/architecture.md)
+- 产品端使用说明（英文，随包发布）：[src/tui/README.md](src/tui/README.md)
+- 第三方声明：[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
