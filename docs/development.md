@@ -4,6 +4,8 @@
 
 ## 当前真实命令
 
+根目录 `npm start` / `npm run start` 仅用于本地开发测试，使用 Node 原生 `--env-file-if-exists=.env.e2e.local` 自动加载本地测试模型，不写入持久化档案、不打印密钥。没有文件时正常继续；显式进程环境优先。正式安装的 `budingx` 入口不读取该文件，真实环境自行配置。预算与请求数只由显式 live e2e 脚本执行，交互启动不会执行这类计数限制。
+
 ```powershell
 npm ci --ignore-scripts --no-audit --no-fund
 npm run build
