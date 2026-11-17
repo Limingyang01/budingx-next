@@ -1,6 +1,6 @@
-# 架构方向草案
+# 架构方向与 SP002 实况
 
-完整架构状态：MODEL_PROPOSED / DRAFT。当前仅 bootstrap 聊天 TUI 获单独实现授权；不能推导完整架构已实施。范围见 [产品目标](product-brief.md)。
+当前状态：SP002 的「模型与会话闭环」已按 [SP002 设计](../SP/SP002/design/design.zh.md) 落地（设计 v0.3 approved，2026-11-16），下列边界已成为**已实现事实**；其后各层仍是草案。
 
 ## 稳定的逻辑边界
 
@@ -14,25 +14,39 @@ TUI / Desktop / VS Code / future Mobile
      模型适配器  工具执行/审批  会话与配置仓库
 ```
 
-这是代码和责任边界，不要求各端依赖同一个常驻进程。各端可以拥有自己的实例并复用相同核心；共享持久化与活动执行分开，避免多个写者竞争一个会话。
+各端不依赖某个常驻进程，可以拥有自己的实例并复用相同核心；共享持久化与活动执行分开，避免多个写者竞争一个会话。
 
-## 待设计的责任
+## SP002 已实现的模块拓扑
+
+```text
+src/
+  core/        # 事件契约、会话与回合状态机、工具回合、输入队列、消息规范化
+  provider/    # OpenAI 兼容适配：SSE 分帧、tool_calls 碎片、错误分类、重试、取消、probe
+  storage/     # ~/.budingx 配置与凭据仓库、模型档案、三源合并
+  tui/         # Ink 对话界面、渲染 reducer、多行编辑器、审批卡、CLI 入口
+```
+
+依赖方向：`tui → core ← provider`、`tui → core ← storage`；core 不 import 其余三者，core/provider/storage 不依赖 UI 或终端库，core 额外不依赖 IO 模块。该边界由 `scripts/checks/module-boundaries.mjs` 在 `npm test` 内强制。
+
+Core 拥有的行为：会话与回合状态机（`idle/requesting/streaming/tool_running/awaiting_approval/cancelling`）、每回合至多一个终态、每回合一次的 `TurnSnapshot` 冻结、执行中输入的 FIFO 队列与双注入边界、取消与 auto-restore、审批最小闭环。Core 通过类型化 `SessionEvent` 对外暴露，事件形状与 UI 无关且可 JSON 序列化。
+
+Provider 只做协议适配：把厂商流翻译成 Core 的 `ProviderEvent`，把错误归入稳定类别并给出机读错误码；它不决定换模型，也不拥有会话状态。Storage 是 `~/.budingx` 的唯一读写方，凭据与档案按 `(id, 主机)` 双键绑定。
+
+## 仍待设计的责任
 
 | 部分 | 建议责任 |
 | --- | --- |
-| Agent Core | 自有 Agent 循环、上下文预算、工具调度和终态，不依赖某个 UI/宿主 |
-| Provider | 公开模型协议、流、错误和能力；不把厂商私有程序类型传播到核心 |
-| Tool/Permission | 输入验证、工作区边界、预览/审批、执行、取消及输出上限 |
-| Session/Storage | 会话持久化、恢复与并发所有权，兼容升级和未知字段策略 |
-| Host/Transport | 端侧生命周期和传输适配；不复制 Agent 逻辑 |
-| Future Gateway | 认证、workspace 授权、请求幂等和断线事件恢复；不依赖桌面 UI 开启 |
+| 工具实现与权限 | 输入验证、工作区边界、预览/审批、执行、取消及输出上限（SP003/SP004） |
+| 持久化与恢复 | 会话转录持久化、schema、恢复与并发所有权（SP005） |
+| 宿主契约 | 进程内/stdio/WS 传输，供 TUI、桌面、VS Code 复用（SP006） |
+| 协议扩展 | 其他模型协议、多模态、跨 Provider 能力矩阵（SP007） |
+| 跨端共享 | 共享模型库与会话存储、并发写保护（SP010） |
+| 未来 Gateway | 认证、workspace 授权、请求幂等和断线事件恢复；不依赖桌面 UI 开启 |
 
-系统提示词、业务类型和事件合同应独立编写。暂不复制旧 SDK 类型或将旧应用层接口改名作为新协议。第一阶段先形成一个可验证闭环，再扩展传输和客户端，不预先引入通用插件框架或全套微服务。
-
-未来实现计划需明确每个会话的模型快照、工作区、权限、预算和取消信号，避免全局可变状态；每个端的凭据与共享数据策略另行审阅。本文件没有确定 API 字段、目录布局、数据 schema 或框架版本。
+系统提示词、业务类型和事件合同独立编写，未复制任何旧 SDK 类型，未把旧应用层接口改名作为新协议。
 
 ## 用户数据边界（USER_CONFIRMED）
 
-统一根为 `~/.budingx`，通过 Node `os.homedir()` 解析当前用户 home，不硬编码用户、电脑名称、盘符或 cwd。配置、模型、会话、团队、IM、调度及网关状态按责任/身份隔离；schema、凭据安全存储和并发策略在对应 SP 设计。禁止回退、写入或自动导入 `~/.claude` 数据。bootstrap 只使用显式参数/BUDINGX_* 环境变量，暂不持久化。
+统一根为 `~/.budingx`，通过 Node `os.homedir()` 解析当前用户 home，不硬编码用户、电脑名称、盘符或 cwd。配置在 `~/.budingx/config.json`，凭据单独存放在 `~/.budingx/credentials.json`，二者分离以便导出普通配置时不含 key。禁止回退、写入或自动导入 `~/.claude` 数据。bootstrap 只使用显式参数/BUDINGX_* 环境变量；SP002 起模型档案可持久化在该根下。
 
-新增团队、浏览器/Computer Use、远程、IM 和调度通过共享应用/Core 与宿主适配接入，详见 [高级能力计划](advanced-capabilities-plan.md)。网关/调度可独立运行，无需 Desktop UI 常驻。首发 src/tui 是薄聊天客户端，不是最终 Agent Core。
+协议/存储 schema 版本独立演进并提供迁移，不能用 npm 版本代替数据版本。

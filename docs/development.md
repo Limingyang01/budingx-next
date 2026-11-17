@@ -1,6 +1,6 @@
 # 开发与发布
 
-统一 Node.js >=22.18、TypeScript、master，不使用 Bun。当前产品为 src/tui 中的聊天预览，完整 Agent 见 [路线图](iteration-plan.md)，单仓源码边界见 [仓库布局](repository-layout.md)。
+统一 Node.js >=22.18、TypeScript、master，不使用 Bun。SP002 已实现「模型与会话闭环」：`src/core`、`src/provider`、`src/storage` 三个新模块与 `src/tui` 的 Ink 对话界面；完整编码工具仍待后续迭代，见 [路线图](iteration-plan.md)，单仓源码边界见 [仓库布局](repository-layout.md)。
 
 ## 当前真实命令
 
@@ -11,26 +11,37 @@ npm start
 npm run skills:check
 npm run spec:check
 npm test
+node scripts/release/pack-smoke.mjs
 npm run publish -- --dry-run
 ```
 
-npm test 执行技能维护、规格自洽性、TUI 编译/回归及版本管理测试。`npm run spec:check` 校验 SP001 的能力清单与评测任务清单是否自洽（配额、编号连续性、盲测数量、场景覆盖、统计与实算一致），用于拦住「必交能力被静默降级」这类不会让任何其他测试失败的改动。dry-run 另生成实际 tarball，在仓库外安装并验证 npm 命令 shim 与本地真实 HTTP 流式请求；不上传。当前没有 Desktop/VSIX 构建，不照搬旧仓命令。
+`npm test` 执行技能维护、规格自洽性、产品单元回归、模块边界检查与版本管理测试。
 
-配置和限制见 [TUI README](../src/tui/README.md)。只用显式参数/BUDINGX_MODEL、BUDINGX_BASE_URL、BUDINGX_API_KEY；首发不落盘，不从其他工具寻找凭据。未来用户数据统一通过当前用户 home 解析到 ~/.budingx，不读写 ~/.claude。
+## 源码与构建布局（SP002 起）
 
-## 版本和发布
-
-每个新 SP 完成交付至少 minor 更新，同轮修复 patch，详见 [版本规范](versioning.md)。首发成功后的例子：
-
-```powershell
-npm run version:prepare -- minor --iteration SP001
+```text
+src/
+  core/       # 事件契约、会话与回合状态机、工具回合、输入队列（零 UI、零 IO 副作用）
+  provider/   # OpenAI 兼容流解析、tool_calls 碎片、错误分类、有界重试、取消、probe
+  storage/    # ~/.budingx 配置与凭据仓库、档案 CRUD、三源合并
+  tui/        # Ink 对话界面、渲染 reducer、多行编辑器、审批卡、CLI 入口
 ```
 
-该命令只准备版本、台账和发行说明，不提交/推送/tag。填完真实变更与验收后，在已有发布授权范围内执行 npm run publish。根维护包保持 private，只发 src/tui 白名单 tarball。推荐通过 GitHub Actions/OIDC 发布，详见 [Actions 设置与操作](github-actions-npm.md)。本机登录/2FA 仅用于首次建包或显式交互发布；0.1.1 已实测 CI/OIDC 发布；完整 Agent 全能力发布仍待后续迭代。详见 [发布方案](npm-release-plan.md)。
+单一 tsc 程序编译整个 `src/`（`src/tui/tsconfig.json`，`rootDir=src`、`outDir=src/tui/dist`），产物为 `src/tui/dist/{core,provider,storage,tui}`，产品 bin 为 `dist/tui/cli.js`。源码目录按模块拍平到 `src/<模块>/` 直下。
+
+模块边界由 `scripts/checks/module-boundaries.mjs` 强制：core/provider/storage 禁止 import UI/终端库，core 额外禁止 IO 模块与跨模块反向依赖；产品运行时依赖白名单恰为 `{ink, react, string-width}`。该检查已并入 `npm test`。
+
+## 运行时依赖
+
+产品运行包只依赖 `ink@8.0.0`、`react@19.3.1`、`string-width@9.0.0`（均 MIT，仅用于渲染层，已登记在 [第三方声明](../THIRD-PARTY-NOTICES.md)）。构建期另用 TypeScript 5.9.3、`@types/node` 22.20.5、`@types/react` 19.3.0。根 `package.json` 的 devDependencies 与 `src/tui/package.json` 的 dependencies 版本必须一致，由边界脚本校验。
+
+## 打包与隔离安装验证
+
+`node scripts/release/pack-smoke.mjs` 在仓库外临时目录真实打包、安装 tarball 并对本地 fixture 发起一次真实 HTTP 流式请求（不上传、不发布）。`npm run publish -- --dry-run` 是完整发布演练，需要台账中存在 prepared 版本条目；版本准备在当轮验收后用 `npm run version:prepare -- minor --iteration SP002` 执行。
 
 ## 验证边界
 
-维护检查不证明产品，fixture 不证明真实外部模型，编译不证明安装。真实 Provider 需要经授权的测试配置，不读取旧用户目录。运行时检查见 Node 测试和首发记录；测试环境使用临时目录和本地测试端口，只管理自己创建的资源。
+维护检查不证明产品，fixture 不证明真实外部模型，编译不证明安装。真实 Provider 需要经授权的测试配置，不读取旧用户目录。运行时检查见 Node 测试、隔离安装 smoke 与 [SP002 验证报告](../SP/SP002/test-report.md)；测试环境使用临时目录和本地测试端口，只管理自己创建的资源。
 
 CI 发布成功后下载 report.json，执行 `npm run release:sync -- --receipt <path>` 核对 npm integrity 并同步台账，审阅提交后再准备下一迭代版本。该命令不需要发布 token，不自动写 Git。
 
