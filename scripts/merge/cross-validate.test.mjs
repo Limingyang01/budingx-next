@@ -46,3 +46,10 @@ test('报告审计不误伤 PASS 与 NOT_APPLICABLE', () => {
   const result = auditReport('| AC-01 | PASS |\n| AC-02 | NOT_APPLICABLE |\n| AC-03 | PASS 9 / N/A 1 |')
   assert.equal(result.fails.length, 0)
 })
+
+test('报告审计跳过汇总表表头与分隔行（列名 FAIL 不算失败）', () => {
+  const result = auditReport(
+    '| 需求 | AC 数 | PASS | UNVERIFIED | FAIL |\n| --- | --- | --- | --- | --- |\n| provider-streaming | 8 | 7 | 1（PS-08） | 0 |'
+  )
+  assert.equal(result.fails.length, 0)
+})

@@ -39,7 +39,13 @@ export function scanOutgoingPaths(files) {
  */
 export function auditReport(text) {
   const lines = text.split('\n')
-  const fails = lines.filter((line) => /\|\s*FAIL\b/.test(line) || /^FAIL\b/.test(line))
+  const isHeaderOrRule = (line) =>
+    /AC 数/.test(line) || /^\s*\|[\s:|-]+\|\s*$/.test(line)
+  const fails = lines.filter(
+    (line) =>
+      !isHeaderOrRule(line) &&
+      (/\|\s*FAIL\b/.test(line) || /^FAIL\b/.test(line))
+  )
   const unverified = lines.filter((line) => /UNVERIFIED/.test(line)).length
   const hasRecovery = /恢复条件/.test(text)
   return { fails, unverified, hasRecovery }
