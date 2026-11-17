@@ -100,13 +100,24 @@ test('UTF-16 content is refused explicitly', () => {
   }
 })
 
-test('a file above the byte cap is truncated at the limit', () => {
+test('a whole-file read above the byte cap refuses with a range hint (T18b)', () => {
   const tree = makeTree({ 'big.txt': Array.from({ length: 40 }, (_, i) => `row ${i}` + 'x'.repeat(20)).join('\n') })
   try {
-    const result = readWorkspaceFile(tree.workspace, { path: 'big.txt', maxBytes: 200 })
-    assert.equal(result.truncated, true)
-    assert.equal(result.truncatedReason, 'size')
-    assert.match(result.text, /\[truncated: file is \d+ bytes, showing the first 200 bytes\]/)
+    assert.throws(
+      () => readWorkspaceFile(tree.workspace, { path: 'big.txt', maxBytes: 200 }),
+      (error) =>
+        error.code === 'BUDINGX_WORKSPACE_005' &&
+        /Use offset and limit parameters/.test(error.message)
+    )
+    // Ranged reads are allowed past the whole-file cap (bounded higher).
+    const result = readWorkspaceFile(tree.workspace, {
+      path: 'big.txt',
+      offset: 2,
+      limit: 3
+    })
+    assert.match(result.text, /^2→row 1/m)
+    assert.match(result.text, /4→row 3/)
+    assert.doesNotMatch(result.text, /5→/)
   } finally {
     rmSync(tree.base, { recursive: true, force: true })
   }

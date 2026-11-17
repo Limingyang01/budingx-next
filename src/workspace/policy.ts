@@ -160,6 +160,16 @@ export function createPermissionPolicy(
           }
         }
       }
+      // 2.5 Version-control metadata is protected even in full access:
+      // forced ask ahead of memory and allow rules (SP003 T18g, aligned
+      // with the reference's mandatory safety check before allow rules).
+      if (
+        request.capability === 'write' &&
+        request.path &&
+        /(^|[\\/])\.git([\\/]|$)/.test(request.path)
+      ) {
+        return { action: 'ask', reason: `Writing inside .git needs confirmation: ${request.path}` }
+      }
       // 3. Allow rules: they relax the mode default but not the floor.
       for (const rule of rules) {
         if (rule.action === 'allow' && ruleMatches(rule, request)) {

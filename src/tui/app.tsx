@@ -27,7 +27,7 @@ import {
   applyCompletion,
   commandCandidates,
   fileCandidates,
-  type CompletionCandidate
+  longestCommonPrefix
 } from './render/completion.js'
 import { saveProfileKey } from './runtime.js'
 import { diffLines, type DiffHunk } from '../workspace/diff.js'
@@ -48,7 +48,8 @@ export type AppProps = {
 type DiffDialog = {
   view: 'list' | 'detail'
   index: number
-  source: 'turn' | 'current'
+  /** 'current' or a turn id; aligned with the reference Current + T1..Tn. */
+  source: string
 }
 
 const COMMAND_NAMES = [
@@ -106,6 +107,9 @@ export function App({
   const [overlayDismissed, setOverlayDismissed] = useState(false)
   const [completionIndex, setCompletionIndex] = useState(0)
   const fileCache = useRef<string[] | null>(null)
+  // SP003 T18c: rejection may carry feedback back to the model, like the
+  // reference's "and tell budingx what to do differently" path.
+  const [rejectEntry, setRejectEntry] = useState<{ requestId: string; text: string } | null>(null)
   const editor = useMemo(() => new EditorBuffer(), [])
   const [, bumpEditor] = useReducer((n: number) => n + 1, 0)
   const ctrlC = useRef(0)
@@ -210,22 +214,47 @@ export function App({
   executeRef.current = execute
   // SP003: diff dialog and @ / completion overlay data (design §3.6/§3.7).
   const permissionHandles = commandContext.permission
+  const turnIds = useMemo(() => {
+    const ids: string[] = []
+    for (const record of permissionHandles?.checkpointChanges() ?? []) {
+      if (record.turnId && !ids.includes(record.turnId)) ids.push(record.turnId)
+    }
+    return ids
+  }, [frame.changes.length, permissionHandles])
+  const sourceList = useMemo(() => ['current', ...turnIds], [turnIds])
+  const sourceLabel = (source: string) =>
+    source === 'current'
+      ? pick('当前差异', 'Current')
+      : pick(`第 ${sourceList.indexOf(source)} 回合差异`, `turn ${sourceList.indexOf(source)} diff`)
+  const cycleSource = (current: string, delta: number): string => {
+    const list = sourceList.length > 0 ? sourceList : ['current']
+    const index = Math.max(0, list.indexOf(current))
+    return list[(index + delta + list.length) % list.length]
+  }
   const dialogEntries = useMemo(() => {
     const changes = permissionHandles?.checkpointChanges() ?? []
-    const byPath = new Map<string, { record: ChangeRecord; baseline: ChangeRecord }>()
+    const baselineFor = new Map<string, ChangeRecord>()
     for (const record of changes) {
+      if (!baselineFor.has(record.path)) baselineFor.set(record.path, record)
+    }
+    const active =
+      dialog && dialog.source !== 'current'
+        ? changes.filter((record) => record.turnId === dialog.source)
+        : changes
+    const byPath = new Map<string, { record: ChangeRecord; baseline: ChangeRecord }>()
+    for (const record of active) {
       const existing = byPath.get(record.path)
       if (existing) existing.record = record
-      else byPath.set(record.path, { record, baseline: record })
+      else byPath.set(record.path, { record, baseline: baselineFor.get(record.path) as ChangeRecord })
     }
     return [...byPath.values()]
   }, [dialog, permissionHandles, frame.changes.length])
   const detailHunks = (
     entry: { record: ChangeRecord; baseline: ChangeRecord } | undefined,
-    source: 'turn' | 'current'
+    source: string
   ): DiffHunk[] => {
     if (!entry) return []
-    if (source === 'turn') return entry.record.diff
+    if (source !== 'current') return entry.record.diff
     if (!permissionHandles) return []
     try {
       const resolved = permissionHandles.workspace.resolve(entry.record.path)
@@ -334,6 +363,37 @@ export function App({
     )
   })
   useInput((text, key) => {
+    if (rejectEntry) {
+      if (key.escape) {
+        gateway.resolve(rejectEntry.requestId, 'deny')
+        setRejectEntry(null)
+        setHint(pick('已拒绝', 'Denied'))
+        return
+      }
+      if (key.return) {
+        gateway.resolve(
+          rejectEntry.requestId,
+          'deny',
+          'user',
+          rejectEntry.text.trim() || undefined
+        )
+        setRejectEntry(null)
+        setHint(
+          rejectEntry.text.trim()
+            ? pick('已拒绝并附上反馈', 'Denied with feedback')
+            : pick('已拒绝', 'Denied')
+        )
+        return
+      }
+      if (key.backspace) {
+        setRejectEntry({ ...rejectEntry, text: rejectEntry.text.slice(0, -1) })
+        return
+      }
+      if (!key.ctrl && !key.meta && text) {
+        setRejectEntry({ ...rejectEntry, text: rejectEntry.text + text })
+      }
+      return
+    }
     if (keyEntry.current) {
       const entry = keyEntry.current
       if (key.escape || (key.ctrl && text === 'c')) {
@@ -396,20 +456,20 @@ export function App({
         else if (key.return && dialogEntries[dialog.index]) {
           setDialog({ view: 'detail', index: dialog.index, source: dialog.source })
           setDetailScroll(0)
-        } else if (key.tab) {
+        } else if (key.rightArrow || key.leftArrow) {
           setDialog({
             ...dialog,
-            source: dialog.source === 'turn' ? 'current' : 'turn'
+            source: cycleSource(dialog.source, key.rightArrow ? 1 : -1)
           })
         }
         return
       }
-      if (key.leftArrow || key.return) {
+      if (key.return) {
         setDialog({ view: 'list', index: dialog.index, source: dialog.source })
-      } else if (key.tab) {
+      } else if (key.rightArrow || key.leftArrow) {
         setDialog({
           ...dialog,
-          source: dialog.source === 'turn' ? 'current' : 'turn'
+          source: cycleSource(dialog.source, key.rightArrow ? 1 : -1)
         })
       } else if (key.upArrow) {
         setDetailScroll((s) => Math.max(0, s - 1))
@@ -432,9 +492,22 @@ export function App({
         return
       }
       if (key.tab && !key.shift) {
-        const chosen = completion.candidates[completionIndexSafe]
+        // SP003 T18e: Tab first extends to the longest common prefix,
+        // like the reference typeahead; only exhausted picks apply fully.
+        const lineText = editor.lines[editor.cursor.line] ?? ''
+        const values = completion.candidates.map((candidate) => candidate.value)
+        const prefix = longestCommonPrefix(values)
+        const usePrefix =
+          completion.candidates.length > 1 &&
+          prefix.length > completion.token.token.length
+        const chosen = usePrefix
+          ? {
+              value: prefix,
+              kind: completion.token.kind,
+              directory: !/[.]/.test(prefix.split('/').at(-1) ?? '')
+            }
+          : completion.candidates[completionIndexSafe]
         if (chosen) {
-          const lineText = editor.lines[editor.cursor.line] ?? ''
           editor.lines[editor.cursor.line] = applyCompletion(
             lineText,
             completion.token,
@@ -456,21 +529,21 @@ export function App({
       gateway.resolve(approval.requestId, 'deny')
       return
     }
-    if (
-      approval &&
-      !typing &&
-      editor.isEmpty &&
-      /^[123]$/.test(text)
-    ) {
-      // SP003 AC PC-06: 1 allow once, 2 allow for session, 3 deny.
-      gateway.resolve(
-        approval.requestId,
-        text === '1' ? 'allow' : text === '2' ? 'allow_session' : 'deny'
-      )
+    if (approval && !typing && editor.isEmpty && /^[123]$/.test(text)) {
+      // SP003 AC PC-06: 1 allow once, 2 allow for session, 3 deny (+feedback).
+      if (text === '3') {
+        setRejectEntry({ requestId: approval.requestId, text: '' })
+        return
+      }
+      gateway.resolve(approval.requestId, text === '1' ? 'allow' : 'allow_session')
       return
     }
     if (approval && !typing && editor.isEmpty && /^[yn]$/i.test(text)) {
-      gateway.resolve(approval.requestId, text.toLowerCase() === 'y' ? 'allow' : 'deny')
+      if (text.toLowerCase() === 'n') {
+        setRejectEntry({ requestId: approval.requestId, text: '' })
+        return
+      }
+      gateway.resolve(approval.requestId, 'allow')
       return
     }
     if (key.shift && key.tab && permissionHandles) {
@@ -534,7 +607,12 @@ export function App({
             }
             index = found
           }
-          setDialog({ view: arg ? 'detail' : 'list', index, source: 'turn' })
+          // Open on the newest turn diff, fall back to Current.
+          setDialog({
+            view: arg ? 'detail' : 'list',
+            index,
+            source: turnIds.at(-1) ?? 'current'
+          })
           setDetailScroll(0)
           fileCache.current = null
           return
@@ -574,10 +652,7 @@ export function App({
       return (
         <Box flexDirection="column" borderStyle="round" borderColor="gray">
           <Text bold>
-            {pick('本会话改动', 'Session changes')} ·{' '}
-            {dialog.source === 'turn'
-              ? pick('回合差异', 'turn diff')
-              : pick('当前差异', 'current diff')}
+            {pick('本会话改动', 'Session changes')} · {sourceLabel(dialog.source)}
           </Text>
           {dialogEntries.length === 0 && (
             <Text dimColor>{pick('无改动', 'no changes')}</Text>
@@ -593,8 +668,8 @@ export function App({
           })}
           <Text dimColor>
             {pick(
-              '↑↓ 选择 · Enter 详情 · Tab 切源 · Esc 关闭',
-              'up/down select · enter detail · tab source · esc close'
+              '↑↓ 选择 · Enter 详情 · ←/→ 切源 · Esc 关闭',
+              'up/down select · enter detail · left/right source · esc close'
             )}
           </Text>
         </Box>
@@ -606,11 +681,7 @@ export function App({
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="gray">
         <Text bold>
-          ── {entry?.record.path ?? ''} ·{' '}
-          {dialog.source === 'turn'
-            ? pick('回合差异', 'turn diff')
-            : pick('当前差异', 'current diff')}{' '}
-          ──
+          ── {entry?.record.path ?? ''} · {sourceLabel(dialog.source)} ──
         </Text>
         {visible.map((line, index) => (
           <Text key={detailScroll + index}>
@@ -638,8 +709,8 @@ export function App({
         )}
         <Text dimColor>
           {pick(
-            '↑↓ 滚动 · ← 列表 · Tab 切源 · Esc 关闭',
-            'up/down scroll · left list · tab source · esc close'
+            '↑↓ 滚动 · Enter 列表 · ←/→ 切源 · Esc 关闭',
+            'up/down scroll · enter list · left/right source · esc close'
           )}
         </Text>
       </Box>
@@ -696,7 +767,21 @@ export function App({
           {item.preview}
         </Text>
       ))}
-      {frame.approval && !typing && (
+      {rejectEntry && (
+        <Box flexDirection="column" borderStyle="round" borderColor="yellow">
+          <Text color="yellow">
+            {pick('拒绝反馈（可选，将随拒绝发回模型）', 'Rejection feedback (optional, sent back to the model)')}
+          </Text>
+          <Text> &gt; {rejectEntry.text}</Text>
+          <Text dimColor>
+            {pick(
+              'Enter 提交拒绝与反馈 · Esc 仅拒绝',
+              'Enter denies with feedback · Esc denies silently'
+            )}
+          </Text>
+        </Box>
+      )}
+      {frame.approval && !typing && !rejectEntry && (
         <Box flexDirection="column" borderStyle="round" borderColor="yellow">
           <Text color="yellow">
             {pick('需要审批', 'Approval needed')}: {frame.approval.name}

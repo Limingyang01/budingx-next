@@ -11,6 +11,8 @@ export type ToolContext = {
    * emit change_set events (SP003 §4.2). Optional for older hosts.
    */
   changes?(records: ChangeRecordSummary[]): void
+  /** Id of the running turn, for per-turn change grouping (SP003 T18). */
+  turnId?: string
 }
 
 export type ToolHandler = {
@@ -47,6 +49,12 @@ export type ApprovalDecision = {
   outcome: 'allow' | 'allow_session' | 'deny' | 'cancelled'
   via: 'user' | 'policy'
   remember?: { tool: string; path?: string }
+  /**
+   * Optional user feedback captured on reject (SP003 T18c, aligned with
+   * the reference's "tell the agent what to do differently" path). When
+   * present it is appended to the tool result so the model can act on it.
+   */
+  feedback?: string
 }
 
 export interface ApprovalGateway {

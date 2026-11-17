@@ -160,6 +160,25 @@ test('模式切换事件与轮播顺序', () => {
   rmSync(env.base, { recursive: true, force: true })
 })
 
+test('版本库元数据强制询问：完全权限下 .git 写入仍 ask（T18g）', () => {
+  const env = makeEnv('full_access')
+  try {
+    const verdict = env.write('.git/config')
+    assert.equal(verdict.action, 'ask')
+    assert.match(verdict.reason, /\.git/)
+    // deny 规则仍然优先于强制询问
+    const strict = makeEnv('full_access', [
+      { id: 'g-1', action: 'deny', tool: '*', path: '.git/**' }
+    ])
+    assert.equal(strict.write('.git/config').action, 'deny')
+    // 读 .git 不受影响
+    assert.equal(env.read('.git/HEAD').action, 'allow')
+    for (const e of [env, strict]) rmSync(e.base, { recursive: true, force: true })
+  } finally {
+    rmSync(env.base, { recursive: true, force: true })
+  }
+})
+
 test('凭据特征名判定', () => {
   assert.equal(isCredentialLike('.env'), true)
   assert.equal(isCredentialLike('PROD.ENV'), false)

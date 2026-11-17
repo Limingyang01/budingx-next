@@ -56,7 +56,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     })
   }
   const workspace = createWorkspace(options.cwd)
-  const { tools, checkpoint } = createWorkspaceTools(workspace)
   const permissionStore = new PermissionsStore(
     options.home ? permissionsPath(options.home) : undefined
   )
@@ -67,6 +66,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     rules: load.file.rules as PermissionRule[],
     mode: options.mode ?? 'read_only',
     ...(options.home ? { dataRootOverride: dataRoot(options.home) } : {})
+  })
+  // Search results honour Read deny rules (SP003 T18i): a file the policy
+  // refuses to read must not leak through Glob/Grep listings either.
+  const { tools, checkpoint } = createWorkspaceTools(workspace, {
+    readDenied: (relativePath) =>
+      policy.decide({ tool: 'Read', capability: 'read', path: relativePath })
+        .action === 'deny'
   })
   const denials: DenialRecord[] = []
   const session = new Session({

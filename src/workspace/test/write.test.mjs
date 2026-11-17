@@ -39,14 +39,22 @@ test('a new file is created and reads back byte identical', () => {
   }
 })
 
-test('a missing parent directory is refused and creates nothing', () => {
+test('a missing parent directory is created by Write (T18b, aligned with the reference)', () => {
   const tree = makeTree({})
   try {
-    assert.throws(
-      () => writeWorkspaceFile(tree.workspace, { path: 'deep/nest/a.txt', content: 'x' }),
-      (error) => error.code === 'BUDINGX_WORKSPACE_002'
-    )
-    assert.equal(readdirSync(tree.root).length, 0)
+    const result = writeWorkspaceFile(tree.workspace, { path: 'deep/nest/a.txt', content: 'x\n' })
+    assert.equal(result.created, true)
+    assert.equal(readFileSync(join(tree.root, 'deep/nest/a.txt'), 'utf8'), 'x\n')
+  } finally {
+    rmSync(tree.base, { recursive: true, force: true })
+  }
+})
+
+test('Write normalizes CRLF content to LF (T18b)', () => {
+  const tree = makeTree({})
+  try {
+    writeWorkspaceFile(tree.workspace, { path: 'a.txt', content: 'one\r\ntwo\r\n' })
+    assert.equal(readFileSync(join(tree.root, 'a.txt'), 'utf8'), 'one\ntwo\n')
   } finally {
     rmSync(tree.base, { recursive: true, force: true })
   }

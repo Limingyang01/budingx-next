@@ -12,7 +12,15 @@ import { editWorkspaceFile } from './edit.js'
 import { WorkspaceError, type Workspace } from './paths.js'
 import { globWorkspace, grepWorkspace } from './search.js'
 import { readWorkspaceFile } from './read.js'
-import { writeWorkspaceFile } from './write.js'
+import { contentFingerprint, writeWorkspaceFile } from './write.js'
+
+export type WorkspaceToolsOptions = {
+  /**
+   * Permission-aware exclusion used by Glob/Grep (SP003 T18i): a file a
+   * deny rule hides from Read must not leak through search either.
+   */
+  readDenied?: (relativePath: string) => boolean
+}
 
 export type WorkspaceTools = {
   tools: ToolHandler[]
@@ -72,13 +80,51 @@ function reportChange(
     operation: entry.operation,
     additions,
     removals,
-    at: entry.at
+    at: entry.at,
+    ...(context.turnId ? { turnId: context.turnId } : {})
   }
   context.changes?.([summary])
 }
 
-export function createWorkspaceTools(workspace: Workspace): WorkspaceTools {
+/**
+ * Read-before-write gate (SP003 T18a, aligned with the reference):
+ * existing files must be read in this session before Write/Edit, and
+ * writes are refused when the file changed after that read.
+ */
+function gateExistingFile(
+  readState: Map<string, string>,
+  workspace: Workspace,
+  path: string,
+  toolName: string
+): void {
+  const resolved = workspace.resolve(path)
+  if (!resolved.existed || resolved.isDirectory) return
+  const key = resolved.real.toLowerCase()
+  const seen = readState.get(key)
+  if (seen === undefined) {
+    throw new WorkspaceError(
+      ERROR_CODES.workspaceNotReadYet,
+      `File has not been read yet. Read it first before writing to it: ${resolved.relative}`
+    )
+  }
+  const onDisk = contentFingerprint(readFileSync(resolved.real))
+  if (seen !== onDisk) {
+    throw new WorkspaceError(
+      ERROR_CODES.workspaceStaleRead,
+      `File has been modified since read, either by the user or by a linter. Read it again before attempting to write it: ${resolved.relative}`
+    )
+  }
+}
+
+export function createWorkspaceTools(
+  workspace: Workspace,
+  options: WorkspaceToolsOptions = {}
+): WorkspaceTools {
   const checkpoint = createCheckpointStore()
+  const readState = new Map<string, string>()
+  const rememberRead = (path: string, fingerprint: string): void => {
+    readState.set(workspace.resolve(path).real.toLowerCase(), fingerprint)
+  }
 
   const read: ToolHandler = {
     name: 'Read',
@@ -96,11 +142,13 @@ export function createWorkspaceTools(workspace: Workspace): WorkspaceTools {
     capability: (): ToolCapability => 'read',
     target: (input) => ({ path: stringField(input, 'path'), kind: 'file' }),
     async execute(input) {
+      const path = stringField(input, 'path')
       const result = readWorkspaceFile(workspace, {
-        path: stringField(input, 'path'),
+        path,
         offset: optionalNumber(input, 'offset'),
         limit: optionalNumber(input, 'limit')
       })
+      rememberRead(path, contentFingerprint(readFileSync(workspace.resolve(path).real)))
       if (result.kind === 'image') {
         const image = result.image
         const size =
@@ -135,12 +183,14 @@ export function createWorkspaceTools(workspace: Workspace): WorkspaceTools {
         }
         return value
       })()
+      gateExistingFile(readState, workspace, path, 'Write')
       const resolved = workspace.resolve(path)
       const before =
         resolved.existed && !resolved.isDirectory
           ? readFileSync(resolved.real, 'utf8')
           : undefined
       const written = writeWorkspaceFile(workspace, { path, content })
+      rememberRead(path, written.fingerprint)
       const diff = diffLines(before ?? '', content)
       const entry = checkpoint.record({
         path: written.path,
@@ -148,7 +198,8 @@ export function createWorkspaceTools(workspace: Workspace): WorkspaceTools {
         ...(before === undefined ? {} : { before }),
         after: content,
         diff,
-        fingerprintAfter: written.fingerprint
+        fingerprintAfter: written.fingerprint,
+        ...(context.turnId ? { turnId: context.turnId } : {})
       })
       reportChange(context, entry)
       const { additions, removals } = diffSummary(diff)
@@ -176,6 +227,7 @@ export function createWorkspaceTools(workspace: Workspace): WorkspaceTools {
     target: (input) => ({ path: stringField(input, 'path'), kind: 'file' }),
     async execute(input, context) {
       const path = stringField(input, 'path')
+      gateExistingFile(readState, workspace, path, 'Edit')
       const resolved = workspace.resolve(path)
       const before =
         resolved.existed && !resolved.isDirectory
@@ -206,6 +258,7 @@ export function createWorkspaceTools(workspace: Workspace): WorkspaceTools {
         replaceAll: optionalBoolean(input, 'replace_all')
       })
       const after = readFileSync(workspace.resolve(path).real, 'utf8')
+      rememberRead(path, contentFingerprint(after))
       const diff = diffLines(before ?? '', after)
       const entry = checkpoint.record({
         path: result.path,
@@ -213,7 +266,8 @@ export function createWorkspaceTools(workspace: Workspace): WorkspaceTools {
         ...(before === undefined ? {} : { before }),
         after,
         diff,
-        fingerprintAfter: result.fingerprint
+        fingerprintAfter: result.fingerprint,
+        ...(context.turnId ? { turnId: context.turnId } : {})
       })
       reportChange(context, entry)
       return `Edited ${result.path}: ${result.replacements} replacement(s)`
@@ -247,21 +301,35 @@ export function createWorkspaceTools(workspace: Workspace): WorkspaceTools {
           typeof asObject(input).path === 'string'
             ? (asObject(input).path as string)
             : undefined,
-        signal: context.signal
+        signal: context.signal,
+        ...(options.readDenied ? { exclude: options.readDenied } : {})
       }).text
     }
   }
 
   const grep: ToolHandler = {
     name: 'Grep',
-    summary: 'Search file contents by regular expression inside the workspace.',
+    summary:
+      'Search file contents by regular expression inside the workspace. Supports output modes, context lines, type filters and pagination.',
     parameters: {
       type: 'object',
       properties: {
         pattern: { type: 'string', description: 'JavaScript regular expression' },
         path: { type: 'string', description: 'Subdirectory to search (workspace-relative)' },
         glob: { type: 'string', description: 'Only search files matching this glob' },
-        case_insensitive: { type: 'boolean', description: 'Ignore case when matching' }
+        type: { type: 'string', description: 'File type filter, e.g. ts, py, json' },
+        output_mode: {
+          type: 'string',
+          enum: ['content', 'files_with_matches', 'count'],
+          description: 'What to return (default content)'
+        },
+        case_insensitive: { type: 'boolean', description: 'Ignore case when matching' },
+        multiline: { type: 'boolean', description: 'Let . match newlines too' },
+        '-B': { type: 'integer', description: 'Context lines before each match' },
+        '-A': { type: 'integer', description: 'Context lines after each match' },
+        '-C': { type: 'integer', description: 'Context lines around each match' },
+        head_limit: { type: 'integer', description: 'Max results (default 250, 0 = all)' },
+        offset: { type: 'integer', description: 'Skip the first N results' }
       },
       required: ['pattern']
     },
@@ -276,12 +344,34 @@ export function createWorkspaceTools(workspace: Workspace): WorkspaceTools {
     async execute(input, context) {
       if (context.signal.aborted) throw new WorkspaceError(ERROR_CODES.coreToolFailed, 'cancelled')
       const obj = asObject(input)
+      const around = optionalNumber(input, '-C')
       return grepWorkspace(workspace, {
         pattern: stringField(input, 'pattern'),
         path: typeof obj.path === 'string' ? obj.path : undefined,
         glob: typeof obj.glob === 'string' ? obj.glob : undefined,
         caseInsensitive: optionalBoolean(input, 'case_insensitive'),
-        signal: context.signal
+        signal: context.signal,
+        ...(options.readDenied ? { exclude: options.readDenied } : {}),
+        ...(typeof obj.output_mode === 'string'
+          ? { outputMode: obj.output_mode as 'content' | 'files_with_matches' | 'count' }
+          : {}),
+        ...(typeof obj.type === 'string' ? { type: obj.type } : {}),
+        ...(optionalBoolean(input, 'multiline') !== undefined
+          ? { multiline: optionalBoolean(input, 'multiline') }
+          : {}),
+        ...(optionalNumber(input, '-A') !== undefined ? { after: optionalNumber(input, '-A') } : {}),
+        ...(optionalNumber(input, '-B') !== undefined
+          ? { before: optionalNumber(input, '-B') ?? around }
+          : around !== undefined
+            ? { before: around }
+            : {}),
+        ...(around !== undefined ? { after: (optionalNumber(input, '-A') ?? around) } : {}),
+        ...(optionalNumber(input, 'head_limit') !== undefined
+          ? { maxResults: optionalNumber(input, 'head_limit') }
+          : {}),
+        ...(optionalNumber(input, 'offset') !== undefined
+          ? { offset: optionalNumber(input, 'offset') }
+          : {})
       }).text
     }
   }

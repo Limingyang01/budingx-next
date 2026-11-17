@@ -8,14 +8,14 @@ import { mountTty } from './helpers/mount-tty.mjs'
 import { agentFixture, scriptProvider, toolTurn } from './helpers/agent-fixture.mjs'
 
 function mount(t, fixture, script) {
-  const { provider } = scriptProvider(script)
+  const { provider, calls } = scriptProvider(script)
   return mountTty(t, {
     provider,
     tools: fixture.tools,
     permissionPolicy: fixture.policy,
     commandOverrides: { permission: fixture.permission },
     config: { model: 'test-model' }
-  })
+  }).then((ui) => Object.assign(ui, { calls }))
 }
 
 test('工作区内修改：审批卡显示三档，选 2 记住后同目标不再询问（PC-06）', async (t) => {
@@ -59,7 +59,10 @@ test('选 1 只放行一次：同目标下一回合仍会询问（PC-06）', asy
     await ui.waitFor(() => !ui.session.isBusy)
     await ui.send('second\r')
     await ui.waitFor((frame) => frame.includes('需要审批'))
+    // n now opens the feedback entry step (T18c); Esc finishes the deny.
     await ui.send('n')
+    await ui.waitFor((frame) => frame.includes('拒绝反馈'))
+    await ui.send('\x1b')
     await ui.waitFor(() => !ui.session.isBusy)
     assert.equal(readFileSync(join(fixture.root, 'once.txt'), 'utf8'), 'a\n')
   } finally {
@@ -78,8 +81,17 @@ test('拒绝后磁盘不变、会话继续，/denials 可见记录（PC-10）', 
     await ui.send('try it\r')
     await ui.waitFor((frame) => frame.includes('需要审批'))
     await ui.send('3')
+    await ui.waitFor((frame) => frame.includes('拒绝反馈'))
+    await ui.send('这个路径不对，先停')
+    await ui.send('\r')
     await ui.waitFor(() => !ui.session.isBusy)
     assert.equal(existsSync(join(fixture.root, 'denied.txt')), false)
+    // T18c: the rejection feedback reaches the model as tool result text.
+    const continuation = ui.calls.at(-1)
+    assert.match(
+      JSON.stringify(continuation.messages),
+      /User feedback: 这个路径不对，先停/
+    )
     await ui.send('/denials\r')
     await ui.waitFor((frame) => frame.includes('Write denied.txt'))
   } finally {

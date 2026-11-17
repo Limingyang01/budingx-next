@@ -88,8 +88,9 @@ test('long files are truncated at the context line cap', () => {
   try {
     const build = resolveFileReferences(tree.workspace, '@long.txt')
     assert.equal(build.blocks.length, 1)
-    assert.match(build.blocks[0].notice, /truncated to 2000 lines/)
-    assert.ok(build.blocks[0].content.split('\n').length <= MAX_CONTEXT_LINES)
+    assert.match(build.blocks[0].notice, /truncated to the first 2000 lines/)
+    assert.match(build.blocks[0].content, /l1999/)
+    assert.doesNotMatch(build.blocks[0].content, /l2000\b/)
   } finally {
     rmSync(tree.base, { recursive: true, force: true })
   }
@@ -103,6 +104,23 @@ test('references read fresh content each build (FC-07)', () => {
     const after = buildContextBlocks(tree.workspace, [{ raw: 'a.txt', path: 'a.txt' }])
     assert.match(before.blocks[0].content, /first/)
     assert.match(after.blocks[0].content, /second/)
+  } finally {
+    rmSync(tree.base, { recursive: true, force: true })
+  }
+})
+
+test('@file#L10-12 只带入选定行范围（T18e，对齐参考 #L 片段）', () => {
+  const lines = Array.from({ length: 30 }, (_, i) => `row${i + 1}`)
+  const tree = makeTree({ 'rows.txt': lines.join('\n') })
+  try {
+    const refs = extractFileReferences('see @rows.txt#L3-5 and @rows.txt')
+    assert.equal(refs.length, 2)
+    assert.deepEqual(refs[0].range, { start: 3, end: 5 })
+    assert.equal(refs[1].range, undefined)
+    const build = buildContextBlocks(tree.workspace, [refs[0]])
+    assert.match(build.blocks[0].content, /row3/)
+    assert.match(build.blocks[0].content, /row5/)
+    assert.doesNotMatch(build.blocks[0].content, /row6/)
   } finally {
     rmSync(tree.base, { recursive: true, force: true })
   }

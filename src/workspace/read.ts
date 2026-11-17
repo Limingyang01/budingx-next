@@ -5,7 +5,7 @@
 // rewritten by a read.
 import { closeSync, openSync, readFileSync, readSync, statSync } from 'node:fs'
 import { ERROR_CODES } from '../core/constants.js'
-import { MAX_FILE_BYTES, MAX_READ_LINES } from './constants.js'
+import { MAX_FILE_BYTES, MAX_READ_RANGE_BYTES, MAX_READ_LINES } from './constants.js'
 import { WorkspaceError, type Workspace } from './paths.js'
 
 export type ReadKind = 'text' | 'binary' | 'image'
@@ -33,6 +33,18 @@ export type ReadOptions = {
   offset?: number
   limit?: number
   maxBytes?: number
+}
+
+/** Only the leading bytes are needed to identify image format and size. */
+function readHeader(file: string): Buffer {
+  const fd = openSync(file, 'r')
+  try {
+    const buffer = Buffer.alloc(64 * 1024)
+    const read = readSync(fd, buffer, 0, buffer.length, 0)
+    return buffer.subarray(0, read)
+  } finally {
+    closeSync(fd)
+  }
 }
 
 const IMAGE_TYPES: Record<string, string> = {
@@ -125,25 +137,27 @@ export function readWorkspaceFile(
     )
   }
   const stats = statSync(resolved.real)
-  const maxBytes = options.maxBytes ?? MAX_FILE_BYTES
+  const wholeFile = options.offset === undefined && options.limit === undefined
+  const limitBytes = wholeFile
+    ? (options.maxBytes ?? MAX_FILE_BYTES)
+    : (options.maxBytes ?? MAX_READ_RANGE_BYTES)
   const extension = resolved.relative.slice(resolved.relative.lastIndexOf('.')).toLowerCase()
 
-  let buffer: Buffer
-  let oversized = false
-  if (stats.size > maxBytes && !IMAGE_TYPES[extension]) {
-    // Read only the head; counting lines of the whole file would defeat
-    // the limit we are enforcing.
-    const fd = openSync(resolved.real, 'r')
-    try {
-      buffer = Buffer.alloc(maxBytes)
-      readSync(fd, buffer, 0, maxBytes, 0)
-    } finally {
-      closeSync(fd)
+  // The reference enforces size with an error, not a silent truncation:
+  // half-read files teach the model to edit against an incomplete picture.
+  if (stats.size > limitBytes) {
+    if (!IMAGE_TYPES[extension]) {
+      throw new WorkspaceError(
+        ERROR_CODES.workspaceTooLarge,
+        wholeFile
+          ? `File content (${stats.size} bytes) exceeds the maximum read size (${limitBytes} bytes). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.`
+          : `File content (${stats.size} bytes) exceeds the maximum range read size (${limitBytes} bytes).`
+      )
     }
-    oversized = true
-  } else {
-    buffer = readFileSync(resolved.real)
   }
+  const buffer = IMAGE_TYPES[extension]
+    ? readHeader(resolved.real)
+    : readFileSync(resolved.real)
   const bytes = stats.size
 
   if (IMAGE_TYPES[extension]) {
@@ -172,7 +186,7 @@ export function readWorkspaceFile(
   }
 
   const decoded = buffer.toString('utf8')
-  if (decoded.includes('�') && !oversized) {
+  if (decoded.includes('�')) {
     throw new WorkspaceError(
       ERROR_CODES.workspaceEncodingUnsupported,
       `Unsupported encoding (invalid UTF-8): ${resolved.relative}`
@@ -184,7 +198,7 @@ export function readWorkspaceFile(
   const totalLines = allLines.length
 
   const offset = Math.max(1, options.offset ?? 1)
-  if (!oversized && offset > totalLines && totalLines > 0) {
+  if (offset > totalLines && totalLines > 0) {
     throw new WorkspaceError(
       ERROR_CODES.workspaceNotFound,
       `Line range out of bounds: offset ${offset} exceeds ${totalLines} lines`
@@ -193,21 +207,15 @@ export function readWorkspaceFile(
   const limit = Math.max(1, options.limit ?? MAX_READ_LINES)
   const end = Math.min(totalLines, offset - 1 + limit)
   const selected = allLines.slice(offset - 1, end)
-  const truncated = oversized || end < totalLines
-  const truncatedReason: 'size' | 'lines' | undefined = oversized
-    ? 'size'
-    : end < totalLines
-      ? 'lines'
-      : undefined
+  const truncated = end < totalLines
+  const truncatedReason: 'size' | 'lines' | undefined = truncated ? 'lines' : undefined
 
   const width = String(end).length
   const numbered = selected.map(
     (line, index) => `${String(offset + index).padStart(width, ' ')}→${line}`
   )
   const notice = truncated
-    ? oversized
-      ? `\n[truncated: file is ${bytes} bytes, showing the first ${maxBytes} bytes]`
-      : `\n[truncated: showing lines ${offset}-${end} of ${totalLines}]`
+    ? `\n[truncated: showing lines ${offset}-${end} of ${totalLines}]`
     : ''
 
   return {

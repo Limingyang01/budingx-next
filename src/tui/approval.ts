@@ -22,12 +22,13 @@ export class InkApprovalGateway implements ApprovalGateway {
   resolve(
     requestId: string,
     outcome: 'allow' | 'allow_session' | 'deny',
-    via: 'user' | 'policy' = 'user'
+    via: 'user' | 'policy' = 'user',
+    feedback?: string
   ): boolean {
     const entry = this.pending.get(requestId)
     if (!entry) return false
     this.pending.delete(requestId)
-    entry.resolve({ outcome, via })
+    entry.resolve({ outcome, via, ...(feedback && feedback.trim() ? { feedback: feedback.trim() } : {}) })
     return true
   }
 

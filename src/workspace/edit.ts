@@ -34,6 +34,12 @@ function countOccurrences(haystack: string, needle: string): number {
   return count
 }
 
+function foldSmartQuotes(text: string): string {
+  return text
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+}
+
 function replaceOccurrences(
   haystack: string,
   needle: string,
@@ -106,11 +112,22 @@ export function editWorkspaceFile(
   let replacements: number
 
   if (count === 0) {
-    // Tolerance fallback: compare in LF space, keep the dominant EOL.
+    // Tolerance fallback (SP003 T18h, aligned with the reference
+    // findActualString): compare in LF space with curly quotes folded —
+    // folding is length preserving, so match offsets found in the folded
+    // space map straight back onto the text we splice. Only the matched
+    // region is replaced; the rest of the file keeps its quote style.
     const dominant = original.includes('\r\n') ? '\r\n' : '\n'
     const normalized = original.replace(/\r\n/g, '\n')
-    const normalizedOld = oldString.replace(/\r\n/g, '\n')
-    count = countOccurrences(normalized, normalizedOld)
+    const folded = foldSmartQuotes(normalized)
+    const foldedOld = foldSmartQuotes(oldString.replace(/\r\n/g, '\n'))
+    const positions: number[] = []
+    let index = folded.indexOf(foldedOld)
+    while (index !== -1) {
+      positions.push(index)
+      index = folded.indexOf(foldedOld, index + foldedOld.length)
+    }
+    count = positions.length
     if (count === 0) {
       throw new WorkspaceError(
         ERROR_CODES.workspaceEditNoMatch,
@@ -124,13 +141,12 @@ export function editWorkspaceFile(
       )
     }
     replacements = options.replaceAll ? count : 1
-    const normalizedNew = newString.replace(/\r\n/g, '\n')
-    nextContent = replaceOccurrences(
-      normalized,
-      normalizedOld,
-      normalizedNew,
-      Boolean(options.replaceAll)
-    ).replace(/\n/g, dominant)
+    const inserted = newString.replace(/\r\n/g, '\n')
+    let out = normalized
+    for (const position of options.replaceAll ? [...positions].reverse() : [positions[0]]) {
+      out = out.slice(0, position) + inserted + out.slice(position + foldedOld.length)
+    }
+    nextContent = out.replace(/\n/g, dominant)
   } else {
     if (count > 1 && !options.replaceAll) {
       throw new WorkspaceError(
@@ -145,7 +161,9 @@ export function editWorkspaceFile(
   const written = writeWorkspaceFile(workspace, {
     path: options.path,
     content: nextContent,
-    expectedFingerprint: baseline
+    expectedFingerprint: baseline,
+    // Edit preserves the file's dominant line ending; no forced LF here.
+    normalizeLineEndings: false
   })
   return {
     path: written.path,

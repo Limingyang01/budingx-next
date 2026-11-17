@@ -540,12 +540,16 @@ export class Session {
           policy.remember(permissionRequest)
         }
         if (decision.outcome !== 'allow' && decision.outcome !== 'allow_session') {
+          const feedback =
+            decision.feedback && decision.feedback.trim()
+              ? `\nUser feedback: ${decision.feedback.trim()}`
+              : ''
           this.pushToolResult(
             turn,
             call.id,
-            decision.outcome === 'cancelled'
+            (decision.outcome === 'cancelled'
               ? `Cancelled: ${call.name}`
-              : `Denied by ${decision.via}: ${call.name}`,
+              : `Denied by ${decision.via}: ${call.name}`) + feedback,
             true,
             decision.outcome === 'cancelled'
               ? ERROR_CODES.coreApprovalCancelled
@@ -572,7 +576,8 @@ export class Session {
       try {
         content = await handler.execute(input, {
           signal: turn.controller.signal,
-          changes: (records) => this.emit({ type: 'change_set', changes: records })
+          changes: (records) => this.emit({ type: 'change_set', changes: records }),
+          turnId: turn.id
         })
       } catch (error) {
         content = error instanceof Error ? error.message : 'Tool execution failed'

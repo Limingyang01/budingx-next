@@ -65,7 +65,7 @@ test('/diff 打开两级对话框：列表→详情→Tab 切源→Esc 关闭（
     assert.match(ui.last(), /\+2\/-0/)
     await ui.send('\r')
     await ui.waitFor((frame) => frame.includes('@@ -1,0 +1,2 @@'))
-    await ui.send('\t')
+    await ui.send('\x1b[C')
     await ui.waitFor((frame) => frame.includes('当前差异'))
     await ui.send('\x1b')
     await ui.waitFor((frame) => !frame.includes('本会话改动'))
@@ -85,6 +85,8 @@ test('拒绝的写入不产生改动条目（CP-03）', async (t) => {
     await ui.send('try\r')
     await ui.waitFor((frame) => frame.includes('需要审批'))
     await ui.send('n')
+    await ui.waitFor((frame) => frame.includes('拒绝反馈'))
+    await ui.send('\x1b')
     await ui.waitFor(() => !ui.session.isBusy)
     await ui.send('/diff\r')
     await ui.waitFor((frame) => frame.includes('无改动'))
@@ -107,7 +109,7 @@ test('预览与磁盘一致：/diff current 源反映外部改动（CP-02/CP-04�
     writeFileSync(join(fixture.root, 'p.txt'), 'ours + user\n')
     await ui.send('/diff p.txt\r')
     await ui.waitFor((frame) => frame.includes('回合差异'))
-    await ui.send('\t')
+    await ui.send('\x1b[C')
     await ui.waitFor((frame) => frame.includes('当前差异'))
     // The current source re-diffs against disk: the user line shows up
     // as an addition relative to our baseline.

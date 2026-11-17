@@ -42,6 +42,8 @@ export const ERROR_CODES = {
   workspaceEditAmbiguous: 'BUDINGX_WORKSPACE_007',
   workspaceEditConflict: 'BUDINGX_WORKSPACE_008',
   workspaceTruncated: 'BUDINGX_WORKSPACE_009',
+  workspaceNotReadYet: 'BUDINGX_WORKSPACE_010',
+  workspaceStaleRead: 'BUDINGX_WORKSPACE_011',
   permissionDenied: 'BUDINGX_PERMISSION_001',
   permissionDeniedByRule: 'BUDINGX_PERMISSION_002',
   permissionOutsideWorkspace: 'BUDINGX_PERMISSION_003'

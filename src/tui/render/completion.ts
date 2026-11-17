@@ -96,6 +96,25 @@ export function fileCandidates(token: string, files: string[]): CompletionCandid
   return [...seen.values()].slice(0, MAX_CANDIDATES)
 }
 
+/**
+ * Longest common prefix of the candidate values. The reference completes
+ * to the LCP first (Tab keeps narrowing) before applying a single pick;
+ * we implement the same rule (SP003 T18e).
+ */
+export function longestCommonPrefix(values: string[]): string {
+  if (values.length === 0) return ''
+  if (values.length === 1) return values[0]
+  let prefix = values[0]
+  for (const value of values.slice(1)) {
+    let length = 0
+    while (length < prefix.length && length < value.length && prefix[length] === value[length])
+      length++
+    prefix = prefix.slice(0, length)
+    if (!prefix) break
+  }
+  return prefix
+}
+
 /** Replace the active token with the chosen candidate value. */
 export function applyCompletion(
   line: string,

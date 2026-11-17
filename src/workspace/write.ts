@@ -4,7 +4,16 @@
 // the rename: when something else changed the file since the caller read
 // it, the write is refused and the foreign change survives untouched.
 import { createHash, randomUUID } from 'node:crypto'
-import { chmodSync, existsSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
 import { dirname } from 'node:path'
 import { ERROR_CODES } from '../core/constants.js'
 import { WorkspaceError, type Workspace } from './paths.js'
@@ -14,6 +23,9 @@ export type WriteOptions = {
   content: string
   /** SHA-256 hex of the content the caller last saw; absent for new files. */
   expectedFingerprint?: string
+  /** Whole-file writes normalize CRLF to LF; Edit supplies false because
+   * it preserves the file's dominant line ending itself. */
+  normalizeLineEndings?: boolean
 }
 
 export type WriteResult = {
@@ -48,13 +60,9 @@ export function writeWorkspaceFile(
     )
   }
   if (!resolved.existed) {
-    const parent = dirname(resolved.real)
-    if (!existsSync(parent)) {
-      throw new WorkspaceError(
-        ERROR_CODES.workspaceNotFound,
-        `Parent directory does not exist for: ${resolved.relative}`
-      )
-    }
+    // Matching the reference behaviour: Write creates missing parent
+    // directories instead of failing.
+    mkdirSync(dirname(resolved.real), { recursive: true })
     if (options.expectedFingerprint !== undefined) {
       throw new WorkspaceError(
         ERROR_CODES.workspaceEditConflict,
@@ -74,7 +82,16 @@ export function writeWorkspaceFile(
     }
   }
 
-  const payload = Buffer.from(options.content, 'utf8')
+  // Whole-file writes normalize line endings to LF. The reference learned
+  // the hard way that keeping an old file's CRLF here breaks shell
+  // scripts: Write is a replacement, Edit is the line-ending-preserving
+  // path.
+  const payload = Buffer.from(
+    options.normalizeLineEndings === false
+      ? options.content
+      : options.content.replace(/\r\n/g, '\n'),
+    'utf8'
+  )
   const temporary = `${resolved.real}.budingx-${process.pid}-${randomUUID()}.tmp`
   try {
     writeFileSync(temporary, payload)

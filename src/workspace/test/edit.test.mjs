@@ -131,6 +131,24 @@ test('an LF old_string still matches a CRLF file and the ending is kept', () => 
   }
 })
 
+test('弯引号容错：直引号 old_string 能命中弯引号文件，其他位置保持原样（T18h）', () => {
+  const tree = makeTree({})
+  try {
+    writeFileSync(join(tree.root, 'q.txt'), 'other “kept” text\nsay “hello” now\n')
+    const result = editWorkspaceFile(tree.workspace, {
+      path: 'q.txt',
+      oldString: 'say "hello" now',
+      newString: 'say "hi" now'
+    })
+    assert.equal(result.replacements, 1)
+    const disk = readFileSync(join(tree.root, 'q.txt'), 'utf8')
+    assert.match(disk, /“kept”/)
+    assert.match(disk, /say "hi" now/)
+  } finally {
+    rmSync(tree.base, { recursive: true, force: true })
+  }
+})
+
 test('editing a missing file reports not found', () => {
   const tree = makeTree({})
   try {

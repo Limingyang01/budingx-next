@@ -59,15 +59,92 @@ test('ignored files never appear in glob results', () => {
   }
 })
 
-test('glob truncates with a count summary', () => {
+test('glob truncates with a count summary at the reference cap of 100', () => {
   const files = {}
   for (let index = 0; index < 250; index++) files[`f${String(index).padStart(3, '0')}.txt`] = 'x'
   const tree = makeTree(files)
   try {
     const result = globWorkspace(tree.workspace, { pattern: '*.txt' })
-    assert.equal(result.shown, 200)
+    assert.equal(result.shown, 100)
     assert.equal(result.total, 250)
-    assert.match(result.text, /\[250 matches, showing 200\]/)
+    assert.match(result.text, /\[250 matches, showing 100\]/)
+  } finally {
+    rmSync(tree.base, { recursive: true, force: true })
+  }
+})
+
+test('grep output_mode files_with_matches sorts newest first', () => {
+  const tree = makeTree({ 'old.txt': 'needle\n', 'new.txt': 'needle\n' })
+  try {
+    // Bump new.txt mtime so the order is deterministic.
+    const future = new Date(Date.now() + 5000)
+    writeFileSync(join(tree.root, 'new.txt'), 'needle\n', { mtime: future })
+    const result = grepWorkspace(tree.workspace, {
+      pattern: 'needle',
+      outputMode: 'files_with_matches'
+    })
+    assert.match(result.text, /^Found 2 files/)
+    assert.ok(result.text.indexOf('new.txt') < result.text.indexOf('old.txt'))
+  } finally {
+    rmSync(tree.base, { recursive: true, force: true })
+  }
+})
+
+test('grep count mode summarizes occurrences across files', () => {
+  const tree = makeTree({ 'a.txt': 'x\nx\n', 'b.txt': 'x\n' })
+  try {
+    const result = grepWorkspace(tree.workspace, { pattern: 'x', outputMode: 'count' })
+    assert.match(result.text, /a\.txt:2/)
+    assert.match(result.text, /b\.txt:1/)
+    assert.match(result.text, /Found 3 total occurrences across 2 files\./)
+  } finally {
+    rmSync(tree.base, { recursive: true, force: true })
+  }
+})
+
+test('grep context lines -A/-B merge and paginate with head_limit/offset', () => {
+  const lines = Array.from({ length: 10 }, (_, i) => `l${i}`)
+  lines[2] = 'hit-a'
+  lines[7] = 'hit-b'
+  const tree = makeTree({ 'f.txt': lines.join('\n') })
+  try {
+    const withContext = grepWorkspace(tree.workspace, { pattern: 'hit', after: 1, before: 1 })
+    assert.match(withContext.text, /f\.txt:2:l1/)
+    assert.match(withContext.text, /f\.txt:3:hit-a/)
+    assert.match(withContext.text, /f\.txt:4:l3/)
+    assert.match(withContext.text, /--/)
+    const firstPage = grepWorkspace(tree.workspace, { pattern: 'hit', maxResults: 1 })
+    assert.equal(firstPage.shown, 1)
+    assert.match(firstPage.text, /\[Showing 1 of 2 matching lines\]/)
+    const secondPage = grepWorkspace(tree.workspace, { pattern: 'hit', offset: 1 })
+    assert.match(secondPage.text, /hit-b/)
+    assert.doesNotMatch(secondPage.text, /hit-a/)
+  } finally {
+    rmSync(tree.base, { recursive: true, force: true })
+  }
+})
+
+test('grep type filter and multiline matching', () => {
+  const tree = makeTree({ 'a.ts': 'start\nend\n', 'b.md': 'start\nend\n' })
+  try {
+    const typed = grepWorkspace(tree.workspace, {
+      pattern: 'start',
+      outputMode: 'files_with_matches',
+      type: 'ts'
+    })
+    assert.match(typed.text, /^Found 1 file/)
+    assert.match(typed.text, /a\.ts/)
+    const multiline = grepWorkspace(tree.workspace, {
+      pattern: 'start\\s+end',
+      multiline: true
+    })
+    // content mode reports matched display lines: both files match over
+    // their two-line spans; without multiline the same pattern finds none.
+    assert.equal(multiline.total, 4)
+    assert.match(multiline.text, /a\.ts:1/)
+    assert.match(multiline.text, /b\.md:1/)
+    const notMultiline = grepWorkspace(tree.workspace, { pattern: 'start\\s+end' })
+    assert.match(notMultiline.text, /No matches found/)
   } finally {
     rmSync(tree.base, { recursive: true, force: true })
   }
@@ -109,7 +186,7 @@ test('grep skips binary files and reports the skip count', () => {
   try {
     const result = grepWorkspace(tree.workspace, { pattern: 'needle' })
     assert.equal(result.total, 1)
-    assert.match(result.text, /1 binary files skipped/)
+    assert.match(result.text, /Note: 1 binary file skipped\./)
   } finally {
     rmSync(tree.base, { recursive: true, force: true })
   }

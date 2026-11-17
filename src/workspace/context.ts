@@ -10,6 +10,8 @@ import { WorkspaceError, type Workspace } from './paths.js'
 export type FileReference = {
   raw: string
   path: string
+  /** `#L10-20` line range fragment (SP003 T18e, aligned with the reference). */
+  range?: { start: number; end: number }
 }
 
 export type ContextBlock = {
@@ -34,15 +36,21 @@ export type ContextBuild = {
 export function extractFileReferences(text: string): FileReference[] {
   const refs: FileReference[] = []
   const seen = new Set<string>()
-  const pattern = /(?<!\\)@(?:"([^"\n]+)"|([^\s"@,;:()]+))/g
+  const pattern = /(?<!\\)@(?:"([^"\n]+)"|([^\s"@,;:()#]+))(?:#L(\d+)(?:-(\d+))?)?/g
   let match: RegExpExecArray | null
   while ((match = pattern.exec(text)) !== null) {
     const raw = (match[1] ?? match[2] ?? '').trim()
     if (!raw) continue
-    const key = raw.toLowerCase()
+    const key = raw.toLowerCase() + (match[3] ? '#' + match[3] : '')
     if (seen.has(key)) continue
     seen.add(key)
-    refs.push({ raw, path: raw })
+    const entry: FileReference = { raw, path: raw }
+    if (match[3]) {
+      const start = Math.max(1, Number(match[3]))
+      const end = match[4] ? Math.max(start, Number(match[4])) : start
+      entry.range = { start, end }
+    }
+    refs.push(entry)
   }
   return refs
 }
@@ -65,7 +73,16 @@ export function buildContextBlocks(
     }
     let result
     try {
-      result = readWorkspaceFile(workspace, { path: reference.path })
+      // Attachments read through the ranged path: the 2000-line cap
+      // truncates instead of erroring, matching the reference's
+      // @mention behaviour (and #L ranges select exactly).
+      result = readWorkspaceFile(workspace, {
+        path: reference.path,
+        offset: reference.range?.start ?? 1,
+        limit: reference.range
+          ? reference.range.end - reference.range.start + 1
+          : MAX_CONTEXT_LINES
+      })
     } catch (error) {
       errors.push({
         raw: reference.raw,
@@ -86,14 +103,12 @@ export function buildContextBlocks(
       continue
     }
 
-    const lines = result.text.split('\n')
     let content = result.text
-    let notice: string | undefined = result.truncated
-      ? `truncated on read: ${result.truncatedReason}`
-      : undefined
-    if (lines.length > MAX_CONTEXT_LINES) {
-      content = lines.slice(0, MAX_CONTEXT_LINES).join('\n')
-      notice = `truncated to ${MAX_CONTEXT_LINES} lines of ${lines.length}`
+    let notice: string | undefined
+    if (result.truncated) {
+      notice = reference.range
+        ? undefined
+        : `truncated to the first ${MAX_CONTEXT_LINES} lines`
     }
     if (Buffer.byteLength(content, 'utf8') > MAX_CONTEXT_BYTES) {
       const buffer = Buffer.from(content, 'utf8').subarray(0, MAX_CONTEXT_BYTES)
