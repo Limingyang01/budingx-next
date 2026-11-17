@@ -7,6 +7,8 @@
 // on legacy Windows consoles. Upstream Ink has no borderText, so the box is
 // composed here as pure styled-span lines; the Ink layer only maps spans.
 // All rendering logic is independent; the mascot art is our own drawing.
+// Wording: modern terminals get Chinese; the ASCII fallback keeps English
+// (legacy console code pages may not render CJK), matching the reference.
 
 import stringWidth from 'string-width'
 
@@ -51,6 +53,35 @@ export function terminalStrategy(
 // Mascot slot: 4 rows, 7 columns wide, same slot as the reference layout.
 const CAT_PIXEL = [' ▲   ▲ ', '▐▛███▜▌', '▐█████▌', ' ▘▘ ▝▝ ']
 const CAT_ASCII = [' /\\ /\\ ', '( o.o )', ' |   | ', '  = =  ']
+
+const WORDS = {
+  pixel: {
+    welcome: '欢迎使用 budingx',
+    tips: '快速上手',
+    tipKey: 'BUDINGX_API_KEY 提供该主机的密钥',
+    tipHelp: '/help 查看全部命令',
+    notes: '本轮新增',
+    noteCore: '流式模型与会话核心',
+    noteSemantics: '打断、排队与审批语义',
+    noteTools: '编码工具将在后续版本交付',
+    noModel: '模型：未配置',
+    noEndpoint: '端点未设置',
+    hint: '尚未配置 · 运行 /provider add <label> <base-url> <model>'
+  },
+  ascii: {
+    welcome: 'Welcome to budingx',
+    tips: 'Tips for getting started',
+    tipKey: 'BUDINGX_API_KEY supplies the key for the host',
+    tipHelp: '/help lists every command',
+    notes: "What's new",
+    noteCore: 'Streaming model & session core',
+    noteSemantics: 'Interrupt, queue and approval semantics',
+    noteTools: 'Coding tools arrive in later releases',
+    noModel: 'model: not configured',
+    noEndpoint: 'endpoint not set',
+    hint: 'Not configured · run /provider add <label> <base-url> <model>'
+  }
+} as const
 
 const w = stringWidth
 
@@ -126,18 +157,21 @@ export type HeaderInput = {
  * Setup guidance shown under the prompt when the session is not usable yet.
  * Mirrors the reference behaviour of a persistent "not logged in" hint.
  */
-export function setupHint(config: {
-  model?: string
-  apiKey?: string
-}): string | undefined {
+export function setupHint(
+  config: { model?: string; apiKey?: string },
+  strategy: TerminalStrategy = 'pixel'
+): string | undefined {
   if (config.model?.trim() && config.apiKey?.trim()) return undefined
-  return 'Not configured · run /provider add <label> <base-url> <model>'
+  return WORDS[strategy].hint
 }
 
-function modelLineOf(input: HeaderInput): string {
+function modelLineOf(
+  input: HeaderInput,
+  words: (typeof WORDS)[TerminalStrategy]
+): string {
   const model = input.model?.trim() ?? ''
-  if (!model) return 'model: not configured'
-  return `${model} · ${hostOf(input.baseUrl) || 'endpoint not set'}`
+  if (!model) return words.noModel
+  return `${model} · ${hostOf(input.baseUrl) || words.noEndpoint}`
 }
 
 function feed(title: string, lines: string[]): Line[] {
@@ -181,20 +215,20 @@ function bottomBorder(boxWidth: number, b: ReturnType<typeof borderChars>): Line
 
 function welcome(input: HeaderInput): Line[] {
   const ascii = input.strategy === 'ascii'
+  const words = WORDS[input.strategy]
   const b = borderChars(input.strategy)
   const cat = ascii ? CAT_ASCII : CAT_PIXEL
   const ellipsis = ascii ? '...' : '…'
   const columns = Math.max(input.columns, 24)
-  const welcomeText = 'Welcome to budingx'
-  const modelLine = modelLineOf(input)
+  const modelLine = modelLineOf(input, words)
   const cwdLine = truncatePath(input.cwd ?? '', 50, ellipsis)
   const leftWidth = Math.min(
     50,
-    Math.max(20, w(welcomeText), w(modelLine), w(cwdLine)) + 4
+    Math.max(20, w(words.welcome), w(modelLine), w(cwdLine)) + 4
   )
 
   const left: Line[] = [
-    [plain(welcomeText, { bold: true })],
+    [plain(words.welcome, { bold: true })],
     [],
     ...cat.map((row) => [plain(row, { color: ACCENT })]),
     [],
@@ -206,16 +240,12 @@ function welcome(input: HeaderInput): Line[] {
     const rightWidth = columns - 6 - leftWidth
     const boxWidth = leftWidth + rightWidth + 6
     const right: Line[] = [
-      ...feed('Tips for getting started', [
+      ...feed(words.tips, [
         '/provider add <label> <base-url> <model>',
-        'BUDINGX_API_KEY supplies the key for the host',
-        '/help lists every command'
+        words.tipKey,
+        words.tipHelp
       ]),
-      ...feed("What's new", [
-        'Streaming model & session core',
-        'Interrupt, queue and approval semantics',
-        'Coding tools arrive in later releases'
-      ])
+      ...feed(words.notes, [words.noteCore, words.noteSemantics, words.noteTools])
     ]
     const height = Math.max(left.length, right.length, 9)
     const rows: Line[] = []
@@ -239,7 +269,7 @@ function welcome(input: HeaderInput): Line[] {
   const cell = boxWidth - 4
   const compactCwd = truncatePath(input.cwd ?? '', cell, ellipsis)
   const content: Line[] = [
-    [plain(welcomeText, { bold: true })],
+    [plain(words.welcome, { bold: true })],
     [],
     ...cat.map((row) => [plain(row, { color: ACCENT })]),
     [],
@@ -258,6 +288,7 @@ function welcome(input: HeaderInput): Line[] {
 
 function condensed(input: HeaderInput): Line[] {
   const ascii = input.strategy === 'ascii'
+  const words = WORDS[input.strategy]
   const cat = ascii ? CAT_ASCII : CAT_PIXEL
   const ellipsis = ascii ? '...' : '…'
   const textWidth = Math.max(input.columns - 15, 20)
@@ -267,7 +298,7 @@ function condensed(input: HeaderInput): Line[] {
       plain(' '),
       plain(`v${input.version}`, { dim: true })
     ],
-    [plain(modelLineOf(input), { dim: true })],
+    [plain(modelLineOf(input, words), { dim: true })],
     [plain(truncatePath(input.cwd ?? '', textWidth, ellipsis), { dim: true })],
     []
   ]

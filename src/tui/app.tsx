@@ -21,7 +21,16 @@ export type AppProps = {
   onExit: () => void
 }
 
-const STATUS_LABEL: Record<string, string> = {
+const STATUS_ZH: Record<string, string> = {
+  idle: '就绪',
+  requesting: '请求中…',
+  streaming: '流式输出中…',
+  awaiting_approval: '等待审批',
+  tool_running: '工具执行中…',
+  cancelling: '取消中…'
+}
+
+const STATUS_EN: Record<string, string> = {
   idle: 'ready',
   requesting: 'requesting…',
   streaming: 'streaming…',
@@ -46,6 +55,9 @@ export function App({ session, gateway, commandContext, version, cwd, onExit }: 
     () => terminalStrategy(process.env, process.platform),
     []
   )
+  const zh = strategy === 'pixel'
+  const pick = (zhText: string, enText: string) => (zh ? zhText : enText)
+  const STATUS_LABEL = zh ? STATUS_ZH : STATUS_EN
 
   // The header follows the active model, so /model must re-render it.
   // A version counter is enough: the config object itself may carry the API
@@ -54,12 +66,13 @@ export function App({ session, gateway, commandContext, version, cwd, onExit }: 
   const context = useMemo(
     () => ({
       ...commandContext,
+      lang: (zh ? 'zh' : 'en') as 'zh' | 'en',
       setConfig: (next: Parameters<CommandContext['setConfig']>[0]) => {
         commandContext.setConfig(next)
         bumpConfigVersion()
       }
     }),
-    [commandContext]
+    [commandContext, zh]
   )
 
   useEffect(() => {
@@ -68,7 +81,7 @@ export function App({ session, gateway, commandContext, version, cwd, onExit }: 
       if (event.type === 'turn_finalized' && event.restoreText) {
         editor.setText(event.restoreText)
         setInput(event.restoreText)
-        setHint('The cancelled request was returned to the prompt')
+        setHint(pick('被取消的请求已退回输入框', 'The cancelled request was returned to the prompt'))
       }
     })
     return off
@@ -113,7 +126,7 @@ export function App({ session, gateway, commandContext, version, cwd, onExit }: 
 
     if (action.interrupt) {
       session.interrupt('user')
-      setHint('Interrupt requested')
+      setHint(pick('已请求打断', 'Interrupt requested'))
       setInput(editor.text)
       return
     }
@@ -124,7 +137,7 @@ export function App({ session, gateway, commandContext, version, cwd, onExit }: 
         exit()
         return
       }
-      setHint('Press Ctrl+C again to exit')
+      setHint(pick('再按一次 Ctrl+C 退出', 'Press Ctrl+C again to exit'))
       return
     }
     if (action.escape) {
@@ -132,7 +145,7 @@ export function App({ session, gateway, commandContext, version, cwd, onExit }: 
       if (recycled.length > 0) {
         editor.setText(recycled.join('\n'))
         setInput(editor.text)
-        setHint('Queued input returned to the prompt')
+        setHint(pick('排队内容已退回输入框', 'Queued input returned to the prompt'))
       } else {
         setHint('')
       }
@@ -157,7 +170,7 @@ export function App({ session, gateway, commandContext, version, cwd, onExit }: 
             else if (outcome.message) setHint(outcome.message)
           })
         } else {
-          setHint('Commands run between turns; the input was queued')
+          setHint(pick('命令在回合间隙执行；该输入已排队', 'Commands run between turns; the input was queued'))
         }
         return
       }
@@ -211,7 +224,7 @@ export function App({ session, gateway, commandContext, version, cwd, onExit }: 
         <Box flexDirection="column">
           {frame.queue.map((item) => (
             <Text key={item.id} color="yellow">
-              ⧗ queued: {item.preview}
+              {pick('⧗ 排队：', '[queued] ')}{item.preview}
             </Text>
           ))}
         </Box>
@@ -219,9 +232,9 @@ export function App({ session, gateway, commandContext, version, cwd, onExit }: 
 
       {approval && !typing && (
         <Box flexDirection="column" borderStyle="round" borderColor="yellow">
-          <Text color="yellow">Approval needed: {approval.name}</Text>
+          <Text color="yellow">{pick('需要审批', 'Approval needed')}: {approval.name}</Text>
           <Text>{approval.summary}</Text>
-          <Text color="yellow">y to allow, n to deny</Text>
+          <Text color="yellow">{pick('y 允许，n 拒绝', 'y to allow, n to deny')}</Text>
         </Box>
       )}
 
@@ -235,7 +248,7 @@ export function App({ session, gateway, commandContext, version, cwd, onExit }: 
           {STATUS_LABEL[frame.status.state] ?? frame.status.state}
           {hint ? ` — ${hint}` : ''}
         </Text>
-        {setupHint(config) && <Text color="yellow">{setupHint(config)}</Text>}
+        {setupHint(config, strategy) && <Text color="yellow">{setupHint(config, strategy)}</Text>}
       </Box>
     </Box>
   )

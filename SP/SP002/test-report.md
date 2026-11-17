@@ -201,3 +201,18 @@ node scripts/release/pack-smoke.mjs
 | 几何目检 | node 投影纯文本 | 100 列双栏 / 60 列 ASCII 紧凑 / 精简横幅框线对齐、无越界 |
 
 `PRODUCT.md` §5.3 已同步重写。真终端颜色/IME 观感仍属 §5 人工清单（UNVERIFIED 不变）。
+
+## 11. 交互面文案中文化（2026-11-17，用户原话「文案你给我替换成中文吧，除了必须用英文的地方，其余换成中文」）
+
+语言策略：现代终端（pixel）交互面中文——首屏（欢迎/快速上手/本轮新增/模型行）、状态行、提示、审批卡、排队指示、斜杠命令回显与 `/help`（`CommandContext.lang='zh'`）；**ASCII 兜底屏保持英文**（老 conhost 代码页安全，对照参考仓 AsciiWelcomeV2 同行为）；**非 TTY/管道与 `--help`/错误输出保持英文**（TC-06 机器面稳定，`lang` 缺省 `'en'`）；命令语法/env/标识符/路径/错误码始终英文。密钥掩码 `maskKey` 不变（既有断言）。
+
+实际执行证据（cwd＝仓库根）：
+
+| 门禁 | 命令 | 结果 |
+| --- | --- | --- |
+| 编译 | `npm run build` | 通过 |
+| 文案专项 | `node --test src/tui/test/header.test.mjs src/tui/test/commands-zh.test.mjs src/tui/test/commands.test.mjs` | **25 项全过**（header 10：中文像素屏/英文 ASCII 屏/等宽几何；zh 命令 5；既有英文命令 10 不回归） |
+| 全量门禁 | `npm test` | skills 9 + spec 7 + unit **118** + checks PASS + release 16，全部通过 |
+| 打包隔离 smoke | `node scripts/release/pack-smoke.mjs` | PASS（33 文件） |
+
+关于「模型名称」：首屏模型行取自配置（`BUDINGX_MODEL` / `--model` / 档案 + `/model`），属 SP002 已实现能力（MM-03）；未配置态显示「模型：未配置」是诚实状态而非缺口。从服务端拉取可用模型列表不在 SP002 AC，也未在路线图排期（如需要另行登记待决）。

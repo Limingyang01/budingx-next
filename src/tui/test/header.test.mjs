@@ -50,11 +50,11 @@ test('宽终端首屏：等宽圆角框、顶 border 嵌入产品名与 dim 版�
   const text = allText(lines)
   assert.match(text, /╭/)
   assert.match(text, /╯/)
-  assert.match(text, /Welcome to budingx/)
-  assert.match(text, /Tips for getting started/)
-  assert.match(text, /What's new/)
+  assert.match(text, /欢迎使用 budingx/)
+  assert.match(text, /快速上手/)
+  assert.match(text, /本轮新增/)
   assert.match(text, /▲   ▲/)
-  assert.match(text, /model: not configured/)
+  assert.match(text, /模型：未配置/)
   assert.match(text, /budingx-next/)
   const title = lines[0].find((s) => s.text === 'budingx')
   assert.equal(title.color, ACCENT)
@@ -63,7 +63,7 @@ test('宽终端首屏：等宽圆角框、顶 border 嵌入产品名与 dim 版�
   assert.equal(version.dim, true)
   const divider = lines[1].filter((s) => s.text === '│' && s.dim)
   assert.equal(divider.length, 1)
-  const welcome = lines.flat().find((s) => s.text === 'Welcome to budingx')
+  const welcome = lines.flat().find((s) => s.text === '欢迎使用 budingx')
   assert.equal(welcome.bold, true)
 })
 
@@ -73,7 +73,7 @@ test('窄终端（<70 列）走居中紧凑框，无分隔栏', () => {
   assert.ok(widths.every((wd) => wd === widths[0]))
   assert.ok(widths[0] <= 60)
   assert.ok(!lines.some((line) => line.some((s) => s.dim && s.text === '│')))
-  const welcomeRow = texts(lines).findIndex((t) => t.includes('Welcome to budingx'))
+  const welcomeRow = texts(lines).findIndex((t) => t.includes('欢迎使用 budingx'))
   assert.ok(welcomeRow > 0)
   assert.match(texts(lines)[welcomeRow], /^│\s{2,}/)
 })
@@ -124,10 +124,22 @@ test('首屏任何形态都不接触密钥内容', () => {
   }
 })
 
-test('未配置时给出可执行的配置引导', () => {
+test('未配置时给出可执行的配置引导（现代终端中文 / ASCII 兜底英文）', () => {
   assert.equal(
     setupHint({ model: '', apiKey: '' }),
+    '尚未配置 · 运行 /provider add <label> <base-url> <model>'
+  )
+  assert.equal(
+    setupHint({ model: '', apiKey: '' }, 'ascii'),
     'Not configured · run /provider add <label> <base-url> <model>'
   )
   assert.equal(setupHint({ model: 'm', apiKey: 'k' }), undefined)
+})
+
+test('ASCII 兜底屏保持英文文案（老控制台代码页安全）', () => {
+  const lines = renderHeader({ ...base, columns: 100, strategy: 'ascii' })
+  const text = allText(lines)
+  assert.match(text, /Welcome to budingx/)
+  assert.match(text, /Tips for getting started/)
+  assert.ok(!/[\u4e00-\u9fff]/.test(text), 'ASCII 屏不得含中文')
 })

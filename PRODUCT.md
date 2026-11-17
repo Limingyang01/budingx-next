@@ -147,6 +147,7 @@ budingx
 - **配置完成后**：切换为无边框精简横幅——吉祥物 + `budingx v<版本>` + dim 模型行 + dim cwd。
 - **老终端兜底**：Windows 上无现代终端环境（cmd/老 conhost）时整屏走纯 ASCII（框线 `+-|`、ASCII 吉祥物）；`BUDINGX_FORCE_ASCII_LOGO=1` / `BUDINGX_FORCE_PIXEL_LOGO=1` 可强制覆盖。
 - 密钥只以「是否已配置」参与首屏判定，任何形态都不显示密钥内容；未配置时输入区下方持续给出 `/provider add <label> <base-url> <model>` 引导。`/model` 切换后首屏即时更新。
+- **文案语言**：现代终端的交互面（首屏、状态行、提示、审批卡、排队指示、斜杠命令回显与 `/help`）为中文；ASCII 兜底屏与非 TTY/管道输出保持英文（老控制台代码页与机器可读性）；命令语法、环境变量名、档案/模型标识符、路径与错误码始终英文。
 
 ### 5.4 会话语义
 
