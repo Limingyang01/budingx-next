@@ -73,6 +73,7 @@ async function mount(t, provider, tools = [], commandOverrides = {}) {
       stdout,
       stderr: stdout,
       debug: false,
+      interactive: true,
       exitOnCtrlC: false,
       patchConsole: false
     }

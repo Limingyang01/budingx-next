@@ -376,3 +376,9 @@ PS-08 真实 Provider 四类行为已取得本节证据；其他型号/供应商
 ### 18.2 master 发布准备交接
 
 交叉验证门禁 `artifacts/merge-gate/feature-SP002-release-0.2.0-2026-11-17T09-02-45-778Z.md` 为 GREEN，固定源 `07c5a4482143f05733e106205507c4dd65f622e1`。集成前复核时 master 已快进到该源（reflog 确认），tree 与通过门禁的源一致，无需重复合并。后续仅追加本节及预演数量文档，不改变已验证的产品包内容。用户自行在 master 触发工作流，尚未触发 Actions、未上传 npm，台账保持 prepared。
+
+### 18.3 发布前 CI 模式交互回归
+
+补做 `CI=true` 的 20 项 Ink 交互用例，先观察到 4 PASS / 16 FAIL。原因是 Ink 8 自动在 CI 关闭交互输出，仅标记假流 isTTY 不足以保留 ANSI、光标、resize 和中间帧；依据为 [Ink 8 官方 render 文档](https://github.com/vadimdemedes/ink/blob/v8.0.0/readme.md)。两个测试 render 入口显式使用 interactive:true 后，同样的 CI=true 用例 20/20 通过。正式 CLI 未改变，不关闭 CI、不降低断言。
+
+新增 ci-render.test 子进程回归，验证真实品牌色帧及连续光标坐标在 CI 下仍执行；清除继承的 Node 内部 NODE_TEST_CONTEXT，显式 TAP 并断言 2 项通过，避免空跑退出 0 冒充成功。该回归 1/1 通过。该模式验证补入版本准备及前端验证技能；0.2.0 仍是同一 prepared 候选，不重复 bump。最终发布预演需按 CI=true 复跑；本地模拟不等于 Windows/Linux 托管运行已经成功。

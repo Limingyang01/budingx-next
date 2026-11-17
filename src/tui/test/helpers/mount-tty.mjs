@@ -130,7 +130,14 @@ export async function mountTty(t, options = {}) {
         onExit()
       }
     }),
-    { stdin, stdout, stderr: stdout, exitOnCtrlC: false, patchConsole: false }
+    {
+      stdin,
+      stdout,
+      stderr: stdout,
+      interactive: true,
+      exitOnCtrlC: false,
+      patchConsole: false
+    }
   )
   t.after(() => {
     app.unmount()

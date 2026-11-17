@@ -11,12 +11,12 @@ description: Use when validating Coding Agent UI, TUI interaction, frontend stat
 
 ## 选择最小证据
 
-| 风险 | 验证重点 | 证据 |
-| --- | --- | --- |
-| 视觉/布局 | 主题、长文本、空态、窄屏、稳定控件尺寸 | 真实界面/终端、必要截图与度量 |
-| 交互/状态 | 会话切换、异步竞态、输入、焦点、权限与取消 | 可观察行为断言与适用真实 smoke |
-| 请求/事件 | 字段、错误、流式事件、重连、旧事件隔离 | 请求形状和事件 fixture；真实链路另记 |
-| 消费者/宿主 | 实际共享组件、平台能力和降级 | 各消费者回归及明确环境边界 |
+| 风险        | 验证重点                                   | 证据                                 |
+| ----------- | ------------------------------------------ | ------------------------------------ |
+| 视觉/布局   | 主题、长文本、空态、窄屏、稳定控件尺寸     | 真实界面/终端、必要截图与度量        |
+| 交互/状态   | 会话切换、异步竞态、输入、焦点、权限与取消 | 可观察行为断言与适用真实 smoke       |
+| 请求/事件   | 字段、错误、流式事件、重连、旧事件隔离     | 请求形状和事件 fixture；真实链路另记 |
+| 消费者/宿主 | 实际共享组件、平台能力和降级               | 各消费者回归及明确环境边界           |
 
 每项对应用户 AC、文件/用例、层级和结果。DOM 模拟不证明真实布局/滚动，非交互输出不证明 TUI 键盘流。截图不证明请求、权限或操作已发生。不得注入 CSS、隐藏错误或伪造结果冒充真实页面证据。
 
@@ -26,18 +26,19 @@ description: Use when validating Coding Agent UI, TUI interaction, frontend stat
 
 证据分层（逐层下结论，不互相冒充）：
 
-| 层 | 设施 | 证明什么 | 不证明什么 |
-| --- | --- | --- | --- |
-| L0 纯函数单元 | header/reducer/editor 单测 | span 模型、宽度几何、键语义 | 真实 Ink 合成与键盘流 |
+| 层                  | 设施                                                 | 证明什么                                                  | 不证明什么                      |
+| ------------------- | ---------------------------------------------------- | --------------------------------------------------------- | ------------------------------- |
+| L0 纯函数单元       | header/reducer/editor 单测                           | span 模型、宽度几何、键语义                               | 真实 Ink 合成与键盘流           |
 | L1 进程内伪 TTY e2e | `mount-tty` + `screen-e2e.test.mjs` / `app.test.mjs` | 真实渲染帧的文案/几何/颜色/状态迁移/按键流/审批/排队/退出 | IME preedit、真控制台观感、鼠标 |
-| L2 真实进程 | `cli.test.mjs`（home 隔离）、pack-smoke | 管道/非 TTY/退出码/制品安装 | 交互键盘流 |
-| L3 真终端人工 | 人工 smoke 清单（SP002 报告 §5） | Windows Terminal/ConHost 观感、中文 IME、鼠标选区 | —（harness 绿不能替代） |
+| L2 真实进程         | `cli.test.mjs`（home 隔离）、pack-smoke              | 管道/非 TTY/退出码/制品安装                               | 交互键盘流                      |
+| L3 真终端人工       | 人工 smoke 清单（SP002 报告 §5）                     | Windows Terminal/ConHost 观感、中文 IME、鼠标选区         | —（harness 绿不能替代）         |
 
 harness 使用规则：
 
 1. **显式 pin 终端策略**：`mountTty(t, {strategy:'pixel'|'ascii'})`。测试进程无现代终端 env，不 pin 则产品正确走 ASCII 兜底，像素断言会误败。env 强制旗标在 `t.after` 恢复。
+   伪 TTY 的 `render` 也要显式设置 `interactive:true`；Ink 8 在 `CI=true` 时不会仅凭 `stdout.isTTY` 开启交互帧。保留 CI=true，使用子进程回归验证 ANSI/光标，不修改正式产品的自动检测。
 2. **键序分块写入**：printable run 与控制序列（Enter/Esc/Ctrl/CSI）分开 write。组合 chunk（如 `abc\r`）会被 Ink 键解析丢 Enter——这是 harness 曾踩的真实坑。bracketed paste 内容保持整块（`200~…201~`）。
-3. **颜色确定性**：harness 设 `FORCE_COLOR=3`，可断言 truecolor SGR（如品牌紫 `38;2;175;135;255`）；几何用 `string-width` 逐行 ≤ columns（CJK  aware）。
+3. **颜色确定性**：harness 设 `FORCE_COLOR=3`，可断言 truecolor SGR（如品牌紫 `38;2;175;135;255`）；几何用 `string-width` 逐行 ≤ columns（CJK aware）。
 4. **等待用谓词不用 sleep 定值**：`ui.waitFor(frame => …)` 超时抛错并附末帧；中间态/增量用 `ui.frames()` 历史证明（如流式部分帧存在）。
 5. **隔离与清理**：临时 home/stores；`t.after` unmount + session.dispose + 流 destroy；不清真实用户配置。
 6. **Provider 证据层标明**：UI 流可用 async-gen fixture（L1）；线路/协议契约用真实 HTTP fixture（provider/cli 测试）；live 凭据另记 UNVERIFIED 与恢复条件。

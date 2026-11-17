@@ -48,6 +48,7 @@ npm run publish -- --dry-run --expected-version VERSION --tag latest
 ```
 
 - 核对退出码、实际测试数、tarball 文件白名单、integrity、安装后的 CLI 版本和本地 HTTP smoke。fixture、真实 Provider、真终端、不同平台分别记录；未测项保留 UNVERIFIED 与恢复条件。
+- 对 CI 模式敏感的交互测试，在 `CI=true` 环境执行发布预演，复现工作流模式；不通过关闭 CI、跳过用例或放宽断言获得绿测。实际 Windows/Linux 托管运行仍由工作流分别验证。
 - 预演不上传 npm；CI Windows/Linux 验证由维护者触发后单独确认。错误时修复后重测，不降低门槛或把未发布台账改成 published。
 - 按 [buding-merge](../buding-merge/SKILL.md) 固定源/目标与 outgoing，执行已授权的本地提交、门禁 GREEN 后合入 master，以及已授权的推送。保护无关暂存，不强推；推送后查询远端 master SHA。用户发布分支为 master 时，不能只留下功能分支候选。
 - 交付版本/SP/tag、已更新文档、验证成绩和报告、Git 源/远端 SHA、未验证项，并给出工作流 branch/version/tag/dry_run 参数。明确尚未发布，由谁触发；真实发布和回执收尾另按 [buding-npm-release](../buding-npm-release/SKILL.md)。
