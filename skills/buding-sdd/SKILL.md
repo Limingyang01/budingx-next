@@ -25,11 +25,11 @@ description: Use when the user requests SDD, a cross-module Coding Agent feature
 | 适用审查 | [requesting-code-review](../superpowers/requesting-code-review/SKILL.md) |
 | 完成前核验证据 | [verification-before-completion](../superpowers/verification-before-completion/SKILL.md) |
 
-设计文档 `design/design.zh.md` 是正式 SDD 的 **Agent 自审对象**（用户 2026-11-17 委托取消常规人工审查；委托原文见 AGENTS.md「审查与集成委托」）。自审通过后，功能分支、计划、实施、测试与交付记录连续自主推进；计划直接沿用同版自审结论，不再汇报等待或逐段请求许可。写代码前从 master 最新提交创建 feature 分支，本轮全部本地提交在该分支完成且提交说明使用中文；测试全绿、自审记录留存并**通过交叉验证门禁（`npm run merge:gate`，见 [集成门禁](../../docs/integration-gate.md)）**后，按 [buding-merge](../buding-merge/SKILL.md) 安全规程自主合入 master；门禁 RED 禁止合入。STATUS 记录自审结论、批准/委托原话或精确来源、文件版本/哈希与允许动作范围。委托不包含推送、打标签、npm 发布、远端设置或分支/worktree 清理，这些仍按 AGENTS.md 分别绑定用户授权。
+设计文档 `design/design.zh.md` 是正式 SDD 的 **Agent 自审对象**（用户 2026-11-17 委托取消常规人工审查；委托原文见 AGENTS.md「审查与集成委托」）。自审通过后，功能分支、计划、实施、测试与交付记录连续自主推进；计划直接沿用同版自审结论，不再汇报等待或逐段请求许可。写代码前从 master 最新提交创建 feature 分支，本轮全部本地提交在该分支完成且提交说明使用中文；测试全绿、自审记录留存并**通过交叉验证门禁（`npm run merge:gate`，见 [集成门禁](../../docs/integration-gate.md)）**后，按 [buding-merge](../buding-merge/SKILL.md) 安全规程自主合入 master 并**自主推送到远端**；门禁 RED 禁止合入。STATUS 记录自审结论、批准/委托原话或精确来源、文件版本/哈希与允许动作范围。**委托包含推送**（用户 2026-11-17 扩展授权）；委托不包含打标签、npm 发布、远端设置或分支/worktree 清理，这些仍按 AGENTS.md 分别绑定用户授权。
 
 同一范围与版本的用户批准持续有效，从最早未完成阶段恢复，不重建获批文档或重复询问。实质行为、AC、范围或架构变化才更新相关批准；格式修改不使批准失效。委派、隔离与收尾受当前工具契约及用户授权约束，上游默认路径和发布建议不扩大范围。
 
-每个阶段开始时向用户输出 todolist：列出本次 SDD 全部阶段，已完成打勾、当前阶段标记进行中，优先使用当前运行时的任务清单能力，否则以 markdown 输出。每阶段完成时把勾选与最新本地提交同步到功能 STATUS 和迭代 `requirements-summary.md` 需求索引，断线或换会话的 Agent 先读这两处核对后从最早未完成阶段续接。仅在以下情形停等用户：超出委托范围的授权动作（推送、npm 发布、远端设置、打标签、分支/worktree 删除）；缺外部凭据或真实环境**不阻塞推进**，记 UNVERIFIED 并写明恢复条件。功能、需求与 bug 修复的判断由 Agent 在委托内自审承担，不停等人工审查。
+每个阶段开始时向用户输出 todolist：列出本次 SDD 全部阶段，已完成打勾、当前阶段标记进行中，优先使用当前运行时的任务清单能力，否则以 markdown 输出。每阶段完成时把勾选与最新本地提交同步到功能 STATUS 和迭代 `requirements-summary.md` 需求索引，断线或换会话的 Agent 先读这两处核对后从最早未完成阶段续接。仅在以下情形停等用户：超出委托范围的授权动作（npm 发布、远端设置、打标签、分支/worktree 删除）；缺外部凭据或真实环境**不阻塞推进**，记 UNVERIFIED 并写明恢复条件。功能、需求与 bug 修复的判断由 Agent 在委托内自审承担，不停等人工审查。
 
 ## 1. 需求和状态
 
@@ -41,7 +41,7 @@ description: Use when the user requests SDD, a cross-module Coding Agent feature
 
 先复用本仓可用 Graphify 图谱，再核对实际源码和测试；不存在或不适用时说明限制，使用 `rg` 与现有文件。空产品仓先基于需求形成提议，不能导入旧图谱或把架构草案写成已实现事实。
 
-读取旧仓只为授权的只读参考或来源审计；不得把旧 query、系统提示词、SDK 类型、Agent 源码或生成 bundle 复制或逐文件改写成新实现。可复用材料必须分别记录来源、许可、依赖及处理决定，不因它属于 UI 或由 AI 生成就宣称当然原创。不要读取真实密钥、用户配置和历史。独立实现的行为与效果规格全程对照 `budingWorkerSpace` 参考实现（定位与范围见 [独立实现与复用边界](../../docs/independent-development.md)），不允许脱离参考开发；允许优化，但核心逻辑不得背离、使用体验不得下降。代码与接口依据用户需求、公开协议独立编写，许可不明项保持待审计。
+读取旧仓只为授权的只读参考或来源审计；不得把旧 query、系统提示词、SDK 类型、Agent 源码或生成 bundle 复制或逐文件改写成新实现。可复用材料必须分别记录来源、许可、依赖及处理决定，不因它属于 UI 或由 AI 生成就宣称当然原创。不要读取真实密钥、用户配置和历史。独立实现的行为与效果规格全程对照 `budingWorkerSpace` 参考实现（定位与范围见 [独立实现与复用边界](../../docs/independent-development.md)），不允许脱离参考开发；允许优化，但核心逻辑不得背离、使用体验不得下降。代码与接口依据用户需求、公开协议独立编写，许可不明项保持待审计。参考仓行为事实盘点已沉淀至 [reference-repo-inventory](references/reference-repo-inventory.md)，设计阶段直接引用该文件获取行为对照点，无需重新侦察。
 
 设计回答责任层、契约、状态归属、消费者、失败/取消路径和验证层；不预设旧服务路由、客户端共用实现或进程模型。按 [技术栈与验证路由](references/technology-map.md)读取真实配置后再选择技术和命令。
 
@@ -49,7 +49,7 @@ description: Use when the user requests SDD, a cross-module Coding Agent feature
 
 使用 [大纲](references/design-and-plan.md)保存唯一中文正本 `design/design.zh.md`，中文即执行依据，不产出英文版本；决策与 AC 对齐。设计批准后立即生成同目录 `plan.zh.md`，直接沿用同版批准，不再询问。STATUS 保存批准原话或精确来源、对应文件版本/哈希与授权动作。
 
-计划包含任务 ID、AC、精确文件、Consumes/Produces、依赖、责任/复用、工作目录、实际验证命令及预期行为。尚不存在的路径和接口明确标为拟新增。尚未选择测试框架时先完成这项设计，不填入旧仓命令假装可执行。设计文档批准即含从 master 创建功能分支、计划、实施、测试、交付记录、各阶段本地提交与完成后合入 master 的授权，不含推送、打标签、npm 发布或远端操作。
+计划包含任务 ID、AC、精确文件、Consumes/Produces、依赖、责任/复用、工作目录、实际验证命令及预期行为。尚不存在的路径和接口明确标为拟新增。尚未选择测试框架时先完成这项设计，不填入旧仓命令假装可执行。设计文档批准即含从 master 创建功能分支、计划、实施、测试、交付记录、各阶段本地提交、完成后合入 master 与推送到远端的授权，不含打标签、npm 发布或远端设置。
 
 ## 4. 实施与验证
 
@@ -69,4 +69,16 @@ description: Use when the user requests SDD, a cross-module Coding Agent feature
 
 核对 scoped diff、格式、链接、职责与重复逻辑。在已有 STATUS/test-report 记录 AC→任务→文件→测试用例→命令/cwd→实际数量/结果→证据，更新迭代索引与阶段勾选。未执行为 `UNVERIFIED`，失败为 `FAIL`，真正不适用才为 `NOT_APPLICABLE`；缺必需证据不声称完整验收或发布就绪。
 
-长期契约变化同步架构文档；普通细节留在需求记录。交付、验收、提交、合并、推送、部署分别陈述。设计批准后各阶段完成即自主本地提交，提交说明使用中文，不提交依赖、日志、凭据、缓存或产物；交付记录完成后按 buding-merge 规程把 feature 分支合入 master 并在 STATUS 记录 merge 结果；无单独授权不推送、不打标签、不设置远端、不 npm 发布、不通知他人或清理分支/worktree。交接列文件、实际检查、跳过项、风险和下一步；断线恢复先读迭代汇总与 STATUS，再对照 `git log` 和实时 refs 核对，从最早未完成阶段续接并复用仍有效证据。
+长期契约变化同步架构文档；普通细节留在需求记录。交付、验收、提交、合并、推送、部署分别陈述。设计批准后各阶段完成即自主本地提交，提交说明使用中文，不提交依赖、日志、凭据、缓存或产物；交付记录完成后按 buding-merge 规程把 feature 分支合入 master 并在 STATUS 记录 merge 结果，**合入后自主推送到远端**并在 STATUS 记录远端 SHA；无单独授权不打标签、不设置远端、不 npm 发布、不通知他人或清理分支/worktree。交接列文件、实际检查、跳过项、风险和下一步；断线恢复先读迭代汇总与 STATUS，再对照 `git log` 和实时 refs 核对，从最早未完成阶段续接并复用仍有效证据。
+
+## 7. 发布前准备（委托范围，用户 2026-11-17 扩展）
+
+SDD 交付完成并合入 master 推送后，Agent 可自主执行发布前准备工作，用户自行在 GitHub 点击 Actions 触发实际 npm 发布。发布前准备按 [buding-version-prepare](../buding-version-prepare/SKILL.md) 规程执行：
+
+1. **版本 bump**：根据本轮交付内容判断 minor/patch，执行 `npm run version:prepare -- <kind> --iteration SPnnn`，同步 `src/tui/package.json`、`release-ledger.json` 和 `release-notes/v<version>.md`。
+2. **文档版本号同步**：按 buding-version-prepare「同步全部版本相关文档」逐项更新 PRODUCT.md、根 README、src/tui/README、docs/current-status、文档导航、操作规范、迭代记录中的版本引用；区分源码版本 prepared 与 npm 实际已发布版本，不把待发布版本写成 latest 已更新。
+3. **进度维护**：更新当轮 `requirements-summary.md` 和各功能 STATUS 的准备状态、验证边界；保留历史证据身份。
+4. **发行说明**：填写真实发行说明，覆盖功能、用户配置/按键/依赖、bin/资源路径等兼容变化、升级操作、限制、未验证项及维护者工作流参数。
+5. **验证**：执行锁定安装和真实发布 dry-run（`npm ci --ignore-scripts --no-audit --no-fund` + `npm run publish -- --dry-run --expected-version VERSION --tag latest`），核对退出码、测试数、tarball 白名单、integrity、CLI 版本和本地 HTTP smoke。
+6. **提交推送**：在已授权范围提交推送版本准备变更，查询远端 master SHA。
+7. **交接**：交付版本/SP/tag、已更新文档清单、验证成绩、Git 源/远端 SHA、未验证项，并给出工作流 branch/version/tag/dry_run 参数供用户在 GitHub 手动触发。明确尚未发布，由用户自行触发；真实发布和回执收尾另按 [buding-npm-release](../buding-npm-release/SKILL.md)。

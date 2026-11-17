@@ -12,6 +12,7 @@ import {
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import { existsSync, readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import type { SessionEvent } from '../core/events.js'
 import type { Session } from '../core/session.js'
 import type { InkApprovalGateway } from './approval.js'
@@ -363,6 +364,47 @@ export function App({
     )
   })
   useInput((text, key) => {
+    // Ctrl+V paste fallback for terminals without bracketed-paste support
+    // (legacy Windows conhost / cmd). Ink's usePaste relies on DEC 2004
+    // which these terminals ignore, so Ctrl+V arrives as a plain ctrl+v
+    // keypress. Read the system clipboard and insert it directly.
+    if (key.ctrl && text === 'v' && !keyEntry.current && !rejectEntry && !dialog) {
+      try {
+        let clip = ''
+        if (process.platform === 'win32') {
+          clip = execFileSync('powershell', ['-NoProfile', '-Command', 'Get-Clipboard -Raw'], {
+            encoding: 'utf8',
+            timeout: 3000,
+            windowsHide: true
+          })
+        } else if (process.platform === 'darwin') {
+          clip = execFileSync('pbpaste', [], { encoding: 'utf8', timeout: 3000 })
+        } else {
+          // Linux: try xclip then xsel
+          try {
+            clip = execFileSync('xclip', ['-selection', 'clipboard', '-o'], {
+              encoding: 'utf8',
+              timeout: 3000
+            })
+          } catch {
+            clip = execFileSync('xsel', ['--clipboard', '--output'], {
+              encoding: 'utf8',
+              timeout: 3000
+            })
+          }
+        }
+        if (clip) {
+          const cleaned = clip.replace(/\r\n?/g, '\n').replace(/\n$/, '')
+          editor.insert(cleaned)
+          setInput(editor.text)
+          bumpEditor()
+          markTyping()
+        }
+      } catch {
+        setHint(pick('无法读取剪贴板', 'Clipboard read failed'))
+      }
+      return
+    }
     if (rejectEntry) {
       if (key.escape) {
         gateway.resolve(rejectEntry.requestId, 'deny')

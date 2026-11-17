@@ -107,7 +107,11 @@ export function applyKey(
     return { handled: true }
   }
   if (input && !key.ctrl && !key.meta) {
-    buffer.insert(input)
+    // Windows paste sends \r\n line endings; strip bare \r so it does not
+    // land in the buffer as a visible/control character (SP002 TC-03).
+    const cleaned = input.replace(/\r/g, '')
+    if (!cleaned) return { handled: true }
+    buffer.insert(cleaned)
     return { handled: true }
   }
   return nothing
