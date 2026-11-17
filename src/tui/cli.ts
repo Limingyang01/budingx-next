@@ -3,14 +3,36 @@
 import { readFileSync } from 'node:fs'
 import { createElement } from 'react'
 import { render } from 'ink'
-import { Session } from '../core/session.js'
+import type { Session } from '../core/session.js'
 import { ConfigStore } from '../storage/config-store.js'
 import { CredentialStore } from '../storage/credentials.js'
 import { mergeSources, profileHost, type ResolvedConfig } from '../storage/profiles.js'
+import { MODES_EN, MODES_ZH } from '../workspace/policy.js'
+import type { PermissionMode } from '../core/permissions.js'
 import { App } from './app.js'
-import { createConfiguredSession } from './runtime.js'
+import { createAgentRuntime, type AgentRuntime } from './runtime.js'
+import type { CommandContext } from './commands.js'
 import { InkApprovalGateway } from './approval.js'
 import { runCommand } from './commands.js'
+
+const MODE_ORDER: PermissionMode[] = ['read_only', 'workspace_edit', 'full_access']
+
+function permissionContext(
+  runtime: AgentRuntime
+): NonNullable<CommandContext['permission']> {
+  return {
+    policy: runtime.policy,
+    store: runtime.permissionStore,
+    workspace: runtime.workspace,
+    checkpointChanges: () => runtime.checkpoint.changes(),
+    undo: (path?: string) =>
+      path
+        ? runtime.checkpoint.undoPath(runtime.workspace, path)
+        : runtime.checkpoint.undoTurn(runtime.workspace),
+    denials: () => runtime.denials,
+    modes: { order: MODE_ORDER, zh: MODES_ZH, en: MODES_EN }
+  }
+}
 
 function readProductVersion(): string {
   let dir = new URL('.', import.meta.url)
@@ -30,12 +52,14 @@ function readProductVersion(): string {
 }
 
 const version = readProductVersion()
-const help = `budingx ${version} — independent terminal coding agent (preview)
+const help = `budingx ${version} — independent terminal coding agent
 Usage: budingx [--model NAME] [--base-url URL] [--timeout MS] [--prompt TEXT]
 Environment: BUDINGX_API_KEY, BUDINGX_MODEL, BUDINGX_BASE_URL
-Commands: /help /config /models /model NAME /provider add|edit|rm|check|key|default|tools|orphans /clear /exit
-Keys: Esc interrupts a running turn, Enter submits, Ctrl+C interrupts and exits.
-Coding tools land in later releases; this build ships the model and session core.`
+Commands: /help /config /models /model NAME /provider add|edit|rm|check|key|default|tools|orphans
+  /permission [read|workspace|full] /rules [add|rm] /diff [path] /undo [path] /denials /clear /exit
+Keys: Esc interrupts, Shift+Tab cycles permission modes (read-only / workspace edit / full access),
+Enter submits, Ctrl+C interrupts and exits. @path attaches a workspace file, Tab completes.
+File tools run under the permission modes; full access never overrides deny rules or credential protection.`
 
 type Stores = {
   configStore: ConfigStore
@@ -97,15 +121,20 @@ async function readStdin(): Promise<string> {
 
 async function runPipe(config: ResolvedConfig, stores: Stores): Promise<number> {
   let current = config
-  const session = createConfiguredSession(
-    () => current,
-    {
+  // Non-interactive runs keep the conservative default: read_only mode
+  // answers reads and refuses writes before any approval could be asked.
+  const runtime = createAgentRuntime({
+    cwd: process.cwd(),
+    getConfig: () => current,
+    approval: {
       async request() {
         return { outcome: 'deny', via: 'policy' }
       }
     },
-    stores.configStore
-  )
+    configStore: stores.configStore,
+    mode: 'read_only'
+  })
+  const session = runtime.session
   const input = await readStdin()
   let code = 0
   for (const rawLine of input.split('\n')) {
@@ -121,7 +150,8 @@ async function runPipe(config: ResolvedConfig, stores: Stores): Promise<number> 
         setConfig: (next) => {
           current = next
         },
-        exit: () => {}
+        exit: () => {},
+        permission: permissionContext(runtime)
       })
       if (outcome.keyRequest) {
         process.stderr.write('Error: Key entry requires an interactive terminal\n')
@@ -151,7 +181,16 @@ async function runPipe(config: ResolvedConfig, stores: Stores): Promise<number> 
 async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<void> {
   const gateway = new InkApprovalGateway()
   let current = config
-  const session = createConfiguredSession(() => current, gateway, stores.configStore)
+  const runtime = createAgentRuntime({
+    cwd: process.cwd(),
+    getConfig: () => current,
+    approval: gateway,
+    configStore: stores.configStore
+  })
+  for (const warning of runtime.warnings) {
+    process.stderr.write(`Warning: ${warning}\n`)
+  }
+  const session = runtime.session
 
   const instance = render(
     createElement(App, {
@@ -166,7 +205,8 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
         },
         exit: () => {
           instance.unmount()
-        }
+        },
+        permission: permissionContext(runtime)
       },
       version,
       cwd: process.cwd(),
@@ -221,18 +261,20 @@ async function main(): Promise<void> {
       process.exitCode = 1
       return
     }
-    const session = createConfiguredSession(
-      () => config,
-      {
+    const runtime = createAgentRuntime({
+      cwd: process.cwd(),
+      getConfig: () => config,
+      approval: {
         async request() {
           return { outcome: 'deny', via: 'policy' }
         }
       },
-      stores.configStore
-    )
-    const code = await runTurn(session, config.prompt)
+      configStore: stores.configStore,
+      mode: 'read_only'
+    })
+    const code = await runTurn(runtime.session, config.prompt)
     process.stdout.write('\n')
-    session.dispose()
+    runtime.session.dispose()
     process.exitCode = code
     return
   }

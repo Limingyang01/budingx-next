@@ -4,6 +4,8 @@
 // pipe/machine-facing output stable (TC-06). Command syntax, identifiers,
 // env names and provider error codes always stay English.
 import type { Session } from '../core/session.js'
+import type { DenialRecord } from '../core/events.js'
+import type { PermissionMode } from '../core/permissions.js'
 import type { ConfigStore } from '../storage/config-store.js'
 import type { CredentialStore } from '../storage/credentials.js'
 import {
@@ -13,7 +15,12 @@ import {
   updateProfile,
   type ResolvedConfig
 } from '../storage/profiles.js'
+import type { PermissionsStore } from '../storage/permissions.js'
 import { probe, type ProbeResult } from '../provider/openai.js'
+import type { BudingPermissionPolicy, PermissionRule } from '../workspace/policy.js'
+import type { ChangeRecord, UndoOutcome } from '../workspace/checkpoint.js'
+import type { Workspace } from '../workspace/paths.js'
+import { diffStats, diffText } from './render/diff-view.js'
 
 export type CommandOutcome = {
   handled: boolean
@@ -21,6 +28,8 @@ export type CommandOutcome = {
   message?: string
   error?: string
   keyRequest?: { id: string; host: string }
+  /** Interactive hosts open the diff dialog on this instead of printing. */
+  openDiffDialog?: boolean
 }
 
 export type CommandContext = {
@@ -32,6 +41,25 @@ export type CommandContext = {
   exit: () => void
   probe?: typeof probe
   lang?: 'zh' | 'en'
+  /** SP003: present once the workspace runtime is wired. */
+  permission?: {
+    policy: BudingPermissionPolicy
+    store: PermissionsStore
+    workspace: Workspace
+    checkpointChanges: () => ChangeRecord[]
+    undo: (path?: string) => UndoOutcome
+    denials: () => DenialRecord[]
+    modes: { order: PermissionMode[]; zh: Record<string, string>; en: Record<string, string> }
+  }
+}
+
+const MODE_ALIASES: Record<string, PermissionMode> = {
+  read: 'read_only',
+  read_only: 'read_only',
+  workspace: 'workspace_edit',
+  workspace_edit: 'workspace_edit',
+  full: 'full_access',
+  full_access: 'full_access'
 }
 
 export function commandHelp(lang: 'zh' | 'en' = 'en'): string {
@@ -49,6 +77,13 @@ export function commandHelp(lang: 'zh' | 'en' = 'en'): string {
   /provider default [id] 设置启动默认档案
   /provider tools [id] on|off 设置工具能力
   /provider orphans [clean] 查看数量或显式清理孤儿凭据
+  /permission           查看权限模式；/permission read|workspace|full 切换
+  /rules                列出权限规则（含遮蔽标注）
+  /rules add <allow|deny> <tool|*> [path-glob]  新增规则
+  /rules rm <id>        删除规则
+  /diff [路径]          查看本会话改动（交互模式打开对话框）
+  /undo [路径]          撤销本会话改动（外部改动会阻止自动撤销）
+  /denials              查看拒绝历史
   /clear                清空会话
   /exit                 退出 budingx`
     : `Commands:
@@ -64,6 +99,13 @@ export function commandHelp(lang: 'zh' | 'en' = 'en'): string {
   /provider default [id] set the startup default profile
   /provider tools [id] on|off set tool capability
   /provider orphans [clean] count or explicitly remove orphan credentials
+  /permission           show the permission mode; /permission read|workspace|full to switch
+  /rules                list permission rules (with shadow annotations)
+  /rules add <allow|deny> <tool|*> [path-glob]  add a rule
+  /rules rm <id>        remove a rule
+  /diff [path]          show this session's changes (opens a dialog interactively)
+  /undo [path]          undo session changes (foreign edits block automatic undo)
+  /denials              show the denial history
   /clear                clear the conversation
   /exit                 leave budingx`
 }
@@ -177,6 +219,16 @@ async function executeCommand(
         )
       }
     }
+    case 'permission':
+      return permissionCommand(argument, context, pick)
+    case 'rules':
+      return rulesCommand(argument, context, pick)
+    case 'diff':
+      return diffCommand(argument, context, pick)
+    case 'undo':
+      return undoCommand(argument, context, pick)
+    case 'denials':
+      return denialsCommand(context, pick)
     case 'provider':
       return providerCommand(argument, context, pick)
     default:
@@ -392,4 +444,208 @@ async function providerCommand(
     handled: true,
     error: pick('用法：/provider add|edit|rm|check', 'Usage: /provider add|edit|rm|check')
   }
+}
+
+function nextRuleId(rules: PermissionRule[]): string {
+  let max = 0
+  for (const rule of rules) {
+    const match = /^r-(\d+)$/.exec(rule.id)
+    if (match) max = Math.max(max, Number(match[1]))
+  }
+  return `r-${max + 1}`
+}
+
+function permissionCommand(
+  argument: string,
+  context: CommandContext,
+  pick: (zh: string, en: string) => string
+): CommandOutcome {
+  const permission = context.permission
+  if (!permission) {
+    return { handled: true, error: pick('工作区运行时未启用', 'The workspace runtime is not active') }
+  }
+  const { policy, modes } = permission
+  const label = (mode: PermissionMode) =>
+    pick(modes.zh[mode] ?? mode, modes.en[mode] ?? mode)
+  const current = policy.getMode()
+  if (!argument) {
+    const lines = modes.order.map((mode) => `${mode === current ? '*' : ' '} ${label(mode)}`)
+    return {
+      handled: true,
+      message: pick(
+        `当前权限模式：${label(current)}\n` + lines.join('\n'),
+        `Permission mode: ${label(current)}\n` + lines.join('\n')
+      )
+    }
+  }
+  const next = MODE_ALIASES[argument]
+  if (!next) {
+    return {
+      handled: true,
+      error: pick('用法：/permission read|workspace|full', 'Usage: /permission read|workspace|full')
+    }
+  }
+  policy.setMode(next)
+  const note =
+    next === 'full_access'
+      ? pick('（不越过 deny 规则与凭据保护）', '(deny rules and credential protection still apply)')
+      : next === 'read_only'
+        ? pick('（只读；写操作将被拒绝）', '(read-only; writes are refused)')
+        : pick('（写入工作区内文件前逐个确认）', '(asks before writing files inside the workspace)')
+  return {
+    handled: true,
+    message: pick(`已切换到权限模式：${label(next)}${note}`, `Permission mode is now ${label(next)}${note}`)
+  }
+}
+
+function rulesCommand(
+  argument: string,
+  context: CommandContext,
+  pick: (zh: string, en: string) => string
+): CommandOutcome {
+  const permission = context.permission
+  if (!permission) {
+    return { handled: true, error: pick('工作区运行时未启用', 'The workspace runtime is not active') }
+  }
+  const { policy, store } = permission
+  const rules = policy.listRules()
+  const [action, ...rest] = argument ? argument.split(/\s+/) : []
+  const save = (next: PermissionRule[]): CommandOutcome => {
+    try {
+      store.save({ schemaVersion: 1, rules: next })
+    } catch (error) {
+      return {
+        handled: true,
+        error: error instanceof Error ? error.message : 'rule rejected'
+      }
+    }
+    policy.setRules(next)
+    return { handled: true, message: pick('规则已保存并生效', 'Rules saved and active') }
+  }
+  if (!action || action === 'list') {
+    if (rules.length === 0) {
+      return {
+        handled: true,
+        message: pick('暂无权限规则', 'No permission rules yet')
+      }
+    }
+    const shadow = new Map(policy.shadowed().map((entry) => [entry.ruleId, entry.shadowedBy]))
+    const lines = rules.map((rule) => {
+      const base = `${rule.id} ${rule.action} ${rule.tool}${rule.path ? ' ' + rule.path : ''}${rule.note ? ' — ' + rule.note : ''}`
+      const by = shadow.get(rule.id)
+      return by
+        ? base + pick(`【被 ${by} 遮蔽】`, ` [shadowed by ${by}]`)
+        : base
+    })
+    return { handled: true, message: lines.join('\n') }
+  }
+  if (action === 'add') {
+    const kind = rest[0]
+    const tool = rest[1]
+    const path = rest[2]
+    if ((kind !== 'allow' && kind !== 'deny') || !tool) {
+      return {
+        handled: true,
+        error: pick(
+          '用法：/rules add <allow|deny> <tool|*> [路径-glob]',
+          'Usage: /rules add <allow|deny> <tool|*> [path-glob]'
+        )
+      }
+    }
+    return save([...rules, { id: nextRuleId(rules), action: kind, tool, ...(path ? { path } : {}) }])
+  }
+  if (action === 'rm') {
+    const id = rest[0]
+    if (!id) return { handled: true, error: 'Usage: /rules rm <id>' }
+    if (!rules.some((rule) => rule.id === id)) {
+      return { handled: true, error: pick(`未知规则：${id}`, `Unknown rule: ${id}`) }
+    }
+    return save(rules.filter((rule) => rule.id !== id))
+  }
+  return {
+    handled: true,
+    error: pick('用法：/rules [list|add|rm]', 'Usage: /rules [list|add|rm]')
+  }
+}
+
+function diffCommand(
+  argument: string,
+  context: CommandContext,
+  pick: (zh: string, en: string) => string
+): CommandOutcome {
+  const permission = context.permission
+  if (!permission) {
+    return { handled: true, error: pick('工作区运行时未启用', 'The workspace runtime is not active') }
+  }
+  const changes = permission.checkpointChanges()
+  if (changes.length === 0) {
+    return { handled: true, message: pick('本会话尚无工作区改动', 'No workspace changes in this session') }
+  }
+  if (argument) {
+    const record = changes.filter((entry) => entry.path === argument).at(-1)
+    if (!record) {
+      return { handled: true, error: pick(`没有该路径的会话改动：${argument}`, `No session change for ${argument}`) }
+    }
+    return {
+      handled: true,
+      message: [`── ${record.path} (${record.operation}) ──`, ...diffText(record.diff)].join('\n')
+    }
+  }
+  const byPath = new Map<string, ChangeRecord>()
+  for (const record of changes) byPath.set(record.path, record)
+  const lines = [...byPath.values()].map((record) => {
+    const { additions, removals } = diffStats(record.diff)
+    return ` ${record.path} (${record.operation === 'create' ? pick('新建', 'new') : pick('修改', 'edit')}) +${additions}/-${removals}`
+  })
+  return {
+    handled: true,
+    message:
+      pick('本会话改动：', 'Session changes:') +
+      '\n' +
+      lines.join('\n') +
+      pick('\n/diff <路径> 查看详情', '\n/diff <path> for detail')
+  }
+}
+
+function undoCommand(
+  argument: string,
+  context: CommandContext,
+  pick: (zh: string, en: string) => string
+): CommandOutcome {
+  const permission = context.permission
+  if (!permission) {
+    return { handled: true, error: pick('工作区运行时未启用', 'The workspace runtime is not active') }
+  }
+  const outcome = permission.undo(argument || undefined)
+  if (outcome.undone) {
+    return {
+      handled: true,
+      message: pick(`已撤销：${outcome.paths.join('、')}`, `Undone: ${outcome.paths.join(', ')}`)
+    }
+  }
+  return {
+    handled: true,
+    error:
+      (outcome.reason ?? pick('没有可撤销的会话改动', 'Nothing to undo')) +
+      (outcome.paths.length > 0 ? pick(`；已恢复：${outcome.paths.join('、')}`, `; restored: ${outcome.paths.join(', ')}`) : '')
+  }
+}
+
+function denialsCommand(
+  context: CommandContext,
+  pick: (zh: string, en: string) => string
+): CommandOutcome {
+  const permission = context.permission
+  if (!permission) {
+    return { handled: true, error: pick('工作区运行时未启用', 'The workspace runtime is not active') }
+  }
+  const denials = permission.denials()
+  if (denials.length === 0) {
+    return { handled: true, message: pick('暂无拒绝记录', 'No denials recorded') }
+  }
+  const lines = denials.map(
+    (denial) =>
+      `${denial.at.slice(11, 19)} ${denial.tool}${denial.path ? ' ' + denial.path : ''} — ${denial.reason}`
+  )
+  return { handled: true, message: lines.join('\n') }
 }

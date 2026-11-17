@@ -21,7 +21,7 @@ export class InkApprovalGateway implements ApprovalGateway {
   /** Resolve a pending request. Returns false when it was already resolved. */
   resolve(
     requestId: string,
-    outcome: 'allow' | 'deny',
+    outcome: 'allow' | 'allow_session' | 'deny',
     via: 'user' | 'policy' = 'user'
   ): boolean {
     const entry = this.pending.get(requestId)
