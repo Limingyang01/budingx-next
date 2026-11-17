@@ -366,3 +366,9 @@ PS-08 真实 Provider 四类行为已取得本节证据；其他型号/供应商
 独立审查发现并修正了发布指南中“回执后再次 minor SP002”的错误示例；同轮修复仍 patch，新 SP 首次交付 minor。手动工作流参数为 master / 0.2.0 / latest，正式上传 dry_run=false。本次发布 dry-run 及锁定安装将在干净的源码副本执行，实际数量与制品回执后续追加。
 
 复用技能：新增 skills/buding-version-prepare，三套发现入口由生成器同步；完整发布技能保留实际上传边界。发现性回归先因缺少新技能失败，接入后技能维护 10 项通过。独立前向场景验证：基线未使用仓库原子版本工具、未明确完整 dry-run；读新技能后采用 version:prepare + 锁定安装/expected-version dry-run，并在已有 prepared 候选时保持幂等、不重复 bump，保留历史回执与用户手动触发边界。官方 quick_validate.py 因本机 Python 缺 PyYAML 无法执行；Node YAML/发现入口/链接校验已通过，不将 Python 校验记为通过。
+
+### 18.1 0.2.0 实际发布预演回执
+
+固定源码 `3c1a44bb55e1a02b164dd8c0ff022b92bd16432b` 的 Git archive 在仓库外干净目录验证；不包含工作区私有配置或未跟踪文件。`npm ci --ignore-scripts --no-audit --no-fund` 成功；`npm run publish -- --dry-run --expected-version 0.2.0 --tag latest` 退出 0。技能 10、规格 7、产品 165、发布 16、门禁单元 4，合计 **202 PASS / 0 FAIL / 0 SKIP**；模块边界通过。制品 31 文件，npm shim 版本 0.2.0，本地 HTTP smoke 通过。原始报告及同一 tarball 保存在忽略目录 artifacts/release/0.2.0-prepared；state=verified-local，dryRun=true，不是上传回执。
+
+本轮未触发 GitHub 工作流、未 npm 上传、未调用真实模型。用户同时进行的开发技能安装以其提交 6f0ed5b 保留在源码基线，未改写其内容；所有开发技能与用户配置均不进入 TUI tarball。版本文档审查的两处误导均修正，新增版本准备技能完成发现同步、10 项维护测试和两场景前向检查。
