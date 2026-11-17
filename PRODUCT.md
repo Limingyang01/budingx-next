@@ -139,7 +139,16 @@ budingx
 | ↑ / ↓ | 召回历史输入 |
 | y / n | 允许或拒绝待审批的工具调用 |
 
-### 5.3 会话语义
+### 5.3 首屏信息
+
+交互模式首屏对照参考产品的欢迎屏布局，独立实现：
+
+- **未配置时**：紫色（`#af87ff`）圆角框，顶边框嵌入 `budingx v<版本>`（版本 dim）。≥70 列时左栏为加粗欢迎语、吉祥物、dim 的模型行（模型 · 端点主机）与 cwd 行，右栏以 dim 竖线分隔，显示「Tips for getting started」（`/provider add …`、`BUDINGX_API_KEY`、`/help`）与「What's new」；<70 列自动改居中紧凑框。
+- **配置完成后**：切换为无边框精简横幅——吉祥物 + `budingx v<版本>` + dim 模型行 + dim cwd。
+- **老终端兜底**：Windows 上无现代终端环境（cmd/老 conhost）时整屏走纯 ASCII（框线 `+-|`、ASCII 吉祥物）；`BUDINGX_FORCE_ASCII_LOGO=1` / `BUDINGX_FORCE_PIXEL_LOGO=1` 可强制覆盖。
+- 密钥只以「是否已配置」参与首屏判定，任何形态都不显示密钥内容；未配置时输入区下方持续给出 `/provider add <label> <base-url> <model>` 引导。`/model` 切换后首屏即时更新。
+
+### 5.4 会话语义
 
 - 被取消的回合**保留已产出的文本**；在任何输出前取消则把原始请求还原回输入框。
 - 失败的回合**不写入历史**，模型不会看到它答不了的提示；原始输入仍可用 ↑ 召回。

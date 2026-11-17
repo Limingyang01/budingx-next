@@ -196,6 +196,8 @@ async function runInteractive(
           instance.unmount()
         }
       },
+      version,
+      cwd: process.cwd(),
       onExit: () => {
         instance.unmount()
       }

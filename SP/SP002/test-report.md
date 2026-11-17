@@ -164,3 +164,40 @@ npm run build
 npm test
 node scripts/release/pack-smoke.mjs
 ```
+
+## 9. 交付后补充记录（2026-11-17，续接中断会话）
+
+上次会话在 SP002 验收前中断。续接核对发现工作区有一项**未完成的交付后补充**：首屏头部（版本 / 模型 / 端点主机 / 密钥状态 / 工作目录 + 未配置引导）。本轮将其收尾并修正两处问题：
+
+| 项 | 处理 |
+| --- | --- |
+| UI 状态持有完整 `ResolvedConfig`（含 apiKey 原文） | 改为配置版本号触发重渲；头部只接收 `keyMasked: boolean`，密钥原文不进入 React 状态与渲染层 |
+| 头部测试断言「末四位掩码」 | 改为断言头部**不接触任何密钥内容**（仅 configured / not configured），与 MM-05「UI 回显最小化」口径一致 |
+| `PRODUCT.md` | 新增 §5.3 首屏信息（用户可见行为变更须同步说明书） |
+
+补充后的实际执行证据（cwd＝仓库根，同一环境重跑）：
+
+| 门禁 | 命令 | 结果 |
+| --- | --- | --- |
+| 编译 | `npm run build` | 通过 |
+| 产品单元 | `node --test src/*/test/*.test.mjs` | **107 项（+4 header），107 通过 / 0 失败 / 0 cancelled** |
+| 全量门禁 | `npm test` | skills 9 + spec 7 + unit 107 + checks PASS + release 16，**全部通过** |
+| 打包隔离 smoke | `node scripts/release/pack-smoke.mjs` | PASS（tarball **33 文件**，新增 `dist/tui/render/header.js`） |
+
+遗留：工作区有未跟踪的 `pnpm-lock.yaml`（本机以 pnpm 安装所致）。本仓发布链为 npm（根 `package-lock.json`、CI `npm ci`），该文件不属于本轮授权范围，**未提交、未删除**，待用户确认。§4 的 PS-08（live 凭据）与 TC-02/03/04/05/07（真终端人工）仍保持 UNVERIFIED，恢复条件不变。
+
+## 10. 首屏样式对照重做（2026-11-17，用户反馈「首屏样式不正确」）
+
+用户要求对照参考产品 TUI 首屏样式、文案换成 budingx。只读盘点参考仓 `LogoV2` 组件群的**布局机制**（不抄代码、不搬美术资产）：圆角框 + 顶边框嵌入产品名/dim 版本、≥70 列左栏（加粗欢迎 + 7 宽吉祥物 + dim 模型/cwd）右栏信息feed、dim 竖线分隔、<70 列居中紧凑、配置后无边框精简横幅、win32 无现代终端 env 走纯 ASCII 兜底（env 可强制）。品牌色取参考仓自有紫 `#af87ff`。上游 Ink 8 无 `borderText`（系参考仓自研渲染器扩展），故框线/标题/分隔由 `src/tui/render/header.ts` 以**纯 styled-span 行**独立绘制，Ink 层仅映射 span；吉祥物为同槽位自有绘制。密钥仍以布尔参与判定，原文不进渲染层。
+
+实际执行证据（cwd＝仓库根）：
+
+| 门禁 | 命令 | 结果 |
+| --- | --- | --- |
+| 编译 | `npm run build` | 通过 |
+| 首屏专项 | `node --test src/tui/test/header.test.mjs` | **9 项全过**（策略判定、宽度自洽截断、宽/窄/极窄等宽框、ASCII 纯 ASCII、精简横幅、零密钥、引导） |
+| 全量门禁 | `npm test` | skills 9 + spec 7 + unit **112** + checks PASS + release 16，全部通过 |
+| 打包隔离 smoke | `node scripts/release/pack-smoke.mjs` | PASS（tarball 33 文件） |
+| 几何目检 | node 投影纯文本 | 100 列双栏 / 60 列 ASCII 紧凑 / 精简横幅框线对齐、无越界 |
+
+`PRODUCT.md` §5.3 已同步重写。真终端颜色/IME 观感仍属 §5 人工清单（UNVERIFIED 不变）。

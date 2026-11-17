@@ -9,12 +9,15 @@ import { runCommand, type CommandContext } from './commands.js'
 import { EditorBuffer } from './editor/buffer.js'
 import { applyKey, type KeyFlags } from './editor/keys.js'
 import { reduceFrame } from './render/reducer.js'
+import { renderHeader, setupHint, terminalStrategy } from './render/header.js'
 import { initialFrame } from './render/types.js'
 
 export type AppProps = {
   session: Session
   gateway: InkApprovalGateway
   commandContext: Omit<CommandContext, 'session'>
+  version: string
+  cwd?: string
   onExit: () => void
 }
 
@@ -27,7 +30,7 @@ const STATUS_LABEL: Record<string, string> = {
   cancelling: 'cancelling…'
 }
 
-export function App({ session, gateway, commandContext, onExit }: AppProps) {
+export function App({ session, gateway, commandContext, version, cwd, onExit }: AppProps) {
   const { exit } = useApp()
   const [frame, dispatch] = useReducer(
     (state: ReturnType<typeof initialFrame>, event: SessionEvent) =>
@@ -39,6 +42,25 @@ export function App({ session, gateway, commandContext, onExit }: AppProps) {
   const [hint, setHint] = useState('')
   const editor = useMemo(() => new EditorBuffer(), [])
   const ctrlC = useRef(0)
+  const strategy = useMemo(
+    () => terminalStrategy(process.env, process.platform),
+    []
+  )
+
+  // The header follows the active model, so /model must re-render it.
+  // A version counter is enough: the config object itself may carry the API
+  // key and must not be retained in UI state.
+  const [, bumpConfigVersion] = useReducer((n: number) => n + 1, 0)
+  const context = useMemo(
+    () => ({
+      ...commandContext,
+      setConfig: (next: Parameters<CommandContext['setConfig']>[0]) => {
+        commandContext.setConfig(next)
+        bumpConfigVersion()
+      }
+    }),
+    [commandContext]
+  )
 
   useEffect(() => {
     const off = session.on((event) => {
@@ -125,7 +147,7 @@ export function App({ session, gateway, commandContext, onExit }: AppProps) {
       setHint('')
       if (text.startsWith('/')) {
         if (!busy) {
-          void runCommand(text, { ...commandContext, session }).then((outcome) => {
+          void runCommand(text, { ...context, session }).then((outcome) => {
             if (outcome.exit) {
               onExit()
               exit()
@@ -145,8 +167,36 @@ export function App({ session, gateway, commandContext, onExit }: AppProps) {
     setInput(editor.text)
   })
 
+  const config = commandContext.getConfig()
+
   return (
     <Box flexDirection="column">
+      <Box flexDirection="column">
+        {renderHeader({
+          version,
+          model: config.model,
+          baseUrl: config.baseUrl,
+          keyPresent: !!config.apiKey.trim(),
+          cwd,
+          columns: process.stdout.columns ?? 80,
+          strategy
+        }).map((line, i) => (
+          <Text key={i}>
+            {line.map((span, j) => (
+              <Text
+                key={j}
+                color={span.color}
+                dimColor={span.dim}
+                bold={span.bold}
+                italic={span.italic}
+              >
+                {span.text}
+              </Text>
+            ))}
+          </Text>
+        ))}
+      </Box>
+
       <Static items={frame.staticLines}>
         {(line, index) => (
           <Text key={`${index}-${line}`}>{line}</Text>
@@ -185,7 +235,9 @@ export function App({ session, gateway, commandContext, onExit }: AppProps) {
           {STATUS_LABEL[frame.status.state] ?? frame.status.state}
           {hint ? ` — ${hint}` : ''}
         </Text>
+        {setupHint(config) && <Text color="yellow">{setupHint(config)}</Text>}
       </Box>
     </Box>
   )
 }
+
