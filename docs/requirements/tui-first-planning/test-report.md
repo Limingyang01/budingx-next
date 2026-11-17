@@ -14,7 +14,7 @@
 | AC-04 任务清单批注 | PASS | spec:check 任务清单 基本 30 / 高级 30 / 保护 12 / 盲测 20 锚点不变；A17–A27 备注列「暂缓 r6」、§2 配额与 §12 依赖批注、头部 inventory v2 义务登记 |
 | AC-05 三权限模式 | PASS | 路线图 r6 决定节、矩阵「权限模式」行、清单 CAP-L3-06、PRODUCT §2.2/§7 均 USER_CONFIRMED 且标明 SP003/SP004 交付、当前未实现 |
 | AC-06 PRODUCT 同步 | PASS | PRODUCT.md v1.3：§1 TUI 单端、§2.1 SP001 行 v1.1 注记、§2.2 状态列（5 轮 DEFERRED）、§7 暂缓行与三模式、§8 规划调整行；0.2.0 已发布事实保留 |
-| AC-07 门禁 GREEN＋合入＋推送 | UNVERIFIED（门禁已 GREEN，合入/推送待执行） | 恢复条件见 §5；merge:gate GREEN 回执见 §4；合入与推送回执回填 |
+| AC-07 门禁 GREEN＋合入＋推送 | PASS | merge:gate 两次 GREEN（§4）；合并 99b50ee＋ancestry 证明；推送第 3 次成功，ls-remote 核对一致 |
 | AC-08 outgoing 干净 | PASS | merge:gate 第 5 步扫描 29 文件无违规；CON、pnpm-lock.yaml 保持未跟踪未提交 |
 
 ## 2. 分层证据
@@ -36,14 +36,16 @@
 - `npm run skills:test`：首跑 10 项中 1 项红——链接完整性门禁检出本报告文件尚未创建（4 处引用断链），属门禁有效拦截（RED）；创建本报告后复跑 **10/10 通过**（复绿）。
 - `npm test` 全段（2026-11-17，cwd 仓库根，会话权限 danger-full-access）：**skills 10/10、spec 9/9、产品单元 166/166（含 tsc 构建）、模块边界检查通过、release 16/16、merge 5/5，合计 206 项 0 失败**。
 - `npm run merge:gate`（feature/tui-first-planning → master，源 6435e86）：**GATE GREEN**；四步全 ok（npm test / spec:check / skills:check / pack-smoke 隔离安装＋fixture 流式请求）；outgoing 29 文件无禁带路径；报告审计通过（UNVERIFIED 有恢复条件节）。报告：`artifacts/merge-gate/feature-tui-first-planning-2026-11-17T10-44-17-461Z.md`（gitignored）。
-- 合入后 master 复跑与推送回执：待回填。
+- 合入：merge-tree 预演 exit 0 无冲突；master 合并提交 **99b50ee**（--no-ff，父 2fb7c1e＋bf1d5b5）；`git merge-base --is-ancestor bf1d5b5 master` 通过。并发发布会话提交 2fb7c1e 与本轮区域不重叠，合并干净，0.2.0 回执保留。
+- 合入后 master 复跑（2026-11-17）：npm test **206 项 0 失败**（skills 10 / spec 9 / unit 166 / release 16 / merge 5）＋模块边界通过；spec:check OK（47/6）；skills:check current；pack-smoke **PASS**（34 文件、隔离安装 0.2.0）。
+- 推送：`git push origin master` 前两次网络波动失败（github.com:443 连接超时），第 3 次成功（2fb7c1e..99b50ee）；`git ls-remote origin master` = **99b50ee08636a7a9dfd7093e99f0f8473863d3d3**，与本地一致。凭据说明：本环境无 GCM/可用 askpass，使用 bundled git 自带 `git -c credential.helper=wincred` 读取 Windows 存储凭据（仅本次命令参数，未改全局配置）。
+- 回执收口：收口提交 C 记录合入/推送#1/复跑回执并推送（推送#2）；C 的 SHA 与推送#2 远端回执由下一提交 D 的本节追加行登记，D 的推送#3 回执以 ls-remote 核验并记入交接会话。
 
 ## 5. 未验证项与恢复条件
 
 | 项 | 状态 | 恢复条件 |
 | --- | --- | --- |
-| 合入 master / 推送远端回执 | UNVERIFIED | 用户已授权（2026-11-17）；门禁 GREEN 后按 buding-merge 合入，推送失败重试并以 git ls-remote 核对 |
-| 合入后 master 复跑 | UNVERIFIED | 合入后在 master 复跑 npm test / spec:check / skills:check / pack-smoke 并回填 §4 |
+| 既有 SP002 真终端 IME/观感人工 smoke | UNVERIFIED（历史遗留，非本变更范围） | 恢复条件＝SP002 验证报告 §5 人工清单；本规划变更不改变其状态 |
 
 ## 6. 风险与回退
 
