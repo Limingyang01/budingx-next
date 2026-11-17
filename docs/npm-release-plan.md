@@ -4,13 +4,13 @@
 
 ## 推荐入口：GitHub Actions + Trusted Publishing
 
-现在推荐从 [Publish TUI to npm](https://github.com/Limingyang01/budingx-next/actions/workflows/publish-tui.yml) 手动一键触发。精确账号配置、首次建包限制、environment、direct publish 权限和回执同步见 [Actions 配置指南](github-actions-npm.md)。bootstrap 0.1.1 已通过真实 OIDC 发布；当前 SP002 的 0.2.0 为 prepared，须由维护者另行触发发布，不复用旧版本回执。
+现在推荐从 [Publish TUI to npm](https://github.com/Limingyang01/budingx-next/actions/workflows/publish-tui.yml) 手动一键触发。精确账号配置、首次建包限制、environment、direct publish 权限和回执同步见 [Actions 配置指南](github-actions-npm.md)。bootstrap 0.1.1 已通过真实 OIDC 发布；SP002 的 0.2.0 也已通过维护者触发的运行 #7 发布，具有本版本独立回执，不复用旧版本证据。
 
 ## 本机命令与命令边界
 
 首发 bootstrap 或明确授权的本机交互发布入口是在仓库根目录执行 **`npm run publish`**，由跨平台 Node 发布入口完成检查、构建、打包、实际安装测试和 registry 发布，再核对回执。无参数的稳定发布使用已准备且经审阅的版本，默认发布到 https://registry.npmjs.org；不静默自增版本、不顺带提交/推送/tag。
 
-当前准备版本为 0.2.0（SP002），npm latest 仍为 0.1.1。维护者使用工作流参数 master / 0.2.0 / latest / dry_run=false 正式发布。当前命令（需要 prepared 版本台账）：
+当前已发布版本为 0.2.0（SP002），npm latest=0.2.0。以下命令只适用于之后已准备的新候选，不要重发 0.2.0：
 
 ```text
 npm run publish -- --dry-run                  # 完整本地验证，绝不上传或修改远端 tag
@@ -70,7 +70,7 @@ npm 的上传、文件选择、版本和 tag 行为以官方命令为准；本�
 
 ## 当前完成情况与剩余条件（2026-11-17）
 
-bootstrap 的 0.1.0/0.1.1 已发布，0.1.1 的 Windows/Linux Actions 验证及真实 OIDC 上传已取得回执；SP002 已完成一个真实服务的五项 Provider 验证。当前 0.2.0 为 prepared，尚待维护者执行工作流并取得本版本的公开安装、来源和发布回执。真实终端 IME、其他平台实际使用、完整升级迁移和上传不确定时的自动恢复仍按各自验收计划推进。脚本遇已存在版本拒绝上传，上传后回执失败应先查询版本/integrity，再核对台账，不盲重试。
+bootstrap 的 0.1.0/0.1.1 已发布，0.1.1 的 Windows/Linux Actions 验证及真实 OIDC 上传已取得回执；SP002 已完成一个真实服务的五项 Provider 验证。当前 0.2.0 已发布，并取得运行 #7、公开安装、签名和来源核验回执。真实终端 IME、其他平台实际使用、完整升级迁移和上传不确定时的自动恢复仍按各自验收计划推进。脚本遇已存在版本拒绝上传，上传后回执失败应先查询版本/integrity，再核对台账，不盲重试。
 
 ## 首发完成回执（2026-11-16）
 

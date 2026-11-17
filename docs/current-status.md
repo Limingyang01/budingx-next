@@ -1,6 +1,6 @@
 # 当前状态
 
-日期：2026-11-17。阶段：简易聊天 TUI 已发布（npm `budingx@0.1.1`），OIDC 发布链路已实测；**SP002 已实现，0.2.0 版本已准备（prepared），等待维护者执行发布工作流**；其余 19 轮完整 Agent 迭代仍未启动。
+日期：2026-11-17。阶段：简易聊天 TUI 已发布（npm `budingx@0.1.1`），OIDC 发布链路已实测；**SP002 的 0.2.0 已发布，Windows/Linux 验证、OIDC 上传及官方安装核验通过**；其余 19 轮完整 Agent 迭代仍未启动。
 
 ## 已有
 
@@ -21,7 +21,7 @@
 
 用户 2026-11-16 确认参考实现定位：本仓设计与主要核心逻辑必须严格参考本地 `budingWorkerSpace` 参考项目（文档不写死绝对路径，位置以用户环境为准），重点参考其 TUI 命令设计、Agent 主循环与核心工具；设计文档、计划文档和真实开发全程对照该参考，不允许脱离参考开发，允许优化但核心逻辑不得背离、使用体验不得下降；按「读机制、不抄代码」独立编写实现并对齐效果。该参考仓无 LICENSE 声明，本仓制品保持自有 MIT 独立可发布、不嵌入参考代码；细则见 [独立实现与复用边界](independent-development.md)。
 
-用户已授权简易 TUI 验证后发布 npm，并确认 MIT；0.1.0、0.1.1 已公开发布，latest 指向 0.1.1，发布状态及 integrity 见 release-ledger.json。没有读取旧用户配置或凭据。用户数据统一通过当前用户 home 解析为 ~/.budingx，禁止使用 ~/.claude。
+用户已授权简易 TUI 验证后发布 npm，并确认 MIT；0.1.0、0.1.1 是历史已发布版本；当前 0.2.0 已发布并成为 latest，发布状态及 integrity 见 release-ledger.json。没有读取旧用户配置或凭据。用户数据统一通过当前用户 home 解析为 ~/.budingx，禁止使用 ~/.claude。
 
 ## SP002 交付现状（等待验收）
 
@@ -33,7 +33,7 @@
 - 2026-11-17 交付后复验修正一处真实缺陷：队列自动起新回合的定时器曾被 `unref()`，导致排队输入在空闲时不自动起新回合（SL-05）。已修复并复测，详见 [SP002 验证报告 §7](../SP/SP002/test-report.md)。
 - 面向使用者的产品事实入口为根目录 [产品说明书](../PRODUCT.md)：产品版本号、按迭代归类的功能表、使用说明、已知限制与版本历史；产品变更须同步更新它。
 - **验证边界**：PS-08 已在一个用户授权服务验证五项；其他型号/服务未测。Windows Terminal/ConHost 的真实 IME、鼠标及观感仍为 UNVERIFIED，恢复条件为执行报告 §5 的人工清单。
-- 产品源码版本为 **0.2.0（prepared）**；npm latest 仍为 0.1.1。用户 2026-11-17 要求升级版本并自行执行 GitHub 发布工作流，见 [发行说明](../release-notes/v0.2.0.md)。未触发发布，不预记 published。
+- 产品版本 **0.2.0 已发布**，npm latest=0.2.0。维护者触发运行 #7 后完成 Windows/Linux 验证和 OIDC 上传；公开 provenance 与官方安装/签名均核验通过，见 [发行说明](../release-notes/v0.2.0.md)。
 
 ## 验证范围
 
@@ -56,3 +56,7 @@ SP002 的制品布局已变更（bin 由 `dist/cli.js` 改为 `dist/tui/cli.js`�
 本地集成更新：e2e 修复及验证提交 `e06ddaf` 经交叉验证 GREEN 后已合入 `master`，合并提交 `ffdb7ba`。真实 Provider 5 项与 197 项自动化通过；未推送/发布，真终端 IME 人工仍待验证。更早的待合入记录为历史状态。
 
 0.2.0 发布前补充：已修复伪 TTY 在 CI 中被 Ink 自动切为非交互的问题；CI=true 的完整发布预演 203 项通过，31 文件制品与此前 integrity 一致，已合入 master。版本为 prepared，维护者自行触发 master 的发布工作流，未上传 npm。
+
+## 0.2.0 正式发布完成（2026-11-17）
+
+维护者触发运行 #7，Windows/Linux 验证及 npm OIDC 发布成功；publishedAt=2026-11-17T09:29:30.139Z，latest=0.2.0，source=6ed77d8a93335f8b261493e1fa4f0994ce4bc7bd。官方安装、shim 版本和 HTTP smoke 通过；46 registry signatures、5 attestations 核验通过；来源匹配本次 run/源码。原始 CI artifact 下载要求认证，未取得，使用公开 provenance 与独立安装证据；ledger 已 published。早前 prepared 状态为历史快照，真终端人工未验证保持不变。

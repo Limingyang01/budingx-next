@@ -388,3 +388,20 @@ PS-08 真实 Provider 四类行为已取得本节证据；其他型号/供应商
 干净固定源码 `2c636312e8aaafa9e60636b6027e97d12702aeea` 在 CI=true 下锁定安装及发布 dry-run 通过：技能 10、规格 7、产品 166、发布 16、门禁单元 4，合计 **203 PASS / 0 FAIL / 0 SKIP**。31 文件 tarball 与前一预演制品 integrity 完全一致，说明修改仅涉及测试/文档/技能，产品内容未变。回执为 artifacts/release/0.2.0-prepared-ci/report.json，state=verified-local、dryRun=true、npm shim=0.2.0、fixtureRequests=1。
 
 同样 CI=true 的交叉验证门禁 artifacts/merge-gate/feature-SP002-release-ci-tty-2026-11-17T09-17-45-790Z.md 为 GREEN；独立审查无待修问题，CI 交互专项 21 项通过。已合入本地 master `71fad97e45b9b6d1ab08226c33238fae05df01ec`，ancestry/tree 一致性已确认。版本仍为 0.2.0 prepared，不重复 bump；实际托管 Windows/Linux 运行和 npm 上传由维护者执行，未预记成功。
+
+## 19. 0.2.0 正式发布收尾（2026-11-17）
+
+用户自行执行发布工作流后，Agent 只跟进同一次运行，没有重新触发、重复上传或 bump。固定 [运行 #7](https://github.com/Limingyang01/budingx-next/actions/runs/44055301185)，source=6ed77d8a93335f8b261493e1fa4f0994ce4bc7bd、branch=master、workflow_dispatch。Windows Verify、Ubuntu Verify、Publish verified TUI using npm OIDC 全部 success。
+
+### 19.1 公开核验与独立安装
+
+- 官方 registry：budingx@0.2.0 已存在，latest=0.2.0，publishedAt=2026-11-17T09:29:30.139Z。\_npmUser 为 GitHub Actions，trustedPublisher.id=github。
+- integrity=sha512-VG7rcn0u16SxtJpBEJ77s78tEUfgVuBM3qC/81c/VWsofUmng1JeTKIZYFWBTB8eESd4scFo4WW0axORecqOtA==；与预演制品一致。
+- SLSA provenance subject SHA512 与 tarball integrity 一致；workflow repository/path/ref、resolved gitCommit、run invocation URL 均断言匹配本次6ed77d8/运行7。
+- 仓库外临时 prefix 从官方源安装，ignore-scripts，不改全局安装；HOME/USERPROFILE 隔离。npm shim --version=0.2.0；真实本地 HTTP 流式 smoke 通过，fixtureRequests=1。
+- npm audit signatures 退出0：46 packages verified registry signatures、5 packages verified attestations。这与 JSON 字段匹配分别记录，不只凭工作流名称宣称 OIDC 来源。
+- 原始 artifact 下载 API 返回401 Requires authentication；未下载 CI report，未伪造 published-and-installed JSON 或调用 release:sync 导入假回执。按发布技能允许的公开 registry/provenance + independent-install 路径更新 ledger，verificationSource=public-registry-provenance-and-independent-install，ciArtifactDownloaded=false。
+
+### 19.2 收尾范围与边界
+
+本次只更新台账和当前发布文档/STATUS；源码 package 版本仍0.2.0，历史0.1.0/0.1.1回执保留。发布源码SHA与收尾文档SHA不同，制品不重发。原始公开元数据、签名日志、安装/HTTP smoke、自有验证摘要位于忽略的 artifacts/release/0.2.0-run-7，不写入用户密钥或真实聊天；没有读取本地模型配置或额外发真实模型请求。L3 IME/鼠标/控制台观感及其他 Provider/平台未测范围继续 UNVERIFIED，恢复条件沿用§5/§16。
