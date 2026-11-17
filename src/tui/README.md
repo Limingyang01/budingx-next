@@ -1,6 +1,6 @@
 # budingx
 
-An independent **MIT** terminal coding agent for OpenAI-compatible APIs. This package is prepared as `0.2.0` (SP002), adding model profiles, the Ink conversation interface and the session core. Publication is pending the maintainer-run GitHub Actions workflow; public npm `latest` is still `0.1.1`. Coding tools, file and terminal access land in later releases.
+An independent **MIT** terminal coding agent for OpenAI-compatible APIs. Version `0.2.0` (SP002) is published on npm as `latest`, adding model profiles, the Ink conversation interface and the session core. GitHub Actions verified Windows/Linux, published through OIDC, and the official package passed an independent Windows install and HTTP smoke. Coding tools, file and terminal access land in later releases.
 
 ## Install
 

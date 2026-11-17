@@ -32,7 +32,7 @@ npm run version:prepare -- kind --iteration SPnnn
 - **当前入口**：PRODUCT.md、根 README、src/tui/README、docs/current-status、文档导航。分别写明源码版本 prepared 与 npm 实际已发布版本，不能把待发布版本写成 latest 已更新。
 - **操作规范**：docs/versioning、development、npm-release-plan、github-actions-npm。当前命令/参数对应准备版本；回执之后的示例区分同轮 patch 与已确认新 SP minor，不能让维护者再次 minor 同一轮。
 - **迭代记录**：当轮 requirements-summary、各功能 STATUS、test-report，追加本次准备状态和真实验证边界；保留历史证据身份。
-- **发行说明**：功能、用户配置/按键/依赖、bin/资源路径等兼容变化，升级操作、限制、未验证项及维护者工作流参数。文件清单以真实 tarball 为准，不复用过时的固定文件数。
+- **发行说明**：功能、用户配置/按键/依赖、bin/资源路径等兼容变化，升级操作、限制、未验证项及维护者工作流参数。文件清单以真实 tarball 为准，不复用过时的固定文件数。随包 README 侧重版本与使用说明，动态发布状态放台账和根发布文档；收尾不重发同版本来改已发布文件。
 - **历史材料**：旧发行说明、已发布台账、旧规格/设计基线中的旧版本保持原值；必要时加当前入口指针。文案中的测试 fixture 版本也不自动变成当前产品版本。
 
 生产配置和本机 `.env.e2e.local` 不提交、不复制到发行说明或制品，不读取其他工具凭据。源码本地启动便利配置不扩展到正式产品。技能与文档不是已经实现的产品能力。

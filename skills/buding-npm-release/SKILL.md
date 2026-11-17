@@ -17,7 +17,7 @@ description: Use when preparing, building, verifying, publishing or recovering a
 
 ## 准备与构建
 
-按操作手册执行锁定安装、`npm test` 和带 `--expected-version` 的真实发布 dry-run。后者包含构建、六文件白名单 tarball、隔离安装、npm shim 和真实本地 HTTP 流式 smoke；不上传。保留报告，核对实际测试数量、制品 integrity 和未验证项。
+按操作手册执行锁定安装、`npm test` 和带 `--expected-version` 的真实发布 dry-run。后者包含构建、实际文件白名单 tarball、隔离安装、npm shim 和真实本地 HTTP 流式 smoke；不上传。保留报告，核对实际测试数量、制品 integrity 和未验证项。
 
 填好根目录 `release-notes/v<version>.md`，同步产品 README 与相关文档。在已授权范围提交推送准备变更后，查询远端 master SHA，确保 Actions 使用该提交。Git 操作遵守 [buding-merge](../buding-merge/SKILL.md)。不要执行裸 `npm publish` 发布根维护包，也不要把本机账号 Token 传给 CI。
 

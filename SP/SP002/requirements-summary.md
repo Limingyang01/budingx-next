@@ -1,6 +1,6 @@
 # SP002 · 模型与会话闭环
 
-状态：IMPLEMENTED / RELEASE_PREPARED（0.2.0；需求、设计、实施及自审完成；等待维护者执行发布工作流，人工终端验证边界单独保留）｜更新：2026-11-17｜负责人：Agent 执行 SDD，用户验收
+状态：RELEASED（0.2.0；Windows/Linux 验证、OIDC 发布和官方安装核验完成；人工终端验证边界单独保留）｜更新：2026-11-17｜负责人：Agent 执行 SDD，用户验收
 
 ## 本轮目标与边界
 
@@ -68,3 +68,7 @@
 ## 0.2.0 发布准备（2026-11-17）
 
 用户要求升级版本并同步全部版本相关文档，发布工作流由用户自行执行。源码版本 0.2.0、台账 prepared，见[发行说明](../../release-notes/v0.2.0.md)。npm latest 仍为 0.1.1；未触发 Actions、未上传 npm。此前段落的 0.1.1/待准备记录保留历史身份，以本节最新状态为准。
+
+## 0.2.0 发布完成（2026-11-17）
+
+维护者执行 [运行 #7](https://github.com/Limingyang01/budingx-next/actions/runs/44055301185)，两个验证平台和 publish job 全部成功；官方 npm latest=0.2.0，发布源码 `6ed77d8a93335f8b261493e1fa4f0994ce4bc7bd`。官方安装、HTTP smoke、46 签名/5 attestation 核验通过，ledger 已 published。原始 CI artifact 因下载要求认证未取得，采用公开 provenance 与独立安装证据收尾；L3 真终端人工仍未验证。

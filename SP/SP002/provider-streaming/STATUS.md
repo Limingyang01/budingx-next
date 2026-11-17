@@ -15,3 +15,7 @@
 ## 0.2.0 发布准备（2026-11-17）
 
 本模块纳入 SP002 的 0.2.0；源码版本、prepared 台账和[发行说明](../../../release-notes/v0.2.0.md)已同步。发布由维护者手动触发，尚无 published 回执。历史验证与真实终端人工 UNVERIFIED 保持各自证据边界。
+
+## 0.2.0 已发布（2026-11-17）
+
+本模块随 0.2.0 发布，latest 已更新；[运行 #7](https://github.com/Limingyang01/budingx-next/actions/runs/44055301185) 的 Windows/Linux 验证与 OIDC publish 均 success。发布源码 `6ed77d8`，公开 provenance 和官方隔离安装/签名已核实，台账 published。此前 prepared 记录是发布前快照；未验证的人机终端体验维持原边界。详细证据见 [test-report §19](../test-report.md#19-020-正式发布收尾2026-11-17)。

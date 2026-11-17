@@ -32,7 +32,18 @@
     {
       "version": "0.2.0",
       "iteration": "SP002",
-      "status": "prepared"
+      "status": "published",
+      "publishedAt": "2026-11-17T09:29:30.139Z",
+      "verifiedAt": "2026-11-17T09:33:31.334Z",
+      "registry": "https://registry.npmjs.org",
+      "tag": "latest",
+      "integrity": "sha512-VG7rcn0u16SxtJpBEJ77s78tEUfgVuBM3qC/81c/VWsofUmng1JeTKIZYFWBTB8eESd4scFo4WW0axORecqOtA==",
+      "authMode": "oidc",
+      "sourceCommit": "6ed77d8a93335f8b261493e1fa4f0994ce4bc7bd",
+      "workflowRun": "https://github.com/Limingyang01/budingx-next/actions/runs/44055301185",
+      "attestations": "https://registry.npmjs.org/-/npm/v1/attestations/budingx@0.2.0",
+      "verificationSource": "public-registry-provenance-and-independent-install",
+      "ciArtifactDownloaded": false
     }
   ]
 }
