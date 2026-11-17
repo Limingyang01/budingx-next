@@ -386,3 +386,53 @@ export type ApprovalDecision = {
 设计 v1.0 **approved**（Agent 自审通过，2026-11-17）。批准范围：本设计覆盖的计划、实施、测试、交付记录与各阶段本地提交，以及交叉验证门禁 GREEN 后按 buding-merge 合入 master。push、npm 发布、打标签、远端设置、分支/worktree 删除不在本批准内。
 
 依 2026-11-17 委托，本设计批准后直接产出同目录 `plan.zh.md` 并进入实施，不再等待人工批准。
+
+---
+
+## 10. T18 能力对齐修订（v1.1，2026-11-17，Agent 自审追加）
+
+### 10.1 触发与依据
+
+用户在实现过程中要求「仔细检查 SP003 的功能，是否达到 budingWorkerSpace 里的 TUI 级别」。据此对参考仓做了**只读行为事实盘点**（Read/Write/Edit/Glob+Grep/权限审批/检查点撤销/@补全/diff 呈现 8 组），把与本轮原设计的差异逐项列出，判定为「模型可感知的能力差距」的进入本节修订；属于实现细节偏好、且本仓已有等价或更强行为的，记为保留差异。
+
+盘点只用于**行为对照**：本轮实现全部独立编写，未迁入参考仓源码、提示词、内部类型或 bundle；参考仓登录/模型绑定类事实按用户既定设计排除。
+
+### 10.2 修订条目（能力差距 → 处理）
+
+| # | 参考行为事实 | 原设计 | 修订后 | 证据 |
+| --- | --- | --- | --- | --- |
+| A1 | 覆盖既有文件前必须先 Read；读后被外部修改则拒绝写入 | 仅「调用方自带指纹」时校验 | **读后编辑门**：会话内记录已读文件与指纹；Write/Edit 覆盖既有文件前必须已 Read，否则 `BUDINGX_WORKSPACE_010`；读后内容变化则 `BUDINGX_WORKSPACE_011`；写/编辑成功后更新记录 | `workspace/test/tools.test.mjs` 门禁用例 |
+| A2 | Write 自动创建缺失的父目录 | 父目录缺失即报错（WT-04） | **改为自动创建**；AC WT-04 相应修订（MODEL_PROPOSED） | `workspace/test/write.test.mjs` |
+| A3 | Write 强制 LF，不再沿用旧文件 CRLF | 未规定 | Write 统一 CRLF→LF；**Edit 保留原文件主导行尾**（两者语义不同，已在代码注释与 §4.1 说明） | `workspace/test/write.test.mjs`、`workspace/test/edit.test.mjs` |
+| A4 | 整文件超限时**报错**并提示改用 offset/limit（其 prompt 文案与实现不一致，本轮按实现对齐） | 超限截断并标注 | 整文件读取上限 256KB 超限**抛错**并给出 offset/limit 提示；范围读取上限 10MB；`@` 引用走范围读取（2000 行截断），与参考的 @mention 行为一致 | `workspace/test/read.test.mjs`、`workspace/test/context.test.mjs` |
+| A5 | Grep 参数族：`output_mode`(content/files_with_matches/count)、`-A/-B/-C`、`head_limit`、`offset`、`multiline`、`type`；files 模式按 mtime 新→旧 | 仅内容模式 + 截断计数 | **实现完整参数族**；files 模式 mtime 新→旧、同 mtime 按名；count 模式 `path:occurrences` + 汇总；分页提示 `[Showing X of Y matching lines]` | `workspace/test/search.test.mjs` |
+| A6 | 拒绝时可附反馈文字并回传给模型 | 无 | **拒绝反馈输入态**：审批卡按 `3`/`n` 进入反馈输入，Enter 提交（反馈以 `User feedback:` 追加进工具结果回传模型），Esc 静默拒绝 | `tui/test/approval-tiers.test.mjs`、`core/test/permissions.test.mjs` |
+| A7 | `/diff` 面板源为 Current + 每回合 T1..Tn，←/→ 切换 | 二元（turn/current） | **多源**：Current + 各回合差异，←/→ 循环切换；当前差异按会话基线与磁盘现况重算 | `tui/test/diff-view.test.mjs` |
+| A8 | `@file#L10-20` 行范围引用 | 无 | **支持 `#L` 行范围片段**，读取时按范围取行 | `workspace/test/context.test.mjs` |
+| A9 | Tab 先补最长公共前缀（LCP），再应用选中项 | 直接应用选中项 | **LCP 优先**：候选多于一个且 LCP 更长时先补到 LCP，可继续细化 | `tui/test/completion.test.mjs` |
+| A10 | `.git`/配置目录写入强制询问（在 allow 规则之前） | 无 | **`.git` 写入强制 ask**，优先于会话记忆与 allow 规则，deny 规则仍最高优先 | `workspace/test/policy.test.mjs` |
+| A11 | 搜索结果注入权限 deny 规则（Read deny 的文件不进检索结果） | 无 | **搜索遵守 Read deny 规则**（Glob/Grep 排除被拒读的文件） | `workspace/tools.ts` + runtime 装配 |
+| A12 | Edit 对弯引号做等宽归一匹配（findActualString） | 仅 CRLF 容错 | **弯引号容错**：等长折叠后定位匹配位置，只替换命中区段，文件其余引号风格不变 | `workspace/test/edit.test.mjs` |
+
+### 10.3 保留差异（记录理由）
+
+| # | 差异 | 理由 |
+| --- | --- | --- |
+| K1 | 行号格式用 `N→内容`，参考默认是 `N\t内容` | 本仓设计 v1.0 已定该格式且不影响能力锚点；参考的箭头格式是其 killswitch 回退路径 |
+| K2 | Glob 默认遵守忽略规则（参考的 fork 默认 `--no-ignore`） | 能力矩阵要求「遵守忽略规则」；本仓按矩阵执行，差异记录在此 |
+| K3 | Glob 上限 100、Grep 上限 250（与参考一致），但本仓默认值写在常量区可配置 | 可配置性为额外能力 |
+| K4 | 会话记忆粒度为「工具+路径」，参考的会话档等于切到 acceptEdits 模式或加目录规则 | 本仓三模式语义固定为 USER_CONFIRMED，会话记忆不改变模式，只免重复询问；目录级记忆留待 SP004/SP006 |
+| K5 | 未实现 rewind/消息级快照选择器、Read 去重、每次读取附加安全提醒 | 分别属 SP005（会话快照）、SP006（体验与 token 策略）；安全提醒属提示工程且不复制参考提示词 |
+| K6 | 未实现图片多模态传递（参考会下发 base64 图像块并做缩放） | 属 SP007；本轮只给尺寸摘要，不假装已读图像内容 |
+| K7 | 未实现 `.claude` 自身设置目录的专门保护档 | 本仓等价目标是 `~/.budingx` 用户数据目录（B-1，已实现）；项目内设置目录随 SP006 项目指令轮建立 |
+
+### 10.4 契约影响
+
+- `core/tools.ts`：`ToolContext` 增 `turnId`；`ApprovalDecision` 增 `feedback`（均向后兼容）。
+- `core/events.ts`：`ChangeRecordSummary` 增可选 `turnId`。
+- `core/constants.ts`：新增 `BUDINGX_WORKSPACE_010`（未读）、`_011`（陈旧读）。
+- `workspace/constants.ts`：`MAX_FILE_BYTES` 256KB、新增 `MAX_READ_RANGE_BYTES` 10MB、`MAX_GLOB_RESULTS` 100、`MAX_GREP_RESULTS` 250。
+
+### 10.5 自审结论（v1.1）
+
+修订条目均为「补齐参考已验证的能力面」，未削弱任何既有门槛或底线规则；A1/A10 属**收紧**（更安全），A4 属错误语义对齐（模型拿到明确指引而非半截内容）。A2 改变了 AC WT-04 的行为（父目录缺失由报错改为自动创建），该 AC 为 MODEL_PROPOSED，相应修订已写入需求文档 v0.2 并在此登记。v1.1 **approved**（Agent 自审，2026-11-17），覆盖计划补充、后续实施、测试与交付。

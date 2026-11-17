@@ -41,7 +41,7 @@ USER_CONFIRMED（2026-11-17 r6）：TUI 权限模式固定为三种——**仅�
 | --- | --- | --- | --- |
 | SP001 | 能力盘点、基线和核心边界：capability-baseline、evaluation-suite、core-boundaries、release-scope | 无 | 固定原产品版本、核心/完整对齐范围、任务集/盲测/预算、公开契约、数据共享/凭据边界和来源台账；npm 包名/平台/运行条件列出待决项。五类新增必交能力不能排除（**r6 调整：远程/IM 随 SP016–SP018 暂缓，见 r6 决定节**）；逐项登记实际行为、目标平台及对照场景。发现其他基线能力差距补计划，不缩减完整替代目标。 |
 | SP002 | 模型与会话闭环：provider-streaming、model-management、session-lifecycle、tui-conversation | SP001 | 真实模型配置与流式交互、工具回合、取消和错误有证据；会话配置快照、事件/终态契约、首个构建和 Node bin/资源边界明确；TUI 不成为其他端运行前置。 |
-| SP003 | 工作区与安全修改：workspace-tools、change-preview、permission-controls、file-context | SP002 | 跨目录搜索、编码/CRLF/大文件/忽略规则、补丁冲突、目录穿越/junction 越界有回归；拒绝写入磁盘不变，diff 与实际修改一致，用户无关改动保留。**三权限模式（仅可查看/工作区内修改/完全权限，用户固定）切换与边界有回归**。 |
+| SP003 | 工作区与安全修改：workspace-tools、change-preview、permission-controls、file-context | SP002 | 跨目录搜索、编码/CRLF/大文件/忽略规则、补丁冲突、目录穿越/junction 越界有回归；拒绝写入磁盘不变，diff 与实际修改一致，用户无关改动保留。**三权限模式（仅可查看/工作区内修改/完全权限，用户固定）切换与边界有回归**。（2026-11-17：SP003 已在功能分支实现并完成自动化验证，含对照参考仓的能力对齐批次 T18；待交叉验证门禁 GREEN 后合入 master） |
 | SP004 | 真实编码任务：command-execution、coding-task-loop、git-worktree-safety、task-planning | SP003 | 隔离项目完成定位→修改→运行测试→修复；用户追问/转向、Git 脏工作区、Windows quoting、后台状态/取消/输出上限和自身修改撤销有实测；没有提交或推送授权不执行 Git 发布。 |
 | SP005 | 长会话与数据可靠性：context-budget、session-recovery、failure-recovery、project-memory | SP004 | 压缩保留约束/计划/工具状态；跨进程恢复不盲重放副作用；项目记忆/会话隔离、原子持久化、升级/备份和共享写入约束有 fixture 与真实进程证据；明确长任务失败原因。 |
 | SP006 | 日常开发与 TUI 候选：project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging | SP005 | 项目指令、技能/MCP、受控 hooks、联网来源、追问/计划可用；TUI 中文/多行/快捷键/终端 resize 和无头事件/退出码可验证；实际 tarball 在仓库外隔离安装并完成核心任务，形成 npm dry-run 骨架而不上传。 |
@@ -92,7 +92,7 @@ SP008/SP009 已暂缓（r6），不再安排并行实施；恢复时只有在 Co
 
 ## 后续 Agent 的执行入口
 
-当前状态：**SP001 已验收（规格轮，用户 2026-11-16 验收通过，设计 v1 批准；2026-11-17 清单 v1.1 范围调整见 r6）；SP002 已实现并完成本地验证（118 项产品单元全绿），等待用户验收**；其余轮次中 SP008/SP009/SP016/SP017/SP018 为 DEFERRED（r6），其余仍为 PLANNED。SP001 已产出[能力基线、核心边界与发布范围](../SP/SP001/requirements-summary.md)，含[能力清单 v1.1](../SP/SP001/capability-baseline/capability-manifest.md)（85 项，必交 47、暂缓 6）、核心边界与不变量、评测集规格与[任务清单](../SP/SP001/evaluation-suite/task-inventory.md)、发布范围与待决项。47 条 AC 走查：46 PASS / 1 NOT_APPLICABLE（规格层面，不代表产品能力已实现），见[验证报告](../SP/SP001/test-report.md)。用户已拍板 O1=A（完整制品沿用 npm `budingx` 同名）、O2=A（Windows 先行）、O5=B（不采集原产品效果基线，效果口径永久为自有测量 + 覆盖度，5 个百分点非劣门槛废除）。2026-11-17 完成[剩余 SP 参考复刻全面排查](reference-tui-replication-audit.md)（r1，待审阅）：逐 SP 参考行为对照与补充任务、15 项 manifest v2 新增提议、10 项基线证据修正、6 组范围外提议；采纳后各轮开轮设计继承对应清单（暂缓轮清单保留作恢复储备）。
+当前状态：**SP001 已验收（规格轮，用户 2026-11-16 验收通过，设计 v1 批准；2026-11-17 清单 v1.1 范围调整见 r6）；SP002 已实现并完成本地验证并发布 0.2.0；**SP003 已实现并完成本地验证（302 项产品单元全绿，含对照参考仓的能力对齐批次 T18），待交叉验证门禁 GREEN 后合入 master**；其余轮次中 SP008/SP009/SP016/SP017/SP018 为 DEFERRED（r6），其余仍为 PLANNED。SP001 已产出[能力基线、核心边界与发布范围](../SP/SP001/requirements-summary.md)，含[能力清单 v1.1](../SP/SP001/capability-baseline/capability-manifest.md)（85 项，必交 47、暂缓 6）、核心边界与不变量、评测集规格与[任务清单](../SP/SP001/evaluation-suite/task-inventory.md)、发布范围与待决项。47 条 AC 走查：46 PASS / 1 NOT_APPLICABLE（规格层面，不代表产品能力已实现），见[验证报告](../SP/SP001/test-report.md)。用户已拍板 O1=A（完整制品沿用 npm `budingx` 同名）、O2=A（Windows 先行）、O5=B（不采集原产品效果基线，效果口径永久为自有测量 + 覆盖度，5 个百分点非劣门槛废除）。2026-11-17 完成[剩余 SP 参考复刻全面排查](reference-tui-replication-audit.md)（r1，待审阅）：逐 SP 参考行为对照与补充任务、15 项 manifest v2 新增提议、10 项基线证据修正、6 组范围外提议；采纳后各轮开轮设计继承对应清单（暂缓轮清单保留作恢复储备）。
 
 1. 用户授权启动时，从 SP001 开始，不跳过基线直接搭三端 UI；若用户改变顺序，记录影响并保留新决定。
 2. 在 SP/SP001/requirements-summary.md 列具体功能/优化目录，不创建需求 ID；按模板补来源、AC、依赖和状态。

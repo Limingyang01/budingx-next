@@ -1,30 +1,35 @@
 # 工作区文件工具 状态
 
-生命周期：ACTIVE｜更新：2026-11-17｜负责人：Agent 执行 SDD（2026-11-17 委托自审），用户验收 master 结果
+生命周期：VERIFYING｜更新：2026-11-17｜负责人：Agent 执行 SDD（2026-11-17 委托自审），用户验收 master 结果
 
 ## 当前范围与依据
 
-- 需求/AC：[requirements.md](requirements.md) v0.1（MODEL_PROPOSED，14 条 AC）
-- 设计/计划：未建立；下一步产出 [SP003 设计稿](../design/design.zh.md)（Agent 自审对象）
-- 基线：`master` = `b0ffc9e`；环境 Windows 10 + Node.js >=22.18 + TypeScript；仓库当前无任何文件工具实现
-- 当前批准范围：需求不单设批准门；设计自审通过后覆盖计划/实施/测试/交付与本地提交、门禁 GREEN 后合入 master（2026-11-17 委托）。push/npm 发布/打标签不在授权内
+- 需求/AC：[requirements.md](requirements.md) v0.2（WT-01…WT-21）
+- 设计/计划：[设计 v1.1](../design/design.zh.md)（§10 为 T18 能力对齐修订）/ [计划](../design/plan.zh.md)（T1–T18）
+- 基线：`master` = `b0ffc9e`；环境 Windows 10 + Node.js >=22.18 + TypeScript
+- 当前批准范围：设计 v1.1 自审通过，覆盖计划/实施/测试/交付与各阶段本地提交；交叉验证门禁 GREEN 后按 buding-merge 合入 master（2026-11-17 委托）。push/npm 发布/打标签/远端设置不在授权内
 
 ## 进度（断线续接入口）
 
-- 阶段清单：[x] 需求 → [ ] 设计 → [ ] 计划 → [ ] 实施 → [ ] 测试 → [ ] 交付；当前停点：等待本轮设计稿完成自审
-- 已完成：需求 v0.1（来源、范围、14 条 AC、依赖与风险）；仓库现状核对（core/provider/storage/tui 四模块现状）
-- 待做（最小下一步）：写 `SP/SP003/design/design.zh.md`（模块划分、工具契约、路径与忽略规则、错误形态），自审通过后写 `plan.zh.md`
-- 最新本地提交：无提交（开轮阶段未提交）
-- 阻塞/恢复条件：无阻塞；live Provider 相关验证沿用 SP002 凭据状态
+- 阶段清单：[x] 需求 → [x] 设计 → [x] 计划 → [x] 实施 → [x] 测试 → [ ] 交付；当前停点：交付记录与门禁收口
+- 已完成：`src/workspace/` 十一模块（paths/ignore/read/write/edit/search/diff/checkpoint/policy/context/tools）；读后编辑门、Write 自动建父目录与 LF、Grep 参数族、弯引号容错、`.git` 底线、搜索遵守 Read deny
+- 待做（最小下一步）：出 `SP/SP003/test-report.md` → 交叉验证门禁 → 合入 master
+- 最新本地提交：`10518f7`（T18 能力对齐批次）；T1–T16 见 `3e74c90`…`e0a7e80`
+- 阻塞/恢复条件：无阻塞；live Provider 端到端沿用 SP002 凭据状态，无凭据则记 UNVERIFIED
 
 ## 验证与验收
 
-状态：UNVERIFIED。尚未执行任何验证。计划中的最小验证层级：L0 纯函数（路径解析/忽略规则/diff）→ L1 真实文件进程（读写/编辑/搜索/越界）→ L2 伪 TTY e2e（补全与预览交互）→ L3 真终端人工（观感）。
+状态：PASS（自动化层）｜详见 [验证报告](../test-report.md)。
+
+- L0 纯函数：路径边界 7、忽略规则 9、diff 6、检查点 7、策略 10、上下文 8、工具装配 12 项
+- L1 真实文件进程：读写编辑搜索用例覆盖目录穿越/junction 越界、原子写、指纹冲突、CRLF、编码、超限、参数族
+- L2 伪 TTY e2e：审批三档 6 项、diff 对话框 7 项、补全 overlay 6 项（随 T18 更新）
+- L3 真终端人工：UNVERIFIED（需 Windows Terminal/ConHost 人工 smoke）
 
 ## 集成与发布
 
-合并、推送、产品发布：未执行。设计自审通过后各阶段本地提交随执行填入真实 SHA；合入 master 需交叉验证门禁 GREEN + 自审记录。
+合并、推送、产品发布：未执行。合入 master 需交叉验证门禁 GREEN + 自审记录（[集成门禁](../../../docs/integration-gate.md)）；npm 发布与推送不在授权内。
 
 ## 交接与历史
 
-下一位 Agent 先读 [迭代汇总](../requirements-summary.md) 与本文件，再对照 `git log`；本轮最早未完成步骤为「设计稿」。参考仓行为盘点由本轮子代理只读产出，仅作行为对照，禁止迁入源码。
+下一位 Agent 先读 [迭代汇总](../requirements-summary.md) 与本文件，再对照 `git log`；本轮最早未完成步骤为「交付记录与门禁收口」。参考仓行为事实仅用于能力对照，实现独立编写，未迁入源码、提示词或内部类型。

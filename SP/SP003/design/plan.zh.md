@@ -346,3 +346,23 @@ npm run merge:gate  # 交叉验证门禁（含 pack-smoke 与 test-report 审计
 ```
 
 门禁 RED 禁止合入 master；修完重跑，不得降阈值或删断言。
+
+---
+
+## T18 能力对齐批次（2026-11-17 追加，依据设计 v1.1 §10）
+
+对照参考仓只读盘点后补齐的能力面，全部按 RED→GREEN 实施，证据落在同名测试文件。
+
+| 任务 | 内容 | AC 覆盖 | 验证 | 状态 |
+| --- | --- | --- | --- | --- |
+| T18a | 读后编辑门（会话内已读记录 + 陈旧校验）+ 错误码 010/011 | WT-05/WT-06 扩展 | `workspace/test/tools.test.mjs`（3 例新增） | ✅ `10518f7` |
+| T18b | Write 自动建父目录 + 强制 LF；Edit 保留 EOL；Read 整文件超限改为抛错并给 offset/limit 提示 | WT-03/WT-04 修订 | `workspace/test/read.test.mjs`、`write.test.mjs` | ✅ `10518f7` |
+| T18c | 拒绝反馈输入态 + `ApprovalDecision.feedback` 回传模型 | PC-06/PC-10 扩展 | `core/test/permissions.test.mjs`、`tui/test/approval-tiers.test.mjs` | ✅ `10518f7` |
+| T18d | Grep 参数族（output_mode/-A/-B/-C/head_limit/offset/multiline/type）+ Glob 上限 100 | WT-09/WT-10 扩展 | `workspace/test/search.test.mjs`（4 例新增） | ✅ `10518f7` |
+| T18e | `@file#L10-20` 行范围引用 + 补全 LCP 优先 | FC-01/FC-04 扩展 | `workspace/test/context.test.mjs`、`tui/test/completion.test.mjs` | ✅ `10518f7` |
+| T18f | `/diff` 多源（Current + 逐回合）+ ←/→ 切换 | CP-07 扩展 | `tui/test/diff-view.test.mjs` | ✅ `10518f7` |
+| T18g | `.git` 写入强制询问（优先于记忆与 allow 规则） | PC-08 扩展 | `workspace/test/policy.test.mjs` | ✅ `10518f7` |
+| T18h | Edit 弯引号等长折叠容错 | WT-07 扩展 | `workspace/test/edit.test.mjs` | ✅ `10518f7` |
+| T18i | 搜索结果遵守 Read deny 规则 | WT-09/WT-10 扩展 | `workspace/tools.ts` + runtime 装配（并入 T18d 用例） | ✅ `10518f7` |
+
+T18 之后的收口任务：T17（交付记录、test-report、说明书与文档同步）→ 交叉验证门禁 → 合入 master。

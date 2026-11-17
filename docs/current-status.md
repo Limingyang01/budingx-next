@@ -1,6 +1,6 @@
 # 当前状态
 
-日期：2026-11-17。阶段：简易聊天 TUI 已发布（npm `budingx@0.1.1`），OIDC 发布链路已实测；**SP002 的 0.2.0 已发布，Windows/Linux 验证、OIDC 上传及官方安装核验通过**；其余 19 轮完整 Agent 迭代仍未启动。
+日期：2026-11-17。阶段：简易聊天 TUI 已发布（npm `budingx@0.1.1`），OIDC 发布链路已实测；**SP002 的 0.2.0 已发布，Windows/Linux 验证、OIDC 上传及官方安装核验通过**；**SP003「工作区与安全修改」已在功能分支实现并完成自动化验证**（工作区文件工具、三档权限模式、改动预览与撤销、`@` 引用补全），待交叉验证门禁与合入 master；其余迭代未启动。
 
 ## 已有
 
@@ -12,10 +12,11 @@
 - npm 已发布的 0.1.1 是无运行时第三方依赖的聊天预览；当前 src/tui 已准备 0.2.0，新增 Ink/React/string-width 运行时依赖及模型、会话核心。
 - 实际 Node/TypeScript 构建、测试、版本准备与发布编排，实际 tarball 隔离安装 smoke 已通过。
 - **SP002 新增**：`src/core`（事件契约、会话/回合状态机、工具回合、输入队列、消息规范化）、`src/provider`（OpenAI 兼容流解析、tool_calls 碎片、错误分类、有界重试、取消、连通探测）、`src/storage`（`~/.budingx` 配置与凭据仓库、模型档案 CRUD、三源合并）、`src/tui` 的 Ink 8 对话界面（渲染 reducer、多行编辑器、审批卡、双中断与排队）。
+- **SP003 新增（功能分支，未合 master）**：`src/workspace`（路径边界与忽略规则、Read/Write/Edit/Glob/Grep、行级 diff、检查点撤销、三模式策略与规则、`@` 上下文）、`src/core` 的权限端口与策略判定接线、`src/storage/permissions.ts`（`~/.budingx/permissions.json`）、TUI 侧审批三档与拒绝反馈、模式徽标与 Shift+Tab 轮播、diff 两级对话框与多源切换、`@`/`/` 统一补全。
 
 ## 未实现
 
-完整编码 Agent 的**工具**（文件/终端读写、权限规则与三权限模式）、转录持久化与恢复、Computer Use、团队、浏览器和调度均未实现；Desktop/VSIX、远程/H5、IM 按 r6 暂缓（未实现且移出当前规划交付）。SP002 只交付契约面：工具以注册接口 + 测试桩验证，真实工具由 SP003/SP004 实现。
+完整编码 Agent 的**命令执行与任务循环**、转录持久化与恢复、Computer Use、团队、浏览器和调度均未实现；Desktop/VSIX、远程/H5、IM 按 r6 暂缓（未实现且移出当前规划交付）。SP003 交付的是**文件工具与权限控制**，不等于完整 Coding Agent：终端命令、计划与测试循环由 SP004 实现，跨会话快照由 SP005 实现。
 
 首发使用 Node.js >=22.18、TypeScript 和 Node test runner，当前真实命令见 package.json 与 [开发指南](development.md)。禁止引入 Bun；不能把旧项目版本 0.5.0、旧测试成绩或 Git 发布状态当作本仓事实。
 
