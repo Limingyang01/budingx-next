@@ -59,7 +59,7 @@ try {
   )
   save()
   await npm(['test'], { cwd: root, stdio: 'inherit' })
-  const packed = JSON.parse(
+  const packOutput = JSON.parse(
     (
       await npm(
         [
@@ -72,20 +72,24 @@ try {
         { cwd: product }
       )
     ).out
-  )[0]
-  const allowed = new Set([
-    'package.json',
-    'README.md',
-    'LICENSE',
-    'dist/cli.js',
-    'dist/config.js',
-    'dist/provider.js'
-  ])
-  if (
-    packed.files.length !== allowed.size ||
-    packed.files.some((file) => !allowed.has(file.path))
   )
-    throw new Error('Unexpected or missing files in product tarball')
+  const packed = Array.isArray(packOutput)
+    ? packOutput[0]
+    : Object.values(packOutput)[0]
+  if (!packed || !Array.isArray(packed.files))
+    throw new Error('Unexpected npm pack output')
+  const allowedRoots = new Set(['package.json', 'README.md', 'LICENSE'])
+  const unexpected = packed.files.filter((file) => {
+    if (allowedRoots.has(file.path)) return false
+    return !(file.path.startsWith('dist/') && file.path.endsWith('.js'))
+  })
+  if (unexpected.length > 0)
+    throw new Error(
+      'Unexpected files in product tarball: ' +
+        unexpected.map((file) => file.path).join(', ')
+    )
+  if (!packed.files.some((file) => file.path === 'dist/tui/cli.js'))
+    throw new Error('Product tarball is missing dist/tui/cli.js')
   for (const file of packed.files) {
     const contents = readFileSync(path.join(product, file.path), 'utf8')
     if (
