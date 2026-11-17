@@ -1,152 +1,271 @@
 #!/usr/bin/env node
-import { createInterface } from 'node:readline'
+// budingx entry point (SP002 design §3.1/§3.6).
 import { readFileSync } from 'node:fs'
-import { stripVTControlCharacters } from 'node:util'
-import { loadConfig, normalizeBaseUrl } from './config.js'
-import { streamChat, type Message } from './provider.js'
+import { createElement } from 'react'
+import { render } from 'ink'
+import { Session } from '../core/session.js'
+import type { TurnSnapshot } from '../core/events.js'
+import { createOpenAiProvider } from '../provider/openai.js'
+import { ConfigStore } from '../storage/config-store.js'
+import { CredentialStore } from '../storage/credentials.js'
+import {
+  mergeSources,
+  profileHost,
+  type ResolvedConfig
+} from '../storage/profiles.js'
+import { App } from './app.js'
+import { InkApprovalGateway } from './approval.js'
+import { runCommand } from './commands.js'
 
-const version = (
-  JSON.parse(
-    readFileSync(new URL('../package.json', import.meta.url), 'utf8')
-  ) as { version: string }
-).version
-const help = `budingx ${version} — independent terminal chat preview
+function readProductVersion(): string {
+  let dir = new URL('.', import.meta.url)
+  for (let depth = 0; depth < 8; depth++) {
+    try {
+      const parsed = JSON.parse(
+        readFileSync(new URL('package.json', dir), 'utf8')
+      ) as { name?: string; version?: string }
+      if (parsed.name === 'budingx' && parsed.version) return parsed.version
+    } catch {
+      // keep walking up
+    }
+    dir = new URL('../', dir)
+  }
+  return '0.0.0'
+}
+
+const version = readProductVersion()
+const help = `budingx ${version} — independent terminal coding agent (preview)
 Usage: budingx [--model NAME] [--base-url URL] [--timeout MS] [--prompt TEXT]
 Environment: BUDINGX_API_KEY, BUDINGX_MODEL, BUDINGX_BASE_URL
-Commands: /help /config /model NAME /endpoint URL /clear /exit
-Ctrl+C cancels a response; at the prompt it exits.
-Chat only: no coding tools, file access, saved history or Bun required.`
-const safe = (text: string) =>
-  stripVTControlCharacters(text).replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '')
+Commands: /help /config /models /model NAME /provider add|edit|rm|check /clear /exit
+Keys: Esc interrupts a running turn, Enter submits, Ctrl+C interrupts and exits.
+Coding tools land in later releases; this build ships the model and session core.`
 
-async function main() {
+type Stores = {
+  configStore: ConfigStore
+  credentialStore: CredentialStore
+  file: {
+    profileId?: string
+    baseUrl?: string
+    model?: string
+    apiKey?: string
+  }
+}
+
+function loadStores(): Stores {
+  const configStore = new ConfigStore()
+  const credentialStore = new CredentialStore()
+  const stored = configStore.load()
+  const profile =
+    stored.models.find((entry) => entry.id === stored.defaultModelId) ??
+    stored.models[0]
+  const file = profile
+    ? {
+        profileId: profile.id,
+        baseUrl: profile.baseUrl,
+        model: profile.model,
+        apiKey: credentialStore.get(profile.id, profileHost(profile))
+      }
+    : {}
+  return { configStore, credentialStore, file }
+}
+
+function snapshotOf(config: ResolvedConfig): TurnSnapshot {
+  let host = ''
+  try {
+    host = new URL(config.baseUrl).host
+  } catch {
+    host = ''
+  }
+  return {
+    modelId: config.profileId ?? 'session',
+    model: config.model,
+    baseUrlHost: host,
+    capabilities: { tools: false }
+  }
+}
+
+function createSession(config: ResolvedConfig): Session {
+  const provider = createOpenAiProvider({
+    baseUrl: config.baseUrl,
+    apiKey: config.apiKey
+  })
+  return new Session({
+    provider,
+    approval: {
+      async request() {
+        return { outcome: 'allow', via: 'policy' }
+      }
+    },
+    resolveSnapshot: () => snapshotOf(config)
+  })
+}
+
+/** Run one turn and stream the answer as plain text. */
+function runTurn(session: Session, text: string): Promise<number> {
+  return new Promise<number>((resolve) => {
+    const off = session.on((event) => {
+      if (event.type === 'text_delta') process.stdout.write(event.text)
+      if (event.type === 'turn_finalized') {
+        off()
+        if (event.outcome === 'error' && event.error) {
+          process.stderr.write(`Error: ${event.error.message}\n`)
+          resolve(1)
+          return
+        }
+        resolve(0)
+      }
+    })
+    session.submit(text)
+  })
+}
+
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = []
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk))
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+async function runPipe(
+  config: ResolvedConfig,
+  stores: Stores
+): Promise<number> {
+  const session = createSession(config)
+  const input = await readStdin()
+  let code = 0
+  for (const rawLine of input.split('\n')) {
+    const text = rawLine.trim()
+    if (!text) continue
+    if (text === '/exit' || text === '/quit') break
+    if (text.startsWith('/')) {
+      const outcome = await runCommand(text, {
+        session,
+        configStore: stores.configStore,
+        credentialStore: stores.credentialStore,
+        getConfig: () => config,
+        setConfig: () => {},
+        exit: () => {}
+      })
+      if (outcome.error) process.stderr.write(`Error: ${outcome.error}\n`)
+      else if (outcome.message) process.stdout.write(`${outcome.message}\n`)
+      continue
+    }
+    if (!config.model.trim()) {
+      process.stderr.write(
+        'Error: Set BUDINGX_MODEL or use /model <name> before sending a prompt\n'
+      )
+      code = 1
+      break
+    }
+    const turnCode = await runTurn(session, text)
+    process.stdout.write('\n')
+    if (turnCode !== 0) code = turnCode
+  }
+  session.dispose()
+  return code
+}
+
+async function runInteractive(
+  config: ResolvedConfig,
+  stores: Stores
+): Promise<void> {
+  const provider = createOpenAiProvider({
+    baseUrl: config.baseUrl,
+    apiKey: config.apiKey
+  })
+  const gateway = new InkApprovalGateway()
+  let current = config
+  const session = new Session({
+    provider,
+    approval: gateway,
+    resolveSnapshot: () => snapshotOf(current)
+  })
+
+  const instance = render(
+    createElement(App, {
+      session,
+      gateway,
+      commandContext: {
+        configStore: stores.configStore,
+        credentialStore: stores.credentialStore,
+        getConfig: () => current,
+        setConfig: (next: ResolvedConfig) => {
+          current = next
+        },
+        exit: () => {
+          instance.unmount()
+        }
+      },
+      onExit: () => {
+        instance.unmount()
+      }
+    }),
+    { exitOnCtrlC: false }
+  )
+  await instance.waitUntilExit()
+  session.dispose()
+}
+
+async function main(): Promise<void> {
   const args = process.argv.slice(2)
   if (args.length === 1 && ['--version', '-v'].includes(args[0])) {
-    console.log(version)
+    process.stdout.write(`${version}\n`)
     return
   }
   if (args.length === 1 && ['--help', '-h'].includes(args[0])) {
-    console.log(help)
+    process.stdout.write(`${help}\n`)
     return
   }
-  const config = loadConfig(args, process.env)
-  const messages: Message[] = []
-  let active: AbortController | undefined
-  let exiting = false
-  let inputClosed = false
-  let rl: ReturnType<typeof createInterface> | undefined
-  const interrupt = () => {
-    if (active) active.abort()
-    else {
-      exiting = true
-      rl?.close()
-    }
-  }
-  process.on('SIGINT', interrupt)
-  async function send(text: string) {
-    if (!text.trim()) return
-    if (text.length > 32768) throw new Error('Message exceeds 32768 characters')
-    if (
-      messages.length >= 24 ||
-      messages.reduce((sum, message) => sum + message.content.length, 0) +
-        text.length >
-        120000
-    )
-      throw new Error(
-        'Session limit reached; /clear to start a new conversation'
-      )
-    const turn: Message[] = [...messages, { role: 'user', content: text }]
-    active = new AbortController()
-    let answer = ''
-    process.stdout.write('assistant> ')
-    try {
-      for await (const chunk of streamChat(config, turn, active.signal)) {
-        answer += chunk
-        process.stdout.write(safe(chunk))
-      }
-      messages.push(
-        { role: 'user', content: text },
-        { role: 'assistant', content: answer }
-      )
-      process.stdout.write('\n')
-    } catch (error) {
-      process.stdout.write('\n')
-      if (active.signal.aborted)
-        console.error('[Cancelled; turn was not saved]')
-      else throw error
-    } finally {
-      active = undefined
-    }
-  }
+
+  let stores: Stores
   try {
-    if (config.prompt !== undefined) {
-      await send(config.prompt)
+    stores = loadStores()
+  } catch (error) {
+    process.stderr.write(
+      `Error: ${error instanceof Error ? error.message : 'configuration unreadable'}\n`
+    )
+    process.exitCode = 1
+    return
+  }
+
+  let config: ResolvedConfig
+  try {
+    config = mergeSources({ args, env: process.env, file: stores.file })
+  } catch (error) {
+    process.stderr.write(
+      `Error: ${error instanceof Error ? error.message : 'invalid configuration'}\n`
+    )
+    process.exitCode = 1
+    return
+  }
+
+  if (config.prompt !== undefined) {
+    if (!config.model.trim()) {
+      process.stderr.write(
+        'Error: Set BUDINGX_MODEL or use /model <name> before sending a prompt\n'
+      )
+      process.exitCode = 1
       return
     }
-    console.log(`budingx ${version} · chat preview · /help for commands`)
-    console.log(
-      'Session stays in memory. Model: ' +
-        safe(config.model || '(not configured)')
-    )
-    rl = createInterface({
-      input: process.stdin,
-      output: process.stdout,
-      terminal: Boolean(process.stdin.isTTY && process.stdout.isTTY)
-    })
-    rl.on('SIGINT', interrupt)
-    rl.on('close', () => {
-      inputClosed = true
-    })
-    rl.setPrompt('you> ')
-    rl.prompt()
-    for await (const line of rl) {
-      if (exiting) break
-      const text = line.trim()
-      try {
-        if (text === '/exit' || text === '/quit') break
-        else if (text === '/help') console.log(help)
-        else if (text === '/config')
-          console.log(
-            `Endpoint: ${safe(config.baseUrl)}\nModel: ${safe(config.model || '(not configured)')}\nAPI key: ${config.apiKey ? 'set (hidden)' : 'not set'}\nTimeout: ${config.timeoutMs} ms`
-          )
-        else if (text === '/clear') {
-          messages.length = 0
-          console.log('Conversation cleared')
-        } else if (text.startsWith('/model ')) {
-          const model = text.slice(7).trim()
-          const next = loadConfig(
-            ['--model', model, '--base-url', config.baseUrl],
-            { BUDINGX_API_KEY: config.apiKey }
-          )
-          config.model = next.model
-          messages.length = 0
-          console.log('Model changed; conversation cleared')
-        } else if (text.startsWith('/endpoint ')) {
-          config.baseUrl = normalizeBaseUrl(text.slice(10).trim())
-          config.apiKey = ''
-          messages.length = 0
-          console.log(
-            'Endpoint changed; API key removed to prevent forwarding it to a different host. Restart with BUDINGX_API_KEY if needed.'
-          )
-        } else if (text.startsWith('/'))
-          console.error('Unknown command; use /help')
-        else await send(text)
-      } catch (error) {
-        console.error(
-          'Error: ' +
-            safe(error instanceof Error ? error.message : 'Request failed')
-        )
-      }
-      if (!exiting && !inputClosed) rl.prompt()
-    }
-  } finally {
-    rl?.close()
-    process.removeListener('SIGINT', interrupt)
+    const session = createSession(config)
+    const code = await runTurn(session, config.prompt)
+    process.stdout.write('\n')
+    session.dispose()
+    process.exitCode = code
+    return
   }
+
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    process.exitCode = await runPipe(config, stores)
+    return
+  }
+
+  await runInteractive(config, stores)
 }
+
 main().catch((error) => {
-  console.error(
-    'Error: ' + safe(error instanceof Error ? error.message : 'Request failed')
+  process.stderr.write(
+    `Error: ${error instanceof Error ? error.message : 'budingx failed'}\n`
   )
   process.exitCode = 1
 })

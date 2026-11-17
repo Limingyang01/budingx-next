@@ -5,7 +5,8 @@ import { once } from 'node:events'
 import { test } from 'node:test'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-const cli = fileURLToPath(new URL('../dist/cli.js', import.meta.url))
+
+const cli = fileURLToPath(new URL('../dist/tui/cli.js', import.meta.url))
 
 function run(args = [], input = '', env = {}) {
   return new Promise((resolve, reject) => {
@@ -19,8 +20,8 @@ function run(args = [], input = '', env = {}) {
       },
       windowsHide: true
     })
-    let out = '',
-      err = ''
+    let out = ''
+    let err = ''
     child.stdout.on('data', (data) => {
       out += data
     })
@@ -32,8 +33,11 @@ function run(args = [], input = '', env = {}) {
     child.stdin.end(input)
   })
 }
-test('help/version work without configuration, invalid options and missing model fail usefully', async () => {
-  assert.match((await run(['--help'])).out, /Chat only/)
+
+test('help 与 version 不依赖配置，未知选项与缺模型明确报错', async () => {
+  const help = await run(['--help'])
+  assert.match(help.out, /budingx/)
+  assert.match(help.out, /Commands:/)
   assert.equal(
     (await run(['--version'])).out.trim(),
     JSON.parse(
@@ -47,20 +51,40 @@ test('help/version work without configuration, invalid options and missing model
   assert.equal(noModel.code, 1)
   assert.match(noModel.err, /BUDINGX_MODEL/)
 })
-test('interactive commands hide secrets and endpoint change drops credentials', async () => {
-  const result = await run(
-    [],
-    '/config\n/model local-model\n/endpoint http://localhost:1234/v1\n/config\n/clear\n/nope\n/exit\n',
-    { BUDINGX_API_KEY: 'DO-NOT-PRINT-THIS' }
+
+test('管道输入按行发送且输出无 ANSI 污染', async (t) => {
+  const calls = []
+  const server = createServer(async (req, res) => {
+    let body = ''
+    for await (const chunk of req) body += chunk
+    const messages = JSON.parse(body).messages
+    calls.push(messages)
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    res.end(
+      'data: {"choices":[{"delta":{"content":"你好"}}]}\n\ndata: [DONE]\n\n'
+    )
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  t.after(() => {
+    server.closeAllConnections()
+    server.close()
+  })
+  const result = await run([], 'first\nsecond\n', {
+    BUDINGX_BASE_URL: `http://127.0.0.1:${server.address().port}/v1`,
+    BUDINGX_MODEL: 'fixture'
+  })
+  assert.equal(result.code, 0, result.err)
+  assert.match(result.out, /你好/)
+  assert.doesNotMatch(result.out, /\u001b\[/)
+  assert.equal(calls.length, 2)
+  assert.deepEqual(
+    calls[1].map((message) => message.content),
+    ['first', '你好', 'second']
   )
-  assert.equal(result.code, 0)
-  assert.doesNotMatch(result.out + result.err, /DO-NOT-PRINT-THIS/)
-  assert.match(result.out, /Model: local-model/)
-  assert.match(result.out, /API key: not set/)
-  assert.match(result.out, /Conversation cleared/)
-  assert.match(result.err, /Unknown command/)
 })
-test('real CLI sends only successful turns in history and can continue after a failed request', async (t) => {
+
+test('失败的回合不会污染历史，后续回合继续', async (t) => {
   const calls = []
   const server = createServer(async (req, res) => {
     let body = ''
@@ -83,31 +107,31 @@ test('real CLI sends only successful turns in history and can continue after a f
     server.closeAllConnections()
     server.close()
   })
-  const result = await run([], 'first\nfail\nsecond\n/exit\n', {
+  const result = await run([], 'first\nfail\nsecond\n', {
     BUDINGX_BASE_URL: `http://127.0.0.1:${server.address().port}/v1`,
     BUDINGX_MODEL: 'fixture'
   })
-  assert.equal(result.code, 0, result.err)
+  assert.equal(result.code, 1)
   assert.match(result.out, /你好/)
   assert.match(result.err, /500/)
-  assert.equal(calls.length, 3)
+  // The failing turn is retried up to the bounded retry limit (5 attempts).
+  assert.equal(calls.length, 7)
   assert.deepEqual(
-    calls[2].map((message) => message.content),
+    calls.at(-1).map((message) => message.content),
     ['first', '你好', 'second']
   )
+  assert.doesNotMatch(result.out + result.err, /secret error/)
 })
 
-test('piped EOF during an asynchronous reply completes the turn and exits normally', async (t) => {
-  let calls = 0
+test('管道中的命令不会作为提示词发送', async (t) => {
+  const calls = []
   const server = createServer(async (req, res) => {
-    for await (const _chunk of req) {
-      /* consume request before delayed response */
-    }
-    calls++
-    await new Promise((resolve) => setTimeout(resolve, 30))
+    let body = ''
+    for await (const chunk of req) body += chunk
+    calls.push(JSON.parse(body).messages)
     res.writeHead(200, { 'Content-Type': 'text/event-stream' })
     res.end(
-      'data: {"choices":[{"delta":{"content":"finished after EOF"}}]}\n\ndata: [DONE]\n\n'
+      'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n'
     )
   })
   server.listen(0, '127.0.0.1')
@@ -116,12 +140,20 @@ test('piped EOF during an asynchronous reply completes the turn and exits normal
     server.closeAllConnections()
     server.close()
   })
-  const result = await run([], 'single message\n', {
+  const result = await run([], '/help\nreal question\n', {
     BUDINGX_BASE_URL: `http://127.0.0.1:${server.address().port}/v1`,
     BUDINGX_MODEL: 'fixture'
   })
   assert.equal(result.code, 0, result.err)
-  assert.match(result.out, /finished after EOF/)
-  assert.doesNotMatch(result.err, /readline was closed/)
-  assert.equal(calls, 1)
+  assert.match(result.out, /Commands:/)
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].at(-1).content, 'real question')
+})
+
+test('交互模式在非 TTY 下不挂起', async () => {
+  const result = await run([], '', {
+    BUDINGX_BASE_URL: 'http://127.0.0.1:9/v1',
+    BUDINGX_MODEL: 'fixture'
+  })
+  assert.equal(result.code, 0, result.err)
 })
