@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-// Module boundary check (SP002 PS-07 / SL-09 / TC-01).
-// - core/provider/storage must not depend on UI or terminal libraries.
-// - core must stay free of IO side effects and must not import provider/storage/tui.
+// Module boundary check (SP002 PS-07 / SL-09 / TC-01, SP003 workspace).
+// - core/provider/storage/workspace must not depend on UI or terminal libraries.
+// - core must stay free of IO side effects and must not import
+//   provider/storage/tui/workspace.
+// - workspace owns file IO and must not depend on the TUI host.
 // - the published package may only depend on the rendering whitelist.
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
@@ -65,9 +67,10 @@ function report(file, reason) {
 }
 
 const RULES = {
-  core: { ui: UI_BANNED, io: CORE_IO_BANNED, dirs: ['provider', 'storage', 'tui'] },
+  core: { ui: UI_BANNED, io: CORE_IO_BANNED, dirs: ['provider', 'storage', 'tui', 'workspace'] },
   provider: { ui: UI_BANNED, io: [], dirs: ['storage', 'tui'] },
-  storage: { ui: UI_BANNED, io: [], dirs: ['tui'] }
+  storage: { ui: UI_BANNED, io: [], dirs: ['tui'] },
+  workspace: { ui: UI_BANNED, io: [], dirs: ['tui'] }
 }
 
 for (const [moduleName, rule] of Object.entries(RULES)) {

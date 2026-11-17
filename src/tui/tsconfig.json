@@ -18,6 +18,7 @@
     "../core/**/*.ts",
     "../provider/**/*.ts",
     "../storage/**/*.ts",
+    "../workspace/**/*.ts",
     "./**/*.ts",
     "./**/*.tsx"
   ],
