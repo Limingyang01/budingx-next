@@ -8,6 +8,7 @@ import { parse } from 'yaml'
 import {
   SKILLS,
   FAMILIES,
+  THIRD_PARTY_SKILLS,
   canonicalPath,
   syncEntries
 } from './sync-entries.mjs'
@@ -27,7 +28,7 @@ function filesIn(directory) {
 test('every managed skill is discoverable through all generated entry families', () => {
   assert.deepEqual(syncEntries(root, { check: true }), [])
   assert.ok(SKILLS.includes('buding-npm-release'))
-  assert.equal(SKILLS.length, 20)
+  assert.equal(SKILLS.length, 22)
   for (const family of FAMILIES) {
     for (const name of SKILLS) {
       const file = `${family}/skills/${name}/SKILL.md`
@@ -58,6 +59,26 @@ test('the licensed upstream snapshot retains every pinned byte and its license',
       expected,
       `Upstream file changed or incomplete: ${file}`
     )
+  }
+})
+
+test('third-party skill snapshots retain every pinned byte and their license', () => {
+  assert.deepEqual(THIRD_PARTY_SKILLS, ['react-ink', 'tui-design'])
+  for (const name of THIRD_PARTY_SKILLS) {
+    const manifest = JSON.parse(read(`skills/${name}/UPSTREAM.json`))
+    assert.equal(manifest.license, 'MIT')
+    assert.match(read(`skills/${name}/LICENSE`), /MIT License/)
+    assert.ok(manifest.revision && manifest.repository)
+    for (const [file, expected] of Object.entries(manifest.files)) {
+      const actual = createHash('sha256')
+        .update(readFileSync(path.join(root, 'skills', name, file)))
+        .digest('hex')
+      assert.equal(
+        actual,
+        expected,
+        `Upstream file changed or incomplete: ${name}/${file}`
+      )
+    }
   }
 })
 

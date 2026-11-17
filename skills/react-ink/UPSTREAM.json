@@ -1,0 +1,18 @@
+{
+  "repository": "https://github.com/dhruvjainin/absolute",
+  "revision": "1c8c79ae7d24df8779cb7847e676a3ab73bd400b",
+  "license": "MIT",
+  "installation": "Project-local skills snapshot; no global plugin or hooks installed",
+  "upstream_path": "skills/react-ink/",
+  "retrieved_at": "2026-11-17",
+  "note": "原入口 absolutelyskilled/react-ink 与 AbsolutelySkilled/AbsolutelySkilled 均已失效：仓库改名 dhruvjainin/absolute，技能在 1ad2c4b3e8a3115a496b765fdd08b6350eeaa267（2026-06-05 cleanup）中删除。本快照取自删除前最后内容提交。仅保留 SKILL.md、references/、sources.yaml 与根 LICENSE；上游 README.md 与 evals.json 未迁入。",
+  "files": {
+    "LICENSE": "7506a66b7a47ea2a0d81d72c468a384fa7267c381ba2e4eae4b29cbffb51eb5f",
+    "SKILL.md": "97ff3281a81b42292ff592f550b4f830372471ceedf6a51d183caaf412c506d7",
+    "references/components-api.md": "26b842a8bf555228da1d4fa89a72794320f6595bebff90943a3e7e895f7a4ad8",
+    "references/ecosystem.md": "8be3a48f030a77e0a91fe59d6ac3af0027a231812f88903f1675a0aa21e87988",
+    "references/hooks-api.md": "89bccd97b78a171b0f90d8a1a44a4c6d2d2ac05c265ea7034d891f5b2d0200da",
+    "references/patterns.md": "4726638220f21c7594604111a3410a9bdda0aa5641129c7c5cec799fc09b0851",
+    "sources.yaml": "b80efd669a95bd98f75ac85002ace6aa7be49a6c31708ef72c1e0f8933b6dcb0"
+  }
+}

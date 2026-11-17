@@ -1,0 +1,29 @@
+{
+  "repository": "https://github.com/gfargo/tui-design-skill",
+  "revision": "74e095c177a387c61d368478074a1a94937d3aa1",
+  "license": "MIT",
+  "installation": "Project-local skills snapshot; no global plugin or hooks installed",
+  "upstream_path": "plugins/tui-design/skills/tui-design/",
+  "retrieved_at": "2026-11-17",
+  "discovered_via": {
+    "repository": "https://github.com/podo/design-agent-skills",
+    "revision": "509f37f0cce3d8e20ae3addb8a4873f1726dadf1",
+    "path": "skills/tui-design-skill/",
+    "note": "podo 目录中名为 tui-design-skill，是指向本上游的 catalogue stub；上游技能真实名称为 tui-design，本项目按上游名称安装。"
+  },
+  "note": "仅保留 SKILL.md、references/、agents/openai.yaml 与根 LICENSE；上游 README、CHANGELOG、evals/、samples/ 与插件市场配置未迁入。",
+  "files": {
+    "LICENSE": "0554842974eb54888c3fff55fd9db38ea9f93f547031342857d91fd25bd3f3a3",
+    "SKILL.md": "f7a7db5cc439c6271f2614fd99a424c1ff5f1b22ea3907d40cd77e482ebb6265",
+    "agents/openai.yaml": "da9389be0d62f60ae5a560174f8bb3207be92b16bce57cbd00fafb8e4e1189b1",
+    "references/cli-basics.md": "8b2da778f851aeaec93d3cd572f69a9558055308a9bbe8455024cf884036f5ca",
+    "references/ecosystem-go.md": "0a6da0bbebc2455af1e7858a7f3a02fd2a012f8b95eab1c4e5fe6765b807d5fe",
+    "references/ecosystem-python.md": "b032157b38bbc233ace8f6541ceab71baf95976c7b50bb8791033aa4c8fc6c81",
+    "references/ecosystem-rust.md": "4959d2d3c73afd653989720d555a929df0b486bf52881a2291a90641dd1b2579",
+    "references/ecosystem-typescript.md": "d1ae3a1569c81b326f4ba4c63e7433e982e35f2eb7a632dc693a239f3243b739",
+    "references/exemplar-apps.md": "b59799564188beeb5626748a1e1595674511ab1462fce5d2663b8fbb13904557",
+    "references/interaction-patterns.md": "4471a68ae74d05df36e0c0995d66464d7ab33fefa604f0a75a1b021b0dccc95f",
+    "references/terminal-protocols.md": "ae2d3cad9865b2461092aa5c0a69ea9e83e04acba87f0f9137a6add94329c7bc",
+    "references/visual-patterns.md": "0f75f5cb5ad541e97a8cba9bac4b035d627510ed075f72fa3621aa3b95993049"
+  }
+}

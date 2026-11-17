@@ -5,6 +5,8 @@
 ```text
 skills/buding-*/                    5 个适配新仓的项目流程
 skills/superpowers/<name>/         15 个 MIT Superpowers 7.0.0 技能及辅助资源
+skills/react-ink/                  第三方 MIT React Ink 开发规范快照
+skills/tui-design/                 第三方 MIT TUI/CLI 设计规范快照
 .agents/skills/<entry>/SKILL.md     Codex 等助手的发现入口
 .claude/skills/<entry>/SKILL.md     Claude Code 助手发现入口
 .budingx/skills/<entry>/SKILL.md    预留的开发工具发现入口
@@ -23,6 +25,15 @@ skills/superpowers/<name>/         15 个 MIT Superpowers 7.0.0 技能及辅助�
 | [buding-npm-release](buding-npm-release/SKILL.md) | TUI 构建、版本准备、Actions/OIDC 发布、官方安装验证与回执 |
 
 Superpowers 入口使用 `superpowers-<name>`；上游文中的 `superpowers:<name>` 映射为本地入口，使用前必须读取 canonical 正文和适用资源。
+
+## 第三方开发技能
+
+| 入口 | 适用工作 | 来源 |
+| --- | --- | --- |
+| [react-ink](react-ink/SKILL.md) | 用 React Ink 写终端 UI 时的组件、布局、输入与生命周期规范 | [dhruvjainin/absolute](https://github.com/dhruvjainin/absolute) 固定提交快照，[UPSTREAM](react-ink/UPSTREAM.json) |
+| [tui-design](tui-design/SKILL.md) | TUI/CLI 的布局、配色、快捷键、可发现性与跨框架设计审查 | [gfargo/tui-design-skill](https://github.com/gfargo/tui-design-skill) 固定提交快照，[UPSTREAM](tui-design/UPSTREAM.json) |
+
+两者均按上游原文保留正文与 references，附 MIT 许可证和 UPSTREAM 哈希。`tui-design` 经 [podo/design-agent-skills](https://github.com/podo/design-agent-skills) 的 `tui-design-skill` 目录指针发现，上游真实技能名为 `tui-design`；`react-ink` 的原入口 `absolutelyskilled/react-ink` 已失效，快照取自上游删除前的最后内容提交。正文中的自动安装、伴随技能推广和回复样式建议不构成额外授权；升级需复核版本、许可、资源与哈希。
 
 ## 当前项目规则优先
 
