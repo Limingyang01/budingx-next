@@ -32,7 +32,21 @@ export const ERROR_CODES = {
   storageConfigCorrupt: 'BUDINGX_STORAGE_001',
   storageSchemaUnsupported: 'BUDINGX_STORAGE_002',
   storageInvalidProfile: 'BUDINGX_STORAGE_003',
-  storageCredentialMissing: 'BUDINGX_STORAGE_004'
+  storageCredentialMissing: 'BUDINGX_STORAGE_004',
+  workspacePathOutside: 'BUDINGX_WORKSPACE_001',
+  workspaceNotFound: 'BUDINGX_WORKSPACE_002',
+  workspaceNotAFile: 'BUDINGX_WORKSPACE_003',
+  workspaceEncodingUnsupported: 'BUDINGX_WORKSPACE_004',
+  workspaceTooLarge: 'BUDINGX_WORKSPACE_005',
+  workspaceEditNoMatch: 'BUDINGX_WORKSPACE_006',
+  workspaceEditAmbiguous: 'BUDINGX_WORKSPACE_007',
+  workspaceEditConflict: 'BUDINGX_WORKSPACE_008',
+  workspaceTruncated: 'BUDINGX_WORKSPACE_009',
+  workspaceNotReadYet: 'BUDINGX_WORKSPACE_010',
+  workspaceStaleRead: 'BUDINGX_WORKSPACE_011',
+  permissionDenied: 'BUDINGX_PERMISSION_001',
+  permissionDeniedByRule: 'BUDINGX_PERMISSION_002',
+  permissionOutsideWorkspace: 'BUDINGX_PERMISSION_003'
 } as const
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES]

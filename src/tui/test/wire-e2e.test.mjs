@@ -181,6 +181,11 @@ test('W4 真实 HTTP 工具回合与 Ink 审批拒绝、允许都续跑', async 
     await ui.send('use echo\r')
     await ui.waitFor((frame) => frame.includes('需要审批'))
     await ui.send(decision)
+    if (decision === 'n') {
+      // SP003 T18c: n opens the optional feedback step; Esc denies.
+      await ui.waitFor((frame) => frame.includes('拒绝反馈'))
+      await ui.send('\x1b')
+    }
     await ui.waitFor(
       (frame) => frame.includes('tool-finished-' + decision) && !ui.session.isBusy
     )

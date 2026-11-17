@@ -11,6 +11,7 @@ import {
 } from 'ink'
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 import stringWidth from 'string-width'
+import { existsSync, readFileSync } from 'node:fs'
 import type { SessionEvent } from '../core/events.js'
 import type { Session } from '../core/session.js'
 import type { InkApprovalGateway } from './approval.js'
@@ -20,7 +21,20 @@ import { applyKey } from './editor/keys.js'
 import { reduceFrame, renderTextLines } from './render/reducer.js'
 import { renderHeader, setupHint, terminalStrategy } from './render/header.js'
 import { initialFrame } from './render/types.js'
+import { diffViewLines } from './render/diff-view.js'
+import {
+  activeToken,
+  applyCompletion,
+  commandCandidates,
+  fileCandidates,
+  longestCommonPrefix
+} from './render/completion.js'
 import { saveProfileKey } from './runtime.js'
+import { diffLines, type DiffHunk } from '../workspace/diff.js'
+import { MODES_EN, MODES_ZH, nextMode } from '../workspace/policy.js'
+import { walkWorkspaceFiles } from '../workspace/search.js'
+import type { ChangeRecord } from '../workspace/checkpoint.js'
+import { diffStats } from './render/diff-view.js'
 
 export type AppProps = {
   session: Session
@@ -30,6 +44,29 @@ export type AppProps = {
   cwd?: string
   onExit: () => void
 }
+
+type DiffDialog = {
+  view: 'list' | 'detail'
+  index: number
+  /** 'current' or a turn id; aligned with the reference Current + T1..Tn. */
+  source: string
+}
+
+const COMMAND_NAMES = [
+  'help',
+  'config',
+  'models',
+  'model',
+  'provider',
+  'permission',
+  'rules',
+  'diff',
+  'undo',
+  'denials',
+  'clear',
+  'exit',
+  'quit'
+]
 const STATUS_ZH: Record<string, string> = {
   idle: '就绪',
   requesting: '请求中…',
@@ -60,11 +97,19 @@ export function App({
   const [frame, dispatch] = useReducer(
     (state: ReturnType<typeof initialFrame>, event: SessionEvent) =>
       reduceFrame(state, event, { width }),
-    undefined,
-    initialFrame
+    commandContext.permission?.policy.getMode(),
+    (mode) => initialFrame(mode ?? 'read_only')
   )
   const [input, setInput] = useState('')
   const [hint, setHint] = useState('')
+  const [dialog, setDialog] = useState<DiffDialog | null>(null)
+  const [detailScroll, setDetailScroll] = useState(0)
+  const [overlayDismissed, setOverlayDismissed] = useState(false)
+  const [completionIndex, setCompletionIndex] = useState(0)
+  const fileCache = useRef<string[] | null>(null)
+  // SP003 T18c: rejection may carry feedback back to the model, like the
+  // reference's "and tell budingx what to do differently" path.
+  const [rejectEntry, setRejectEntry] = useState<{ requestId: string; text: string } | null>(null)
   const editor = useMemo(() => new EditorBuffer(), [])
   const [, bumpEditor] = useReducer((n: number) => n + 1, 0)
   const ctrlC = useRef(0)
@@ -132,6 +177,7 @@ export function App({
       })
   }
   const execute = (text: string) => {
+    fileCache.current = null
     schedule(async () => {
       if (session.isBusy) {
         await new Promise<void>((resolve) => {
@@ -166,6 +212,97 @@ export function App({
   }
   const executeRef = useRef(execute)
   executeRef.current = execute
+  // SP003: diff dialog and @ / completion overlay data (design §3.6/§3.7).
+  const permissionHandles = commandContext.permission
+  const turnIds = useMemo(() => {
+    const ids: string[] = []
+    for (const record of permissionHandles?.checkpointChanges() ?? []) {
+      if (record.turnId && !ids.includes(record.turnId)) ids.push(record.turnId)
+    }
+    return ids
+  }, [frame.changes.length, permissionHandles])
+  const sourceList = useMemo(() => ['current', ...turnIds], [turnIds])
+  const sourceLabel = (source: string) =>
+    source === 'current'
+      ? pick('当前差异', 'Current')
+      : pick(`第 ${sourceList.indexOf(source)} 回合差异`, `turn ${sourceList.indexOf(source)} diff`)
+  const cycleSource = (current: string, delta: number): string => {
+    const list = sourceList.length > 0 ? sourceList : ['current']
+    const index = Math.max(0, list.indexOf(current))
+    return list[(index + delta + list.length) % list.length]
+  }
+  const dialogEntries = useMemo(() => {
+    const changes = permissionHandles?.checkpointChanges() ?? []
+    const baselineFor = new Map<string, ChangeRecord>()
+    for (const record of changes) {
+      if (!baselineFor.has(record.path)) baselineFor.set(record.path, record)
+    }
+    const active =
+      dialog && dialog.source !== 'current'
+        ? changes.filter((record) => record.turnId === dialog.source)
+        : changes
+    const byPath = new Map<string, { record: ChangeRecord; baseline: ChangeRecord }>()
+    for (const record of active) {
+      const existing = byPath.get(record.path)
+      if (existing) existing.record = record
+      else byPath.set(record.path, { record, baseline: baselineFor.get(record.path) as ChangeRecord })
+    }
+    return [...byPath.values()]
+  }, [dialog, permissionHandles, frame.changes.length])
+  const detailHunks = (
+    entry: { record: ChangeRecord; baseline: ChangeRecord } | undefined,
+    source: string
+  ): DiffHunk[] => {
+    if (!entry) return []
+    if (source !== 'current') return entry.record.diff
+    if (!permissionHandles) return []
+    try {
+      const resolved = permissionHandles.workspace.resolve(entry.record.path)
+      const current =
+        resolved.existed && !resolved.isDirectory
+          ? readFileSync(resolved.real, 'utf8')
+          : ''
+      return diffLines(entry.baseline.before ?? '', current)
+    } catch {
+      return []
+    }
+  }
+  const completion = useMemo(() => {
+    if (dialog || frame.approval || overlayDismissed || enteringKey) return null
+    const lineText = editor.lines[editor.cursor.line] ?? ''
+    const token = activeToken(lineText, editor.cursor.col, COMMAND_NAMES)
+    if (!token) return null
+    if (token.kind === 'command') {
+      const candidates = commandCandidates(token.token, COMMAND_NAMES)
+      return candidates.length > 0 ? { token, candidates } : null
+    }
+    if (!permissionHandles) return null
+    if (!fileCache.current) {
+      fileCache.current = walkWorkspaceFiles(
+        permissionHandles.workspace,
+        permissionHandles.workspace.root
+      ).relative
+    }
+    const candidates = fileCandidates(token.token, fileCache.current)
+    return candidates.length > 0 ? { token, candidates } : null
+  }, [
+    input,
+    editor.cursor.line,
+    editor.cursor.col,
+    dialog,
+    frame.approval,
+    overlayDismissed,
+    enteringKey,
+    editor,
+    permissionHandles
+  ])
+  const completionIndexSafe = Math.min(
+    completionIndex,
+    Math.max(0, (completion?.candidates.length ?? 1) - 1)
+  )
+  useEffect(() => {
+    setCompletionIndex(0)
+  }, [completion?.token.token, completion?.token.kind])
   const submitPrompt = (text: string) => {
     if (!context.getConfig().model.trim()) {
       setHint(pick('请先配置并选择模型', 'Configure and select a model first'))
@@ -177,6 +314,10 @@ export function App({
     () =>
       session.on((event) => {
         dispatch(event)
+        if (event.type === 'turn_finalized' || event.type === 'change_set') {
+          // Files may have appeared or disappeared; refresh completion.
+          fileCache.current = null
+        }
         if (event.type === 'turn_finalized') {
           gateway.cancelAll()
           const pending = commands.current.splice(0)
@@ -222,6 +363,37 @@ export function App({
     )
   })
   useInput((text, key) => {
+    if (rejectEntry) {
+      if (key.escape) {
+        gateway.resolve(rejectEntry.requestId, 'deny')
+        setRejectEntry(null)
+        setHint(pick('已拒绝', 'Denied'))
+        return
+      }
+      if (key.return) {
+        gateway.resolve(
+          rejectEntry.requestId,
+          'deny',
+          'user',
+          rejectEntry.text.trim() || undefined
+        )
+        setRejectEntry(null)
+        setHint(
+          rejectEntry.text.trim()
+            ? pick('已拒绝并附上反馈', 'Denied with feedback')
+            : pick('已拒绝', 'Denied')
+        )
+        return
+      }
+      if (key.backspace) {
+        setRejectEntry({ ...rejectEntry, text: rejectEntry.text.slice(0, -1) })
+        return
+      }
+      if (!key.ctrl && !key.meta && text) {
+        setRejectEntry({ ...rejectEntry, text: rejectEntry.text + text })
+      }
+      return
+    }
     if (keyEntry.current) {
       const entry = keyEntry.current
       if (key.escape || (key.ctrl && text === 'c')) {
@@ -267,13 +439,120 @@ export function App({
       else if (!key.ctrl && !key.meta) entry.secret += text
       return
     }
+    if (dialog && permissionHandles) {
+      // The dialog owns the keyboard while open (SP003 AC CP-07).
+      if (key.escape || (key.ctrl && text === 'c')) {
+        setDialog(null)
+        return
+      }
+      if (dialog.view === 'list') {
+        if (key.upArrow)
+          setDialog({ ...dialog, index: Math.max(0, dialog.index - 1) })
+        else if (key.downArrow)
+          setDialog({
+            ...dialog,
+            index: Math.min(dialogEntries.length - 1, dialog.index + 1)
+          })
+        else if (key.return && dialogEntries[dialog.index]) {
+          setDialog({ view: 'detail', index: dialog.index, source: dialog.source })
+          setDetailScroll(0)
+        } else if (key.rightArrow || key.leftArrow) {
+          setDialog({
+            ...dialog,
+            source: cycleSource(dialog.source, key.rightArrow ? 1 : -1)
+          })
+        }
+        return
+      }
+      if (key.return) {
+        setDialog({ view: 'list', index: dialog.index, source: dialog.source })
+      } else if (key.rightArrow || key.leftArrow) {
+        setDialog({
+          ...dialog,
+          source: cycleSource(dialog.source, key.rightArrow ? 1 : -1)
+        })
+      } else if (key.upArrow) {
+        setDetailScroll((s) => Math.max(0, s - 1))
+      } else if (key.downArrow) {
+        setDetailScroll((s) => s + 1)
+      }
+      return
+    }
     const approval = frame.approval
+    if (completion && !approval) {
+      // @ / overlay keys (SP003 AC FC-01…03).
+      if (key.upArrow) {
+        setCompletionIndex(Math.max(0, completionIndexSafe - 1))
+        return
+      }
+      if (key.downArrow) {
+        setCompletionIndex(
+          Math.min(completion.candidates.length - 1, completionIndexSafe + 1)
+        )
+        return
+      }
+      if (key.tab && !key.shift) {
+        // SP003 T18e: Tab first extends to the longest common prefix,
+        // like the reference typeahead; only exhausted picks apply fully.
+        const lineText = editor.lines[editor.cursor.line] ?? ''
+        const values = completion.candidates.map((candidate) => candidate.value)
+        const prefix = longestCommonPrefix(values)
+        const usePrefix =
+          completion.candidates.length > 1 &&
+          prefix.length > completion.token.token.length
+        const chosen = usePrefix
+          ? {
+              value: prefix,
+              kind: completion.token.kind,
+              directory: !/[.]/.test(prefix.split('/').at(-1) ?? '')
+            }
+          : completion.candidates[completionIndexSafe]
+        if (chosen) {
+          editor.lines[editor.cursor.line] = applyCompletion(
+            lineText,
+            completion.token,
+            chosen
+          )
+          editor.cursor.col =
+            completion.token.start + 1 + Array.from(chosen.value).length
+          setInput(editor.text)
+          bumpEditor()
+        }
+        return
+      }
+      if (key.escape) {
+        setOverlayDismissed(true)
+        return
+      }
+    }
     if (approval && !typing && key.escape) {
       gateway.resolve(approval.requestId, 'deny')
       return
     }
+    if (approval && !typing && editor.isEmpty && /^[123]$/.test(text)) {
+      // SP003 AC PC-06: 1 allow once, 2 allow for session, 3 deny (+feedback).
+      if (text === '3') {
+        setRejectEntry({ requestId: approval.requestId, text: '' })
+        return
+      }
+      gateway.resolve(approval.requestId, text === '1' ? 'allow' : 'allow_session')
+      return
+    }
     if (approval && !typing && editor.isEmpty && /^[yn]$/i.test(text)) {
-      gateway.resolve(approval.requestId, text.toLowerCase() === 'y' ? 'allow' : 'deny')
+      if (text.toLowerCase() === 'n') {
+        setRejectEntry({ requestId: approval.requestId, text: '' })
+        return
+      }
+      gateway.resolve(approval.requestId, 'allow')
+      return
+    }
+    if (key.shift && key.tab && permissionHandles) {
+      // SP003 design §3.8: cycle the three fixed modes.
+      const next = nextMode(permissionHandles.policy.getMode())
+      permissionHandles.policy.setMode(next)
+      setHint(
+        pick(`权限模式：${MODES_ZH[next]}`, `Permission mode: ${MODES_EN[next]}`)
+      )
       return
     }
     const action = applyKey(editor, text, key, { busy: session.isBusy })
@@ -308,6 +587,36 @@ export function App({
       setHint('')
       setTyping(false)
       if (submitted.startsWith('/')) {
+        // Interactive /diff opens the two-level dialog (SP003 AC CP-07);
+        // pipe and non-workspace hosts keep the text output.
+        if (permissionHandles && /^\/diff(\s|$)/.test(submitted)) {
+          const arg = submitted.slice(5).trim()
+          let index = 0
+          if (arg) {
+            const found = dialogEntries.findIndex(
+              (entry) => entry.record.path === arg
+            )
+            if (found < 0) {
+              // Unknown path: fall back to the text command error.
+              if (!session.isBusy) execute(submitted)
+              else {
+                commands.current.push(submitted)
+                setCommandCount(commands.current.length)
+              }
+              return
+            }
+            index = found
+          }
+          // Open on the newest turn diff, fall back to Current.
+          setDialog({
+            view: arg ? 'detail' : 'list',
+            index,
+            source: turnIds.at(-1) ?? 'current'
+          })
+          setDetailScroll(0)
+          fileCache.current = null
+          return
+        }
         if (!session.isBusy) execute(submitted)
         else {
           commands.current.push(submitted)
@@ -324,6 +633,7 @@ export function App({
       return
     }
     setInput(editor.text)
+    if (overlayDismissed && (text || key.backspace)) setOverlayDismissed(false)
     if (text || key.backspace || key.delete) markTyping()
   })
   const config = commandContext.getConfig()
@@ -334,6 +644,78 @@ export function App({
   const liveText = [frame.liveThinking ? '· ' + frame.liveThinking : '', frame.liveText]
     .filter(Boolean)
     .join('\n')
+  if (dialog && permissionHandles) {
+    // SP003 AC CP-07/CP-08: two-level dialog, source switch, single column
+    // in every width (a split column would cut hunks on narrow terminals).
+    const entry = dialogEntries[dialog.index]
+    if (dialog.view === 'list') {
+      return (
+        <Box flexDirection="column" borderStyle="round" borderColor="gray">
+          <Text bold>
+            {pick('本会话改动', 'Session changes')} · {sourceLabel(dialog.source)}
+          </Text>
+          {dialogEntries.length === 0 && (
+            <Text dimColor>{pick('无改动', 'no changes')}</Text>
+          )}
+          {dialogEntries.map((item, index) => {
+            const stat = diffStats(item.record.diff)
+            return (
+              <Text key={item.record.path} inverse={index === dialog.index}>
+                {' '}
+                {item.record.path} {`+${stat.additions}/-${stat.removals}`}
+              </Text>
+            )
+          })}
+          <Text dimColor>
+            {pick(
+              '↑↓ 选择 · Enter 详情 · ←/→ 切源 · Esc 关闭',
+              'up/down select · enter detail · left/right source · esc close'
+            )}
+          </Text>
+        </Box>
+      )
+    }
+    const hunks = detailHunks(entry, dialog.source)
+    const lines = diffViewLines(hunks, width)
+    const visible = lines.slice(detailScroll, detailScroll + 24)
+    return (
+      <Box flexDirection="column" borderStyle="round" borderColor="gray">
+        <Text bold>
+          ── {entry?.record.path ?? ''} · {sourceLabel(dialog.source)} ──
+        </Text>
+        {visible.map((line, index) => (
+          <Text key={detailScroll + index}>
+            {line.spans.map((span, j) => (
+              <Text
+                key={j}
+                color={
+                  span.kind === 'add'
+                    ? 'green'
+                    : span.kind === 'remove'
+                      ? 'red'
+                      : span.kind === 'header'
+                        ? 'cyan'
+                        : undefined
+                }
+                dimColor={span.kind === 'gutter' || span.kind === 'context'}
+              >
+                {span.text}
+              </Text>
+            ))}
+          </Text>
+        ))}
+        {visible.length === 0 && (
+          <Text dimColor>{pick('（无差异）', '(no differences)')}</Text>
+        )}
+        <Text dimColor>
+          {pick(
+            '↑↓ 滚动 · Enter 列表 · ←/→ 切源 · Esc 关闭',
+            'up/down scroll · enter list · left/right source · esc close'
+          )}
+        </Text>
+      </Box>
+    )
+  }
   return (
     <Box flexDirection="column">
       <Box flexDirection="column">
@@ -385,18 +767,37 @@ export function App({
           {item.preview}
         </Text>
       ))}
-      {frame.approval && !typing && (
+      {rejectEntry && (
+        <Box flexDirection="column" borderStyle="round" borderColor="yellow">
+          <Text color="yellow">
+            {pick('拒绝反馈（可选，将随拒绝发回模型）', 'Rejection feedback (optional, sent back to the model)')}
+          </Text>
+          <Text> &gt; {rejectEntry.text}</Text>
+          <Text dimColor>
+            {pick(
+              'Enter 提交拒绝与反馈 · Esc 仅拒绝',
+              'Enter denies with feedback · Esc denies silently'
+            )}
+          </Text>
+        </Box>
+      )}
+      {frame.approval && !typing && !rejectEntry && (
         <Box flexDirection="column" borderStyle="round" borderColor="yellow">
           <Text color="yellow">
             {pick('需要审批', 'Approval needed')}: {frame.approval.name}
           </Text>
           <Text>{frame.approval.summary}</Text>
           <Text>
-            {pick('y 允许，n 或 Esc 拒绝', 'y allows; n or Esc denies')}
+            {permissionHandles
+              ? pick(
+                  '1 允许一次 · 2 本会话记住 · 3 拒绝（或 Esc）',
+                  '1 allow once · 2 allow for session · 3 deny (or Esc)'
+                )
+              : pick('y 允许，n 或 Esc 拒绝', 'y allows; n or Esc denies')}
             {!editor.isEmpty
               ? pick(
-                  '；先清空或提交输入后再按 y/n',
-                  '; clear or submit the draft before y/n'
+                  '；先清空或提交输入后再按键',
+                  '; clear or submit the draft before pressing keys'
                 )
               : ''}
           </Text>
@@ -407,8 +808,31 @@ export function App({
         <Box ref={inputBox}>
           <Text>{enteringKey ? '> ' : `> ${input}`}</Text>
         </Box>
+        {completion && (
+          <Box flexDirection="column">
+            {completion.candidates.map((candidate, index) => (
+              <Text key={candidate.value} inverse={index === completionIndexSafe}>
+                {(completion.token.kind === 'command' ? '/' : '@') + candidate.value}
+                {candidate.directory
+                  ? pick('  [目录]', '  [dir]')
+                  : candidate.kind === 'command'
+                    ? pick('  [命令]', '  [cmd]')
+                    : ''}
+              </Text>
+            ))}
+            <Text dimColor>
+              {pick('↑↓ 选择 · Tab 插入 · Esc 关闭', 'up/down select · tab insert · esc dismiss')}
+            </Text>
+          </Box>
+        )}
         <Text dimColor>
           {zh ? STATUS_ZH[frame.status.state] : frame.status.state}
+          {permissionHandles
+            ? ` · ${pick(
+                MODES_ZH[frame.permissionMode],
+                MODES_EN[frame.permissionMode]
+              )}`
+            : ''}
           {hint ? ` — ${hint}` : ''}
         </Text>
         {setupHint(config, strategy) && (

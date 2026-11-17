@@ -63,7 +63,23 @@ export function reduceFrame(
 
   switch (event.type) {
     case 'conversation_cleared':
-      return { ...initialFrame(), queue: frame.queue }
+      // Mode, change set and denials survive a conversation clear; the
+      // checkpoint store keeps offering /undo for files we already wrote.
+      return {
+        ...initialFrame(frame.permissionMode),
+        queue: frame.queue,
+        changes: frame.changes,
+        denials: frame.denials
+      }
+    case 'permission_changed':
+      next.permissionMode = event.mode
+      return next
+    case 'change_set':
+      next.changes = [...next.changes, ...event.changes]
+      return next
+    case 'denial_recorded':
+      next.denials = [...next.denials, event.denial].slice(-10)
+      return next
     case 'turn_started': {
       next.liveText = ''
       next.liveThinking = ''

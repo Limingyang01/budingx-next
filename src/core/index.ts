@@ -1,4 +1,5 @@
 export * from './events.js'
+export * from './permissions.js'
 export * from './provider.js'
 export * from './tools.js'
 export * from './constants.js'

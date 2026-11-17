@@ -36,6 +36,7 @@ export async function mountTty(t, options = {}) {
   const {
     provider,
     tools = [],
+    permissionPolicy,
     config: initialConfig,
     commandOverrides = {},
     sessionFactory,
@@ -76,6 +77,7 @@ export async function mountTty(t, options = {}) {
     : new Session({
         provider,
         tools,
+        ...(permissionPolicy ? { permissionPolicy } : {}),
         approval: gateway,
         resolveSnapshot: () => ({
           modelId: config.profileId ?? 'session',
