@@ -14,8 +14,8 @@
 | AC-04 任务清单批注 | PASS | spec:check 任务清单 基本 30 / 高级 30 / 保护 12 / 盲测 20 锚点不变；A17–A27 备注列「暂缓 r6」、§2 配额与 §12 依赖批注、头部 inventory v2 义务登记 |
 | AC-05 三权限模式 | PASS | 路线图 r6 决定节、矩阵「权限模式」行、清单 CAP-L3-06、PRODUCT §2.2/§7 均 USER_CONFIRMED 且标明 SP003/SP004 交付、当前未实现 |
 | AC-06 PRODUCT 同步 | PASS | PRODUCT.md v1.3：§1 TUI 单端、§2.1 SP001 行 v1.1 注记、§2.2 状态列（5 轮 DEFERRED）、§7 暂缓行与三模式、§8 规划调整行；0.2.0 已发布事实保留 |
-| AC-07 门禁 GREEN＋合入＋推送 | UNVERIFIED | 恢复条件见 §5；merge:gate 与推送回执在本报告后续节回填 |
-| AC-08 outgoing 干净 | UNVERIFIED | 恢复条件见 §5；提交后由 merge:gate outgoing 扫描与 git status 核对（CON、pnpm-lock.yaml 保持未跟踪不提交） |
+| AC-07 门禁 GREEN＋合入＋推送 | UNVERIFIED（门禁已 GREEN，合入/推送待执行） | 恢复条件见 §5；merge:gate GREEN 回执见 §4；合入与推送回执回填 |
+| AC-08 outgoing 干净 | PASS | merge:gate 第 5 步扫描 29 文件无违规；CON、pnpm-lock.yaml 保持未跟踪未提交 |
 
 ## 2. 分层证据
 
@@ -35,16 +35,15 @@
 
 - `npm run skills:test`：首跑 10 项中 1 项红——链接完整性门禁检出本报告文件尚未创建（4 处引用断链），属门禁有效拦截（RED）；创建本报告后复跑 **10/10 通过**（复绿）。
 - `npm test` 全段（2026-11-17，cwd 仓库根，会话权限 danger-full-access）：**skills 10/10、spec 9/9、产品单元 166/166（含 tsc 构建）、模块边界检查通过、release 16/16、merge 5/5，合计 206 项 0 失败**。
-- `npm run merge:gate`（feature/tui-first-planning → master）：待回填（报告路径 artifacts/merge-gate/…）。
+- `npm run merge:gate`（feature/tui-first-planning → master，源 6435e86）：**GATE GREEN**；四步全 ok（npm test / spec:check / skills:check / pack-smoke 隔离安装＋fixture 流式请求）；outgoing 29 文件无禁带路径；报告审计通过（UNVERIFIED 有恢复条件节）。报告：`artifacts/merge-gate/feature-tui-first-planning-2026-11-17T10-44-17-461Z.md`（gitignored）。
 - 合入后 master 复跑与推送回执：待回填。
 
 ## 5. 未验证项与恢复条件
 
 | 项 | 状态 | 恢复条件 |
 | --- | --- | --- |
-| npm test 全段 / merge:gate | UNVERIFIED（本报告创建时点） | 扩权命令执行后回填 §4；门禁 RED 则修复后重跑，禁止降阈值 |
 | 合入 master / 推送远端回执 | UNVERIFIED | 用户已授权（2026-11-17）；门禁 GREEN 后按 buding-merge 合入，推送失败重试并以 git ls-remote 核对 |
-| outgoing 扫描 | UNVERIFIED | 提交后由 merge:gate 第 5 步扫描确认 |
+| 合入后 master 复跑 | UNVERIFIED | 合入后在 master 复跑 npm test / spec:check / skills:check / pack-smoke 并回填 §4 |
 
 ## 6. 风险与回退
 

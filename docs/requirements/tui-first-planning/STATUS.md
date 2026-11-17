@@ -7,8 +7,8 @@
 - [x] 需求登记（用户 2026-11-17 指示，USER_CONFIRMED 范围）
 - [x] 全项目规划文档同步（路线图 r6 / 矩阵 r3 / 清单 v1.1 / 任务清单批注 / PRODUCT v1.3 / AGENTS / README / 其余配套）
 - [x] spec 门禁与 merge 门禁设施扩展（含自测）
-- [ ] 门禁验证（spec:check / spec:test / npm test / merge:gate）→ 证据见 [test-report](test-report.md)
-- [ ] feature 分支提交 → 合入 master → 推送回执
+- [x] 门禁验证（spec:check / spec:test / npm test 206 项 / merge:gate GREEN）→ 证据见 [test-report](test-report.md)
+- [ ] feature 分支提交（6435e86）→ 合入 master → 推送回执
 
 ## 下一步
 
