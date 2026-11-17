@@ -382,3 +382,9 @@ PS-08 真实 Provider 四类行为已取得本节证据；其他型号/供应商
 补做 `CI=true` 的 20 项 Ink 交互用例，先观察到 4 PASS / 16 FAIL。原因是 Ink 8 自动在 CI 关闭交互输出，仅标记假流 isTTY 不足以保留 ANSI、光标、resize 和中间帧；依据为 [Ink 8 官方 render 文档](https://github.com/vadimdemedes/ink/blob/v8.0.0/readme.md)。两个测试 render 入口显式使用 interactive:true 后，同样的 CI=true 用例 20/20 通过。正式 CLI 未改变，不关闭 CI、不降低断言。
 
 新增 ci-render.test 子进程回归，验证真实品牌色帧及连续光标坐标在 CI 下仍执行；清除继承的 Node 内部 NODE_TEST_CONTEXT，显式 TAP 并断言 2 项通过，避免空跑退出 0 冒充成功。该回归 1/1 通过。该模式验证补入版本准备及前端验证技能；0.2.0 仍是同一 prepared 候选，不重复 bump。最终发布预演需按 CI=true 复跑；本地模拟不等于 Windows/Linux 托管运行已经成功。
+
+### 18.4 最终 CI 发布预演与集成
+
+干净固定源码 `2c636312e8aaafa9e60636b6027e97d12702aeea` 在 CI=true 下锁定安装及发布 dry-run 通过：技能 10、规格 7、产品 166、发布 16、门禁单元 4，合计 **203 PASS / 0 FAIL / 0 SKIP**。31 文件 tarball 与前一预演制品 integrity 完全一致，说明修改仅涉及测试/文档/技能，产品内容未变。回执为 artifacts/release/0.2.0-prepared-ci/report.json，state=verified-local、dryRun=true、npm shim=0.2.0、fixtureRequests=1。
+
+同样 CI=true 的交叉验证门禁 artifacts/merge-gate/feature-SP002-release-ci-tty-2026-11-17T09-17-45-790Z.md 为 GREEN；独立审查无待修问题，CI 交互专项 21 项通过。已合入本地 master `71fad97e45b9b6d1ab08226c33238fae05df01ec`，ancestry/tree 一致性已确认。版本仍为 0.2.0 prepared，不重复 bump；实际托管 Windows/Linux 运行和 npm 上传由维护者执行，未预记成功。
