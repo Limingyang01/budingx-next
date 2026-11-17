@@ -346,3 +346,11 @@ PS-08 真实 Provider 四类行为已取得本节证据；其他型号/供应商
 ### 16.6 master 集成回执
 
 源提交 `e06ddafb83f6c2b8efaa8f53a14c6eb21081db09`；目标原提交 `484c6a9623ffc6eb6bdfcc8e335d6ff3d3c58bd1`；交叉验证报告 `artifacts/merge-gate/feature-SP002-model-session-loop-2026-11-17T07-37-05-630Z.md` 为 GREEN。merge-tree 预演无冲突，本地 `master` 合并提交 `ffdb7bab0f19bdc4c5a374dd8d08c7e546bad43a`；merge-base ancestry 证明包含源，合并后 tree 与通过门禁的源 tree 完全相同。未推送、未打标签、未发布；`.env.e2e.local` 保持忽略且未跟踪。
+
+## 17. 本地启动自动加载测试模型（2026-11-17）
+
+用户要求本机 `npm run start` 自动使用现有 e2e 模型，并明确「只允许本地测试使用，真实环境得自己配置」。实现仅修改根目录私有维护包的 start 命令，使用当前 Node 支持的原生 `--env-file-if-exists=.env.e2e.local`，不改发布产品入口、不持久化档案、不打印密钥。文件可缺省；显式进程环境优先，CLI 参数仍优先。自动化测试的预算字段不控制交互用量。
+
+验证：`node --test src/tui/test/local-start.test.mjs`。新增自动加载用例先观察到模型未配置的预期失败；实现后 4 项全过，覆盖加载、缺文件、环境优先级及正式入口不加载。均为临时配置/home 的真实子进程，不读取用户真实配置，不调用实际模型。配置文件仍被 Git 忽略且不提交；只有空模板维持原先跟踪状态。
+
+自审及文档：PRODUCT.md、开发指南与 TUI README 已同步本地/真实环境边界；未加依赖，未改构建、发布或安装 bin。按当前 Node 版本原生能力实现；该开发命令没有对应旧产品机制，产品 Provider/Agent 核心逻辑未修改。格式化与交叉验证门禁在提交及合入前运行，实际门禁报告存于 artifacts/merge-gate。不推送、不发布。

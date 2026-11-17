@@ -14,7 +14,7 @@
     "spec:check": "node scripts/spec/check-spec.mjs",
     "spec:test": "node --test scripts/spec/*.test.mjs",
     "build": "tsc -p src/tui/tsconfig.json",
-    "start": "node src/tui/dist/tui/cli.js",
+    "start": "node --env-file-if-exists=.env.e2e.local src/tui/dist/tui/cli.js",
     "test:unit": "npm run build && node --test src/*/test/*.test.mjs",
     "test:checks": "node scripts/checks/module-boundaries.mjs",
     "test:release": "node --test scripts/release/*.test.mjs",
