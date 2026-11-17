@@ -15,7 +15,7 @@ node scripts/release/pack-smoke.mjs
 npm run publish -- --dry-run
 ```
 
-`npm test` 执行技能维护、规格自洽性、产品单元回归、模块边界检查与版本管理测试。
+`npm test` 执行技能维护、规格自洽性、产品单元回归、模块边界检查与版本管理测试。TUI 屏幕类端到端用进程内伪 TTY harness（`src/tui/test/helpers/mount-tty.mjs` + `screen-e2e.test.mjs`，真实 Ink 渲染帧断言，无需真终端/截图），方法论见 [buding-frontend-testing](../skills/buding-frontend-testing/SKILL.md)；真终端 IME/观感/鼠标仍属人工 smoke 清单。
 
 ## 源码与构建布局（SP002 起）
 

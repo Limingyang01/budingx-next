@@ -131,7 +131,7 @@ test('未配置时给出可执行的配置引导（现代终端中文 / ASCII �
   )
   assert.equal(
     setupHint({ model: '', apiKey: '' }, 'ascii'),
-    'Not configured · run /provider add <label> <base-url> <model>'
+    'Not configured - run /provider add <label> <base-url> <model>'
   )
   assert.equal(setupHint({ model: 'm', apiKey: 'k' }), undefined)
 })

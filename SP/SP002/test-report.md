@@ -233,7 +233,7 @@ node scripts/release/pack-smoke.mjs
 - **实际执行**：`npm test` = skills 9 + spec 7 + unit **151** + checks PASS + release 16 全绿（cwd 仓库根）；聚焦 `node --test src/tui/test/screen-e2e.test.mjs src/tui/test/header.test.mjs` 19/19。
 - **边界不变**：IME preedit、真 ConHost/WT 观感、鼠标选区仍 UNVERIFIED（§5 人工清单）；harness 绿不冒充真终端验收。
 
-## 12. 2026-11-17 缺口收尾（G01…G17）
+## 14. 2026-11-17 缺口收尾（G01…G17）
 
 用户授权：按 implementation-gap-audit.md 先 P1、再其余项与测试。沿用设计 v0.3；继续原 feature 分支。开始 HEAD c57d51a；执行期间外部新增 7e5dcea（CLI 测试 home 隔离），已保留，未重写该提交。
 

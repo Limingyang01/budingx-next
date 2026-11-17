@@ -66,6 +66,7 @@ const WORDS = {
     noteTools: '编码工具将在后续版本交付',
     noModel: '模型：未配置',
     noEndpoint: '端点未设置',
+    sep: '·',
     hint: '尚未配置 · 运行 /provider add <label> <base-url> <model>'
   },
   ascii: {
@@ -79,7 +80,8 @@ const WORDS = {
     noteTools: 'Coding tools arrive in later releases',
     noModel: 'model: not configured',
     noEndpoint: 'endpoint not set',
-    hint: 'Not configured · run /provider add <label> <base-url> <model>'
+    sep: '-',
+    hint: 'Not configured - run /provider add <label> <base-url> <model>'
   }
 } as const
 
@@ -171,7 +173,7 @@ function modelLineOf(
 ): string {
   const model = input.model?.trim() ?? ''
   if (!model) return words.noModel
-  return `${model} · ${hostOf(input.baseUrl) || words.noEndpoint}`
+  return `${model} ${words.sep} ${hostOf(input.baseUrl) || words.noEndpoint}`
 }
 
 function feed(title: string, lines: string[]): Line[] {
