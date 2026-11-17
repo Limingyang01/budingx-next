@@ -1,4 +1,6 @@
-// Core event contract (SP002 design §3.2). Host agnostic: no UI types, JSON serializable.
+// Core event contract (SP002 design §3.2, SP003 design §4.2 v2).
+// Host agnostic: no UI types, JSON serializable.
+import type { PermissionMode } from './permissions.js'
 
 export type SessionState =
   | 'idle'
@@ -66,6 +68,30 @@ export type MessageBlock =
   | { type: 'tool_use'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; callId: string; content: string; isError: boolean }
   | { type: 'interrupt_mark'; reason: 'user' }
+  /**
+   * File reference brought in with @ (SP003 AC FC-04). Stored with the
+   * user message and rendered as a separated block by normalizeForApi so
+   * file content never masquerades as user instruction.
+   */
+  | { type: 'context'; source: string; content: string }
+
+/** Summary of one recorded workspace write (SP003 design §4.2). */
+export type ChangeRecordSummary = {
+  id: string
+  path: string
+  operation: 'create' | 'update'
+  additions: number
+  removals: number
+  turnId?: string
+  at: string
+}
+
+export type DenialRecord = {
+  tool: string
+  path?: string
+  reason: string
+  at: string
+}
 
 export type Message = {
   id: string
@@ -112,7 +138,7 @@ export type SessionEvent =
       type: 'approval_resolved'
       turnId: string
       requestId: string
-      outcome: 'allow' | 'deny' | 'cancelled'
+      outcome: 'allow' | 'allow_session' | 'deny' | 'cancelled'
       via: 'user' | 'policy'
     }
   | {
@@ -122,6 +148,9 @@ export type SessionEvent =
       content: string
       isError: boolean
     }
+  | { type: 'change_set'; changes: ChangeRecordSummary[] }
+  | { type: 'denial_recorded'; denial: DenialRecord }
+  | { type: 'permission_changed'; mode: PermissionMode }
   | { type: 'input_queued'; queueId: string; preview: string }
   | {
       type: 'input_injected'

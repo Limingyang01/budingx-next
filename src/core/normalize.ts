@@ -19,7 +19,20 @@ export function normalizeForApi(messages: Message[]): ApiMessage[] {
 
   for (const message of messages) {
     if (message.role === 'user') {
-      result.push({ role: 'user', content: textOf(message.blocks) })
+      // Context references (SP003 AC FC-04) are wrapped separately so file
+      // content never blurs into the user's own words.
+      const contextBlocks = message.blocks.filter(
+        (block): block is Extract<MessageBlock, { type: 'context' }> =>
+          block.type === 'context'
+      )
+      const text = textOf(message.blocks)
+      const prefix = contextBlocks
+        .map(
+          (block) =>
+            `<file_context source="${block.source}">\n${block.content}\n</file_context>`
+        )
+        .join('\n\n')
+      result.push({ role: 'user', content: prefix ? `${prefix}\n\n${text}` : text })
       continue
     }
     if (message.role === 'tool') {

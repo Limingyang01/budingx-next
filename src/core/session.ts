@@ -31,6 +31,11 @@ import type {
   ApprovalRequest,
   ToolHandler
 } from './tools.js'
+import type {
+  PermissionMode,
+  PermissionPolicy,
+  PermissionRequest
+} from './permissions.js'
 
 export type SessionOptions = {
   provider: ModelProvider
@@ -38,10 +43,17 @@ export type SessionOptions = {
   approval: ApprovalGateway
   resolveSnapshot: () => TurnSnapshot
   tools?: ToolHandler[]
+  /** SP003: when present, tool calls are decided by the policy. */
+  permissionPolicy?: PermissionPolicy
   maxIterations?: number
   cancelBudgetMs?: number
   queueAutostartMs?: number
   onEvent?: (event: SessionEvent) => void
+}
+
+export type SubmitOptions = {
+  /** File references brought in with @ (SP003 AC FC-04). */
+  context?: { source: string; content: string }[]
 }
 
 type QueuedInput = { id: string; text: string }
@@ -94,6 +106,9 @@ export class Session {
 
   constructor(private readonly options: SessionOptions) {
     this.tools = options.tools ?? []
+    this.options.permissionPolicy?.onModeChanged?.((mode: PermissionMode) => {
+      this.emit({ type: 'permission_changed', mode })
+    })
   }
 
   get currentState(): SessionState {
@@ -118,7 +133,7 @@ export class Session {
   }
 
   /** Submit user input. While a turn is running the input is queued. */
-  submit(text: string): void {
+  submit(text: string, options?: SubmitOptions): void {
     const trimmed = text.trim()
     if (!trimmed) return
     if (this.state !== 'idle') {
@@ -127,7 +142,7 @@ export class Session {
       this.emit({ type: 'input_queued', queueId: item.id, preview: previewOf(trimmed) })
       return
     }
-    void this.startTurn(trimmed).catch((error) => {
+    void this.startTurn(trimmed, undefined, options?.context).catch((error) => {
       this.emit({
         type: 'notice',
         level: 'error',
@@ -203,7 +218,11 @@ export class Session {
     this.emit({ type: 'status', state: next })
   }
 
-  private async startTurn(userText: string, queued?: QueuedInput): Promise<void> {
+  private async startTurn(
+    userText: string,
+    queued?: QueuedInput,
+    context?: { source: string; content: string }[]
+  ): Promise<void> {
     const turn: ActiveTurn = {
       provider: this.options.resolveProvider?.() ?? this.options.provider,
       id: randomUUID(),
@@ -227,7 +246,14 @@ export class Session {
     const userMessage: Message = {
       id: randomUUID(),
       role: 'user',
-      blocks: [{ type: 'text', text: userText }]
+      blocks: [
+        ...(context ?? []).map((entry) => ({
+          type: 'context' as const,
+          source: entry.source,
+          content: entry.content
+        })),
+        { type: 'text', text: userText }
+      ]
     }
     turn.messageIds.push(userMessage.id)
     this.messages.push(userMessage)
@@ -450,7 +476,40 @@ export class Session {
         )
         continue
       }
-      if (handler.requiresApproval?.(input)) {
+      // SP003: with a policy the verdict decides; without one the SP002
+      // requiresApproval hook keeps its exact behaviour.
+      const policy = this.options.permissionPolicy
+      let needsApproval = handler.requiresApproval?.(input) ?? false
+      let permissionRequest: PermissionRequest | undefined
+      if (policy) {
+        permissionRequest = {
+          tool: call.name,
+          capability: handler.capability?.(input) ?? 'read',
+          path: handler.target?.(input)?.path
+        }
+        const verdict = policy.decide(permissionRequest)
+        if (verdict.action === 'deny') {
+          this.pushToolResult(
+            turn,
+            call.id,
+            `Denied: ${verdict.reason}`,
+            true,
+            ERROR_CODES.permissionDenied
+          )
+          this.emit({
+            type: 'denial_recorded',
+            denial: {
+              tool: call.name,
+              ...(permissionRequest.path ? { path: permissionRequest.path } : {}),
+              reason: verdict.reason,
+              at: new Date().toISOString()
+            }
+          })
+          continue
+        }
+        needsApproval = verdict.action === 'ask'
+      }
+      if (needsApproval) {
         this.setState('awaiting_approval')
         const requestId = randomUUID()
         const request: ApprovalRequest = {
@@ -476,7 +535,11 @@ export class Session {
           outcome: decision.outcome,
           via: decision.via
         })
-        if (decision.outcome !== 'allow') {
+        if (decision.outcome === 'allow_session' && policy && permissionRequest) {
+          // SP003 AC PC-06: remember this target for the rest of the session.
+          policy.remember(permissionRequest)
+        }
+        if (decision.outcome !== 'allow' && decision.outcome !== 'allow_session') {
           this.pushToolResult(
             turn,
             call.id,
@@ -484,8 +547,21 @@ export class Session {
               ? `Cancelled: ${call.name}`
               : `Denied by ${decision.via}: ${call.name}`,
             true,
-            ERROR_CODES.coreApprovalCancelled
+            decision.outcome === 'cancelled'
+              ? ERROR_CODES.coreApprovalCancelled
+              : ERROR_CODES.permissionDenied
           )
+          if (decision.outcome === 'deny') {
+            this.emit({
+              type: 'denial_recorded',
+              denial: {
+                tool: call.name,
+                ...(permissionRequest?.path ? { path: permissionRequest.path } : {}),
+                reason: `Denied by ${decision.via}`,
+                at: new Date().toISOString()
+              }
+            })
+          }
           continue
         }
       }
@@ -493,7 +569,10 @@ export class Session {
       let content = ''
       let isError = false
       try {
-        content = await handler.execute(input, { signal: turn.controller.signal })
+        content = await handler.execute(input, {
+          signal: turn.controller.signal,
+          changes: (records) => this.emit({ type: 'change_set', changes: records })
+        })
       } catch (error) {
         content = error instanceof Error ? error.message : 'Tool execution failed'
         isError = true
