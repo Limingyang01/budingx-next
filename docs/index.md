@@ -24,6 +24,8 @@
 
 首发使用与交付：[TUI README](../src/tui/README.md)、[版本管理](versioning.md)、[首发状态](requirements/tui-bootstrap/STATUS.md)。
 
+当前发布准备：[0.2.0 · SP002 发行说明](../release-notes/v0.2.0.md)（prepared，尚未发布；npm latest 仍为 0.1.1）。
+
 源码模块组织见 [仓库布局](repository-layout.md)。
 
 构建与发布手册：[GitHub Actions + npm Trusted Publishing](github-actions-npm.md)；Agent 执行入口：[buding-npm-release](../skills/buding-npm-release/SKILL.md)。

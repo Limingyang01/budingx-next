@@ -1,6 +1,6 @@
 # budingx-next
 
-独立开发 Coding Agent 的新仓库。当前 npm 已发布 **MIT 简易聊天 TUI 0.1.1**：OpenAI 兼容配置/流式对话与内存会话；仓库源码已含 SP002 的模型与会话核心，尚无编码工具和完整 Agent。产品全貌见 [产品说明书](PRODUCT.md)，使用说明见 [TUI README](src/tui/README.md)。
+独立开发 Coding Agent 的仓库。当前源码 **0.2.0（SP002，PREPARED）** 已具备模型档案、Ink 对话界面与会话核心，尚无真实编码工具和完整 Agent。npm `latest` 仍为 **0.1.1 聊天预览版**；0.2.0 由维护者手动执行 GitHub 工作流发布。产品全貌见 [产品说明书](PRODUCT.md)，使用说明见 [TUI README](src/tui/README.md)。
 
 默认主分支为 `master`；新项目统一使用 Node.js + TypeScript，不引入 Bun。
 
@@ -24,4 +24,4 @@
 
 推荐 TUI 发布方式现为 [GitHub Actions + npm Trusted Publishing](docs/github-actions-npm.md)：在 Actions 手动 Run workflow，无需 NPM_TOKEN secret。首次建包及账号授信仍需维护者在个人可信设备上验证，未配置前不宣称可发布。
 
-TUI 0.1.1 已发布到 [npm](https://www.npmjs.com/package/budingx/v/0.1.1)，可执行 `npm install -g budingx` 安装，再用 `budingx --version` 核对。当前仍是聊天预览，完整编码 Agent 按迭代规划实施。
+npm 当前已发布 [0.1.1](https://www.npmjs.com/package/budingx/v/0.1.1)。0.2.0 已完成版本准备，见[发行说明](release-notes/v0.2.0.md)；发布成功后可执行 `npm install -g budingx@0.2.0`，再用 `budingx --version` 核对。完整编码 Agent 按迭代规划实施。

@@ -2,7 +2,11 @@
 
 本项目的推荐发布入口是 [Publish TUI to npm](https://github.com/Limingyang01/budingx-next/actions/workflows/publish-tui.yml)。配置文件见 [.github/workflows/publish-tui.yml](../.github/workflows/publish-tui.yml)。本指南说明仓库已实现的流程，以及账号端必须由维护者完成的设置；写入工作流不等于 npm 信任关系已建立或真实发布已验证。
 
-## 已验证状态（2026-11-16）
+## 当前发布准备（2026-11-17）
+
+SP002 已准备 **0.2.0**，台账状态 prepared；npm latest 仍为 0.1.1。发行说明见 [v0.2.0](../release-notes/v0.2.0.md)。维护者自行执行工作流，选择 branch=master、version=0.2.0、tag=latest；正式发布 dry_run=false。不要重复 version:prepare，也不要把本地预演当作已发布。
+
+## 历史发布回执（2026-11-16）
 
 - budingx@0.1.0 已通过普通账号会话和 Passkey 完成首发，当时 latest=0.1.0；registry integrity 与已验证 tarball 一致，已从官方源隔离安装、验证 npm 命令入口和 HTTP smoke。
 - [GitHub 运行 #3](https://github.com/Limingyang01/budingx-next/actions/runs/43812845334) 基于 97fb43d，Windows/Linux 的验证均成功；该运行是 dry-run，发布 job 跳过，不能当作真实 OIDC 上传证明。
@@ -21,7 +25,7 @@
 
 ## 从构建到发布：每轮操作清单
 
-本节适用于新版本交付，不需要重复配置已建立的账号信任。Agent 使用 [buding-npm-release](../skills/buding-npm-release/SKILL.md)，版本规则见 [版本规范](versioning.md)。执行目录是本仓根目录；示例 SP001 仅在该迭代实际交付后使用，不表示现在启动 SP。
+本节适用于新版本交付，不需要重复配置已建立的账号信任。Agent 使用 [buding-npm-release](../skills/buding-npm-release/SKILL.md)，版本规则见 [版本规范](versioning.md)。执行目录是本仓根目录；通用准备命令以已确认迭代为准；本轮 SP002 已准备完成，不要重复执行。
 
 ### 1. 准备版本与发行说明
 
@@ -31,7 +35,7 @@
 git status --short
 Get-Content src/tui/package.json
 Get-Content release-ledger.json
-npm run version:prepare -- minor --iteration SP001
+npm run version:prepare -- minor --iteration SP002
 # bootstrap 维护修复的替代命令（只选择符合本次交付的一条）：
 # npm run version:prepare -- patch --iteration bootstrap
 ```
@@ -48,7 +52,7 @@ npm run publish -- --dry-run --expected-version $releaseVersion --tag latest
 
 逐条确认命令退出码为 0 后再继续；预演失败时不要提交发布准备或触发正式上传。它调用 npm test（技能、TUI 编译/回归、发布工具测试），然后 pack 并隔离安装真实 tarball，检查 npm 命令入口与本地 HTTP 流式 smoke。只需编译时用 `npm run build`；编译不能替代完整发布预演。预演报告位于忽略目录 `artifacts/release/<version>-<timestamp>/report.json`，不会上传 npm。
 
-TUI 制品仅含 package.json、README.md、LICENSE 和 dist 下 cli.js/config.js/provider.js 六个文件；不包含源码仓、开发依赖或用户配置。发布预演用当前 Node；Windows Node 22、Linux Node 24 的托管门禁仍由 Actions 分别执行。
+SP002 制品仅含 package.json、README.md、LICENSE 和 dist/{core,provider,storage,tui} 下编译 JS；bin 为 dist/tui/cli.js，实际文件数以本次 dry-run 为准，不包含源码仓、开发依赖或用户配置。发布预演用当前 Node；Windows Node 22、Linux Node 24 的托管门禁仍由 Actions 分别执行。
 
 ### 3. 提交准备、正式运行与公开核实
 
@@ -113,13 +117,13 @@ npx --yes npm@11.21.2 run publish
 
 包存在后，在 npm 的 budingx → Settings → Trusted Publisher 中选择 GitHub Actions，准确填写：
 
-| 字段 | 值 |
-| --- | --- |
-| Organization or user | Limingyang01 |
-| Repository | budingx-next |
-| Workflow filename | publish-tui.yml |
-| Environment name | npm-publish |
-| Allowed actions | **允许直接 npm publish**；只有 stage publish 不符合本项目一键公开发布目标 |
+| 字段                 | 值                                                                        |
+| -------------------- | ------------------------------------------------------------------------- |
+| Organization or user | Limingyang01                                                              |
+| Repository           | budingx-next                                                              |
+| Workflow filename    | publish-tui.yml                                                           |
+| Environment name     | npm-publish                                                               |
+| Allowed actions      | **允许直接 npm publish**；只有 stage publish 不符合本项目一键公开发布目标 |
 
 工作流名称、大小写及 environment 必须完全匹配。此账号设置仍需你使用 npm 的安全验证；无需把 token 提供给 GitHub 或 Agent。新 trust 配置需在官方规定的有效期内完成首次成功发布（目前为 2 天），过期则按 npm 页面重建；普通 dry-run 不会激活 trust。[npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers/)
 
@@ -149,11 +153,7 @@ npx --yes npm@11.21.2 trust github budingx --repo Limingyang01/budingx-next --fi
 npm run release:sync -- --receipt C:/path/to/downloaded/report.json
 ```
 
-该命令核对当前包版本、成功状态和 GitHub run 地址格式，并向固定公共 npm registry 查询 immutable version/integrity 后，更新 release-ledger.json，保留原有未知字段。它信任维护者从正确 Actions artifact 下载的 JSON，不独立验签 artifact 或验证 GitHub run 结论；不要导入来源不明的报告。随后审阅/提交回执，才能准备下一轮：
-
-```powershell
-npm run version:prepare -- minor --iteration SP001
-```
+该命令核对当前包版本、成功状态和 GitHub run 地址格式，并向固定公共 npm registry 查询 immutable version/integrity 后，更新 release-ledger.json，保留原有未知字段。它信任维护者从正确 Actions artifact 下载的 JSON，不独立验签 artifact 或验证 GitHub run 结论；不要导入来源不明的报告。随后审阅并提交回执，才能准备下一轮：同一 SP 修复使用 patch，已确认的新 SP 首次产品交付使用 minor。本轮 0.2.0 已 prepared，不要重复准备或提前创建下一版本。
 
 本机核对公开 npm 元数据和导入回执不需要发布 token。首次手工首发的 session 回执由当时的脚本直接更新台账，本命令专用于 CI/OIDC 报告。
 

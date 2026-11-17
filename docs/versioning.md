@@ -2,8 +2,10 @@
 
 用户已确认：每个迭代交付更新产品版本。采用 SemVer，产品版本与 SP 编号分别管理，不修改已发布版本、不以目录创建触发发包。
 
+复用入口：[buding-version-prepare](../skills/buding-version-prepare/SKILL.md)，用于版本升级、文档同步、预演及维护者手动发布交接，不自动触发 npm 发布。
+
 - 首个启动版本为 0.1.0（bootstrap），只含 OpenAI 兼容流式聊天 TUI，不表示任何 SP 已验收。
-- 每个新 SP 完成并交付时至少增加 minor，例如 SP001 首次交付 0.2.0；同一 SP 的修复增加 patch。实际版本以发布台账为准，不将 SP021 硬编码为某个版本。
+- 每个新 SP 完成并交付时至少增加 minor，本仓 SP002 首次产品交付准备为 0.2.0；同一 SP 的修复增加 patch。实际版本以发布台账为准，不将 SP021 硬编码为某个版本。
 - 兼容破坏增加 major（在 0.x 开发阶段也可按 minor 体现，必须显式记录迁移）；1.0.0 必须满足完整替代验收，不能因 SP 编号自然到达。
 - prepare 只准备版本、台账和发行说明，不提交、不打 tag、不上传。发布命令不自行 bump，版本重复拒绝，预发布用明确 tag。
 - 同一 SP 可多次发布，SP 状态、产品版本、发布状态分开记录；发布失败不把已占用版本重新使用。
@@ -15,7 +17,7 @@
 
 规范依据：[npm SemVer 说明](https://docs.npmjs.com/about-semantic-versioning/)。
 
-当前实际入口：`npm run version:prepare -- minor --iteration SP001`（同轮修复 patch）。要求当前版本有 published 回执且无未处理 prepared 版本；保留台账未知字段。命令不修改根维护包版本或执行 Git 写操作。
+当前实际入口：`npm run version:prepare -- minor --iteration SP002`（同轮修复 patch）。要求当前版本有 published 回执且无未处理 prepared 版本；保留台账未知字段。命令不修改根维护包版本或执行 Git 写操作。
 
 ## Actions 发布回执
 

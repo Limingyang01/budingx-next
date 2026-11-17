@@ -356,3 +356,13 @@ PS-08 真实 Provider 四类行为已取得本节证据；其他型号/供应商
 自审及文档：PRODUCT.md、开发指南与 TUI README 已同步本地/真实环境边界；未加依赖，未改构建、发布或安装 bin。按当前 Node 版本原生能力实现；该开发命令没有对应旧产品机制，产品 Provider/Agent 核心逻辑未修改。格式化与交叉验证门禁在提交及合入前运行，实际门禁报告存于 artifacts/merge-gate。不推送、不发布。
 
 门禁回执：`artifacts/merge-gate/feature-SP002-local-test-start-2026-11-17T07-51-08-244Z.md` GREEN（npm test、spec:check、skills:check、pack-smoke 全部通过）；源 `626ae7ea6a0494df2b303b9e6c451b2048aedf6f` 合入本地 master `db1fcb7c21a3a9eadca5f06d5d2f7dac3f42d883`，ancestry 及 tree 一致性已确认。独立审查无待修问题，4 项专项回归通过；未读取或提交真实配置、未发真实模型请求。
+
+## 18. 0.2.0 版本准备（2026-11-17）
+
+用户要求升级版本并同步全部版本相关文档，明确由其自行执行 GitHub 工作流发布。本次只准备 0.2.0（SP002 minor）：产品 package、prepared 台账、发行说明、产品/根/TUI README、当前状态、版本规范、发布计划/指南、文档导航与四模块 STATUS 已同步。0.1.0/0.1.1 的历史回执及 SP001 规格基线保持原版本，测试中的固定示例版本不冒充当前版本。
+
+官方 registry 查询：latest=0.1.1，0.1.1 已存在，0.2.0 尚不存在；不预记 published，不触发 Actions 或 npm 上传。版本工具 4 项、CLI/清单/本地启动 14 项均通过；build 通过。验证隔离配置，不读取 .env.e2e.local。
+
+独立审查发现并修正了发布指南中“回执后再次 minor SP002”的错误示例；同轮修复仍 patch，新 SP 首次交付 minor。手动工作流参数为 master / 0.2.0 / latest，正式上传 dry_run=false。本次发布 dry-run 及锁定安装将在干净的源码副本执行，实际数量与制品回执后续追加。
+
+复用技能：新增 skills/buding-version-prepare，三套发现入口由生成器同步；完整发布技能保留实际上传边界。发现性回归先因缺少新技能失败，接入后技能维护 10 项通过。独立前向场景验证：基线未使用仓库原子版本工具、未明确完整 dry-run；读新技能后采用 version:prepare + 锁定安装/expected-version dry-run，并在已有 prepared 候选时保持幂等、不重复 bump，保留历史回执与用户手动触发边界。官方 quick_validate.py 因本机 Python 缺 PyYAML 无法执行；Node YAML/发现入口/链接校验已通过，不将 Python 校验记为通过。

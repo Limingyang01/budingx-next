@@ -10,7 +10,7 @@ import {
   FAMILIES,
   THIRD_PARTY_SKILLS,
   canonicalPath,
-  syncEntries
+  syncEntries,
 } from './sync-entries.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
@@ -18,7 +18,7 @@ const read = (file) => readFileSync(path.join(root, file), 'utf8')
 
 function filesIn(directory) {
   return readdirSync(path.join(root, directory), {
-    withFileTypes: true
+    withFileTypes: true,
   }).flatMap((entry) => {
     const file = `${directory}/${entry.name}`
     return entry.isDirectory() ? filesIn(file) : [file]
@@ -28,7 +28,8 @@ function filesIn(directory) {
 test('every managed skill is discoverable through all generated entry families', () => {
   assert.deepEqual(syncEntries(root, { check: true }), [])
   assert.ok(SKILLS.includes('buding-npm-release'))
-  assert.equal(SKILLS.length, 22)
+  assert.ok(SKILLS.includes('buding-version-prepare'))
+  assert.equal(SKILLS.length, 23)
   for (const family of FAMILIES) {
     for (const name of SKILLS) {
       const file = `${family}/skills/${name}/SKILL.md`
@@ -48,7 +49,7 @@ test('the licensed upstream snapshot retains every pinned byte and its license',
   assert.equal(manifest.license, 'MIT')
   assert.match(
     read('skills/superpowers/LICENSE'),
-    /Copyright \(c\) 2025 Jesse Vincent/
+    /Copyright \(c\) 2025 Jesse Vincent/,
   )
   for (const [file, expected] of Object.entries(manifest.files)) {
     const actual = createHash('sha256')
@@ -57,7 +58,7 @@ test('the licensed upstream snapshot retains every pinned byte and its license',
     assert.equal(
       actual,
       expected,
-      `Upstream file changed or incomplete: ${file}`
+      `Upstream file changed or incomplete: ${file}`,
     )
   }
 })
@@ -76,7 +77,7 @@ test('third-party skill snapshots retain every pinned byte and their license', (
       assert.equal(
         actual,
         expected,
-        `Upstream file changed or incomplete: ${name}/${file}`
+        `Upstream file changed or incomplete: ${name}/${file}`,
       )
     }
   }
@@ -93,17 +94,17 @@ test('project documentation, canonical workflows and discovery entries have exis
     ...filesIn('docs').filter((file) => file.endsWith('.md')),
     ...filesIn('SP').filter((file) => file.endsWith('.md')),
     ...project.flatMap((name) =>
-      filesIn(`skills/${name}`).filter((file) => file.endsWith('.md'))
+      filesIn(`skills/${name}`).filter((file) => file.endsWith('.md')),
     ),
     ...FAMILIES.flatMap((family) =>
-      SKILLS.map((name) => `${family}/skills/${name}/SKILL.md`)
-    )
+      SKILLS.map((name) => `${family}/skills/${name}/SKILL.md`),
+    ),
   ]
   const failures = []
   for (const file of candidates) {
     const text = read(file).replace(/```[\s\S]*?```/g, '')
     for (const match of text.matchAll(
-      /!?\[[^\]]*\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g
+      /!?\[[^\]]*\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g,
     )) {
       const destination = match[1].replace(/^<|>$/g, '')
       if (/^(?:[a-z][a-z0-9+.-]*:|#|\/)/i.test(destination)) continue
@@ -125,7 +126,7 @@ test('the migration manifest only claims development assets and Node maintenance
     assert.ok(
       entry.source.startsWith('skills/superpowers/') ||
         entry.source.startsWith('scripts/skills/'),
-      entry.source
+      entry.source,
     )
   }
   const pkg = JSON.parse(read('package.json'))
@@ -139,6 +140,6 @@ test('the migration manifest only claims development assets and Node maintenance
   for (const match of guide.matchAll(/npm run ([\w:-]+)/g))
     assert.ok(
       pkg.scripts[match[1]],
-      `Unimplemented command in developer guide: ${match[1]}`
+      `Unimplemented command in developer guide: ${match[1]}`,
     )
 })

@@ -28,6 +28,11 @@
       "workflowRun": "https://github.com/Limingyang01/budingx-next/actions/runs/43826550093",
       "attestations": "https://registry.npmjs.org/-/npm/v1/attestations/budingx@0.1.1",
       "verificationSource": "public-registry-provenance-and-independent-install"
+    },
+    {
+      "version": "0.2.0",
+      "iteration": "SP002",
+      "status": "prepared"
     }
   ]
 }

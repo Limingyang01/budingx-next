@@ -1,15 +1,15 @@
 # 当前状态
 
-日期：2026-11-17。阶段：简易聊天 TUI 已发布（npm `budingx@0.1.1`），OIDC 发布链路已实测；**SP002「模型与会话闭环」已实现并完成本地验证，等待用户验收**；其余 19 轮完整 Agent 迭代仍未启动。
+日期：2026-11-17。阶段：简易聊天 TUI 已发布（npm `budingx@0.1.1`），OIDC 发布链路已实测；**SP002 已实现，0.2.0 版本已准备（prepared），等待维护者执行发布工作流**；其余 19 轮完整 Agent 迭代仍未启动。
 
 ## 已有
 
 - 用户创建的 Git 仓库，主线 master；首个提交 f3c4675 已推送，GitHub API 已核对远端 SHA。
 - 项目协作约定、产品目标、独立开发边界和架构方向草案。
-- 5 个适配本仓的项目流程技能，以及 MIT 许可的 15 个 Superpowers 开发技能。
+- 6 个适配本仓的项目流程技能（含版本准备），以及 MIT 许可的 15 个 Superpowers 开发技能；第三方开发技能单独登记。
 - 面向 `.agents`、`.claude`、`.budingx` 的发现入口和维护脚本。
 - 用于维护的私有 package.json；其 `0.0.0` 不是产品发布版本。
-- `src/tui` 下独立编写的 MIT 聊天 TUI，已发布版本 0.1.1；配置/流式对话/内存会话，无运行时第三方依赖。
+- npm 已发布的 0.1.1 是无运行时第三方依赖的聊天预览；当前 src/tui 已准备 0.2.0，新增 Ink/React/string-width 运行时依赖及模型、会话核心。
 - 实际 Node/TypeScript 构建、测试、版本准备与发布编排，实际 tarball 隔离安装 smoke 已通过。
 - **SP002 新增**：`src/core`（事件契约、会话/回合状态机、工具回合、输入队列、消息规范化）、`src/provider`（OpenAI 兼容流解析、tool_calls 碎片、错误分类、有界重试、取消、连通探测）、`src/storage`（`~/.budingx` 配置与凭据仓库、模型档案 CRUD、三源合并）、`src/tui` 的 Ink 8 对话界面（渲染 reducer、多行编辑器、审批卡、双中断与排队）。
 
@@ -32,12 +32,12 @@
 - 2026-11-17 启动**剩余 SP 参考复刻全面排查**（用户指示）：[排查文档 r1 draft](reference-tui-replication-audit.md) 已建立 CAP→SP 基线映射、12 条独立实现周旋总则与 4 项 manifest v2 缺口提议；4 路只读盘点回填中，待用户审阅后并入路线图 r5。不授权开发。
 - 2026-11-17 交付后复验修正一处真实缺陷：队列自动起新回合的定时器曾被 `unref()`，导致排队输入在空闲时不自动起新回合（SL-05）。已修复并复测，详见 [SP002 验证报告 §7](../SP/SP002/test-report.md)。
 - 面向使用者的产品事实入口为根目录 [产品说明书](../PRODUCT.md)：产品版本号、按迭代归类的功能表、使用说明、已知限制与版本历史；产品变更须同步更新它。
-- **未验证项**：PS-08 live Provider（缺真实凭据与预算）记 UNVERIFIED；TC-02/03/04/07 的 Windows Terminal + ConHost 真终端人工 smoke 记 UNVERIFIED，需用户验收时补证据（CJK/IME 打字体验为 R1 门槛，不达标回退自研输入层）。
-- 产品版本仍是 0.1.1：按 [版本规范](versioning.md)，版本准备在当轮验收后执行，本轮未擅自 bump、未发布、未推送。
+- **验证边界**：PS-08 已在一个用户授权服务验证五项；其他型号/服务未测。Windows Terminal/ConHost 的真实 IME、鼠标及观感仍为 UNVERIFIED，恢复条件为执行报告 §5 的人工清单。
+- 产品源码版本为 **0.2.0（prepared）**；npm latest 仍为 0.1.1。用户 2026-11-17 要求升级版本并自行执行 GitHub 发布工作流，见 [发行说明](../release-notes/v0.2.0.md)。未触发发布，不预记 published。
 
 ## 验证范围
 
-历史迁移验证见 [迁移记录](migration/README.md)。首发新增配置/Provider、真实 CLI 子进程多轮对话和 tarball 安装 smoke；真实外部模型无测试凭据，仍为 UNVERIFIED。
+历史迁移验证见 [迁移记录](migration/README.md)。0.2.0 延续 CLI 子进程及制品隔离安装验证；一个真实外部服务已有五项回执，见 SP002 报告 §16。历史版本的 UNVERIFIED 不作为当前结论。
 
 规划已完善至 [路线图 r3](iteration-plan.md)，配套 [能力矩阵](agent-capability-matrix.md)、[高级功能计划](advanced-capabilities-plan.md)、[npm 发布方案](npm-release-plan.md)与 [版本规范](versioning.md)。bootstrap 是单独授权的简易首发。
 

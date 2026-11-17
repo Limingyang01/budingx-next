@@ -16,13 +16,14 @@
 
 共享正文只维护在 `skills/`；`.agents/skills/`、`.claude/skills/`、`.budingx/skills/` 是生成的发现入口。它们是开发助手技能，不是新产品已实现的运行时功能。
 
-| 工作 | 规范 |
-| --- | --- |
-| 需求、设计、实施计划和证据 | [buding-sdd](skills/buding-sdd/SKILL.md) |
-| 未来 UI/状态/API 客户端验证 | [buding-frontend-testing](skills/buding-frontend-testing/SKILL.md) |
-| 未来 Core/Provider/工具/存储/进程验证 | [buding-runtime-testing](skills/buding-runtime-testing/SKILL.md) |
-| TUI 构建、版本准备、Actions/OIDC npm 发布与回执 | [buding-npm-release](skills/buding-npm-release/SKILL.md) |
-| 集成安全规程（含 SDD 收口合入）与授权动作边界 | [buding-merge](skills/buding-merge/SKILL.md) |
+| 工作                                            | 规范                                                               |
+| ----------------------------------------------- | ------------------------------------------------------------------ |
+| 需求、设计、实施计划和证据                      | [buding-sdd](skills/buding-sdd/SKILL.md)                           |
+| 未来 UI/状态/API 客户端验证                     | [buding-frontend-testing](skills/buding-frontend-testing/SKILL.md) |
+| 未来 Core/Provider/工具/存储/进程验证           | [buding-runtime-testing](skills/buding-runtime-testing/SKILL.md)   |
+| TUI 构建、版本准备、Actions/OIDC npm 发布与回执 | [buding-npm-release](skills/buding-npm-release/SKILL.md)           |
+| 升级版本、同步版本文档与发布准备                | [buding-version-prepare](skills/buding-version-prepare/SKILL.md)   |
+| 集成安全规程（含 SDD 收口合入）与授权动作边界   | [buding-merge](skills/buding-merge/SKILL.md)                       |
 
 开发流程按需读取 [项目 Superpowers](skills/superpowers/using-superpowers/SKILL.md) 及相关阶段。第三方开发技能（[react-ink](skills/react-ink/SKILL.md)、[tui-design](skills/tui-design/SKILL.md)）同样只在 `skills/` 维护快照，来源与许可见 [第三方声明](THIRD-PARTY-NOTICES.md)，正文中的安装/推广建议不扩大授权。用户既有授权优先，不重复请求同一范围的许可；上游技能中的自动提交、清理、发布建议不能扩大当前授权。普通文档迁移不自动开启产品架构实施。
 
@@ -38,7 +39,7 @@
 
 ## 用户数据与版本
 
-产品数据统一用 `~/.budingx`，通过 Node `os.homedir()` 解析当前用户 home；不硬编码用户名、电脑名称、盘符或 cwd。禁止读取、回退、写入或自动迁移 `~/.claude`。模型、历史、团队、IM、调度等在统一根下按身份与责任隔离并遵守迁移/备份规范；密钥不作为普通共享明文配置。bootstrap 只使用显式参数/BUDINGX_* 环境变量，不持久化用户数据。项目内的助手发现入口不属于产品用户存储。
+产品数据统一用 `~/.budingx`，通过 Node `os.homedir()` 解析当前用户 home；不硬编码用户名、电脑名称、盘符或 cwd。禁止读取、回退、写入或自动迁移 `~/.claude`。模型、历史、团队、IM、调度等在统一根下按身份与责任隔离并遵守迁移/备份规范；密钥不作为普通共享明文配置。bootstrap 只使用显式参数/BUDINGX\_\* 环境变量，不持久化用户数据。项目内的助手发现入口不属于产品用户存储。
 
 用户已确认自有新产品采用 MIT，第三方许可独立保留。版本遵守 [版本规范](docs/versioning.md)：新 SP 完成交付至少 minor 更新，同轮修复 patch；产品版本以 src/tui/package.json 为准，发布台账必须有真实回执。
 

@@ -9,6 +9,8 @@ description: Use when preparing, building, verifying, publishing or recovering a
 
 ## 绑定任务与版本
 
+只要求升级版本/准备下一版时，使用 [buding-version-prepare](../buding-version-prepare/SKILL.md) 维护版本及全部相关文档；实际触发工作流、上传 npm 和发布回执仍遵守本技能的独立授权边界。用户自行执行工作流时只准备并交接参数，不代为触发。
+
 - 核对实际仓库根目录、`git status --short`、master/HEAD、remote，以及 `src/tui/package.json`、`release-ledger.json`、发行说明和当前工作流。以实时源码和官方 registry 为准，不照搬 0.1.1、历史运行编号或本机绝对路径。
 - 区分只准备/验证、Git 提交推送、触发 Actions、实际 npm 发布和回执收尾。已有明确授权继续有效；阅读或调用本 Skill 不自动授权后续外部动作。用户自行触发时，只提供参数并跟进结果，不代为触发。遵守当前工具限制，不把浏览器自动化设为前提。
 - 新 SP 交付至少 minor，同轮修复 patch；bootstrap 修复用 patch + iteration bootstrap。当前版本有 published 回执且无 prepared 遗留后才能准备下一版。不为发布测试发明 SP、空版本或重用已发布版本。
