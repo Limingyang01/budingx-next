@@ -25,11 +25,11 @@ description: Use when the user requests SDD, a cross-module Coding Agent feature
 | 适用审查 | [requesting-code-review](../superpowers/requesting-code-review/SKILL.md) |
 | 完成前核验证据 | [verification-before-completion](../superpowers/verification-before-completion/SKILL.md) |
 
-设计文档 `design/design.zh.md` 是正式 SDD 唯一常规人工审阅点。设计批准后，功能分支、计划、实施、测试与交付记录连续自主推进；计划直接沿用同版设计批准，不再汇报等待或逐段请求许可。写代码前从 master 最新提交创建 feature 分支，本轮全部本地提交在该分支完成且提交说明使用中文；测试全绿并记录交付后，按 [buding-merge](../buding-merge/SKILL.md) 安全规程自主合入 master。STATUS 记录批准原话或精确来源、文件版本/哈希与允许动作范围。批准不包含推送、打标签、npm 发布、远端设置或分支/worktree 清理，这些仍按 AGENTS.md 分别绑定用户授权。
+设计文档 `design/design.zh.md` 是正式 SDD 的 **Agent 自审对象**（用户 2026-11-17 委托取消常规人工审查；委托原文见 AGENTS.md「审查与集成委托」）。自审通过后，功能分支、计划、实施、测试与交付记录连续自主推进；计划直接沿用同版自审结论，不再汇报等待或逐段请求许可。写代码前从 master 最新提交创建 feature 分支，本轮全部本地提交在该分支完成且提交说明使用中文；测试全绿、自审记录留存并**通过交叉验证门禁（`npm run merge:gate`，见 [集成门禁](../../docs/integration-gate.md)）**后，按 [buding-merge](../buding-merge/SKILL.md) 安全规程自主合入 master；门禁 RED 禁止合入。STATUS 记录自审结论、批准/委托原话或精确来源、文件版本/哈希与允许动作范围。委托不包含推送、打标签、npm 发布、远端设置或分支/worktree 清理，这些仍按 AGENTS.md 分别绑定用户授权。
 
 同一范围与版本的用户批准持续有效，从最早未完成阶段恢复，不重建获批文档或重复询问。实质行为、AC、范围或架构变化才更新相关批准；格式修改不使批准失效。委派、隔离与收尾受当前工具契约及用户授权约束，上游默认路径和发布建议不扩大范围。
 
-每个阶段开始时向用户输出 todolist：列出本次 SDD 全部阶段，已完成打勾、当前阶段标记进行中，优先使用当前运行时的任务清单能力，否则以 markdown 输出。每阶段完成时把勾选与最新本地提交同步到功能 STATUS 和迭代 `requirements-summary.md` 需求索引，断线或换会话的 Agent 先读这两处核对后从最早未完成阶段续接。仅在以下情形停等用户：阻塞性 OPEN、实质业务分叉、需要超出当前批准范围的授权动作；缺外部凭据或真实环境不阻塞推进，记 UNVERIFIED 并写明恢复条件。
+每个阶段开始时向用户输出 todolist：列出本次 SDD 全部阶段，已完成打勾、当前阶段标记进行中，优先使用当前运行时的任务清单能力，否则以 markdown 输出。每阶段完成时把勾选与最新本地提交同步到功能 STATUS 和迭代 `requirements-summary.md` 需求索引，断线或换会话的 Agent 先读这两处核对后从最早未完成阶段续接。仅在以下情形停等用户：超出委托范围的授权动作（推送、npm 发布、远端设置、打标签、分支/worktree 删除）；缺外部凭据或真实环境**不阻塞推进**，记 UNVERIFIED 并写明恢复条件。功能、需求与 bug 修复的判断由 Agent 在委托内自审承担，不停等人工审查。
 
 ## 1. 需求和状态
 

@@ -13,10 +13,12 @@
 8. [SP 管理与模板](../SP/README.md)：统一按迭代及功能/优化记录。
 9. [SP001 迭代汇总](../SP/SP001/requirements-summary.md)：能力基线、核心边界与发布范围（规格轮，已验收，未启动实现）。
 10. [迁移记录](migration/README.md)：本次取舍、来源和检查结果。
+11. [剩余 SP 参考复刻排查](reference-tui-replication-audit.md)：SP003–SP021 对照参考仓 TUI 的逐轮排查、缺口与独立实现周旋点（r1 draft 待审）。
+12. [集成门禁与自审流程](integration-gate.md)：2026-11-17 委托——Agent 自审、交叉验证门禁 GREEN 才合入 master、自动化命令与报告。
 
 开发约定见 [AGENTS.md](../AGENTS.md)，开发技能入口见 [skills/README.md](../skills/README.md)，第三方许可见 [声明](../THIRD-PARTY-NOTICES.md)。
 
-规划配套必读：[Agent 能力与验收矩阵](agent-capability-matrix.md)、[TUI npm 一键发布方案](npm-release-plan.md)。
+规划配套必读：[Agent 能力与验收矩阵](agent-capability-matrix.md)、[TUI npm 一键发布方案](npm-release-plan.md)、[剩余 SP 参考复刻排查](reference-tui-replication-audit.md)。
 
 完整替代必读：[高级能力功能拆分与验收](advanced-capabilities-plan.md)。
 

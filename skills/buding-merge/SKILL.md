@@ -11,7 +11,7 @@ description: Use when a scoped local commit, cherry-pick, merge, push, or integr
 
 ## 1. 固定授权和现场
 
-从当前对话绑定仓库、源、目标、文件/提交范围与允许动作：审查、stage/commit、cherry-pick/merge、push、远端设置、tag、npm 发布、部署、分支/worktree 删除分别判断。已有明确授权持续有效，缺关键目标或范围才询问，不重复审批同一动作。正式 SDD 收口时从 master 建分支与完成后合入 master 属于设计批准范围，按本规程安全执行；其余合并仍分别取得授权。
+从当前对话绑定仓库、源、目标、文件/提交范围与允许动作：审查、stage/commit、cherry-pick/merge、push、远端设置、tag、npm 发布、部署、分支/worktree 删除分别判断。已有明确授权持续有效，缺关键目标或范围才询问，不重复审批同一动作。**用户 2026-11-17 委托（USER_CONFIRMED，见 AGENTS.md）：常规人工审查取消，Agent 自审；正式 SDD 收口合入 master 属委托范围，前置条件为交叉验证门禁 GREEN（§3.5）与自审记录留存**；其余合并仍分别取得授权。
 
 文档/技能迁移、安装本技能、通过测试或用户要求开发不自动授权提交/发布。旧仓保持只读；不要把源仓合并进新仓来迁移技能，也不沿用旧版本号、成绩或发布状态。用户已授权 MIT 聊天 TUI 验证后首发 npm，以及本次 Git 提交/推送；不得依据旧暂停状态重复审批。后续动作仍遵守各自实际授权。
 
@@ -36,6 +36,17 @@ description: Use when a scoped local commit, cherry-pick, merge, push, or integr
 集成前核对完整引入差异、依赖/lock、契约两端、fixture、存储迁移和实际制品资源。文档/技能范围不得夹带旧 Agent、query/提示词/SDK 类型或产品文件。只读来源审计不允许把旧实现换名并入新仓。
 
 在正确目标 checkout 对固定源执行授权动作。正常 merge 保留历史，不自动 squash/rebase。冲突按双方意图和现有行为解决；业务语义不明保留现场并请求具体决定。
+
+## 3.5 交叉验证门禁（2026-11-17 委托的自动化前置）
+
+合入 master 前必须执行 `npm run merge:gate`（`scripts/merge/cross-validate.mjs`）并得到 **GREEN**；报告落 `artifacts/merge-gate/<branch>-<ts>.{json,md}`（gitignored，交接引用路径与结论）。门禁内容：
+
+1. 全量 `npm test`（技能/规格/产品单元/边界/发布/门禁纯函数）＋ `spec:check` ＋ `skills:check` ＋ 隔离安装 pack-smoke，全部退出码 0。
+2. outgoing（merge-base..HEAD）提交路径扫描：不得含依赖、dist/产物、artifacts、.env/凭据/密钥文件、异源 lockfile（pnpm-lock）、tsbuildinfo。
+3. 当轮 `SP/SPnnn/test-report.md` 审计：无 FAIL 行；UNVERIFIED 允许但必须存在恢复条件节；报告缺失即 RED。
+4. 记录 branch/target/merge-base/HEAD/outgoing 数量，供 §3 预演与 §5 交接复用。
+
+GREEN 之外还须留存 **Agent 自审记录**（AC 逐条结论、scoped diff 复核、e2e 分层证据、UNVERIFIED 恢复条件），写入当轮 test-report 或 review 记录后再合入。RED 时禁止合入：修复后重跑门禁；不得降阈值、删断言或改报告措辞绕过。门禁不替代 §3 的 merge-tree 预演与冲突处理，也不授权 push。
 
 ## 4. 验证与发布
 
