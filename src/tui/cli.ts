@@ -4,16 +4,11 @@ import { readFileSync } from 'node:fs'
 import { createElement } from 'react'
 import { render } from 'ink'
 import { Session } from '../core/session.js'
-import type { TurnSnapshot } from '../core/events.js'
-import { createOpenAiProvider } from '../provider/openai.js'
 import { ConfigStore } from '../storage/config-store.js'
 import { CredentialStore } from '../storage/credentials.js'
-import {
-  mergeSources,
-  profileHost,
-  type ResolvedConfig
-} from '../storage/profiles.js'
+import { mergeSources, profileHost, type ResolvedConfig } from '../storage/profiles.js'
 import { App } from './app.js'
+import { createConfiguredSession } from './runtime.js'
 import { InkApprovalGateway } from './approval.js'
 import { runCommand } from './commands.js'
 
@@ -21,9 +16,10 @@ function readProductVersion(): string {
   let dir = new URL('.', import.meta.url)
   for (let depth = 0; depth < 8; depth++) {
     try {
-      const parsed = JSON.parse(
-        readFileSync(new URL('package.json', dir), 'utf8')
-      ) as { name?: string; version?: string }
+      const parsed = JSON.parse(readFileSync(new URL('package.json', dir), 'utf8')) as {
+        name?: string
+        version?: string
+      }
       if (parsed.name === 'budingx' && parsed.version) return parsed.version
     } catch {
       // keep walking up
@@ -37,7 +33,7 @@ const version = readProductVersion()
 const help = `budingx ${version} — independent terminal coding agent (preview)
 Usage: budingx [--model NAME] [--base-url URL] [--timeout MS] [--prompt TEXT]
 Environment: BUDINGX_API_KEY, BUDINGX_MODEL, BUDINGX_BASE_URL
-Commands: /help /config /models /model NAME /provider add|edit|rm|check /clear /exit
+Commands: /help /config /models /model NAME /provider add|edit|rm|check|key|default|tools|orphans /clear /exit
 Keys: Esc interrupts a running turn, Enter submits, Ctrl+C interrupts and exits.
 Coding tools land in later releases; this build ships the model and session core.`
 
@@ -56,9 +52,13 @@ function loadStores(): Stores {
   const configStore = new ConfigStore()
   const credentialStore = new CredentialStore()
   const stored = configStore.load()
+  const orphanCount = credentialStore.orphanIds(stored.models.map((p) => p.id)).length
+  if (orphanCount)
+    process.stderr.write(
+      `Orphan credentials: ${orphanCount}; use /provider orphans [clean]\n`
+    )
   const profile =
-    stored.models.find((entry) => entry.id === stored.defaultModelId) ??
-    stored.models[0]
+    stored.models.find((entry) => entry.id === stored.defaultModelId) ?? stored.models[0]
   const file = profile
     ? {
         profileId: profile.id,
@@ -68,37 +68,6 @@ function loadStores(): Stores {
       }
     : {}
   return { configStore, credentialStore, file }
-}
-
-function snapshotOf(config: ResolvedConfig): TurnSnapshot {
-  let host = ''
-  try {
-    host = new URL(config.baseUrl).host
-  } catch {
-    host = ''
-  }
-  return {
-    modelId: config.profileId ?? 'session',
-    model: config.model,
-    baseUrlHost: host,
-    capabilities: { tools: false }
-  }
-}
-
-function createSession(config: ResolvedConfig): Session {
-  const provider = createOpenAiProvider({
-    baseUrl: config.baseUrl,
-    apiKey: config.apiKey
-  })
-  return new Session({
-    provider,
-    approval: {
-      async request() {
-        return { outcome: 'allow', via: 'policy' }
-      }
-    },
-    resolveSnapshot: () => snapshotOf(config)
-  })
 }
 
 /** Run one turn and stream the answer as plain text. */
@@ -126,11 +95,17 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8')
 }
 
-async function runPipe(
-  config: ResolvedConfig,
-  stores: Stores
-): Promise<number> {
-  const session = createSession(config)
+async function runPipe(config: ResolvedConfig, stores: Stores): Promise<number> {
+  let current = config
+  const session = createConfiguredSession(
+    () => current,
+    {
+      async request() {
+        return { outcome: 'deny', via: 'policy' }
+      }
+    },
+    stores.configStore
+  )
   const input = await readStdin()
   let code = 0
   for (const rawLine of input.split('\n')) {
@@ -142,15 +117,23 @@ async function runPipe(
         session,
         configStore: stores.configStore,
         credentialStore: stores.credentialStore,
-        getConfig: () => config,
-        setConfig: () => {},
+        getConfig: () => current,
+        setConfig: (next) => {
+          current = next
+        },
         exit: () => {}
       })
-      if (outcome.error) process.stderr.write(`Error: ${outcome.error}\n`)
-      else if (outcome.message) process.stdout.write(`${outcome.message}\n`)
+      if (outcome.keyRequest) {
+        process.stderr.write('Error: Key entry requires an interactive terminal\n')
+        code = 1
+      }
+      if (outcome.error) {
+        code = 1
+        process.stderr.write(`Error: ${outcome.error}\n`)
+      } else if (outcome.message) process.stdout.write(`${outcome.message}\n`)
       continue
     }
-    if (!config.model.trim()) {
+    if (!current.model.trim()) {
       process.stderr.write(
         'Error: Set BUDINGX_MODEL or use /model <name> before sending a prompt\n'
       )
@@ -165,21 +148,10 @@ async function runPipe(
   return code
 }
 
-async function runInteractive(
-  config: ResolvedConfig,
-  stores: Stores
-): Promise<void> {
-  const provider = createOpenAiProvider({
-    baseUrl: config.baseUrl,
-    apiKey: config.apiKey
-  })
+async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<void> {
   const gateway = new InkApprovalGateway()
   let current = config
-  const session = new Session({
-    provider,
-    approval: gateway,
-    resolveSnapshot: () => snapshotOf(current)
-  })
+  const session = createConfiguredSession(() => current, gateway, stores.configStore)
 
   const instance = render(
     createElement(App, {
@@ -249,7 +221,15 @@ async function main(): Promise<void> {
       process.exitCode = 1
       return
     }
-    const session = createSession(config)
+    const session = createConfiguredSession(
+      () => config,
+      {
+        async request() {
+          return { outcome: 'deny', via: 'policy' }
+        }
+      },
+      stores.configStore
+    )
     const code = await runTurn(session, config.prompt)
     process.stdout.write('\n')
     session.dispose()

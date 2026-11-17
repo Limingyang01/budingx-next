@@ -104,3 +104,12 @@ test('方向键在输入为空时移动光标，非空时优先编辑', () => {
   assert.equal(buffer.cursor.col, 3)
   applyKey(buffer, '', { home: true }, { busy: false })
 })
+
+test('G08 多行有输入历史时上下键先移动行', () => {
+  const b = new EditorBuffer()
+  b.commit('older')
+  b.setText('first\nsecond')
+  applyKey(b, '', { upArrow: true }, { busy: false })
+  assert.equal(b.cursor.line, 0)
+  assert.equal(b.text, 'first\nsecond')
+})

@@ -22,9 +22,7 @@ export function normalizeBaseUrl(input: string): string {
   if (url.username || url.password || url.search || url.hash)
     throw new Error('Base URL must not contain credentials, query or fragment')
   if (url.protocol !== 'https:' && !(local && url.protocol === 'http:'))
-    throw new Error(
-      'Use HTTPS (HTTP is allowed only for explicit loopback endpoints)'
-    )
+    throw new Error('Use HTTPS (HTTP is allowed only for explicit loopback endpoints)')
   return url.toString().replace(/\/+$/, '')
 }
 
@@ -40,8 +38,7 @@ export function loadConfig(args: string[], env: NodeJS.ProcessEnv): Config {
     if (!['--base-url', '--model', '--timeout', '--prompt'].includes(flag))
       throw new Error('Unknown option; use --help')
     const value = args[++i]
-    if (!value || value.startsWith('--'))
-      throw new Error('Option requires a value')
+    if (!value || value.startsWith('--')) throw new Error('Option requires a value')
     if (flag === '--base-url') config.baseUrl = value
     if (flag === '--model') config.model = value
     if (flag === '--timeout') config.timeoutMs = Number(value)
@@ -168,8 +165,7 @@ export function mergeSources(input: {
     if (!['--base-url', '--model', '--timeout', '--prompt'].includes(flag))
       throw new Error('Unknown option; use --help')
     const value = args[++i]
-    if (!value || value.startsWith('--'))
-      throw new Error('Option requires a value')
+    if (!value || value.startsWith('--')) throw new Error('Option requires a value')
     if (flag === '--base-url') cli.baseUrl = value
     if (flag === '--model') cli.model = value
     if (flag === '--timeout') cli.timeoutMs = Number(value)
@@ -182,25 +178,31 @@ export function mergeSources(input: {
   if (input.env.BUDINGX_API_KEY) env.apiKey = input.env.BUDINGX_API_KEY
 
   const file = input.file ?? {}
-  const pick = <K extends keyof ProfileSource>(
-    key: K
-  ): ProfileSource[K] | undefined => cli[key] ?? env[key] ?? file[key]
+  const pick = <K extends keyof ProfileSource>(key: K): ProfileSource[K] | undefined =>
+    cli[key] ?? env[key] ?? file[key]
 
   const baseUrl = pick('baseUrl') ?? 'https://api.openai.com/v1'
   const model = pick('model') ?? ''
-  const apiKey = pick('apiKey') ?? ''
+  const sameHost =
+    !file.baseUrl ||
+    new URL(normalizeBaseUrl(baseUrl)).host === new URL(file.baseUrl).host
+  const apiKey = env.apiKey ?? (sameHost ? file.apiKey : undefined) ?? ''
   const timeoutMs = pick('timeoutMs') ?? 120000
 
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600000)
     throw new Error('Timeout must be 1–600000 milliseconds')
+  if (model.length > 256 || /[\u0000-\u001f\u007f]/.test(model))
+    throw new Error('Invalid model name')
+  if (/[\r\n]/.test(apiKey)) throw new Error('Invalid API key')
 
-  const source: ResolvedConfig['source'] = cli.baseUrl || cli.model
-    ? 'cli'
-    : env.baseUrl || env.model || env.apiKey
-      ? 'env'
-      : file.baseUrl || file.model
-        ? 'file'
-        : 'default'
+  const source: ResolvedConfig['source'] =
+    cli.baseUrl || cli.model
+      ? 'cli'
+      : env.baseUrl || env.model || env.apiKey
+        ? 'env'
+        : file.baseUrl || file.model
+          ? 'file'
+          : 'default'
 
   return {
     baseUrl: normalizeBaseUrl(baseUrl),

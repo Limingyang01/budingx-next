@@ -141,10 +141,7 @@ test('一次完整回合的事件顺序符合契约且终态至多一次', async
   const final = await finalized
 
   assert.equal(final.outcome, 'completed')
-  assert.equal(
-    events.filter((event) => event.type === 'turn_finalized').length,
-    1
-  )
+  assert.equal(events.filter((event) => event.type === 'turn_finalized').length, 1)
   const types = events.map((event) => event.type)
   assert.equal(types[0], 'turn_started')
   assert.ok(types.indexOf('text_delta') < types.indexOf('message_completed'))
@@ -481,10 +478,7 @@ test('打断在有界时间内取消模型请求并给出 cancelled 终态', asy
   const elapsed = Date.now() - started
   assert.equal(final.outcome, 'cancelled')
   assert.ok(elapsed < 6000, `cancel took ${elapsed}ms`)
-  assert.equal(
-    events.filter((event) => event.type === 'turn_finalized').length,
-    1
-  )
+  assert.equal(events.filter((event) => event.type === 'turn_finalized').length, 1)
 })
 
 test('打断后保留部分输出并为孤儿 tool_use 补合成 error 结果', async () => {
@@ -616,9 +610,7 @@ test('执行中输入的排队项在工具结果回填后按序注入且不重�
     .map((message) => message.content)
   assert.ok(secondCallTexts.includes('补充一'))
   assert.ok(secondCallTexts.includes('补充二'))
-  assert.ok(
-    secondCallTexts.indexOf('补充一') < secondCallTexts.indexOf('补充二')
-  )
+  assert.ok(secondCallTexts.indexOf('补充一') < secondCallTexts.indexOf('补充二'))
   const toolResults = calls[1].messages.filter((m) => m.role === 'tool')
   assert.equal(toolResults.length, 1)
   session.dispose()
@@ -704,4 +696,42 @@ test('会话状态集合与迁移受约束', async () => {
   assert.ok(states.has('requesting'))
   assert.ok(states.has('idle'))
   assert.equal(session.currentState, 'idle')
+})
+
+test('G17 非法工具参数回填错误后续跑', async () => {
+  const { provider, calls } = scriptProvider([
+    [
+      {
+        type: 'tool_call_delta',
+        index: 0,
+        callId: 'broken',
+        nameDelta: 'echo',
+        argsDelta: '{bad'
+      },
+      { type: 'message_completed', finishReason: 'tool_calls' }
+    ],
+    [
+      { type: 'text_delta', text: 'recovered' },
+      { type: 'message_completed', finishReason: 'stop' }
+    ]
+  ])
+  const session = new Session({
+    provider,
+    approval: approvalGateway({ outcome: 'allow', via: 'user' }).gateway,
+    resolveSnapshot: () => SNAPSHOT,
+    tools: [
+      {
+        name: 'echo',
+        describe: () => '',
+        execute: async () => {
+          throw new Error('must not execute')
+        }
+      }
+    ]
+  })
+  const done = waitFor(session, (e) => e.type === 'turn_finalized')
+  session.submit('test')
+  assert.equal((await done).outcome, 'completed')
+  assert.equal(calls.length, 2)
+  assert.ok(session.history.some((m) => m.role === 'tool' && m.blocks[0].isError))
 })

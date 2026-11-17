@@ -9,7 +9,10 @@ import type { ToolCall, ToolCallError, ToolFragment } from './provider.js'
  *   index attach to the call that is currently open (never dropped);
  * - a fragment without an index but with a new call id starts a new slot.
  */
-export function assembleToolCalls(fragments: ToolFragment[]): {
+export function assembleToolCalls(
+  fragments: ToolFragment[],
+  retainInvalid = false
+): {
   calls: ToolCall[]
   errors: ToolCallError[]
 } {
@@ -73,6 +76,8 @@ export function assembleToolCalls(fragments: ToolFragment[]): {
         code: ERROR_CODES.providerToolArgumentsInvalid,
         message: 'Tool call arguments are not valid JSON'
       })
+      if (retainInvalid)
+        calls.push({ index, id: slot.id, name: slot.name, arguments: slot.args })
       continue
     }
     calls.push({ index, id: slot.id, name: slot.name, arguments: slot.args })

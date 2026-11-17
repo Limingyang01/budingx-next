@@ -15,6 +15,8 @@ export type NoticeItem = {
 }
 
 export type Frame = {
+  /** Logical transcript entries, retained for both narrower and wider resize. */
+  transcript: string[]
   /** Finished transcript lines, already written to the terminal scrollback. */
   staticLines: string[]
   /** Raw text of the running assistant message (never re-wrapped in place). */
@@ -32,6 +34,7 @@ export type Frame = {
 
 export function initialFrame(): Frame {
   return {
+    transcript: [],
     staticLines: [],
     liveText: '',
     liveThinking: '',

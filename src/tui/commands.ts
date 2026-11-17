@@ -20,6 +20,7 @@ export type CommandOutcome = {
   exit?: boolean
   message?: string
   error?: string
+  keyRequest?: { id: string; host: string }
 }
 
 export type CommandContext = {
@@ -44,6 +45,10 @@ export function commandHelp(lang: 'zh' | 'en' = 'en'): string {
   /provider edit [id]   编辑模型档案
   /provider rm [id]     删除模型档案
   /provider check [id]  验证档案端点
+  /provider key [id]    隐藏录入或更新密钥
+  /provider default [id] 设置启动默认档案
+  /provider tools [id] on|off 设置工具能力
+  /provider orphans [clean] 查看数量或显式清理孤儿凭据
   /clear                清空会话
   /exit                 退出 budingx`
     : `Commands:
@@ -55,11 +60,32 @@ export function commandHelp(lang: 'zh' | 'en' = 'en'): string {
   /provider edit [id]   edit a model profile
   /provider rm [id]     remove a model profile
   /provider check [id]  verify a profile against the provider
+  /provider key [id]    enter or update the key in a hidden prompt
+  /provider default [id] set the startup default profile
+  /provider tools [id] on|off set tool capability
+  /provider orphans [clean] count or explicitly remove orphan credentials
   /clear                clear the conversation
   /exit                 leave budingx`
 }
 
 export async function runCommand(
+  input: string,
+  context: CommandContext
+): Promise<CommandOutcome> {
+  try {
+    return await executeCommand(input, context)
+  } catch {
+    return {
+      handled: true,
+      error:
+        context.lang === 'zh'
+          ? '配置操作失败；请检查参数和文件权限'
+          : 'Configuration operation failed; check input and file permissions'
+    }
+  }
+}
+
+async function executeCommand(
   input: string,
   context: CommandContext
 ): Promise<CommandOutcome> {
@@ -167,8 +193,50 @@ async function providerCommand(
   pick: (zh: string, en: string) => string
 ): Promise<CommandOutcome> {
   const [action, ...rest] = argument.split(/\s+/)
-  const id = rest.join(' ')
+  const id = rest[0]
   const stored = context.configStore.load()
+
+  if (action === 'orphans') {
+    const ids = context.credentialStore.orphanIds(stored.models.map((p) => p.id))
+    if (rest.length > 1 || (id && id !== 'clean'))
+      return { handled: true, error: 'Usage: /provider orphans [clean]' }
+    if (id === 'clean') for (const orphan of ids) context.credentialStore.remove(orphan)
+    return {
+      handled: true,
+      message: pick(
+        `孤儿凭据${id === 'clean' ? '已清理' : ''}：${ids.length}`,
+        `Orphan credentials${id === 'clean' ? ' removed' : ''}: ${ids.length}`
+      )
+    }
+  }
+
+  if (['key', 'default', 'tools'].includes(action)) {
+    const profile = stored.models.find((p) => p.id === id || p.label === id)
+    if (!profile)
+      return { handled: true, error: pick('未知模型档案', 'Unknown model profile') }
+    if (action === 'key') {
+      if (rest.length !== 1)
+        return {
+          handled: true,
+          error: pick(
+            '用法：/provider key <档案>；密钥请在隐藏输入框录入',
+            'Usage: /provider key <profile>; enter the key in the hidden prompt'
+          )
+        }
+      return { handled: true, keyRequest: { id: profile.id, host: profileHost(profile) } }
+    }
+    if (action === 'default') {
+      if (rest.length !== 1)
+        return { handled: true, error: 'Usage: /provider default <profile>' }
+      stored.defaultModelId = profile.id
+    } else {
+      if (rest.length !== 2 || !['on', 'off'].includes(rest[1]))
+        return { handled: true, error: 'Usage: /provider tools <profile> on|off' }
+      Object.assign(profile, updateProfile(profile, { tools: rest[1] === 'on' }))
+    }
+    context.configStore.save(stored)
+    return { handled: true, message: pick('档案已更新', 'Profile updated') }
+  }
 
   if (action === 'add') {
     const parts = rest
@@ -204,15 +272,23 @@ async function providerCommand(
   }
 
   if (action === 'edit') {
-    const profile = stored.models.find(
-      (entry) => entry.id === id || entry.label === id
-    )
+    const profile = stored.models.find((entry) => entry.id === id || entry.label === id)
     if (!profile)
       return {
         handled: true,
         error: pick(`未知模型档案：${id}`, `Unknown model profile: ${id}`)
       }
     const parts = rest.slice(1)
+    if (parts.length !== 3)
+      return {
+        handled: true,
+        error: 'Usage: /provider edit <profile> <label> <base-url> <model>'
+      }
+    if (stored.models.some((p) => p.id !== profile.id && p.label === parts[0]))
+      return {
+        handled: true,
+        error: pick('已存在同名档案', 'A profile with that label already exists')
+      }
     const updated = updateProfile(profile, {
       label: parts[0] ?? profile.label,
       baseUrl: parts[1] ?? profile.baseUrl,
@@ -221,8 +297,16 @@ async function providerCommand(
     const index = stored.models.findIndex((entry) => entry.id === profile.id)
     stored.models[index] = updated
     context.configStore.save(stored)
-    const hostChanged =
-      profileHost(updated) !== profileHost(profile)
+    const hostChanged = profileHost(updated) !== profileHost(profile)
+    const active = context.getConfig()
+    if (active.profileId === profile.id) {
+      context.setConfig({
+        ...active,
+        baseUrl: updated.baseUrl,
+        model: updated.model,
+        apiKey: hostChanged ? '' : active.apiKey
+      })
+    }
     return {
       handled: true,
       message: hostChanged
@@ -235,9 +319,7 @@ async function providerCommand(
   }
 
   if (action === 'rm') {
-    const profile = stored.models.find(
-      (entry) => entry.id === id || entry.label === id
-    )
+    const profile = stored.models.find((entry) => entry.id === id || entry.label === id)
     if (!profile)
       return {
         handled: true,
@@ -247,16 +329,25 @@ async function providerCommand(
     if (stored.defaultModelId === profile.id) stored.defaultModelId = stored.models[0]?.id
     context.configStore.save(stored)
     context.credentialStore.remove(profile.id)
+    if (context.getConfig().profileId === profile.id) {
+      context.setConfig({
+        ...context.getConfig(),
+        profileId: undefined,
+        model: '',
+        apiKey: ''
+      })
+    }
     return {
       handled: true,
-      message: pick(`已删除 ${profile.label} 及其密钥`, `Removed ${profile.label} and its key`)
+      message: pick(
+        `已删除 ${profile.label} 及其密钥`,
+        `Removed ${profile.label} and its key`
+      )
     }
   }
 
   if (action === 'check') {
-    const profile = stored.models.find(
-      (entry) => entry.id === id || entry.label === id
-    )
+    const profile = stored.models.find((entry) => entry.id === id || entry.label === id)
     if (!profile)
       return {
         handled: true,
@@ -286,7 +377,10 @@ async function providerCommand(
     return {
       handled: true,
       message: result.ok
-        ? pick(`档案 ${profile.label} 端点可达`, `Provider reachable for ${profile.label}`) + toolsSuffix
+        ? pick(
+            `档案 ${profile.label} 端点可达`,
+            `Provider reachable for ${profile.label}`
+          ) + toolsSuffix
         : pick(
             `档案 ${profile.label} 验证失败：${result.message}`,
             `Provider check failed for ${profile.label}: ${result.message}`

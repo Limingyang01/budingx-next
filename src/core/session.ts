@@ -34,6 +34,7 @@ import type {
 
 export type SessionOptions = {
   provider: ModelProvider
+  resolveProvider?: () => ModelProvider
   approval: ApprovalGateway
   resolveSnapshot: () => TurnSnapshot
   tools?: ToolHandler[]
@@ -46,6 +47,7 @@ export type SessionOptions = {
 type QueuedInput = { id: string; text: string }
 
 type ActiveTurn = {
+  provider: ModelProvider
   id: string
   controller: AbortController
   finalized: boolean
@@ -78,6 +80,17 @@ export class Session {
   private activeTurn?: ActiveTurn
   private pendingApproval?: { requestId: string; resolve: (d: ApprovalDecision) => void }
   private queueTimer?: NodeJS.Timeout
+  private queuePaused = false
+
+  /** Hosts pause auto-start while boundary commands or credential entry run. */
+  setQueuePaused(paused: boolean): void {
+    this.queuePaused = paused
+    if (paused && this.queueTimer) {
+      clearTimeout(this.queueTimer)
+      this.queueTimer = undefined
+    }
+    if (!paused && !this.isBusy) this.scheduleQueueDrain()
+  }
 
   constructor(private readonly options: SessionOptions) {
     this.tools = options.tools ?? []
@@ -191,6 +204,7 @@ export class Session {
 
   private async startTurn(userText: string, queued?: QueuedInput): Promise<void> {
     const turn: ActiveTurn = {
+      provider: this.options.resolveProvider?.() ?? this.options.provider,
       id: randomUUID(),
       controller: new AbortController(),
       finalized: false,
@@ -261,7 +275,7 @@ export class Session {
       let providerFailure: ErrorInfo | undefined
 
       try {
-        for await (const event of this.options.provider.stream(
+        for await (const event of turn.provider.stream(
           this.buildRequest(snapshot, turn)
         )) {
           if (turn.finalized) break
@@ -317,8 +331,7 @@ export class Session {
           code: turn.controller.signal.aborted
             ? ERROR_CODES.providerAborted
             : ERROR_CODES.coreToolFailed,
-          message:
-            error instanceof Error ? error.message : 'Provider stream failed',
+          message: error instanceof Error ? error.message : 'Provider stream failed',
           retryable: false
         }
       }
@@ -333,7 +346,10 @@ export class Session {
         break
       }
 
-      const { calls, errors: callErrors } = assembleToolCalls(fragments)
+      const { calls, errors } = assembleToolCalls(fragments, true)
+      const callErrors = errors.filter(
+        (error) => error.code !== ERROR_CODES.providerToolArgumentsInvalid
+      )
       if (callErrors.length > 0) {
         outcome = 'error'
         error = {
@@ -401,6 +417,18 @@ export class Session {
   ): Promise<{ cancelled?: boolean; error?: ErrorInfo }> {
     for (const call of calls) {
       if (turn.controller.signal.aborted) return { cancelled: true }
+      try {
+        JSON.parse(call.arguments || '{}')
+      } catch {
+        this.pushToolResult(
+          turn,
+          call.id,
+          'Tool arguments are not valid JSON',
+          true,
+          ERROR_CODES.providerToolArgumentsInvalid
+        )
+        continue
+      }
       const input = parseToolArguments(call)
       const handler = this.tools.find((tool) => tool.name === call.name)
       this.emit({
@@ -465,8 +493,7 @@ export class Session {
       try {
         content = await handler.execute(input, { signal: turn.controller.signal })
       } catch (error) {
-        content =
-          error instanceof Error ? error.message : 'Tool execution failed'
+        content = error instanceof Error ? error.message : 'Tool execution failed'
         isError = true
       }
       if (content.length > TOOL_OUTPUT_CAP) {
@@ -556,9 +583,7 @@ export class Session {
     if (!assistant) return true
     return !assistant.blocks.some(
       (block) =>
-        block.type === 'text' ||
-        block.type === 'thinking' ||
-        block.type === 'tool_use'
+        block.type === 'text' || block.type === 'thinking' || block.type === 'tool_use'
     )
   }
 
@@ -573,6 +598,7 @@ export class Session {
       return
     }
     turn.finalized = true
+    this.options.approval.cancelAll?.()
     if (turn.cancelTimer) clearTimeout(turn.cancelTimer)
     if (this.pendingApproval) {
       this.pendingApproval.resolve({ outcome: 'cancelled', via: 'user' })
@@ -642,15 +668,13 @@ export class Session {
   }
 
   private scheduleQueueDrain(): void {
+    if (this.queuePaused) return
     if (this.queue.length === 0) return
     if (this.queueTimer) clearTimeout(this.queueTimer)
-    const timer = setTimeout(
-      () => {
-        this.queueTimer = undefined
-        this.drainQueue()
-      },
-      this.options.queueAutostartMs ?? QUEUE_AUTOSTART_MS
-    )
+    const timer = setTimeout(() => {
+      this.queueTimer = undefined
+      this.drainQueue()
+    }, this.options.queueAutostartMs ?? QUEUE_AUTOSTART_MS)
     // Keep the timer referenced: an unref'd timer lets the event loop drain,
     // so queued input would silently never start its own turn.
     this.queueTimer = timer

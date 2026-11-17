@@ -28,5 +28,6 @@ export type ApprovalDecision = {
 }
 
 export interface ApprovalGateway {
+  cancelAll?(): void
   request(request: ApprovalRequest): Promise<ApprovalDecision>
 }

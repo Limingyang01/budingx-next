@@ -22,7 +22,10 @@ async function collect(provider, request) {
 }
 
 function sse(...frames) {
-  return frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join('') + 'data: [DONE]\n\n'
+  return (
+    frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join('') +
+    'data: [DONE]\n\n'
+  )
 }
 
 test('HTTP 错误分类互不混淆且不泄漏 key 明文', async (t) => {
@@ -60,7 +63,10 @@ test('流截断与非法事件归为 invalid_stream', async (t) => {
     res.writeHead(200, { 'Content-Type': 'text/event-stream' })
     res.end('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n')
   })
-  const provider = createOpenAiProvider({ baseUrl: truncated, limits: { maxAttempts: 1 } })
+  const provider = createOpenAiProvider({
+    baseUrl: truncated,
+    limits: { maxAttempts: 1 }
+  })
   const events = await collect(provider, { model: 'm', messages: [] })
   const failure = events.find((event) => event.type === 'failed')
   assert.equal(failure.error.class, 'invalid_stream')
@@ -69,7 +75,10 @@ test('流截断与非法事件归为 invalid_stream', async (t) => {
     res.writeHead(200, { 'Content-Type': 'text/event-stream' })
     res.end('data: not-json\n\n')
   })
-  const malformedProvider = createOpenAiProvider({ baseUrl: malformed, limits: { maxAttempts: 1 } })
+  const malformedProvider = createOpenAiProvider({
+    baseUrl: malformed,
+    limits: { maxAttempts: 1 }
+  })
   const malformedEvents = await collect(malformedProvider, { model: 'm', messages: [] })
   const malformedFailure = malformedEvents.find((event) => event.type === 'failed')
   assert.equal(malformedFailure.error.class, 'invalid_stream')
@@ -234,12 +243,29 @@ test('工具调用片段按事件产出并保留缺省 index', async (t) => {
 test('probe 探测可达性并按需检查工具能力', async (t) => {
   let calls = 0
   const baseUrl = await withServer(t, async (req, res) => {
-    for await (const chunk of req) {
-      /* drain */
-    }
+    let body = ''
+    for await (const chunk of req) body += chunk
     calls++
     res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }))
+    res.end(
+      JSON.stringify({
+        choices: [
+          {
+            message: JSON.parse(body).tools
+              ? {
+                  tool_calls: [
+                    {
+                      id: 'probe-echo',
+                      type: 'function',
+                      function: { name: 'echo', arguments: '{}' }
+                    }
+                  ]
+                }
+              : { content: 'ok' }
+          }
+        ]
+      })
+    )
   })
   const plain = await probe({ baseUrl, model: 'm', apiKey: 'k' })
   assert.equal(plain.ok, true)
@@ -260,4 +286,102 @@ test('probe 在凭据错误时给出分类且不泄漏 key', async (t) => {
   assert.equal(result.ok, false)
   assert.equal(result.errorClass, 'auth')
   assert.equal(result.message.includes('test-only-key'), false)
+})
+
+test('G13 HTTP 200 不能冒充模型协议或工具能力', async () => {
+  const profile = { baseUrl: 'https://fixture.invalid', model: 'm' }
+  const bad = await probe(profile, {
+    tools: true,
+    fetchImpl: async () => new Response('not a model response')
+  })
+  assert.equal(bad.ok, false)
+  assert.equal(bad.errorClass, 'invalid_stream')
+  const noTool = await probe(profile, {
+    tools: true,
+    fetchImpl: async () => Response.json({ choices: [{ message: { content: 'ok' } }] })
+  })
+  assert.equal(noTool.ok, false)
+  assert.equal(noTool.errorClass, 'tool_unsupported')
+})
+test('G14 HTTP 错误类别读取结构化错误码', async () => {
+  for (const [code, expected] of [
+    ['context_length_exceeded', 'context_overflow'],
+    ['unsupported_tools', 'tool_unsupported']
+  ]) {
+    const provider = createOpenAiProvider({
+      baseUrl: 'https://fixture.invalid',
+      fetchImpl: async () => Response.json({ error: { code } }, { status: 400 })
+    })
+    assert.equal(
+      (await collect(provider, { model: 'm', messages: [] })).at(-1).error.class,
+      expected
+    )
+  }
+})
+test('G16 长退避等待可取消', async () => {
+  let calls = 0
+  const provider = createOpenAiProvider({
+    baseUrl: 'https://fixture.invalid',
+    fetchImpl: async () => {
+      calls++
+      return new Response('', { status: 429, headers: { 'Retry-After': '100' } })
+    }
+  })
+  const controller = new AbortController()
+  const events = []
+  const task = (async () => {
+    for await (const event of provider.stream({
+      model: 'm',
+      messages: [],
+      signal: controller.signal
+    })) {
+      events.push(event)
+      if (event.type === 'retry') controller.abort()
+    }
+  })()
+  let timeout
+  await Promise.race([
+    task,
+    new Promise((_, reject) => {
+      timeout = setTimeout(() => reject(new Error('retry not cancelled')), 150)
+    })
+  ]).finally(() => clearTimeout(timeout))
+  assert.equal(calls, 1)
+  assert.equal(events.at(-1).error.class, 'aborted')
+})
+
+test('G16 Retry-After 日期形式被采用', async () => {
+  const delays = []
+  const date = new Date(Date.now() + 60000).toUTCString()
+  const provider = createOpenAiProvider({
+    baseUrl: 'https://fixture.invalid',
+    limits: { maxAttempts: 2 },
+    sleep: async (ms) => delays.push(ms),
+    fetchImpl: async () =>
+      new Response('', { status: 429, headers: { 'Retry-After': date } })
+  })
+  await collect(provider, { model: 'm', messages: [] })
+  assert.ok(delays[0] > 58000 && delays[0] <= 60000)
+})
+test('PS-06 思考与工具参数同受响应上限限制', async () => {
+  for (const delta of [
+    { reasoning_content: 'x'.repeat(200) },
+    {
+      tool_calls: [
+        { index: 0, id: 'c', function: { name: 'echo', arguments: 'x'.repeat(200) } }
+      ]
+    }
+  ]) {
+    const provider = createOpenAiProvider({
+      baseUrl: 'https://fixture.invalid',
+      limits: { maxResponseChars: 50, maxAttempts: 1 },
+      fetchImpl: async () =>
+        new Response(sse({ choices: [{ delta }] }), {
+          headers: { 'Content-Type': 'text/event-stream' }
+        })
+    })
+    const events = await collect(provider, { model: 'm', messages: [] })
+    assert.equal(events.at(-1).type, 'failed')
+    assert.equal(events.at(-1).error.code, 'BUDINGX_PROVIDER_014')
+  }
 })

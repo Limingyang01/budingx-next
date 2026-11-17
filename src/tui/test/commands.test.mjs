@@ -12,9 +12,7 @@ function stores() {
   const home = mkdtempSync(join(tmpdir(), 'budingx-commands-'))
   mkdirSync(join(home, '.budingx'), { recursive: true })
   const configStore = new ConfigStore(join(home, '.budingx', 'config.json'))
-  const credentialStore = new CredentialStore(
-    join(home, '.budingx', 'credentials.json')
-  )
+  const credentialStore = new CredentialStore(join(home, '.budingx', 'credentials.json'))
   return { configStore, credentialStore }
 }
 
@@ -171,4 +169,54 @@ test('/provider check 在缺少凭据时明确拒绝且不发出请求', async (
   })
   assert.match(outcome.error, /No key stored/i)
   assert.equal(called, 0)
+})
+
+test('G02/G03 编辑档案并设置默认', async () => {
+  const { context: ctx, store } = context()
+  await runCommand('/provider add first https://one.invalid/v1 one', ctx)
+  await runCommand('/provider add second https://two.invalid/v1 two', ctx)
+  const edit = await runCommand(
+    '/provider edit second renamed https://new.invalid/v1 new-model',
+    ctx
+  )
+  assert.equal(edit.error, undefined)
+  assert.equal(store.configStore.load().models[1].model, 'new-model')
+  assert.equal((await runCommand('/provider default renamed', ctx)).error, undefined)
+  const loaded = store.configStore.load()
+  assert.equal(loaded.defaultModelId, loaded.models[1].id)
+})
+test('G01 命令请求隐藏录入且拒绝参数密钥', async () => {
+  const { context: ctx } = context()
+  await runCommand('/provider add first https://one.invalid/v1 one', ctx)
+  const result = await runCommand('/provider key first', ctx)
+  assert.equal(result.error, undefined)
+  assert.equal(result.keyRequest.host, 'one.invalid')
+  const rejected = await runCommand('/provider key first test-secret', ctx)
+  assert.ok(rejected.error)
+  assert.equal(JSON.stringify(rejected).includes('test-secret'), false)
+})
+test('G05/G06 能力修改及显式孤儿清理', async () => {
+  const { context: ctx, store } = context()
+  await runCommand('/provider add first https://one.invalid/v1 one', ctx)
+  assert.equal((await runCommand('/provider tools first off', ctx)).error, undefined)
+  assert.equal(store.configStore.load().models[0].capabilities.tools, false)
+  store.credentialStore.set('orphan', 'one.invalid', 'fixture-key')
+  assert.match((await runCommand('/provider orphans', ctx)).message, /orphan/i)
+  assert.equal(store.credentialStore.list().length, 1)
+  await runCommand('/provider orphans clean', ctx)
+  assert.equal(store.credentialStore.list().length, 0)
+})
+
+test('G04 活动档案编辑换主机清空凭据，删除后不再继续使用', async () => {
+  const { context: ctx, config } = context()
+  await runCommand('/provider add one https://one.invalid/v1 old', ctx)
+  await runCommand('/model one', ctx)
+  config.apiKey = 'fixture-active-key'
+  await runCommand('/provider edit one renamed https://other.invalid/v1 new', ctx)
+  assert.equal(config.baseUrl, 'https://other.invalid/v1')
+  assert.equal(config.model, 'new')
+  assert.equal(config.apiKey, '')
+  await runCommand('/provider rm renamed', ctx)
+  assert.equal(config.model, '')
+  assert.equal(config.apiKey, '')
 })

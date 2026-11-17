@@ -67,11 +67,21 @@ export function applyKey(
     return { handled: true }
   }
   if (key.upArrow) {
+    if (buffer.cursor.line > 0) {
+      buffer.moveUp()
+      return { handled: true }
+    }
+    if (buffer.isMultiline) return { handled: true }
     if (buffer.recallPrevious()) return { handled: true }
     buffer.moveUp()
     return { handled: true }
   }
   if (key.downArrow) {
+    if (buffer.cursor.line < buffer.lines.length - 1) {
+      buffer.moveDown()
+      return { handled: true }
+    }
+    if (buffer.isMultiline) return { handled: true }
     if (buffer.recallNext()) return { handled: true }
     buffer.moveDown()
     return { handled: true }

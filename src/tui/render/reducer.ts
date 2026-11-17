@@ -20,7 +20,9 @@ export function renderTextLines(text: string, width: number): string[] {
     }
     let current = ''
     let currentWidth = 0
-    for (const character of Array.from(paragraph)) {
+    for (const { segment: character } of new Intl.Segmenter(undefined, {
+      granularity: 'grapheme'
+    }).segment(paragraph)) {
       const charWidth = stringWidth(character)
       if (currentWidth + charWidth > limit && current !== '') {
         lines.push(current)
@@ -80,6 +82,13 @@ export function reduceFrame(
     case 'message_completed': {
       next.liveLines = liveLinesOf(next, options.width)
       if (next.liveLines.length > 0) {
+        next.transcript = [
+          ...next.transcript,
+          ...[next.liveThinking ? '· ' + next.liveThinking : '', next.liveText].filter(
+            Boolean
+          ),
+          ''
+        ]
         next.staticLines = [...next.staticLines, ...next.liveLines, '']
         next.liveText = ''
         next.liveThinking = ''
@@ -88,6 +97,14 @@ export function reduceFrame(
       return next
     }
     case 'tool_call_completed': {
+      next.transcript = [
+        ...next.transcript,
+        `⚙ ${event.name}(${summarizeInput(event.input)})`
+      ]
+      next.staticLines = [
+        ...next.staticLines,
+        `⚙ ${event.name}(${summarizeInput(event.input)})`
+      ]
       next.liveLines = [
         ...next.liveLines,
         `⚙ ${event.name}(${summarizeInput(event.input)})`
@@ -95,17 +112,20 @@ export function reduceFrame(
       return next
     }
     case 'tool_result': {
-      next.liveLines = [
-        ...next.liveLines,
-        `${event.isError ? '✗' : '✓'} ${event.callId}`
+      next.transcript = [
+        ...next.transcript,
+        `${event.isError ? '✗' : '✓'} ${event.callId}: ${event.content}`
       ]
+      const lines = renderTextLines(
+        `${event.isError ? '✗' : '✓'} ${event.callId}: ${event.content}`,
+        options.width
+      )
+      next.staticLines = [...next.staticLines, ...lines]
+      next.liveLines = [...next.liveLines, ...lines]
       return next
     }
     case 'input_queued': {
-      next.queue = [
-        ...next.queue,
-        { id: event.queueId, preview: event.preview }
-      ]
+      next.queue = [...next.queue, { id: event.queueId, preview: event.preview }]
       return next
     }
     case 'input_injected': {
@@ -129,6 +149,7 @@ export function reduceFrame(
       return next
     }
     case 'notice': {
+      if (event.code === 'queue_recycled') next.queue = []
       next.notices = [
         ...next.notices,
         { level: event.level, code: event.code, text: event.text }
@@ -138,6 +159,13 @@ export function reduceFrame(
     case 'turn_finalized': {
       next.liveLines = liveLinesOf(next, options.width)
       if (next.liveLines.length > 0) {
+        next.transcript = [
+          ...next.transcript,
+          ...[next.liveThinking ? '· ' + next.liveThinking : '', next.liveText].filter(
+            Boolean
+          ),
+          ''
+        ]
         next.staticLines = [...next.staticLines, ...next.liveLines, '']
         next.liveText = ''
         next.liveThinking = ''
@@ -147,6 +175,7 @@ export function reduceFrame(
         next.error = event.error.message
       }
       if (event.outcome === 'cancelled') {
+        next.transcript = [...next.transcript, '[cancelled]']
         next.staticLines = [...next.staticLines, '[cancelled]']
       }
       return next

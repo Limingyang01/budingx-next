@@ -12,6 +12,44 @@ import type {
 } from '../core/provider.js'
 import { classifyHttpStatus, providerError, sanitize } from './errors.js'
 import { SseParser } from './sse.js'
+import { setTimeout as wait } from 'node:timers/promises'
+
+async function readJsonLimited(response: Response, signal: AbortSignal): Promise<any> {
+  if (!response.body) throw new Error('Missing response body')
+  const reader = response.body.getReader()
+  const abort = () => {
+    void reader.cancel().catch(() => {})
+  }
+  signal.addEventListener('abort', abort, { once: true })
+  try {
+    let text = ''
+    const decoder = new TextDecoder()
+    while (true) {
+      signal.throwIfAborted()
+      const chunk = await reader.read()
+      signal.throwIfAborted()
+      if (chunk.done) break
+      text += decoder.decode(chunk.value, { stream: true })
+      if (text.length > 16384) throw new Error('Response exceeds probe/error limit')
+    }
+    return JSON.parse(text)
+  } finally {
+    signal.removeEventListener('abort', abort)
+    await reader.cancel().catch(() => {})
+    reader.releaseLock()
+  }
+}
+
+function responseErrorClass(status: number, payload: any): ErrorClass {
+  const code = String(payload?.error?.code ?? payload?.error?.type ?? '').toLowerCase()
+  if (status === 400 || status === 422) {
+    if (/context.*(length|limit|overflow)|too_many_tokens/.test(code))
+      return 'context_overflow'
+    if (/unsupported.*tool|tool.*(unsupported|not_supported)/.test(code))
+      return 'tool_unsupported'
+  }
+  return classifyHttpStatus(status)
+}
 
 export type ProviderLimits = {
   eventBufferBytes: number
@@ -76,7 +114,8 @@ function parseRetryAfter(header: string | null): number | undefined {
   if (!header) return undefined
   const seconds = Number(header)
   if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1000)
-  return undefined
+  const date = Date.parse(header)
+  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : undefined
 }
 
 function finishReasonOf(value: unknown): FinishReason {
@@ -152,10 +191,7 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
     const combined = AbortSignal.any(signals)
 
     let response: Response
-    const connectTimer = setTimeout(
-      () => controller.abort(),
-      limits.connectTimeoutMs
-    )
+    const connectTimer = setTimeout(() => controller.abort(), limits.connectTimeoutMs)
     try {
       response = await fetchImpl(`${options.baseUrl}/chat/completions`, {
         method: 'POST',
@@ -197,9 +233,17 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
     clearTimeout(connectTimer)
 
     if (!response.ok) {
-      await response.body?.cancel().catch(() => {})
+      let payload
+      try {
+        payload = await readJsonLimited(
+          response,
+          AbortSignal.any([combined, AbortSignal.timeout(limits.idleStreamTimeoutMs)])
+        )
+      } catch {
+        /* Fall back to HTTP classification, never echo response text. */
+      }
       context.retryAfter = parseRetryAfter(response.headers.get('retry-after'))
-      const errorClass = classifyHttpStatus(response.status)
+      const errorClass = responseErrorClass(response.status, payload)
       yield {
         type: 'failed',
         error: providerError(
@@ -281,11 +325,28 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
       }
       const thinking = delta?.reasoning_content ?? delta?.reasoning
       if (typeof thinking === 'string' && thinking) {
+        total += thinking.length
+        if (total > limits.maxResponseChars)
+          throw providerError(
+            'context_overflow',
+            'Answer exceeds the configured response limit',
+            { code: ERROR_CODES.providerResponseTooLong, secrets }
+          )
         received = true
         pending.push({ type: 'thinking_delta', text: thinking })
       }
       if (Array.isArray(delta?.tool_calls)) {
         for (const call of delta.tool_calls) {
+          total +=
+            (call.function?.arguments?.length ?? 0) +
+            (call.function?.name?.length ?? 0) +
+            (call.id?.length ?? 0)
+          if (total > limits.maxResponseChars)
+            throw providerError(
+              'context_overflow',
+              'Answer exceeds the configured response limit',
+              { code: ERROR_CODES.providerResponseTooLong, secrets }
+            )
           received = true
           pending.push({
             type: 'tool_call_delta',
@@ -322,17 +383,13 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
         } catch (error) {
           yield {
             type: 'failed',
-            error: providerError(
-              'invalid_stream',
-              'Provider event exceeds size limit',
-              {
-                code:
-                  error && typeof error === 'object' && 'code' in error
-                    ? String((error as { code: string }).code)
-                    : ERROR_CODES.providerEventTooLarge,
-                secrets
-              }
-            )
+            error: providerError('invalid_stream', 'Provider event exceeds size limit', {
+              code:
+                error && typeof error === 'object' && 'code' in error
+                  ? String((error as { code: string }).code)
+                  : ERROR_CODES.providerEventTooLarge,
+              secrets
+            })
           }
           return
         }
@@ -387,10 +444,14 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
     if (!done && !finishReason) {
       yield {
         type: 'failed',
-        error: providerError('invalid_stream', 'Provider stream incomplete or truncated', {
-          code: ERROR_CODES.providerInvalidStream,
-          secrets
-        })
+        error: providerError(
+          'invalid_stream',
+          'Provider stream incomplete or truncated',
+          {
+            code: ERROR_CODES.providerInvalidStream,
+            secrets
+          }
+        )
       }
       return
     }
@@ -440,7 +501,23 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
           delayMs: retryDelay,
           errorClass: retryClass as ErrorClass
         }
-        await sleep(retryDelay)
+        try {
+          if (options.sleep) {
+            request.signal?.throwIfAborted()
+            await sleep(retryDelay)
+            request.signal?.throwIfAborted()
+          } else {
+            await wait(Math.min(retryDelay, 2147483647), undefined, {
+              signal: request.signal
+            })
+          }
+        } catch {
+          yield {
+            type: 'failed',
+            error: providerError('aborted', 'Request cancelled by the user', { secrets })
+          }
+          return
+        }
       }
     }
   }
@@ -464,28 +541,34 @@ export async function probe(
         signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
-          ...(profile.apiKey
-            ? { Authorization: `Bearer ${profile.apiKey}` }
-            : {})
+          ...(profile.apiKey ? { Authorization: `Bearer ${profile.apiKey}` } : {})
         },
         body: JSON.stringify(body)
       })
-      await response.body?.cancel().catch(() => {})
-      return response
+      let payload
+      try {
+        payload = await readJsonLimited(response, controller.signal)
+      } catch {
+        if (controller.signal.aborted)
+          throw providerError('timeout', 'Provider probe timed out')
+        if (response.ok)
+          throw providerError('invalid_stream', 'Provider returned an invalid response')
+      }
+      return { response, payload }
     } finally {
       clearTimeout(timer)
     }
   }
 
   try {
-    const response = await call({
+    const { response, payload } = await call({
       model: profile.model,
       messages: [{ role: 'user', content: 'ok' }],
       max_tokens: 1,
       stream: false
     })
     if (!response.ok) {
-      const errorClass = classifyHttpStatus(response.status)
+      const errorClass = responseErrorClass(response.status, payload)
       return {
         ok: false,
         errorClass,
@@ -495,14 +578,26 @@ export async function probe(
         )
       }
     }
+    if (
+      !Array.isArray(payload?.choices) ||
+      !payload.choices[0]?.message ||
+      typeof payload.choices[0].message.content !== 'string'
+    ) {
+      return {
+        ok: false,
+        errorClass: 'invalid_stream',
+        message: 'Provider response is not a chat completion'
+      }
+    }
     if (!options.tools) {
       return { ok: true, message: 'Provider reachable' }
     }
-    const toolResponse = await call({
+    const { response: toolResponse, payload: toolPayload } = await call({
       model: profile.model,
       messages: [{ role: 'user', content: 'ok' }],
-      max_tokens: 16,
+      max_tokens: 64,
       stream: false,
+      tool_choice: { type: 'function', function: { name: 'echo' } },
       tools: [
         {
           type: 'function',
@@ -517,18 +612,48 @@ export async function probe(
     if (!toolResponse.ok) {
       return {
         ok: false,
-        errorClass: classifyHttpStatus(toolResponse.status),
+        errorClass: responseErrorClass(toolResponse.status, toolPayload),
         message: sanitize(
           `Provider HTTP ${toolResponse.status}; tool capability check failed`,
           secrets
         )
       }
     }
+    const calls = toolPayload?.choices?.[0]?.message?.tool_calls
+    const valid =
+      Array.isArray(calls) &&
+      calls.some((c: any) => {
+        if (
+          !c.id ||
+          c.type !== 'function' ||
+          c.function?.name !== 'echo' ||
+          typeof c.function.arguments !== 'string'
+        )
+          return false
+        try {
+          JSON.parse(c.function.arguments)
+          return true
+        } catch {
+          return false
+        }
+      })
+    if (!valid)
+      return {
+        ok: false,
+        errorClass: 'tool_unsupported',
+        message: 'Provider did not return the requested tool call',
+        supportsTools: false
+      }
     return { ok: true, message: 'Provider reachable', supportsTools: true }
   } catch (error) {
     return {
       ok: false,
-      errorClass: 'network',
+      errorClass:
+        error && typeof error === 'object' && 'class' in error
+          ? (error as ProviderError).class
+          : error instanceof Error && error.name === 'AbortError'
+            ? 'timeout'
+            : 'network',
       message: sanitize(
         error instanceof Error ? error.message : 'Connection failed',
         secrets

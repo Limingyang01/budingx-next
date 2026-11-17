@@ -22,7 +22,7 @@ $env:BUDINGX_API_KEY = "YOUR_API_KEY"
 budingx
 ```
 
-These are placeholders. Never commit real keys or place them in command arguments. Only BUDINGX_* variables are read; the client does not discover keys or configuration from other tools.
+These are placeholders. Never commit real keys or place them in command arguments. Only BUDINGX\_\* variables are read; the client does not discover keys or configuration from other tools.
 
 ```powershell
 budingx --model YOUR_MODEL_NAME --base-url https://YOUR_PROVIDER/v1
@@ -31,7 +31,7 @@ budingx --prompt "Hello" --timeout 120000
 
 The base URL is the provider API prefix; the client appends /chat/completions. The provider must return text/event-stream SSE and a [DONE] terminator.
 
-Configuration priority is **CLI arguments > BUDINGX_* environment > stored profile**. The 0.1.1 environment and flag usage stays intact.
+Configuration priority is **CLI arguments > BUDINGX\_\* environment > stored profile**. The 0.1.1 environment and flag usage stays intact.
 
 ## Model profiles
 
@@ -40,11 +40,16 @@ Profiles live in `~/.budingx` (resolved from the current user's home; never `~/.
 ```powershell
 budingx
 /provider add work https://api.example.com/v1 my-model
+/provider key work
+# Enter the key in the hidden prompt, then press Enter
 /provider check work
+/provider default work
 /models
 /model work
 /provider rm work
 ```
+
+Edit syntax: `/provider edit NAME NEW_LABEL BASE_URL MODEL` (all fields required; labels cannot contain spaces). Editing the active profile updates its request configuration; changing hosts clears the active key. Removing the active profile requires selecting another model. Boundary commands are serialized with later prompts; automatic queue starts wait for commands and hidden key entry to finish.
 
 Each profile owns its own key, bound to the profile id **and** the base URL host. Changing the host drops the binding, so a key is never forwarded to a different server. Keys are never printed: `/config` shows only the last four characters.
 
@@ -55,13 +60,17 @@ Each profile owns its own key, bound to the profile id **and** the base URL host
 - /models — list stored model profiles
 - /model NAME — switch the model; the conversation is kept and the switch applies from the next turn
 - /provider add|edit|rm|check — manage and verify model profiles
+- /provider key NAME — hidden key entry/update (interactive terminal only; Esc cancels)
+- /provider default NAME — persist the startup default
+- /provider tools NAME on|off — set the profile tool capability flag
+- /provider orphans [clean] — count orphan credentials; explicitly clean with `clean`
 - /clear — clear the in-memory conversation
 - /exit or /quit — exit
 
 ## Keys
 
 - Enter — submit; during a turn the input is queued and injected at the next safe boundary
-- Esc — interrupt the running turn; when idle, return queued input to the prompt
+- Esc — deny the visible approval and continue; otherwise interrupt the turn, recycle idle queued input, or cancel key entry
 - Shift+Enter — insert a line break
 - Ctrl+C — interrupt while a turn runs; at the prompt, press twice to exit
 - ↑ / ↓ — recall earlier input
