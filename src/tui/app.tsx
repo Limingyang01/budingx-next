@@ -605,7 +605,13 @@ export function App({
     const visible = lines.slice(detailScroll, detailScroll + 24)
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="gray">
-        <Text bold>── {entry?.record.path ?? ''} ──</Text>
+        <Text bold>
+          ── {entry?.record.path ?? ''} ·{' '}
+          {dialog.source === 'turn'
+            ? pick('回合差异', 'turn diff')
+            : pick('当前差异', 'current diff')}{' '}
+          ──
+        </Text>
         {visible.map((line, index) => (
           <Text key={detailScroll + index}>
             {line.spans.map((span, j) => (
