@@ -82,7 +82,7 @@ A cancelled turn keeps the text that was already produced. A turn cancelled befo
 
 ## Scope
 
-The session, event contract, provider adapter and model profiles exist. Real workspace tools, file and terminal access, permission rules, transcript persistence, Desktop, VS Code, shared cross-device storage, teams, Computer Use, remote access, IM and scheduling are **not** implemented yet.
+The session, event contract, provider adapter and model profiles exist. Real workspace tools, file and terminal access, permission rules (three planned modes: read-only / workspace-write / full-access), transcript persistence, teams, Computer Use and scheduling are **not** implemented yet. Desktop, VS Code, remote/H5 access and IM adapters are **deferred** (roadmap r6, 2026-11-17); multi-surface architecture entry points are retained for future revival.
 
 User data is stored under `~/.budingx` only. The session itself stays in memory and is lost when you exit.
 

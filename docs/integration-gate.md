@@ -27,7 +27,7 @@ npm run merge:gate
 | 3 | `npm run skills:check`（发现入口同步） | 退出码 0 |
 | 4 | `node scripts/release/pack-smoke.mjs`（tarball 隔离安装 + 真实流式请求） | 退出码 0 |
 | 5 | outgoing 路径扫描（merge-base..HEAD） | 无依赖/dist/artifacts/.env/凭据/密钥/pnpm-lock/tsbuildinfo |
-| 6 | 当轮 test-report 审计 | 无 FAIL 行；UNVERIFIED 须有恢复条件节；报告缺失即 RED |
+| 6 | 当轮 test-report 审计（SP 分支读 `SP/SPnnn/test-report.md`；非 SP 的 feature 规划分支读 `docs/requirements/<slug>/test-report.md`，2026-11-17 扩展） | 无 FAIL 行；UNVERIFIED 须有恢复条件节；报告缺失即 RED |
 
 报告：`artifacts/merge-gate/<branch>-<timestamp>.json` 与 `.md`（gitignored）。含 branch/target/merge-base/HEAD/outgoing commits 与 files、各步退出码、违规路径、FAIL/UNVERIFIED 统计、GREEN/RED 结论。交接与 STATUS 引用报告路径与结论，不粘贴敏感内容。
 
@@ -56,3 +56,4 @@ npm run merge:gate
 | 日期 | 变化 | 身份 |
 | --- | --- | --- |
 | 2026-11-17 | 建立委托流程与门禁脚本；SP002 为首个适用轮 | USER_CONFIRMED 委托；流程文档 |
+| 2026-11-17 | 报告路径约定扩展：非 SP 编号的 feature 规划分支审计 `docs/requirements/<slug>/test-report.md`（跨 SP 规划修订无当轮 SP 报告）；纯函数 `reportFileForBranch` 有单测；门禁严格度不变（缺报告仍 RED） | 设施扩展（MODEL_PROPOSED，随 r6 规划变更落地）；首个适用例 feature/tui-first-planning |

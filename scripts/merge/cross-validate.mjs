@@ -56,6 +56,20 @@ export function reportPath(branch, stamp) {
   return path.join(ROOT, 'artifacts', 'merge-gate', `${safe}-${stamp}`)
 }
 
+/**
+ * Report path convention: SP branches audit that round's test-report; non-SP
+ * feature branches (e.g. cross-SP planning revisions) audit the ad-hoc
+ * requirement record under docs/requirements/<slug>/ (SP/README convention).
+ * Branches without either convention stay RED (missing report).
+ */
+export function reportFileForBranch(branch) {
+  const sp = /SP(\d{3})/.exec(branch)
+  if (sp) return path.join(ROOT, 'SP', `SP${sp[1]}`, 'test-report.md')
+  const feature = /^feature\/([A-Za-z0-9._-]+)$/.exec(branch)
+  if (feature) return path.join(ROOT, 'docs', 'requirements', feature[1], 'test-report.md')
+  return null
+}
+
 function run(command, args) {
   const result = spawnSync(command, args, {
     cwd: ROOT,
@@ -89,8 +103,7 @@ export function crossValidate(options = {}) {
   const base = git(['merge-base', target, 'HEAD'])
   const outgoing = git(['diff', '--name-only', `${base}..HEAD`]).split('\n').filter(Boolean)
   const violations = scanOutgoingPaths(outgoing)
-  const sp = /SP(\d{3})/.exec(branch)
-  const reportFile = sp ? path.join(ROOT, 'SP', `SP${sp[1]}`, 'test-report.md') : null
+  const reportFile = reportFileForBranch(branch)
   const audit =
     reportFile && existsSync(reportFile)
       ? auditReport(readFileSync(reportFile, 'utf8'))

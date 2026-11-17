@@ -25,13 +25,14 @@ src/
   provider/    # 公开模型协议适配
   tools/       # 工具实现、输入校验、输出上限
   storage/     # 会话/配置/凭据仓库；唯一数据根 ~/.budingx
-  host/        # 宿主契约（进程内/stdio/WS），供 TUI、桌面、VS Code 复用
+  host/        # 宿主契约（进程内/stdio/WS），供 TUI 与未来恢复各端复用
   tui/         # 已实现
-  desktop/ vscode/ gateway/ adapters/ scheduler/ mobile/   # 属后续迭代，只登记名字
+  desktop/ vscode/ gateway/ adapters/ mobile/   # 暂缓（r6，SP008/009/016–018）保留名字，只登记不建工程
+  scheduler/   # 属 SP019（定时任务，必交）
 ```
 
 命名以 [SP001 设计 §3.2](../SP/SP001/design/design.zh.md) 为准：本文件早期建议的 `providers/` 归一为 `provider/`（与既有的单数 `src/tui/` 一致），`protocol/` 归一为 `host/`（宿主与传输协议契约层），远程网关另立 `gateway/`。归一目的是避免同一职责出现两个目录名。
 
-Core 和公开协议不能依赖某个 UI；各端共享业务逻辑但各自启动/打包；共享代码从明确接口引用，不把 TUI 进程作为其他端运行前置，不复制 Core。需要独立 npm 包的模块可以有自己的 package.json，但“有 package.json”不等于必须放 packages/。根 package 保持 private，TUI 发布只选 src/tui 白名单。
+Core 和公开协议不能依赖某个 UI；各端共享业务逻辑但各自启动/打包；共享代码从明确接口引用，不把 TUI 进程作为其他端运行前置，不复制 Core。**r6（2026-11-17）：当前只交付 TUI；desktop/vscode/gateway/adapters/mobile 为暂缓保留入口，恢复须用户另行决定。**需要独立 npm 包的模块可以有自己的 package.json，但“有 package.json”不等于必须放 packages/。根 package 保持 private，TUI 发布只选 src/tui 白名单。
 
 未来根构建/测试命令按实际模块路由，版本台账记录各制品是否交付；一次 TUI 发布不表示其他端已发布。用户数据根 ~/.budingx 与 repo/src 布局互不混用，目录通过当前用户 home 解析，不硬编码电脑名或用户名。

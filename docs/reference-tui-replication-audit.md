@@ -2,6 +2,8 @@
 
 状态：AGENT_REVIEWED / 已采纳（2026-11-17 委托自审；manifest v2 提议仍待各轮开轮拍板）｜版本：r1｜更新：2026-11-17｜配套：[路线图](iteration-plan.md)、[能力矩阵](agent-capability-matrix.md)、[SP001 能力清单 v1](../SP/SP001/capability-baseline/capability-manifest.md)
 
+**r6 范围批注（2026-11-17 用户决定）**：TUI 单端优先；SP008/SP009/SP016/SP017/SP018 暂缓（DEFERRED），下文对应章节的参考事实与周旋点**保留作恢复储备**，不进入当前交付与验收；TUI 权限模式目标固定三种（仅可查看/工作区内修改/完全权限），参考 7 模式仅作基线事实。排查结论与门槛本身不变。
+
 ## 1. 目的与边界
 
 用户 2026-11-17 指示：SP002 完成后全面排查剩余 SP 任务，以参考仓 `buding-worker-space` 的 TUI 为还原目标；**UI、交互、功能点直接参考；实现逻辑独立编写**——参考仓无 LICENSE、package.json 无 license 字段（视为未开源），不得复制代码，「周旋」换方式实现相同效果。
@@ -57,7 +59,7 @@
 
 **Git 审查**（SP004，写操作须单独授权）：/commit、/commit-push-pr、/review、/security-review（分支变更安全审查、子任务兜底）、/pr-comments、/install-github-app、/install-slack-app；云审查 /ultrareview、/ultraplan → 范围外提议。
 
-**跨端远程**（SP008/SP009/SP016）：/ide、/desktop（会话交接对话框）、/mobile（QR，原生 App 已范围外）、/session（远程 URL+QR）、/chrome、/remote-env（teleport 已移除）、/web-setup、/voice（门控不注册，范围外）、/bridge（门控不注册）。
+**跨端远程**（SP008/SP009/SP016，**r6 暂缓**）：/ide、/desktop（会话交接对话框）、/mobile（QR，原生 App 已范围外）、/session（远程 URL+QR）、/chrome、/remote-env（teleport 已移除）、/web-setup、/voice（门控不注册，范围外）、/bridge（门控不注册）。
 
 **趣味/内部/stub**：/buddy、/think-back、/stickers 等 → 范围外提议；16 个禁用 stub + 8 个 Proxy 占位 + ant 内部命令不复刻。
 
@@ -65,7 +67,7 @@
 
 ### 3.3 工具·权限·Hook 面（权限/Hook 已回填；工具待回填）
 
-**权限模式（来源：audit-perm-hooks4）**：外部 5 模式 `default / acceptEdits / plan / dontAsk / bypassPermissions` + 运行时可寻址 `auto / fullAuto`（共 7，与 SP001「7 模式」吻合）。语义要点：acceptEdits 自动接受编辑类；bypass 仍有安全底线（deny 规则、.git/配置目录、交互工具仍提示）；auto＝无分类器全批准但保留同级底线、对外映射 default；fullAuto＝静态高危 bash denylist 回落弹窗、其余全自动、纯运行时切换；plan 暂停图标/专属配色。行为枚举 allow/deny/ask。
+**权限模式（来源：audit-perm-hooks4）**：外部 5 模式 `default / acceptEdits / plan / dontAsk / bypassPermissions` + 运行时可寻址 `auto / fullAuto`（共 7，与 SP001「7 模式」吻合）。语义要点：acceptEdits 自动接受编辑类；bypass 仍有安全底线（deny 规则、.git/配置目录、交互工具仍提示）；auto＝无分类器全批准但保留同级底线、对外映射 default；fullAuto＝静态高危 bash denylist 回落弹窗、其余全自动、纯运行时切换；plan 暂停图标/专属配色。行为枚举 allow/deny/ask。**r6：新仓目标固定三模式（仅可查看/工作区内修改/完全权限，用户 2026-11-17），参考 7 模式仅作基线事实；安全底线语义（deny 规则/凭据保护）保留。**
 
 **审批弹窗**：文件类三档 accept-once / accept-session / reject；cwd 外按目录名限定会话记忆；配置目录写操作有专属会话级选项；bash 选项含可编辑前缀规则（`npm run:*`，前缀建议取命令+子命令两词、VAR= 赋值回落精确、危险包装命令禁裸前缀）；Yes/No 可展开反馈输入（「告诉我接下来/换种做法做什么」，空提交=取消）；记忆落点 destination＝userSettings/projectSettings/localSettings/session/cliArg（bash 前缀编辑落 localSettings）；管控开关开启时隐藏 always-allow 持久化选项。
 
@@ -134,7 +136,7 @@
 ### SP004 真实编码任务
 - 现定义：command-execution、coding-task-loop、git-worktree-safety、task-planning。
 - 清单对应：CAP-L2-04/05/06/08、L3-09/15。
-- 参考事实/补充任务（已回填）：计划模式 Enter/Exit 工具 + 计划审批卡片（建议≠批准）；todo 卡片 ✔/■/□ + blocked by + 行数自适应 + 30s TTL + ctrl+t；Bash timeout 上限/run_in_background/超预算自动转后台/Ctrl+B 手动转后台/后台输出文件+完成通知/sleep 拦截引导；PowerShell 与 Bash 同安全判定；EnterWorktree/ExitWorktree 工具表面；AskUserQuestion 选择题卡片承接追问；shift+tab 权限模式轮播（含 auto/fullAuto 语义与安全底线）。
+- 参考事实/补充任务（已回填）：计划模式 Enter/Exit 工具 + 计划审批卡片（建议≠批准）；todo 卡片 ✔/■/□ + blocked by + 行数自适应 + 30s TTL + ctrl+t；Bash timeout 上限/run_in_background/超预算自动转后台/Ctrl+B 手动转后台/后台输出文件+完成通知/sleep 拦截引导；PowerShell 与 Bash 同安全判定；EnterWorktree/ExitWorktree 工具表面；AskUserQuestion 选择题卡片承接追问；shift+tab 权限模式轮播（**r6：新仓三模式语义——仅可查看/工作区内修改/完全权限**；参考 auto/fullAuto 安全底线语义保留）。
 - 周旋点：计划模式＝自有状态机 + 执行前校验（建议≠批准）；todo UI 自绘卡片；后台进程监控用 Node child_process 自有管理，不搬参考终端捕获实现；沙箱仅声明能力边界（可选 CAP-L3-09）。
 
 ### SP005 长会话与数据可靠性
@@ -157,26 +159,28 @@
 - 参考事实/补充任务（已回填）：子代理卡片（进度≤3 行 + ctrl+o 全文 + 专属配色 + 耗时/token）与后台任务六件套分离；ToolSearch 延迟加载（名字暴露→取回 schema→可调用；MCP 默认延迟）；LSP 只读卡片；doctor 诊断 screen（警告带 Fix）；/status 面板、/stats、/insights、/heapdump（可选）；/cost TUI 面板字段参考未证实 → 自有设计；effortLevel 参数面；/btw 旁支子代理；/security-review 子任务兜底（可选）；第二供应商公开协议适配。
 - 周旋点：子代理＝自有运行时（独立上下文/权限≤父/取消传播/预算），不搬参考 mailbox 实现；doctor 自写本地诊断（不上传）；第二供应商按公开协议适配。
 
-### SP008 Desktop 独立工作台
+### SP008 Desktop 独立工作台（暂缓 DEFERRED，r6）
+- 状态：用户 2026-11-17 决定暂缓；编号保留，以下保留作恢复储备。
 - 现定义：desktop-host、desktop-coding-workflow、multi-project-sessions。
 - 清单对应：CAP-L4-13。
 - 参考事实/补充任务：待回填（参考桌面端 UI 结构：会话列表/diff/审批/后台状态）。
 - 周旋点：参考桌面端约 11.9 万行不可搬；自有宿主 + 自有 UI 框架（开轮选型，MIT），复用 SP010 宿主契约；崩溃不重复执行靠自有会话所有权协议。
 
-### SP009 VS Code 独立端
+### SP009 VS Code 独立端（暂缓 DEFERRED，r6）
+- 状态：用户 2026-11-17 决定暂缓；编号保留，以下保留作恢复储备。
 - 现定义：vscode-host、workspace-integration。
 - 清单对应：CAP-L4-09/14。
 - 参考事实/补充任务（已回填）：IDE RPC openDiff/close_tab 回传 diff；selection_changed 订阅 + at_mentioned 附件 + getDiagnostics 工具（CAP-L4-25）；ws-ide/sse-ide 传输按 URL 协议选型；IDE 工具白名单仅 executeCode/getDiagnostics；/ide 管理对话框；未保存编辑冲突 UI 参考未证实 → 自有设计 + 必测回归（路线图门槛）。
 - 周旋点：VS Code API 为公开接口可直接用；扩展 UI 自写 webview/原生视图；stdio 宿主契约自有。
 
-### SP010 跨端共享与接入
-- 现定义：shared-models-and-history、session-ownership、transport-boundaries。
+### SP010 多端架构入口与共享边界（r6 改名，原「跨端共享与接入」）
+- 现定义：shared-models-and-history、session-ownership、transport-boundaries；r6 起以轻量测试客户端验证契约，不交付真实其他端。
 - 清单对应：CAP-L4-08/09/10/18/19。
 - 参考事实/补充任务（已回填）：参考本地服务行为面＝会话编排 + 存储事务锁（withFileTransaction）+ 迁移门控 + rename 竞态 guard + remotePermissionBridge + SessionsWebSocket 事件恢复；28 组接口不搬，按行为事实自定最小契约 + 符合性测试。
 - 周旋点：参考本地服务约 6.3 万行 28 组接口不可搬；按行为事实自定最小 WS/stdio 契约 + 符合性测试；单写者所有权自写。
 
-### SP011 独立交付和 npm 发布工程
-- 现定义：tui-distribution、desktop-distribution、vscode-distribution、upgrade-compatibility、npm-publish-pipeline。
+### SP011 独立交付和 npm 发布工程（r6 收窄 TUI）
+- 现定义：tui-distribution、upgrade-compatibility、npm-publish-pipeline（desktop-distribution/vscode-distribution 随 SP008/SP009 暂缓）。
 - 清单对应：CAP-L4-20。
 - 参考事实/补充任务：待回填（参考打包/升级行为面）。
 - 周旋点：沿用 bootstrap 已验证的 OIDC 发布链扩展；不搬参考打包脚本。
@@ -205,13 +209,15 @@
 - 参考事实/补充任务（已回填，**证据修正**）：参考副本**无 computer-use 工具目录** → 无本地实现可参考；授权门/急停/多屏 DPI 行为规格以公开描述 + 高级能力计划为准，Windows 公开 API 自写辅助进程。验收门槛不降。
 - 周旋点：Windows 公开 API（UIAutomation/ SendInput 类）自写辅助进程；急停 SLO 自测。
 
-### SP016 远程访问与 H5
+### SP016 远程访问与 H5（暂缓 DEFERRED，r6）
+- 状态：用户 2026-11-17 决定暂缓；编号保留，以下保留作恢复储备。
 - 现定义：gateway-auth、remote-session、h5-client、remote-recovery。
 - 清单对应：CAP-L2-18、L4-11/12。
 - 参考事实/补充任务（已回填）：/session 远程 URL+QR 对话框；RemoteSessionManager + SessionsWebSocket + remotePermissionBridge + SSHSessionManager；teleport（--teleport、切分支前自动 stash、repo mismatch 对话框；Progress/Error 为 stub → CAP-L4-26 可选提议）；/desktop 会话交接对话框（SP008/SP010 衔接）；H5 UI 参考无独立实现面 → 自有设计 + 高级能力计划门槛。
 - 周旋点：网关/H5 全自写（Node + 自有前端）；配对令牌协议自定。
 
-### SP017–SP018 四类 IM
+### SP017–SP018 四类 IM（暂缓 DEFERRED，r6）
+- 状态：用户 2026-11-17 决定暂缓；编号保留，以下保留作恢复储备。
 - 现定义：im-adapter-contract、identity-binding、telegram、feishu、wechat、dingtalk、im-cross-channel。
 - 清单对应：CAP-L4-15。
 - 参考事实/补充任务：待回填（参考适配器行为面：路由/审批/流式编辑/去重）。
@@ -221,11 +227,11 @@
 - 现定义：schedule-management、durable-scheduler、scheduled-agent-run。
 - 清单对应：CAP-L2-17、L4-16。
 - 参考事实/补充任务（已回填）：CronCreate/Update/Delete/List 四工具共用卡片；`cron` 字段 + `durable:false` 会话级 vs 持久 JSON 双档；cronScheduler+jitter；任务类型族（LocalAgent/RemoteAgent/LocalWorkflow/MonitorMcp/Dream）+ pillLabel；jobs classifier 存在（细节未读）→ 自有分类设计。
-- 周旋点：cron 解析用 MIT 库或自写；租约/错过触发策略自写；管理入口四端共享契约。
+- 周旋点：cron 解析用 MIT 库或自写；租约/错过触发策略自写；管理入口 TUI/headless（多端入口随 r6 暂缓，契约保留）。
 
-### SP020–SP021 组合、交付与最终验收
-- 现定义：cross-surface-integration、advanced-distribution、full-upgrade；full-agent-parity、long-running-reliability、final-release-evidence。
-- 清单对应：CAP-L4-20 及全清单必交项收口。
+### SP020–SP021 组合、交付与最终验收（r6 当前范围）
+- 现定义：tui-capability-integration、advanced-distribution、full-upgrade；full-agent-parity、long-running-reliability、final-release-evidence（cross-surface-integration 随多端暂缓改名收窄）。
+- 清单对应：CAP-L4-20 及全清单当前必交项（47）收口；暂缓 6 项单列 DEFERRED。
 - 参考事实/补充任务：组合实战清单沿用高级能力计划；参考面仅用于补漏检查。
 - 周旋点：验收以自有测量 + 覆盖度 + 保护用例 + 用户试用（O5=B）。
 
@@ -236,7 +242,7 @@
 | 提议 ID | 能力 | 参考存在证据（路径） | 归属 SP | 必需性提议 | 理由 |
 | --- | --- | --- | --- | --- | --- |
 | CAP-L4-24 | 无头审批桥（外部 permission-prompt-tool 语义：非交互运行时把审批委托给外部工具/进程） | `src/cli/print.ts`、`src/cli/structuredIO.ts` | SP006 | 建议 | 矩阵「无头/脚本调用」已含非交互权限策略，但外部审批委托是独立可观察能力 |
-| CAP-L4-25 | IDE selection/诊断上下文注入（编辑器选区与诊断作为会话上下文） | `src/hooks/useIdeSelection.ts`、`src/commands/ide/ide.tsx` | SP009 | 建议 | CAP-L4-14 覆盖扩展本体，选区上下文是独立体验点 |
+| CAP-L4-25 | IDE selection/诊断上下文注入（编辑器选区与诊断作为会话上下文） | `src/hooks/useIdeSelection.ts`、`src/commands/ide/ide.tsx` | SP009 | 建议 | CAP-L4-14 覆盖扩展本体，选区上下文是独立体验点；r6 随 SP009 暂缓 |
 | CAP-L1-21 | 转录模式与思考展开（ctrl-o 类展开/收起、转录浏览） | `src/components/CtrlOToExpand.tsx`、`src/components/Messages.tsx` | SP006 | 建议 | CAP-L1-05 含转录搜索、L1-10 含思考渲染，但「转录模式」作为独立交互面未单列 |
 | CAP-L1-22 | 鼠标选择复制（终端鼠标选区→剪贴板） | `src/hooks/useCopyOnSelect.ts` | SP006 | 可选 | 体验增强；Ink 缺口扩展预算内才做（R-A） |
 | CAP-L1-23 | 输入 stash（ctrl+s 暂存当前输入、稍后恢复） | `src/components/PromptInput/PromptInputStashNotice.tsx` | SP006 | 可选 | 独立于排队/回收的第三种输入暂存语义 |
@@ -245,7 +251,7 @@
 | CAP-L2-26 | Config 工具（Agent 读/写产品配置，写需审批） | `src/tools/ConfigTool` | SP006 | 建议 | 自配置能力，权限门独立 |
 | CAP-L2-27 | 用户消息工具（Agent 主动发消息/附件，旧名 Brief） | `src/tools/BriefTool` | SP006 | 建议 | 主动行为的消息表面（L3-15 的工具化出口） |
 | CAP-L3-20 | 自动记忆蒸馏（append-only 日志→周期蒸馏→主题检索注入，可开关/可忽略） | `src/memdir/memdir.ts`、`findRelevantMemories.ts` | SP005 | 建议 | 区别于 L3-18 静态记忆目录的主动沉淀能力 |
-| CAP-L4-26 | 会话迁移 teleport（跨主机续会话、切分支前自动 stash、repo mismatch 提示） | `src/bootstrap/state.ts`、`components/Teleport*.tsx`（部分 stub） | SP016 | 可选 | 远程会话迁移增强；参考实现部分 stub，取证受限 |
+| CAP-L4-26 | 会话迁移 teleport（跨主机续会话、切分支前自动 stash、repo mismatch 提示） | `src/bootstrap/state.ts`、`components/Teleport*.tsx`（部分 stub） | SP016 | 可选 | 远程会话迁移增强；参考实现部分 stub，取证受限；r6 随 SP016 暂缓 |
 | CAP-L1-26 | 报障/反馈流（输入→consent→提交→预填 issue，多步对话框） | `commands/feedback/` | SP007 | 可选 | 自有产品改为本地诊断+用户授权后预填 issue，不接厂商 API |
 | CAP-L1-27 | OSC52 剪贴板复制（/copy 响应/代码块） | `commands/copy/` | SP006 | 建议 | 与 L1-22 鼠标选区复制互补的命令式出口 |
 | CAP-L1-28 | 设置面板（分页 tab、可搜索列表、左右改值、子对话、Esc 汇总变更） | `components/Settings/`、`commands/config/` | SP006 | 建议 | /config /permissions /hooks /theme 等共用的面板骨架 |
@@ -268,7 +274,7 @@
 | CAP-L4-06 退出码 | 证实仅 0/1 两档；终止原因＝result.subtype 三值（success/error_during_execution/error_max_turns） | 与 v1 目标状态一致，无需改语义 |
 | CAP-L3-05 成本追踪 | result 事件字段证实；TUI /cost 面板字段参考未证实 | 面板自有设计，事件字段对照 |
 | CAP-L1-01 渲染引擎 | 补充：参考含 NAPI Yoga 布局与 NAPI diff 着色两个原生模块 | 周旋总则 #1/#5 已覆盖换方式路径 |
-| CAP-L4-11/12 远程 | teleport 的 TeleportProgress/TeleportError 本 build 为 stub；ListPeers/DiscoverSkills 亦 stub | SP016 以真实存在的 RemoteSessionManager/权限桥为参考；团队 peers UI 证据降为组件名 |
+| CAP-L4-11/12 远程 | teleport 的 TeleportProgress/TeleportError 本 build 为 stub；ListPeers/DiscoverSkills 亦 stub | SP016 以真实存在的 RemoteSessionManager/权限桥为参考；团队 peers UI 证据降为组件名；r6 暂缓，保留作恢复储备 |
 
 ### 5.3 范围外提议（自有产品形态决定，需用户拍板登记）
 

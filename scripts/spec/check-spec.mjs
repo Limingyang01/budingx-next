@@ -8,7 +8,7 @@ export const ROOT = path.resolve(here, '../..')
 export const MANIFEST = 'SP/SP001/capability-baseline/capability-manifest.md'
 export const INVENTORY = 'SP/SP001/evaluation-suite/task-inventory.md'
 
-const NECESSITY = ['必交', '建议', '可选', '范围外']
+const NECESSITY = ['必交', '建议', '可选', '范围外', '暂缓']
 const ACCEPTANCE = ['逻辑', '协议fixture', '真实进程', 'UI', 'live Provider', '安装', '人工']
 const ASSERTIONS = ['T', 'D', 'X', 'A', 'E']
 const SIZES = ['S', 'M', 'L']
@@ -41,7 +41,7 @@ export function checkManifest(text) {
     if (!/^CAP-L[1-4]-\d{2}$/.test(id)) failures.push(`ID 格式: ${id}`)
   }
 
-  const counts = { 必交: 0, 建议: 0, 可选: 0, 范围外: 0 }
+  const counts = { 必交: 0, 建议: 0, 可选: 0, 范围外: 0, 暂缓: 0 }
   for (const item of items) {
     const [id, , , , sp, acceptance, necessity] = item
     if (!NECESSITY.includes(necessity)) {
@@ -65,14 +65,14 @@ export function checkManifest(text) {
 
   // 声明的统计必须与实算一致（声明值从正文解析，不写死在代码里）
   const declaredTotal = /^- 总条目：(\d+)/m.exec(text)
-  const declared = /^- 必交：(\d+)｜建议：(\d+)｜可选：(\d+)｜范围外：(\d+)/m.exec(text)
+  const declared = /^- 必交：(\d+)｜建议：(\d+)｜可选：(\d+)｜范围外：(\d+)｜暂缓：(\d+)/m.exec(text)
   const denominator = /^- 覆盖度分母固定为\*\*必交 (\d+) 项\*\*/m.exec(text)
   if (!declaredTotal || !declared) failures.push('统计节缺失或格式变更，需同步本检查')
   else {
     const d = declared.slice(1).map(Number)
     if (Number(declaredTotal[1]) !== items.length)
       failures.push(`声明总条目 ${declaredTotal[1]} != 实算 ${items.length}`)
-    const order = ['必交', '建议', '可选', '范围外']
+    const order = ['必交', '建议', '可选', '范围外', '暂缓']
     order.forEach((key, i) => {
       if (d[i] !== counts[key]) failures.push(`声明${key} ${d[i]} != 实算 ${counts[key]}`)
     })
@@ -80,16 +80,29 @@ export function checkManifest(text) {
   if (denominator && Number(denominator[1]) !== counts['必交'])
     failures.push(`覆盖度分母 ${denominator[1]} != 实算必交 ${counts['必交']}`)
 
-  // 用户已确认的必交能力不得降级
+  // 用户已确认的必交能力不得降级。
+  // 2026-11-17 用户决定 TUI 单端优先（路线图 r6）：远程/H5/IM 相关 4 项
+  // （CAP-L2-18、CAP-L4-11、CAP-L4-12、CAP-L4-15）移出必交改为暂缓，
+  // 与 Desktop/VS Code（CAP-L4-13/14）一起登记于 MUST_DEFER；其余必交不变。
   const MUST_KEEP = [
     'CAP-L2-11', 'CAP-L4-17', 'CAP-L2-15', 'CAP-L2-16',
-    'CAP-L2-18', 'CAP-L4-11', 'CAP-L4-12', 'CAP-L4-15',
     'CAP-L2-17', 'CAP-L4-16'
   ]
   for (const id of MUST_KEEP) {
     const item = items.find((x) => x[0] === id)
     if (!item) failures.push(`必交能力缺失: ${id}`)
     else if (item[6] !== '必交') failures.push(`必交能力被降级: ${id} = ${item[6]}`)
+  }
+
+  // 用户决定暂缓的能力不得被静默恢复、降级为其他状态或删除（恢复须用户另行决定）。
+  const MUST_DEFER = [
+    'CAP-L2-18', 'CAP-L4-11', 'CAP-L4-12',
+    'CAP-L4-13', 'CAP-L4-14', 'CAP-L4-15'
+  ]
+  for (const id of MUST_DEFER) {
+    const item = items.find((x) => x[0] === id)
+    if (!item) failures.push(`暂缓能力缺失: ${id}`)
+    else if (item[6] !== '暂缓') failures.push(`暂缓能力被静默变更: ${id} = ${item[6]}`)
   }
 
   return { failures, stats: { total: items.length, ...counts } }
@@ -232,7 +245,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const m = result.manifest
   const i = result.inventory
   console.log(
-    `能力清单 ${m.total} 项（必交 ${m.必交} / 建议 ${m.建议} / 可选 ${m.可选} / 范围外 ${m.范围外}）`
+    `能力清单 ${m.total} 项（必交 ${m.必交} / 建议 ${m.建议} / 可选 ${m.可选} / 范围外 ${m.范围外} / 暂缓 ${m.暂缓}）`
   )
   console.log(
     `任务清单 基本 ${i.basic} / 高级 ${i.advanced} / 保护 ${i.protection}，盲测 ${i.blind}`

@@ -11,7 +11,7 @@
 - 同一 SP 可多次发布，SP 状态、产品版本、发布状态分开记录；发布失败不把已占用版本重新使用。
 - src/tui/package.json 的 version 是产品版本源；release-ledger.json 记录迭代及 prepared/published 状态；release-notes/v<version>.md 记录用户变化、限制和验收。根维护包版本不是产品版本。
 
-未来三端产品加入时，从已准备 release manifest 同步公共兼容版本；各端制品/发布通道和是否交付分别记录，不因 TUI 发包宣称 Desktop/VSIX 已发布。协议/存储 schema 版本独立演进并提供迁移，不能用 npm 版本代替数据版本。
+未来暂缓各端（Desktop/VSIX 等，r6）恢复加入时，从已准备 release manifest 同步公共兼容版本；各端制品/发布通道和是否交付分别记录，不因 TUI 发包宣称 Desktop/VSIX 已发布。协议/存储 schema 版本独立演进并提供迁移，不能用 npm 版本代替数据版本。
 
 后续 Agent：完成当轮验收后准备新版本，更新 SP 汇总/STATUS 与发行说明；执行用户授权的发布，再保存 registry 版本/integrity/tag 回执。只有已核实结果才记 published，上传状态不确定先查询，不盲重试。
 

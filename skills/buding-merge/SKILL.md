@@ -43,7 +43,7 @@ description: Use when a scoped local commit, cherry-pick, merge, push, or integr
 
 1. 全量 `npm test`（技能/规格/产品单元/边界/发布/门禁纯函数）＋ `spec:check` ＋ `skills:check` ＋ 隔离安装 pack-smoke，全部退出码 0。
 2. outgoing（merge-base..HEAD）提交路径扫描：不得含依赖、dist/产物、artifacts、.env/凭据/密钥文件、异源 lockfile（pnpm-lock）、tsbuildinfo。
-3. 当轮 `SP/SPnnn/test-report.md` 审计：无 FAIL 行；UNVERIFIED 允许但必须存在恢复条件节；报告缺失即 RED。
+3. 当轮 `SP/SPnnn/test-report.md` 审计：无 FAIL 行；UNVERIFIED 允许但必须存在恢复条件节；报告缺失即 RED。非 SP 编号的 feature 规划分支（跨 SP 修订）审计 `docs/requirements/<slug>/test-report.md`（2026-11-17 扩展，见 [集成门禁](../../docs/integration-gate.md)）。
 4. 记录 branch/target/merge-base/HEAD/outgoing 数量，供 §3 预演与 §5 交接复用。
 
 GREEN 之外还须留存 **Agent 自审记录**（AC 逐条结论、scoped diff 复核、e2e 分层证据、UNVERIFIED 恢复条件），写入当轮 test-report 或 review 记录后再合入。RED 时禁止合入：修复后重跑门禁；不得降阈值、删断言或改报告措辞绕过。门禁不替代 §3 的 merge-tree 预演与冲突处理，也不授权 push。
