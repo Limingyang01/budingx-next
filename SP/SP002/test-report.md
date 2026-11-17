@@ -234,10 +234,9 @@ node scripts/release/pack-smoke.mjs
 - **边界不变**：IME preedit、真 ConHost/WT 观感、鼠标选区仍 UNVERIFIED（§5 人工清单）；harness 绿不冒充真终端验收。
 
 ## 14. 2026-11-17 缺口收尾（G01…G17）
-
 用户授权：按 implementation-gap-audit.md 先 P1、再其余项与测试。沿用设计 v0.3；继续原 feature 分支。开始 HEAD c57d51a；执行期间外部新增 7e5dcea（CLI 测试 home 隔离），已保留，未重写该提交。
 
-### 12.1 实现与回归映射
+### 14.1 实现与回归映射
 
 | 缺口        | AC / 设计          | 修正与证据入口                                                                                                                                |
 | ----------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -253,7 +252,7 @@ node scripts/release/pack-smoke.mjs
 | G15/G16     | PS-04/05/06        | timeout 接到连接/读取空闲时限；取消释放退避 timer；Retry-After 秒数和日期；openai.test + runtime.test 慢端点。                                |
 | G17         | SL-03              | 有合法调用标识的非法 JSON 回填错误结果后续跑，缺标识仍报协议错误；session.test 实际二次模型调用验证。                                         |
 
-### 12.2 红绿与审查记录
+### 14.2 红绿与审查记录
 
 - 第一轮 G01/G02/G03/G05/G06/G13/G14 测试观察到 5 项预期失败，随后转绿；G08/G10 观察到 2 项预期失败后转绿；G17 观察到 completed/error 不符后修正并转绿。
 - 审查补充的光标单独移动测试先失败（无光标输出），后检查连续左/左/右实际 CSI 5G/4G/5G；修正 Ink insertion/layout effect 的提交时序。
@@ -261,23 +260,35 @@ node scripts/release/pack-smoke.mjs
 - 独立 reviewer 提出异步命令抢跑、活动档案编辑不同步、光标提交时序三项；均修正并补相应回归。命令/Provider fixture 与实际 Ink 流测试各自保留边界，不以 mock 证明真终端体验。
 - 只读参考本地参考仓模型命令的会话/默认模型分离机制、TextInput 的 mask/cursor 接线，并对照已有机制盘点的回合边界队列和审批规则。新实现独立编写，无旧代码/用户数据迁入。
 
-### 12.3 实际检查
+### 14.3 实际检查
 
 - 第一轮完整 npm test：技能 9、规格 7、产品 141、发布 16 全部通过；模块边界检查通过（合计 173 项）。最终格式化及审查后复验成绩见本节后续追加。
 - 日志保存在本地忽略目录 artifacts/SP002-gap-closure/，不纳入提交。
 - PRODUCT.md 已同步模型录入/编辑/默认/能力/清理、命令边界、按键和限制；src/tui/README.md 同步用法。产品版本仍为 0.1.1，本次不执行版本准备或 npm 发布。
 
-### 12.4 未验证边界
+### 14.4 未验证边界
 
 PS-08 live Provider 仍为 UNVERIFIED：未使用真实凭据或费用预算。TC-02/03/04/05/07 的 Windows Terminal 与 ConHost 人工 IME/显示验收仍为 UNVERIFIED；Ink PassThrough/TTY 标记输入测试不能替代真实系统终端。没有读取旧用户 Key 或历史。
 
 本轮缺口代码已处理不代表用户已验收；尚未获得本轮真实环境验收证据，不宣称完整发布就绪。
 
-### 12.5 最终复验回执
+### 14.5 最终复验回执
 
 - 格式化后最终 npm test：**技能 9/9、规格 7/7、产品 151/151、发布 16/16，合计 183 项 PASS，0 FAIL、0 SKIP；模块边界检查通过**。产品成绩包含工作区同期新增的 9 项屏幕测试；该组夹具及 header 配套改动由同期任务维护，本次保留并一起复验，不混入本次局部提交范围。
 - 最终复验前曾因同期新增屏幕测试的导入路径和默认终端模式/按键批处理夹具失败；同期夹具修正后，独立屏幕测试 9/9 通过，再跑完整门禁得到上述成绩。不将该次失败隐藏为成功。
 - 独立审查三项反馈均已处理：异步命令在真正执行时重新等待回合边界（含延迟 prompt 后的 clear）、活动配置编辑/删除刷新、光标提交时序。reviewer 最终确认原三项已处理；新增 clear 实际 Ink 回归通过。
 - 隔离安装 smoke：tarball **34 文件**，仓库外安装后运行版本 0.1.1，真实本地 HTTP 流式请求通过，退出码 0。父进程也使用临时 HOME/USERPROFILE，不访问真实用户配置。
 - skills:check、spec:check 通过。用临时固定版本 Prettier 3.6.2 格式化本次文件，2 空格、ESM、单引号、无分号；未增加项目依赖或修改全局编辑器配置。
-- 未运行真实 Provider 和 Windows Terminal/ConHost 人工验收；仍保持第 12.4 节的 UNVERIFIED，未升级产品版本、未推送、未 npm 发布。
+- 未运行真实 Provider 和 Windows Terminal/ConHost 人工验收；仍保持第 14.4 节的 UNVERIFIED，未升级产品版本、未推送、未 npm 发布。
+
+## 15. Agent 自审与合入决策（2026-11-17，委托流程首次应用）
+
+依据：用户 2026-11-17 委托（取消常规人工审查、Agent 自审、交叉验证 GREEN 才合入 master；见 [集成门禁](../../docs/integration-gate.md) 与 AGENTS.md）。本节为合入前自审记录。
+
+1. **AC 结论**（沿用 §2/§3 并复核 §14 收尾）：32 条 AC 中 27 条全层 PASS；TC-02/03/04/05/07 自动层 PASS、真终端人工部分 UNVERIFIED；PS-08（live 真实服务）UNVERIFIED。G01–G17 全部有实现+回归映射（§14），无残留 FAIL。UNVERIFIED 恢复条件见 §4 与 §14.4：live 凭据+预算由用户提供后补录；真终端观感/IME 由用户在 master 结果上可选抽查（不阻塞合入，委托已取消人工审查前置）。
+2. **交叉验证门禁**：`npm run merge:gate` **GREEN**（报告 `artifacts/merge-gate/feature-SP002-model-session-loop-2026-11-17T07-17-55-948Z.md`）：npm test 全段（skills 9 / spec 7 / unit 151 / checks PASS / release 16 / merge 4）+ spec:check + skills:check + pack-smoke（34 文件隔离安装+真实流式请求）退出码全 0；outgoing 路径扫描无违规；报告审计无 FAIL 行、UNVERIFIED 有恢复条件节。门禁自身误报（汇总表表头列名 FAIL）已修复并补回归（4cde2f7）。
+3. **scoped diff 复核**：master..HEAD 88 文件；核心前缀外仅 README.md 与 package-lock.json（npm 自有 lock，合法）；`git diff master..HEAD -- src` 扫描旧仓路径/claude 导入 **0 命中**；运行时依赖白名单恰为 ink/react/string-width（边界检查）；无凭据/产物/异源 lockfile 进入提交；THIRD-PARTY-NOTICES 与依赖一致。
+4. **分层证据**：L0 纯函数（header/reducer/editor/normalize/tool-calls 等）；L1 伪 TTY e2e（app.test 10 + screen-e2e 9 + runtime.test，真实 Ink 帧/键流/双端点 HTTP fixture）；L2 真实进程（cli.test 5，home 隔离）+ 制品隔离安装；L3 真终端人工 UNVERIFIED（§5 清单）。各层不互相冒充。
+5. **bug 闭环**：队列 drain unref（§7）、ASCII 兜底非 ASCII `·`（§13 S4 RED→修复）、CLI 测试 home 未隔离（§12）、G01–G17（§14）、门禁表头误报（4cde2f7）——均 RED/复现→修复→复绿。
+6. **风险与回退**：live 与真终端证据缺口已登记恢复条件；产品版本仍 0.1.1（无发布授权）；回退＝master 上 revert 本次 merge 提交，feature 分支保留不删。
+7. **合入决策**：门禁 GREEN + 自审通过 → 按 buding-merge 规程合入 master（委托范围内）。**push/打标签/npm 发布不在委托内，不执行**。

@@ -1,6 +1,6 @@
 # budingx-next 迭代路线图
 
-状态：MODEL_PROPOSED / 待审阅。版本：r3；更新：2026-11-16。
+状态：r5 已自审采纳（2026-11-17 委托）；SP003+ 开轮继承排查清单。版本：r5；更新：2026-11-17。
 
 用户已授权制定 SP 数量和编号，尚未授权按此计划启动 SDD 或产品开发。当前无产品实现；下文均为计划和建议验收门槛，不是通过记录。后续 Agent 必须先读本文件、[迭代管理](../SP/README.md)、[当前状态](current-status.md)和目标迭代记录，核实最新用户授权。
 
@@ -8,7 +8,7 @@
 
 USER_CONFIRMED：独立实现自己的 Coding Agent；使用 Node.js + TypeScript、不依赖 Bun；主线 master；TUI、Desktop、VS Code 独立安装和使用，允许共享模型和历史；可接入未来手机端；效果达到原 Agent 的实际工作能力。项目没有需求 ID，按 SP 版本号和具体功能/优化目录组织；需要建设 TUI npm 一键发布能力，未来由 publish 入口直达 npm，当前不执行发布。
 
-配套必读：[能力与验收矩阵](agent-capability-matrix.md)、[高级能力功能拆分与验收](advanced-capabilities-plan.md)、[TUI npm 一键发布方案](npm-release-plan.md)。它们是本路线图的组成部分；功能名称作为索引，不引入需求 ID。
+配套必读：[能力与验收矩阵](agent-capability-matrix.md)、[高级能力功能拆分与验收](advanced-capabilities-plan.md)、[TUI npm 一键发布方案](npm-release-plan.md)、[剩余 SP 参考复刻排查](reference-tui-replication-audit.md)。它们是本路线图的组成部分；功能名称作为索引，不引入需求 ID。
 
 现扩展为 **21 个 SP**。SP001–SP011 保留编码核心、三端、共享和初版交付路线；SP012 改为中期编码效果检查，不再承担完整替代结论。SP013–SP019 分别交付团队、浏览器、Computer Use、远程/H5、四类 IM 和定时任务；SP020 完成全能力跨端集成与升级发布验证，SP021 才作完整替代验收。
 
@@ -78,7 +78,7 @@ SP008/SP009 只有在 Core、宿主协议和验证资源稳定后才可并行；
 
 ## 后续 Agent 的执行入口
 
-当前状态：**SP001 已验收（规格轮，用户 2026-11-16 验收通过，设计 v1 批准；未启动产品实现）**；其余 20 轮仍为 PLANNED。SP001 已产出[能力基线、核心边界与发布范围](../SP/SP001/requirements-summary.md)，含[能力清单 v1](../SP/SP001/capability-baseline/capability-manifest.md)（85 项，必交 53 项）、核心边界与不变量、评测集规格与[任务清单](../SP/SP001/evaluation-suite/task-inventory.md)、发布范围与待决项。47 条 AC 走查：46 PASS / 1 NOT_APPLICABLE（规格层面，不代表产品能力已实现），见[验证报告](../SP/SP001/test-report.md)。用户已拍板 O1=A（完整制品沿用 npm `budingx` 同名）、O2=A（Windows 先行）、O5=B（不采集原产品效果基线，效果口径永久为自有测量 + 覆盖度，5 个百分点非劣门槛废除）。功能范围已由用户确认纳入；SP002 待用户授权启动。
+当前状态：**SP001 已验收（规格轮，用户 2026-11-16 验收通过，设计 v1 批准）；SP002 已实现并完成本地验证（118 项产品单元全绿），等待用户验收**；其余 19 轮仍为 PLANNED。SP001 已产出[能力基线、核心边界与发布范围](../SP/SP001/requirements-summary.md)，含[能力清单 v1](../SP/SP001/capability-baseline/capability-manifest.md)（85 项，必交 53 项）、核心边界与不变量、评测集规格与[任务清单](../SP/SP001/evaluation-suite/task-inventory.md)、发布范围与待决项。47 条 AC 走查：46 PASS / 1 NOT_APPLICABLE（规格层面，不代表产品能力已实现），见[验证报告](../SP/SP001/test-report.md)。用户已拍板 O1=A（完整制品沿用 npm `budingx` 同名）、O2=A（Windows 先行）、O5=B（不采集原产品效果基线，效果口径永久为自有测量 + 覆盖度，5 个百分点非劣门槛废除）。2026-11-17 完成[剩余 SP 参考复刻全面排查](reference-tui-replication-audit.md)（r1，待审阅）：逐 SP 参考行为对照与补充任务、15 项 manifest v2 新增提议、10 项基线证据修正、6 组范围外提议；采纳后各轮开轮设计继承对应清单。
 
 1. 用户授权启动时，从 SP001 开始，不跳过基线直接搭三端 UI；若用户改变顺序，记录影响并保留新决定。
 2. 在 SP/SP001/requirements-summary.md 列具体功能/优化目录，不创建需求 ID；按模板补来源、AC、依赖和状态。
@@ -86,10 +86,34 @@ SP008/SP009 只有在 Core、宿主协议和验证资源稳定后才可并行；
 4. 下一轮先核对上一轮出口证据。缺口明确记录后由用户决定延期或带风险继续，不自动把未验证记成通过。
 5. 修改路线图时记录原因和影响；保留已执行迭代的历史，不覆盖旧验收结论。
 
+## r5 参考复刻全面排查（2026-11-17）
+
+依据用户 2026-11-17 指示（SP002 完成后全面排查剩余 SP，以参考仓 TUI 为还原目标；UI/交互/功能点直接参考、实现逻辑独立编写），产出[排查文档 r1](reference-tui-replication-audit.md)：6 路只读盘点（输入渲染 / 命令 / 工具 / 权限·Hook / 会话·无头 / 记忆·扩展）× 清单 v1 × 本表交叉核对。**21 轮结构与必交范围不变；排查只增补行为对照与补充任务，不降低任何门槛。**
+
+逐 SP 补充要点（详细行为清单见排查文档 §4，开轮设计继承为可勾选对照清单）：
+
+| 迭代 | 排查增补要点 |
+| --- | --- |
+| SP003 | 权限弹窗三档+会话记忆落点+bash 可编辑前缀+反馈输入态；规则语法语义等价自写；diff 对话框两级+源切换；@/命令统一补全；Edit 唯一字面串语义 |
+| SP004 | 计划审批卡片、todo 卡片（TTL/ctrl+t）、Bash 后台/自动转后台/Ctrl+B/sleep 拦截、PowerShell 同判定、worktree 进出工具、AskUserQuestion、shift+tab 模式轮播（7 模式语义） |
+| SP005 | JSONL 布局与元数据枚举、resume 选择器与旗标族、rewind 快照+diff 预览、compact 阈值公式/三型微压缩/熔断/preserved 保留/边界 ack、/context 网格、记忆三级+@import、auto-memory（提议） |
+| SP006 | 体验主战场：键位 18 上下文块+保留键、vim、kill-ring/ctrl+r/bracketed paste/图片粘贴/外部编辑器/stash、主题/设置面板/statusline/transcript/折叠流水线、hooks 27+1 事件与输出契约、MCP 信任审批、无头 stream-json 控制协议与 permission-prompt-tool、命令三型契约；**渲染模式先单一普通滚动+冻结缓存，fullscreen/虚拟列表/鼠标/备用屏列受控扩展预算，超预算拆轮** |
+| SP007 | 子代理卡片与后台六件套分离、ToolSearch 延迟加载、doctor Fix 屏、/status//stats、effort、/btw、第二供应商 |
+| SP008/SP009 | /desktop 交接对话框；IDE openDiff/close_tab RPC、selection/at_mentioned/getDiagnostics、ws-ide 传输 |
+| SP010 | 存储事务锁/迁移门控/rename 竞态 guard/权限桥行为面 → 自定最小契约+符合性测试 |
+| SP013 | swarm 消息协议（广播成本警告/shutdown request_id）、teammate pills/banner、团队记忆；worktree 隔离保持更强门槛 |
+| SP014/SP015 | **参考副本为 recovery build：WebBrowser 为 stub、无 computer-use 目录 → 无本地实现可参考**；行为规格以公开描述+高级能力计划为准，全自写（Playwright/CDP、Windows 公开 API）；门槛不降 |
+| SP016 | /session URL+QR、teleport（部分 stub，可选提议）、remotePermissionBridge |
+| SP019 | cron 四工具卡片、durable:false 会话级 vs 持久双档、jitter、任务类型族 |
+| SP020/SP021 | 不变；验收以自有测量+覆盖度+保护用例+用户试用（O5=B） |
+
+待用户拍板（排查文档 §5）：① manifest v2 新增 15 项 CAP ID 的必需性（8 项 L1、2 项 L2、2 项 L3、3 项 L4）；② 10 项基线证据修正登记（含 browser/CU stub、迁移 8+5、hook 27+1、退出码 0/1+subtype 三值）；③ 6 组范围外提议（计费 upsell/营销趣味/云审查云计划/内部与 stub 命令/voice 与原生移动 QR 维持/Slack 安装）。未拍板前维持 v1 分母 53 与各默认处理。
+
 ## 版本记录
 
 | 版本 | 日期 | 变化 | 身份 |
 | --- | --- | --- | --- |
+| r5 | 2026-11-17 | 并入剩余 SP 参考复刻排查 r1：逐 SP 行为对照增补、渲染模式决策提议、SP014/015 证据修正（参考 stub）、manifest v2 与范围外提议待各轮开轮拍板；SP002 状态更新为已实现待验收 | AGENT_REVIEWED（2026-11-17 委托自审采纳）；排查不授权开发 |
 | r1 | 2026-11-16 | 提议 SP001–SP012；按具体功能/优化拆分，无需求 ID；定义效果对齐评测和阶段出口 | MODEL_PROPOSED；编号与数量安排由用户授权，实施未授权 |
 | r4 | 2026-11-16 | SP001 验收通过（规格轮）；O1=A 沿用 `budingx` 同名、O2=A Windows 先行、O5=B 不采集原产品效果基线：5 个百分点非劣门槛与原产品对照条款废除，效果口径改为自有测量 + 覆盖度 | USER_CONFIRMED；SP002+ 实施仍未授权 |
 
