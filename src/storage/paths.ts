@@ -17,6 +17,11 @@ export function credentialsPath(home?: string): string {
   return join(dataRoot(home), 'credentials.json')
 }
 
+/** Permission rules file (SP003 design §3.3.3). */
+export function permissionsPath(home?: string): string {
+  return join(dataRoot(home), 'permissions.json')
+}
+
 export function backupPath(file: string): string {
   return `${file}.bak`
 }

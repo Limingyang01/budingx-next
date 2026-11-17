@@ -11,4 +11,21 @@ export { editWorkspaceFile } from './edit.js'
 export type { EditOptions, EditResult } from './edit.js'
 export { globWorkspace, grepWorkspace, walkWorkspaceFiles } from './search.js'
 export type { GlobOptions, GrepOptions, SearchSummary, WalkOptions, WalkResult } from './search.js'
+export { diffLines, diffSummary } from './diff.js'
+export type { DiffHunk, DiffLine, DiffLineType } from './diff.js'
+export { createCheckpointStore } from './checkpoint.js'
+export type { ChangeRecord, CheckpointStore, UndoOutcome } from './checkpoint.js'
+export {
+  createPermissionPolicy,
+  isCredentialLike,
+  MODES_EN,
+  MODES_ZH,
+  nextMode
+} from './policy.js'
+export type {
+  BudingPermissionPolicy,
+  PermissionRule,
+  PermissionPolicyOptions,
+  ShadowedRule
+} from './policy.js'
 
