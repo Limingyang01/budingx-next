@@ -40,6 +40,7 @@
 - 合入后 master 复跑（2026-11-17）：npm test **206 项 0 失败**（skills 10 / spec 9 / unit 166 / release 16 / merge 5）＋模块边界通过；spec:check OK（47/6）；skills:check current；pack-smoke **PASS**（34 文件、隔离安装 0.2.0）。
 - 推送：`git push origin master` 前两次网络波动失败（github.com:443 连接超时），第 3 次成功（2fb7c1e..99b50ee）；`git ls-remote origin master` = **99b50ee08636a7a9dfd7093e99f0f8473863d3d3**，与本地一致。凭据说明：本环境无 GCM/可用 askpass，使用 bundled git 自带 `git -c credential.helper=wincred` 读取 Windows 存储凭据（仅本次命令参数，未改全局配置）。
 - 回执收口：收口提交 C 记录合入/推送#1/复跑回执并推送（推送#2）；C 的 SHA 与推送#2 远端回执由下一提交 D 的本节追加行登记，D 的推送#3 回执以 ls-remote 核验并记入交接会话。
+- 追加行（提交 D）：C＝**620b833674c727c6cb91e1717b1bcd82a5bf8b6f**，推送#2 一次成功，ls-remote 远端 master＝620b833 与本地一致；本追加行所在提交 D 经推送#3 上远端，回执以 ls-remote 核验并记入交接会话。本轮规划修订全部 AC PASS，STATUS CLOSED。
 
 ## 5. 未验证项与恢复条件
 
