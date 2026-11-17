@@ -26,6 +26,7 @@ export type DiffHunk = {
 const MAX_LCS_CELLS = 250000
 
 function splitLines(text: string): string[] {
+  if (text === '') return []
   const normalized = text.replace(/\r\n/g, '\n')
   const lines = normalized.split('\n')
   if (lines.length > 1 && lines.at(-1) === '') lines.pop()

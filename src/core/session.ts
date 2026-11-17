@@ -568,6 +568,7 @@ export class Session {
       this.setState('tool_running')
       let content = ''
       let isError = false
+      let errorCode: string | undefined
       try {
         content = await handler.execute(input, {
           signal: turn.controller.signal,
@@ -576,12 +577,16 @@ export class Session {
       } catch (error) {
         content = error instanceof Error ? error.message : 'Tool execution failed'
         isError = true
+        // Stable machine readable codes from WorkspaceError survive to the
+        // model so it can self-correct (SP003 AC WT-14).
+        const candidate = (error as { code?: unknown } | null)?.code
+        if (typeof candidate === 'string') errorCode = candidate
       }
       if (content.length > TOOL_OUTPUT_CAP) {
         content = content.slice(0, TOOL_OUTPUT_CAP)
         isError = true
       }
-      this.pushToolResult(turn, call.id, content, isError)
+      this.pushToolResult(turn, call.id, content, isError, errorCode)
     }
     return {}
   }

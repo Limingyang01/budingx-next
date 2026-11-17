@@ -28,4 +28,18 @@ export type {
   PermissionPolicyOptions,
   ShadowedRule
 } from './policy.js'
+export { createWorkspaceTools } from './tools.js'
+export type { WorkspaceTools } from './tools.js'
+export { buildContextBlocks, extractFileReferences, resolveFileReferences } from './context.js'
+export type { ContextBlock, ContextBuild, FileReference } from './context.js'
+export {
+  DIFF_CONTEXT_LINES,
+  MAX_CONTEXT_BYTES,
+  MAX_CONTEXT_LINES,
+  MAX_FILE_BYTES,
+  MAX_READ_LINES,
+  MAX_SEARCH_RESULTS,
+  MAX_TOTAL_CONTEXT_BYTES,
+  MAX_WALK_FILES
+} from './constants.js'
 
