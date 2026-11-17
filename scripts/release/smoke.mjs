@@ -6,7 +6,7 @@ import path from 'node:path'
 import { run } from './process.mjs'
 
 export async function smokeInstalled(packageDirectory, cwd) {
-  const cli = path.join(packageDirectory, 'dist/cli.js')
+  const cli = path.join(packageDirectory, 'dist/tui/cli.js')
   const pkg = JSON.parse(
     await readFile(path.join(packageDirectory, 'package.json'), 'utf8')
   )

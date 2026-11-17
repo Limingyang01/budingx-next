@@ -1,13 +1,24 @@
-import type { Config } from './config.js'
-import { normalizeBaseUrl } from './config.js'
+// Frozen baseline of the 0.1.1 preview provider implementation.
+// It exists only as regression evidence: the new provider must stay
+// behaviourally equivalent (SP002 AC PS-01). Not part of the product.
+export function normalizeBaseUrl(input) {
+  let url
+  try {
+    url = new URL(input)
+  } catch {
+    throw new Error('Invalid base URL')
+  }
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+  if (url.username || url.password || url.search || url.hash)
+    throw new Error('Base URL must not contain credentials, query or fragment')
+  if (url.protocol !== 'https:' && !(local && url.protocol === 'http:'))
+    throw new Error(
+      'Use HTTPS (HTTP is allowed only for explicit loopback endpoints)'
+    )
+  return url.toString().replace(/\/+$/, '')
+}
 
-export type Message = { role: 'user' | 'assistant'; content: string }
-
-export async function* streamChat(
-  config: Config,
-  messages: Message[],
-  signal?: AbortSignal
-): AsyncGenerator<string> {
+export async function* streamChat(config, messages, signal) {
   const baseUrl = normalizeBaseUrl(config.baseUrl)
   if (!config.model.trim())
     throw new Error('Set BUDINGX_MODEL or use /model <name>')
@@ -61,7 +72,7 @@ export async function* streamChat(
       buffer += decoder.decode(value, { stream: true }).replace(/\r/g, '')
       if (buffer.length > 1048576)
         throw new Error('Provider event exceeds size limit')
-      let end: number
+      let end
       while ((end = buffer.indexOf('\n\n')) !== -1) {
         const event = buffer.slice(0, end)
         buffer = buffer.slice(end + 2)
@@ -75,17 +86,7 @@ export async function* streamChat(
           if (!receivedText) throw new Error('Provider returned no text')
           return
         }
-        let payload: {
-          error?: unknown
-          choices?: {
-            delta?: {
-              content?: unknown
-              tool_calls?: unknown
-              function_call?: unknown
-            }
-            finish_reason?: string
-          }[]
-        }
+        let payload
         try {
           payload = JSON.parse(data)
         } catch {

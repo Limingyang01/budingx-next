@@ -8,13 +8,18 @@
     "node": ">=22.18.0"
   },
   "bin": {
-    "budingx": "dist/cli.js"
+    "budingx": "dist/tui/cli.js"
   },
   "files": [
     "dist/",
     "README.md",
     "LICENSE"
   ],
+  "dependencies": {
+    "ink": "8.0.0",
+    "react": "19.3.1",
+    "string-width": "9.0.0"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Limingyang01/budingx-next.git",
