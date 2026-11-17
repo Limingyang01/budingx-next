@@ -2,7 +2,7 @@
 
 > **产品版本**：0.2.0（已发布，npm `latest` 指向此版本）
 > **仓库当前源码**：0.2.0 · SP002「模型与会话闭环」；GitHub Actions Windows/Linux 验证与 OIDC 发布均成功，发布源码为 6ed77d8。
-> **说明书版本**：v1.2
+> **说明书版本**：v1.3
 > **更新日期**：2026-11-17
 > **产品形态**：独立 MIT 许可的终端 Coding Agent（Node.js ≥ 22.18 + TypeScript，不依赖 Bun）
 
@@ -14,7 +14,7 @@
 
 ## 1. 这是什么
 
-budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终端里完成定位问题、修改代码、运行测试、提交前审查的完整编码闭环，并逐步提供独立的 Desktop、VS Code 与未来移动端接入。
+budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终端里完成定位问题、修改代码、运行测试、提交前审查的完整编码闭环。**当前路线专注 TUI 单端（2026-11-17 用户决定）**：Desktop、VS Code、远程/H5 与 IM 接入暂缓，架构保留多端接入入口，未来可按入口恢复接入。
 
 当前已发布 **0.2.0（SP002）**，支持 OpenAI 兼容配置和流式对话。SP002 在此基础上补齐了模型档案、会话状态机、工具回合契约、双中断与排队等核心机制，并已完成本轮发布；完整的编码工具（读写文件、执行命令）在 SP003/SP004 才落地。
 
@@ -29,34 +29,34 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | 阶段 / 迭代 | 版本          | 功能目录                                                                  | 交付内容                                                                                                                                               | 状态                                  |
 | ----------- | ------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
 | bootstrap   | 0.1.0 / 0.1.1 | 简易聊天 TUI                                                              | OpenAI 兼容端点配置、SSE 流式对话、内存会话、多行输入、斜杠命令族、npm Trusted Publishing 发布链路、tarball 隔离安装 smoke                             | 已发布（npm `budingx@0.1.1`）         |
-| SP001       | —（规格轮）   | capability-baseline、evaluation-suite、core-boundaries、release-scope     | 能力清单 v1（85 项，必交 53 项）、核心边界与不变量、评测集规格与任务清单、发布范围与待决项                                                             | 已验收，**不含产品代码**              |
+| SP001       | —（规格轮）   | capability-baseline、evaluation-suite、core-boundaries、release-scope     | 能力清单 v1（85 项，验收时必交 53 项；2026-11-17 调整 v1.1：必交 47、暂缓 6）、核心边界与不变量、评测集规格与任务清单、发布范围与待决项                                                             | 已验收，**不含产品代码**              |
 | SP002       | 0.2.0         | provider-streaming、model-management、session-lifecycle、tui-conversation | OpenAI 兼容流解析与 tool_calls 装配、错误分类/有界重试/取消/限额、模型档案与凭据仓库、会话状态机与终态契约、工具回合、双中断与排队、Ink 8 多行对话界面 | **已发布**，真实终端人工验证边界见 §7 |
 
-### 2.2 规划中（尚未启动，路线图见 [迭代计划](docs/iteration-plan.md)）
+### 2.2 规划中与暂缓（尚未启动，路线图 r6 见 [迭代计划](docs/iteration-plan.md)）
 
-| 迭代  | 目标                    | 主要功能目录                                                                                               |
-| ----- | ----------------------- | ---------------------------------------------------------------------------------------------------------- |
-| SP003 | 工作区与安全修改        | workspace-tools、change-preview、permission-controls、file-context                                         |
-| SP004 | 真实编码任务            | command-execution、coding-task-loop、git-worktree-safety、task-planning                                    |
-| SP005 | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         |
-| SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     |
-| SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context |
-| SP008 | Desktop 独立工作台      | desktop-host、desktop-coding-workflow、multi-project-sessions                                              |
-| SP009 | VS Code 独立端          | vscode-host、workspace-integration                                                                         |
-| SP010 | 跨端共享与接入          | shared-models-and-history、session-ownership、transport-boundaries                                         |
-| SP011 | 独立交付与 npm 发布工程 | tui-distribution、desktop-distribution、vscode-distribution、upgrade-compatibility、npm-publish-pipeline   |
-| SP012 | 中期编码效果检查        | coding-parity-checkpoint、core-reliability                                                                 |
-| SP013 | 多代理团队              | team-lifecycle、task-coordination、team-messaging、worktree-isolation                                      |
-| SP014 | 浏览器操作              | browser-session、page-actions、browser-artifacts                                                           |
-| SP015 | Computer Use            | computer-permissions、screen-actions、desktop-control-recovery                                             |
-| SP016 | 远程访问与 H5           | gateway-auth、remote-session、h5-client、remote-recovery                                                   |
-| SP017 | IM 基础与 Telegram/飞书 | im-adapter-contract、identity-binding、telegram、feishu                                                    |
-| SP018 | 微信/钉钉与 IM 完整性   | wechat、dingtalk、im-cross-channel                                                                         |
-| SP019 | 定时任务                | schedule-management、durable-scheduler、scheduled-agent-run                                                |
-| SP020 | 全能力集成与交付        | cross-surface-integration、advanced-distribution、full-upgrade                                             |
-| SP021 | 完整替代验收            | full-agent-parity、long-running-reliability、final-release-evidence                                        |
+| 迭代  | 目标                    | 主要功能目录                                                                                               | 状态 |
+| ----- | ----------------------- | ---------------------------------------------------------------------------------------------------------- | ---- |
+| SP003 | 工作区与安全修改 · 三权限模式 | workspace-tools、change-preview、permission-controls、file-context                                         | 规划中 |
+| SP004 | 真实编码任务            | command-execution、coding-task-loop、git-worktree-safety、task-planning                                    | 规划中 |
+| SP005 | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         | 规划中 |
+| SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 规划中 |
+| SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | 规划中 |
+| SP008 | Desktop 独立工作台      | desktop-host、desktop-coding-workflow、multi-project-sessions                                              | **暂缓（DEFERRED）** |
+| SP009 | VS Code 独立端          | vscode-host、workspace-integration                                                                         | **暂缓（DEFERRED）** |
+| SP010 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | 规划中（契约轮，轻量测试客户端验证） |
+| SP011 | TUI 独立交付与 npm 发布工程 | tui-distribution、upgrade-compatibility、npm-publish-pipeline                                              | 规划中 |
+| SP012 | 中期编码效果检查        | coding-parity-checkpoint、core-reliability                                                                 | 规划中 |
+| SP013 | 多代理团队              | team-lifecycle、task-coordination、team-messaging、worktree-isolation                                      | 规划中 |
+| SP014 | 浏览器操作              | browser-session、page-actions、browser-artifacts                                                           | 规划中 |
+| SP015 | Computer Use            | computer-permissions、screen-actions、desktop-control-recovery                                             | 规划中 |
+| SP016 | 远程访问与 H5           | gateway-auth、remote-session、h5-client、remote-recovery                                                   | **暂缓（DEFERRED）** |
+| SP017 | IM 基础与 Telegram/飞书 | im-adapter-contract、identity-binding、telegram、feishu                                                    | **暂缓（DEFERRED）** |
+| SP018 | 微信/钉钉与 IM 完整性   | wechat、dingtalk、im-cross-channel                                                                         | **暂缓（DEFERRED）** |
+| SP019 | 定时任务                | schedule-management、durable-scheduler、scheduled-agent-run                                                | 规划中 |
+| SP020 | 当前范围全能力集成与交付 | tui-capability-integration、advanced-distribution、full-upgrade                                            | 规划中 |
+| SP021 | 当前范围完整替代验收    | full-agent-parity、long-running-reliability、final-release-evidence                                        | 规划中 |
 
-> 上表为 MODEL_PROPOSED 的阶段安排，功能范围本身已由用户确认纳入；每轮的实际需求与设计在启动时才细化。
+> 上表阶段安排为 MODEL_PROPOSED；**TUI 单端优先、SP008/SP009/SP016–SP018 暂缓、多端架构入口保留、TUI 三权限模式（仅可查看/工作区内修改/完全权限）为 2026-11-17 用户决定（USER_CONFIRMED，路线图 r6）**。暂缓轮编号保留不回收，恢复须用户另行决定；每轮的实际需求与设计在启动时才细化。
 
 ---
 
@@ -188,8 +188,8 @@ budingx
 | 编码工具（文件读写、终端命令） | 未实现，仅有注册接口与测试桩                                                    | SP003 / SP004         |
 | 密钥存储                       | TUI 可隐藏录入；配置与凭据分文件，凭据文件未加密，不应共享                      | 静态加密另行设计      |
 | 会话持久化与恢复               | 未实现，退出即丢失                                                              | SP005                 |
-| 权限规则与沙箱                 | 未实现                                                                          | SP003 / SP004         |
-| Desktop / VS Code / 移动端     | 未实现                                                                          | SP008 / SP009 / SP016 |
+| 权限规则与沙箱                 | 未实现；权限模式用户固定三种：仅可查看 / 工作区内修改 / 完全权限                    | SP003 / SP004         |
+| Desktop / VS Code / 移动端 / 远程/H5 / IM | 未实现且**暂缓**（2026-11-17 用户决定）；多端架构入口保留                | 暂缓（原 SP008 / SP009 / SP016–SP018），恢复须用户另行决定 |
 | 真实服务 live 证据             | 已验证一个用户提供的服务：流式、工具审批回合、取消、鉴权错误；见 SP002 报告 §16 | 其他型号/服务仍未测   |
 | 真终端 CJK/IME 与 resize 体验  | 未验证（需 Windows Terminal + ConHost 人工 smoke）                              | 验收时补              |
 | macOS / Linux                  | 仅声明 Windows 已验证                                                           | SP011 后逐个平台验证  |
@@ -203,6 +203,7 @@ budingx
 | 0.1.0 | 2026-11-16 | 首个发布版：OpenAI 兼容流式聊天 TUI                      | 已发布           |
 | 0.1.1 | 2026-11-16 | 发布链路修复与维护版（OIDC Trusted Publishing 实测）     | 历史已发布       |
 | 0.2.0 | 2026-11-17 | SP002 模型与会话闭环；升级说明见 release-notes/v0.2.0.md | 已发布，`latest` |
+| —（规划调整，无产品行为变化） | 2026-11-17 | 路线图 r6：TUI 单端优先；SP008/SP009/SP016–SP018 暂缓、多端架构入口保留；TUI 三权限模式固定；能力清单分母 53→47；说明书 v1.3 | 规划文档调整 |
 
 发布台账以 [release-ledger.json](release-ledger.json) 为准，发行说明见 `release-notes/`。
 

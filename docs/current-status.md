@@ -15,7 +15,7 @@
 
 ## 未实现
 
-完整编码 Agent 的**工具**（文件/终端读写、权限规则）、转录持久化与恢复、Desktop/VSIX、Computer Use、团队、远程/H5、IM 和调度均未实现。SP002 只交付契约面：工具以注册接口 + 测试桩验证，真实工具由 SP003/SP004 实现。
+完整编码 Agent 的**工具**（文件/终端读写、权限规则与三权限模式）、转录持久化与恢复、Computer Use、团队、浏览器和调度均未实现；Desktop/VSIX、远程/H5、IM 按 r6 暂缓（未实现且移出当前规划交付）。SP002 只交付契约面：工具以注册接口 + 测试桩验证，真实工具由 SP003/SP004 实现。
 
 首发使用 Node.js >=22.18、TypeScript 和 Node test runner，当前真实命令见 package.json 与 [开发指南](development.md)。禁止引入 Bun；不能把旧项目版本 0.5.0、旧测试成绩或 Git 发布状态当作本仓事实。
 
@@ -39,7 +39,7 @@
 
 历史迁移验证见 [迁移记录](migration/README.md)。0.2.0 延续 CLI 子进程及制品隔离安装验证；一个真实外部服务已有五项回执，见 SP002 报告 §16。历史版本的 UNVERIFIED 不作为当前结论。
 
-规划已完善至 [路线图 r3](iteration-plan.md)，配套 [能力矩阵](agent-capability-matrix.md)、[高级功能计划](advanced-capabilities-plan.md)、[npm 发布方案](npm-release-plan.md)与 [版本规范](versioning.md)。bootstrap 是单独授权的简易首发。
+规划已完善至 [路线图 r6](iteration-plan.md)（TUI 优先、多端暂缓），配套 [能力矩阵](agent-capability-matrix.md)、[高级功能计划](advanced-capabilities-plan.md)、[npm 发布方案](npm-release-plan.md)与 [版本规范](versioning.md)。bootstrap 是单独授权的简易首发。
 
 SP001 **仅限规格且已验收**（用户 2026-11-16 验收通过，设计 v1 批准）：已产出 [能力基线、核心边界与发布范围](../SP/SP001/requirements-summary.md)（能力清单 v1 共 85 项、必交 53 项；核心边界与不变量；评测集规格与任务清单；发布范围与待决项）。本轮**不含产品代码**；47 条 AC 已逐条走查：46 PASS / 1 NOT_APPLICABLE。用户同日拍板：**O1=A** 完整 Agent 制品沿用 npm `budingx` 同名（发布轮须提供破坏性升级/迁移说明）；**O2=A** 只声明 Windows 已验证，macOS/Linux 于 SP011 后逐个验证；**O5=B** 不采集原产品效果基线——对照基线只做**静态盘点**、不运行原 Agent，效果对比永久采用「自有能力测量 + 能力清单覆盖度」口径，5 个百分点非劣门槛废除，「已对齐」措辞永久禁止。
 
@@ -56,6 +56,12 @@ SP002 的制品布局已变更（bin 由 `dist/cli.js` 改为 `dist/tui/cli.js`�
 本地集成更新：e2e 修复及验证提交 `e06ddaf` 经交叉验证 GREEN 后已合入 `master`，合并提交 `ffdb7ba`。真实 Provider 5 项与 197 项自动化通过；未推送/发布，真终端 IME 人工仍待验证。更早的待合入记录为历史状态。
 
 0.2.0 发布前补充：已修复伪 TTY 在 CI 中被 Ink 自动切为非交互的问题；CI=true 的完整发布预演 203 项通过，31 文件制品与此前 integrity 一致，已合入 master。版本为 prepared，维护者自行触发 master 的发布工作流，未上传 npm。
+
+## 2026-11-17 规划调整（路线图 r6，USER_CONFIRMED）
+
+用户决定：当前交付路线只做 TUI 单端；SP008（Desktop）、SP009（VS Code）、SP016（远程/H5）、SP017（IM 基础与 Telegram/飞书）、SP018（微信/钉钉）**暂缓（DEFERRED）**，编号保留不回收、移出当前依赖与验收分母，恢复须用户另行决定；**多端架构入口保留**（宿主契约/传输边界/共享模型与历史，SP010 改契约轮以轻量测试客户端验证）。TUI 权限模式固定三种：**仅可查看 / 工作区内修改 / 完全权限**（SP003/SP004 交付，当前未实现）。团队/浏览器/Computer Use/定时任务仍必交。
+
+同步落地：[能力清单 v1.1](../SP/SP001/capability-baseline/capability-manifest.md) 6 项必交改暂缓、覆盖度分母 53→47；[任务清单](../SP/SP001/evaluation-suite/task-inventory.md) REM/IM 11 题批注暂缓（SP020 开轮前 inventory v2 补齐配额）；spec 门禁 MUST_KEEP/MUST_DEFER 双向保护；矩阵 r3、高级能力计划、npm 方案 r4、product-brief、architecture、repository-layout、SP/README、PRODUCT.md v1.2 与本文件同步。本次规划调整的提交、合入 master 与推送已获用户授权（推送遇网络波动可重试）；验证记录见 [规划变更验证报告](requirements/tui-first-planning/test-report.md)。不因此授权任何暂缓轮开发或发布。
 
 ## 0.2.0 正式发布完成（2026-11-17）
 

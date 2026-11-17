@@ -9,7 +9,7 @@
 - 旧项目仓库只读，且其仓内无 LICENSE 文件、package.json 无 license 字段（视为未开源）。复刻的合规前提：本仓制品保持自有 MIT 独立可发布，只参考机制与行为事实，不嵌入旧代码；若日后确认参考材料带 MIT 许可，按其规则保留版权声明与许可文本并登记台账。不得直接复制旧 Agent 源码、系统提示词、内部 SDK 类型、全局状态、生成 bundle、配置或历史记录到新仓库，也不要通过改名/AI 逐文件改写来宣称独立来源。边界细则见 [独立实现与复用边界](docs/independent-development.md)。
 - 可独立迁移的模块需记录来源、许可、依赖和处理决定；独立开发流程不等于法律洁净室认证。许可状态见 [第三方声明](THIRD-PARTY-NOTICES.md)。
 - 不读取或迁移真实 API Key、OAuth、聊天历史、用户技能/MCP/插件配置。旧数据导入需另行设计、明确授权、备份和旧 fixture 验证。
-- 保留用户确认的需求；技术建议必须标为提议。三端独立运行、共享模型/历史及未来移动接入是产品方向，文件存在不证明这些能力已经实现。
+- 保留用户确认的需求；技术建议必须标为提议。**TUI 单端优先（用户 2026-11-17 决定，路线图 r6）：当前交付路线只做 TUI；Desktop/VS Code/远程/H5/IM 暂缓（SP008/SP009/SP016–SP018，编号保留不回收），多端架构入口保留供后续恢复接入**；文件存在不证明这些能力已经实现。
 - 明确、可逆的授权工作自主完成。新功能先明确行为和最小验证，使用原生能力和既有工具；不引入只有猜测调用者的框架。
 
 ## 技能入口
@@ -45,11 +45,11 @@
 
 根目录 [产品说明书](PRODUCT.md) 是面向使用者的单份事实入口（产品版本号、按迭代归类的功能表、使用说明、限制、版本历史）。任何改变用户可见行为、命令、配置、按键、数据路径、依赖、版本或能力范围的产品变更（代码或文档，大小不论），都必须在同一次变更中同步更新该说明书的对应章节，并在交付记录里写明更新点或「说明书无需更新」的理由。细则见 [文档约定](docs/documentation.md#产品说明书同步)。
 
-仓库布局按用户最新决定采用单仓：外层保留 docs/SP/Skills 和编排，所有产品模块统一在 src/ 下，TUI 为 src/tui；后续 Core、Desktop、VS Code、Mobile 按责任分目录。不得恢复 packages/、擅建独立子仓或 Git submodule。各模块独立构建/打包，共享契约和 Core 不按端复制。
+仓库布局按用户最新决定采用单仓：外层保留 docs/SP/Skills 和编排，所有产品模块统一在 src/ 下，TUI 为 src/tui；后续 Core 按责任分目录，Desktop、VS Code、Mobile 等为暂缓保留入口（r6），只登记名字不建工程。不得恢复 packages/、擅建独立子仓或 Git submodule。各模块独立构建/打包，共享契约和 Core 不按端复制。
 
 ## 迭代管理
 
-后续迭代统一按 [SP 管理说明](SP/README.md) 和 [docs 迭代路线图](docs/iteration-plan.md)管理。本项目没有需求 ID，按 `SP/SPnnn/<功能或优化slug>/` 保存需求、状态和证据；每轮迭代在 `SP/SPnnn/requirements-summary.md` 维护进度入口，配合功能 STATUS 支持断线快速续接；AC 编号仅标记验收条件。当前规划 SP001–SP021，均未启动。路线图配套 [能力矩阵](docs/agent-capability-matrix.md)和 [npm 发布方案](docs/npm-release-plan.md)须一并阅读。bootstrap 已单独授权实现简易 TUI 和 npm 发布，npm run publish 为真实命令；SP006/SP011 继续扩展完整 Agent 发布能力，SP020/SP021 验收全能力制品及效果。路线图本身不授权开发，实际启动时才建当轮目录。
+后续迭代统一按 [SP 管理说明](SP/README.md) 和 [docs 迭代路线图](docs/iteration-plan.md)管理。本项目没有需求 ID，按 `SP/SPnnn/<功能或优化slug>/` 保存需求、状态和证据；每轮迭代在 `SP/SPnnn/requirements-summary.md` 维护进度入口，配合功能 STATUS 支持断线快速续接；AC 编号仅标记验收条件。当前规划 SP001–SP021（r6：SP008/SP009/SP016–SP018 暂缓 DEFERRED）；SP001 已验收、SP002 已实现并发布，其余未启动。路线图配套 [能力矩阵](docs/agent-capability-matrix.md)和 [npm 发布方案](docs/npm-release-plan.md)须一并阅读。bootstrap 已单独授权实现简易 TUI 和 npm 发布，npm run publish 为真实命令；SP006/SP011 继续扩展 TUI 完整 Agent 发布能力，SP020/SP021 验收当前范围（TUI + 保留高级能力）全能力制品及效果。路线图本身不授权开发，实际启动时才建当轮目录。
 
 ## Git 与授权
 

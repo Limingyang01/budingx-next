@@ -1,6 +1,17 @@
 import assert from 'node:assert/strict'
+import path from 'node:path'
 import { test } from 'node:test'
-import { auditReport, scanOutgoingPaths } from './cross-validate.mjs'
+import { auditReport, reportFileForBranch, ROOT, scanOutgoingPaths } from './cross-validate.mjs'
+
+test('报告路径约定：SP 分支读当轮报告，feature 规划分支读 docs/requirements 记录', () => {
+  assert.equal(reportFileForBranch('feature/SP002/foo'), path.join(ROOT, 'SP', 'SP002', 'test-report.md'))
+  assert.equal(
+    reportFileForBranch('feature/tui-first-planning'),
+    path.join(ROOT, 'docs', 'requirements', 'tui-first-planning', 'test-report.md')
+  )
+  assert.equal(reportFileForBranch('master'), null)
+  assert.equal(reportFileForBranch('feature/bad slug'), null)
+})
 
 test('outgoing 路径扫描拦截依赖/产物/凭据/异源 lockfile', () => {
   const violations = scanOutgoingPaths([

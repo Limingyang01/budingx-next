@@ -5,7 +5,7 @@ description: Use when validating Coding Agent UI, TUI interaction, frontend stat
 
 # budingx-next 界面验证
 
-先读 [AGENTS.md](../../AGENTS.md)、[开发指南](../../docs/development.md) 与 [技术栈路由](../buding-sdd/references/technology-map.md)。当前 src/tui 为 Ink 8 对话界面（含伪 TTY 端到端 harness）；Desktop、Webview 和移动端尚未实现。产品验证以实际 package.json 为准。本技能提供验证规则，不证明这些产品能力存在。
+先读 [AGENTS.md](../../AGENTS.md)、[开发指南](../../docs/development.md) 与 [技术栈路由](../buding-sdd/references/technology-map.md)。当前 src/tui 为 Ink 8 对话界面（含伪 TTY 端到端 harness）；Desktop、Webview 和移动端暂缓（路线图 r6，2026-11-17）且未实现。产品验证以实际 package.json 为准。本技能提供验证规则，不证明这些产品能力存在。
 
 定位实际受影响包后读取 package、测试配置、入口和相邻测试；命令必须真实存在且记录 cwd。不套用旧仓 React/Zustand/Vitest 版本或 desktop 路径，不为借用旧测试而安装旧框架。当前文档/技能维护只做相关维护检查，小 README 编辑不启动 UI 全量门禁或正式 SDD。
 
