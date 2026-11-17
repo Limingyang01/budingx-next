@@ -354,3 +354,5 @@ PS-08 真实 Provider 四类行为已取得本节证据；其他型号/供应商
 验证：`node --test src/tui/test/local-start.test.mjs`。新增自动加载用例先观察到模型未配置的预期失败；实现后 4 项全过，覆盖加载、缺文件、环境优先级及正式入口不加载。均为临时配置/home 的真实子进程，不读取用户真实配置，不调用实际模型。配置文件仍被 Git 忽略且不提交；只有空模板维持原先跟踪状态。
 
 自审及文档：PRODUCT.md、开发指南与 TUI README 已同步本地/真实环境边界；未加依赖，未改构建、发布或安装 bin。按当前 Node 版本原生能力实现；该开发命令没有对应旧产品机制，产品 Provider/Agent 核心逻辑未修改。格式化与交叉验证门禁在提交及合入前运行，实际门禁报告存于 artifacts/merge-gate。不推送、不发布。
+
+门禁回执：`artifacts/merge-gate/feature-SP002-local-test-start-2026-11-17T07-51-08-244Z.md` GREEN（npm test、spec:check、skills:check、pack-smoke 全部通过）；源 `626ae7ea6a0494df2b303b9e6c451b2048aedf6f` 合入本地 master `db1fcb7c21a3a9eadca5f06d5d2f7dac3f42d883`，ancestry 及 tree 一致性已确认。独立审查无待修问题，4 项专项回归通过；未读取或提交真实配置、未发真实模型请求。
