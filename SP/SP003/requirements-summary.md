@@ -1,6 +1,6 @@
 # SP003 · 工作区与安全修改
 
-状态：VERIFYING（实施与自动化验证已完成，交付记录与门禁收口中）｜更新：2026-11-17｜负责人：Agent 执行 SDD（2026-11-17 委托自审），用户验收 master 结果
+状态：DELIVERED（已合入 master `3e796be`，待用户验收）｜更新：2026-11-17｜负责人：Agent 执行 SDD（2026-11-17 委托自审），用户验收 master 结果
 
 ## 本轮目标与边界
 
@@ -21,10 +21,10 @@
 
 | 功能/优化目录 | 来源 / 身份 | 验收目标 | 责任范围 | 阶段 | 需求 / 设计 / 计划 / STATUS | 验证 | 集成状态 | 下一步 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| [workspace-tools](workspace-tools/requirements.md) | 路线图（USER_CONFIRMED 名称）；AC 切分 MODEL_PROPOSED | WT-01…21：读写/编辑/搜索工具、忽略规则、编码/CRLF/大文件策略、路径越界与 junction 防护、读后编辑门、Grep 参数族、结果形态 | workspace 模块（文件 IO 与搜索） | ✅需求→✅设计→✅计划→✅实施→✅测试→▶交付 | [需求 v0.2](workspace-tools/requirements.md) ／ [设计 v1.1](design/design.zh.md) ／ [计划](design/plan.zh.md) ／ [报告](test-report.md) ／ [STATUS](workspace-tools/STATUS.md) | 自动化 PASS（L0/L1/L2） | 本地提交 `10518f7`（未合 master） | 出 test-report → 门禁 → 合 master |
-| [change-preview](change-preview/requirements.md) | 同上 | CP-01…09：结构化 diff、预览与磁盘一致、拒绝时磁盘不变、并发无关改动保留、撤销/检查点、对话框两级与多源切换 | workspace + TUI 预览层 | ✅需求→✅设计→✅计划→✅实施→✅测试→▶交付 | [需求 v0.2](change-preview/requirements.md) ／ [设计 v1.1](design/design.zh.md) ／ [计划](design/plan.zh.md) ／ [报告](test-report.md) ／ [STATUS](change-preview/STATUS.md) | 自动化 PASS（L0/L1/L2） | 本地提交 `10518f7`（未合 master） | 同上 |
-| [permission-controls](permission-controls/requirements.md) | 路线图 + USER_CONFIRMED 三模式 | PC-01…13：三模式判定与切换、审批三档与拒绝反馈、规则匹配与被遮蔽检测、拒绝追踪、安全底线、`.git` 强制询问 | core 决策 + workspace 规则 + TUI 交互 | ✅需求→✅设计→✅计划→✅实施→✅测试→▶交付 | [需求 v0.2](permission-controls/requirements.md) ／ [设计 v1.1](design/design.zh.md) ／ [计划](design/plan.zh.md) ／ [报告](test-report.md) ／ [STATUS](permission-controls/STATUS.md) | 自动化 PASS（L0/L1/L2） | 本地提交 `10518f7`（未合 master） | 同上 |
-| [file-context](file-context/requirements.md) | 路线图 + CAP-L1-06 | FC-01…09：@ 文件引用解析与注入、@/命令统一补全、LCP 补全、行范围引用、大文件与图片引用策略 | TUI 编辑器 + workspace 读取 | ✅需求→✅设计→✅计划→✅实施→✅测试→▶交付 | [需求 v0.2](file-context/requirements.md) ／ [设计 v1.1](design/design.zh.md) ／ [计划](design/plan.zh.md) ／ [报告](test-report.md) ／ [STATUS](file-context/STATUS.md) | 自动化 PASS（L0/L1/L2） | 本地提交 `10518f7`（未合 master） | 同上 |
+| [workspace-tools](workspace-tools/requirements.md) | 路线图（USER_CONFIRMED 名称）；AC 切分 MODEL_PROPOSED | WT-01…21：读写/编辑/搜索工具、忽略规则、编码/CRLF/大文件策略、路径越界与 junction 防护、读后编辑门、Grep 参数族、结果形态 | workspace 模块（文件 IO 与搜索） | ✅需求→✅设计→✅计划→✅实施→✅测试→✅交付 | [需求 v0.2](workspace-tools/requirements.md) ／ [设计 v1.1](design/design.zh.md) ／ [计划](design/plan.zh.md) ／ [报告](test-report.md) ／ [STATUS](workspace-tools/STATUS.md) | 自动化 PASS（L0/L1/L2） | **已合入 master `3e796be`** | 待用户验收 master 结果 |
+| [change-preview](change-preview/requirements.md) | 同上 | CP-01…09：结构化 diff、预览与磁盘一致、拒绝时磁盘不变、并发无关改动保留、撤销/检查点、对话框两级与多源切换 | workspace + TUI 预览层 | ✅需求→✅设计→✅计划→✅实施→✅测试→▶交付 | [需求 v0.2](change-preview/requirements.md) ／ [设计 v1.1](design/design.zh.md) ／ [计划](design/plan.zh.md) ／ [报告](test-report.md) ／ [STATUS](change-preview/STATUS.md) | 自动化 PASS（L0/L1/L2） | **已合入 master `3e796be`** | 同上 |
+| [permission-controls](permission-controls/requirements.md) | 路线图 + USER_CONFIRMED 三模式 | PC-01…13：三模式判定与切换、审批三档与拒绝反馈、规则匹配与被遮蔽检测、拒绝追踪、安全底线、`.git` 强制询问 | core 决策 + workspace 规则 + TUI 交互 | ✅需求→✅设计→✅计划→✅实施→✅测试→▶交付 | [需求 v0.2](permission-controls/requirements.md) ／ [设计 v1.1](design/design.zh.md) ／ [计划](design/plan.zh.md) ／ [报告](test-report.md) ／ [STATUS](permission-controls/STATUS.md) | 自动化 PASS（L0/L1/L2） | **已合入 master `3e796be`** | 同上 |
+| [file-context](file-context/requirements.md) | 路线图 + CAP-L1-06 | FC-01…09：@ 文件引用解析与注入、@/命令统一补全、LCP 补全、行范围引用、大文件与图片引用策略 | TUI 编辑器 + workspace 读取 | ✅需求→✅设计→✅计划→✅实施→✅测试→▶交付 | [需求 v0.2](file-context/requirements.md) ／ [设计 v1.1](design/design.zh.md) ／ [计划](design/plan.zh.md) ／ [报告](test-report.md) ／ [STATUS](file-context/STATUS.md) | 自动化 PASS（L0/L1/L2） | **已合入 master `3e796be`** | 同上 |
 
 ## 验收与交接
 
@@ -38,7 +38,7 @@
   - R-03 自实现 ignore/diff 语义偏差：语义偏差会漏搜或误写 → 用公开规范 + 自建 fixture 覆盖；不引入来路不明实现。
   - R-04 编辑语义歧义（唯一字面串/replace_all/空串创建）误伤文件 → 匹配数不符即拒绝，不做模糊替换（弯引号容错为等长折叠后定位命中区段）。
   - 回退：本轮全部产出在 feature/SP003/workspace-tools 分支，产品版本保持 0.2.0 不动，失败可整体弃分支。
-- Git/产品发布：未执行；合入 master 需交叉验证门禁 GREEN + 自审记录（[集成门禁](../../docs/integration-gate.md)）；push 与 npm 发布不在授权内。
+- Git/产品发布：**已合入 master**（源 910e282 → master，合并提交 3e796be，ancestry 已证明，合入后 master 复跑 npm test 全绿；门禁报告 artifacts/merge-gate/feature-SP003-workspace-tools-2026-11-17T13-39-37-977Z.md 为 GREEN）；push 与 npm 发布未执行，不在授权内。
 
 ## 变更记录
 
@@ -47,4 +47,5 @@
 | 2026-11-17 | 建立 SP003 迭代汇总与四个功能目录（workspace-tools / change-preview / permission-controls / file-context），共 35 条 AC 进入 intake | 用户会话「开启 SP003 的迭代任务」 | 仅开轮与需求整理；设计、计划、实现、提交、合并按 2026-11-17 委托由 Agent 自审推进，push/发布仍单独授权 |
 | 2026-11-17 | T1–T16 实施完成并分批提交（3e74c90…e0a7e80）：工作区十一模块、core 契约扩展、三模式策略与规则持久化、审批三档与模式轮播、diff 对话框、@ 补全 | 计划 T1–T16 | 全量 302 项单元与 spec/release/merge 门禁全绿；既有 SP002 行为未回归 |
 | 2026-11-17 | **T18 能力对齐批次**（10518f7）：对照参考仓只读盘点补齐读后编辑门、Write 自动建父目录与 LF、Grep 参数族、拒绝反馈、逐回合 diff 源、@ 行范围与 LCP 补全、.git 底线、弯引号容错、搜索遵守 Read deny | 用户「仔细检查 SP003 的功能，是否达到 budingWorkerSpace 里的 TUI 级别」 | 需求升 v0.2（WT-03/04 语义修订 + 新增 WT-15…21、PC-12/13、CP-09、FC-08/09）；设计升 v1.1 第 10 节（A1–A12 修订 + K1–K7 保留差异）；未迁入参考源码，登录/模型绑定类事实按既定设计排除 |
-| 2026-11-17 | 交付记录阶段：四份 STATUS 与本汇总进度回写（真实 SHA、验证分层、未验证项与恢复条件） | 收口要求 | 待出 test-report → 交叉验证门禁 GREEN → 按 buding-merge 合入 master |
+| 2026-11-17 | 交付记录完成：test-report（52 条 AC 结论 + 出口门槛四项对证 + 自审记录）、四份 STATUS 与本汇总回写 | 收口要求 | 交付文档入仓 |
+| 2026-11-17 | **交叉验证门禁 GREEN 并合入 master**：源 910e282 → master（merge-base b0ffc9e，merge-tree 无冲突，合并提交 3e796be，ancestry 已证明，合入后 master 复跑 npm test 全绿） | 2026-11-17 委托（门禁 GREEN + 自审记录后自主合入 master） | master 现含 SP003 全部实现；push 与 npm 发布未执行（不在授权内） |

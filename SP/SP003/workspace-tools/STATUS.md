@@ -1,6 +1,6 @@
 # 工作区文件工具 状态
 
-生命周期：VERIFYING｜更新：2026-11-17｜负责人：Agent 执行 SDD（2026-11-17 委托自审），用户验收 master 结果
+生命周期：DELIVERED（已合入 master，待用户验收）｜更新：2026-11-17｜负责人：Agent 执行 SDD（2026-11-17 委托自审），用户验收 master 结果
 
 ## 当前范围与依据
 
@@ -14,7 +14,7 @@
 - 阶段清单：[x] 需求 → [x] 设计 → [x] 计划 → [x] 实施 → [x] 测试 → [ ] 交付；当前停点：交付记录与门禁收口
 - 已完成：`src/workspace/` 十一模块（paths/ignore/read/write/edit/search/diff/checkpoint/policy/context/tools）；读后编辑门、Write 自动建父目录与 LF、Grep 参数族、弯引号容错、`.git` 底线、搜索遵守 Read deny
 - 待做（最小下一步）：出 `SP/SP003/test-report.md` → 交叉验证门禁 → 合入 master
-- 最新本地提交：`10518f7`（T18 能力对齐批次）；T1–T16 见 `3e74c90`…`e0a7e80`
+- 最新本地提交：`10518f7`（本功能分支）；已合入 master 提交 `3e796be`（T18 能力对齐批次）；T1–T16 见 `3e74c90`…`e0a7e80`
 - 阻塞/恢复条件：无阻塞；live Provider 端到端沿用 SP002 凭据状态，无凭据则记 UNVERIFIED
 
 ## 验证与验收
@@ -28,7 +28,7 @@
 
 ## 集成与发布
 
-合并、推送、产品发布：未执行。合入 master 需交叉验证门禁 GREEN + 自审记录（[集成门禁](../../../docs/integration-gate.md)）；npm 发布与推送不在授权内。
+合并：**已合入 master**（源 910e282 → 目标 master，合并提交 3e796be，ancestry 已证明，合入后 master 复跑 npm test 全绿）；推送与 npm 发布：未执行，不在授权内。门禁报告 artifacts/merge-gate/feature-SP003-workspace-tools-2026-11-17T13-39-37-977Z.md（GREEN）。
 
 ## 交接与历史
 

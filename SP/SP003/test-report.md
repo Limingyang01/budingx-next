@@ -169,5 +169,5 @@ npm run merge:gate     # 见 §6
 | 步骤 | 结果 |
 | --- | --- |
 | `npm test`（skills/spec/unit/checks/release/merge） | GREEN（342 项，0 失败） |
-| `npm run merge:gate` | 待执行（报告与自审记录齐备后运行，报告落 `artifacts/merge-gate/`） |
-| 合入 master | 待门禁 GREEN 后按 [buding-merge](../../skills/buding-merge/SKILL.md) 执行；push 与 npm 发布不在授权内 |
+| `npm run merge:gate` | **GREEN**（2026-11-17T13-39-37Z）；报告 `artifacts/merge-gate/feature-SP003-workspace-tools-2026-11-17T13-39-37-977Z.md`（json 同名）；含 npm test / spec:check / skills:check / pack-smoke 与 outgoing 扫描、test-report 审计 |
+| 合入 master | **已合入**：源 `910e282` → 目标 `master`，merge-base `b0ffc9e`，merge-tree 预演无冲突，实际合并提交 `3e796be`（--no-ff，保留历史）；ancestry 已证明（`git merge-base --is-ancestor 910e282 master` 为真）；合入后在 master 复跑 `npm test` 全绿（342 项，0 失败）；push 与 npm 发布不在授权内 |
