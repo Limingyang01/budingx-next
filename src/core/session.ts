@@ -651,7 +651,8 @@ export class Session {
       },
       this.options.queueAutostartMs ?? QUEUE_AUTOSTART_MS
     )
-    if (typeof timer.unref === 'function') timer.unref()
+    // Keep the timer referenced: an unref'd timer lets the event loop drain,
+    // so queued input would silently never start its own turn.
     this.queueTimer = timer
   }
 

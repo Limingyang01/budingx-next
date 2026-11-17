@@ -14,7 +14,7 @@
 | 模块边界检查 | `npm run test:checks`（`node scripts/checks/module-boundaries.mjs`） | 仓库根 | 1 次检查，PASS（core/provider/storage 无 UI/IO 反向依赖；运行时依赖白名单恰为 ink/react/string-width；bin=`dist/tui/cli.js`） |
 | 发布与版本管理回归 | `npm run test:release` | 仓库根 | 16 项，16 通过 / 0 失败 |
 | 编译 | `npm run build`（`tsc -p src/tui/tsconfig.json`） | 仓库根 | 通过；产物 `src/tui/dist/{core,provider,storage,tui}` |
-| 打包与隔离安装 smoke | `node scripts/release/pack-smoke.mjs` | 仓库根 | tarball 30 文件；仓库外临时目录 `npm install` 成功；`--version` 与清单一致（0.1.1）；对本地 fixture 真实 HTTP 流式请求成功（calls=1） |
+| 打包与隔离安装 smoke | `node scripts/release/pack-smoke.mjs` | 仓库根 | tarball 32 文件；仓库外临时目录 `npm install` 成功；`--version` 与清单一致（0.1.1）；对本地 fixture 真实 HTTP 流式请求成功（calls=1） |
 
 产品单元用例按文件分布（实际执行数）：
 
@@ -72,7 +72,7 @@
 | SL-02 事件契约 | T4/T5 | `src/core/events.ts`、`src/core/session.ts` | `session.test.mjs`：事件顺序符合契约；全部事件可 JSON 序列化且与 UI 类型无关；delta 先于 completed | PASS（2 项） |
 | SL-03 工具回合 | T5 | `src/core/session.ts`、`src/core/normalize.ts` | `session.test.mjs`：每个 tool_use 恰好一个 tool_result 并续跑至收敛；并行调用按序各回填一个；未知工具名/非法参数产生错误结果且不崩；`normalize.test.mjs`：孤儿剥离、去重、合成结果 | PASS（6 项） |
 | SL-04 打断 | T6 | `src/core/session.ts` | `session.test.mjs`：有界时间内取消模型请求并给出 cancelled 终态；保留部分输出并为孤儿 tool_use 补合成 error 结果 | PASS（2 项） |
-| SL-05 排队与注入边界 | T6 | `src/core/session.ts` | `session.test.mjs`：排队项在工具结果回填后按序注入且不重复；回合结束后剩余项自动起新回合并标记 inter_turn；驻留窗口内回收排队项发通知并交回文本 | PASS（3 项） |
+| SL-05 排队与注入边界 | T6 | `src/core/session.ts` | `session.test.mjs`：排队项在工具结果回填后按序注入且不重复；回合结束后剩余项自动起新回合并标记 inter_turn；驻留窗口内回收排队项发通知并交回文本（自动起新回合依赖队列 drain 定时器不被 `unref()`，见 §7） | PASS（3 项） |
 | SL-06 配置快照 | T5 | `src/core/session.ts` | `session.test.mjs`：回合进行中切换模型不影响本回合快照，下一回合使用新快照 | PASS（1 项） |
 | SL-07 并发与唯一行为 | T5/T6 | `src/core/session.ts` | `session.test.mjs`：active 时再次提交入队且不产生交错写历史；终态守卫拒绝重复终态 | PASS（1 项） |
 | SL-08 审批最小闭环 | T5/T10 | `src/core/session.ts`、`src/tui/approval.ts` | `session.test.mjs`：deny 合成拒绝结果回填、会话继续、无挂起泄漏；allow 正常执行且按 id 匹配；`approval.test.mjs`：决策恰一次、未知 id 不处理、取消清空待决 | PASS（5 项） |
@@ -131,7 +131,32 @@
 5. **`ToolHandler` 增加可选 `summary`**：provider 的工具声明需要静态描述，`describe(input)` 仍是运行时摘要。
 6. **计划中的「Vitest」措辞**：统一为 node --test（需求 PS-01 已勘误）。
 
-## 7. 复现命令
+## 7. 复验记录（2026-11-17）
+
+交付后复验（用户要求「检查 SP002 是否完成」）实测发现一处真实缺陷，原报告「103 项 103 通过」的结论在修复前并不成立，已修复并复测。
+
+### 7.1 缺陷
+
+- 现象：`node --test src/core/test/session.test.mjs` 报 13 通过 / 3 cancelled；`回合结束后剩余排队项自动起新回合并标记 inter_turn 边界` 的 promise 永不 resolve（`Promise resolution is still pending but the event loop has already resolved`），并连带取消其后 3 项用例。
+- 根因：`src/core/session.ts` 的 `scheduleQueueDrain()` 把队列自动启动定时器 `unref()` 了。unref 后的定时器不维持事件循环，空闲时事件循环直接排空 → **排队的补充输入永远等不到自动起新回合**，SL-05 契约在非 TTY／进程空闲场景下失效（真 TUI 因 stdin 保持事件循环而未暴露）。
+- 修复：移除队列 drain 定时器的 `unref()`（`dispose()` 原本就会清理该定时器，不会吊住进程）。取消预算那处 `unref()` 保留——它是兜底安全网，回合本身由 abort 信号维持事件循环。
+
+### 7.2 修复后复测（同一环境重跑）
+
+| 门禁 | 命令 | 结果 |
+| --- | --- | --- |
+| 编译 | `npm run build` | 通过 |
+| 产品单元与进程回归 | `npm run test:unit` | **103 项，103 通过 / 0 失败 / 0 cancelled** |
+| session 专项 | `node --test src/core/test/session.test.mjs` | **16 项，16 通过 / 0 cancelled** |
+| 全量门禁 | `npm test` | skills 9 + spec 7 + unit 103 + checks PASS + release 16，**全部通过** |
+| 打包与隔离安装 smoke | `node scripts/release/pack-smoke.mjs` | PASS（tarball 32 文件；本报告 §1 原记 30 文件，实际为 32，已更正） |
+
+### 7.3 复验后的遗留状态
+
+- 缺陷修复后无新增未验证项；§4 的 PS-08（live 凭据）与 TC-02/03/04/05/07（真终端人工）仍按原样保持 UNVERIFIED。
+- 本次复验只覆盖自动化门禁，未改变真终端与 live 证据的恢复条件。
+
+## 8. 复现命令
 
 ```powershell
 npm ci --ignore-scripts --no-audit --no-fund

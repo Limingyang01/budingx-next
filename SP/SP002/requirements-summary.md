@@ -49,3 +49,4 @@
 | 2026-11-16 | **用户批准设计**（「继续SP002,我批准了设计」）→ 设计 v0.3 approved；产出 [实施计划](design/plan.zh.md)（T1–T13） | USER_CONFIRMED（用户 2026-11-16 会话原话） | 批准覆盖计划/实施/测试/交付与各阶段本地提交；验收、合并、推送、npm 发布仍独立授权 |
 | 2026-11-17 | 实施完成：`src/core`、`src/provider`、`src/storage` 三模块与 Ink 8 对话界面落地；`src/tui/src/*` 拍平为 `src/<mod>/`；运行时依赖钉扎 ink 8.0.0 / react 19.3.1 / string-width 9.0.0；边界检查脚本并入 `npm test` | 计划 T1–T12 逐项执行 | 产品单元 103 项 + 边界检查 + 发布回归 16 项 + 打包隔离安装 smoke 全部通过；AC 31 PASS / PS-08 UNVERIFIED；证据见 [验证报告](test-report.md) |
 | 2026-11-17 | 交付记录完成，代码与文档提交并推送 `feature/SP002/model-session-loop` | 用户 2026-11-17「先暂停吧，把进度同步到文档中……并且将文档代码提交推送到远端」 | 暂停后续实施（人工 smoke 与 live 凭据仍待补）；合入 master 待用户验收后按 buding-merge 执行 |
+| 2026-11-17 | **交付后复验**：实跑全量门禁发现原报告「103 项 103 通过」不成立——队列 drain 定时器被 `unref()`，排队输入不会自动起新回合（SL-05 失效），致 `session.test.mjs` 1 项挂起 + 3 项 cancelled；已修复并复测 103/103 全绿 | 用户 2026-11-17「提交修复并且更新报告」 | 见 [验证报告 §7](test-report.md)；修正报告内 tarball 文件数 30→32；AC 结论与 §4 未验证项不变 |
