@@ -50,6 +50,9 @@ export type ApprovalRequest = {
   name: string
   summary: string
   preview?: readonly string[]
+  /** 计划模式待批时携带计划标识与版本（SP004 设计 §6.3）。 */
+  planId?: string
+  planVersion?: number
 }
 
 export type ApprovalDecision = {
@@ -66,6 +69,11 @@ export type ApprovalDecision = {
    * present it is appended to the tool result so the model can act on it.
    */
   feedback?: string
+  /**
+   * 计划批准时宿主可携带用户编辑后的正文；指纹按编辑后正文重算
+   * （SP004 设计 §6.2/§6.3）。
+   */
+  editedText?: string
 }
 
 export interface ApprovalGateway {

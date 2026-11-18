@@ -241,6 +241,7 @@
 - **Modify**：`src/core/session.ts`。**Create**：`src/core/test/plan-mode.test.mjs`。**Consumes**：统一权限入口、PlanStore 和 ApprovalGateway。**Produces**：单一计划模式状态转换。
 - **RED → GREEN**：测试底层允许的只读不请求批准、调研期写或执行须单次批准、基础 deny 不得覆盖。ExitPlanMode 读取会话计划文件。批准/拒绝/取消、并发、计划漂移及原档位恢复逐项测试。待批期间不得启动副作用。
 - **验证**：`npm run build && node --test src/core/test/plan-mode.test.mjs`。
+- **完成事实**（2026-11-18）：RED 演示（`git checkout` 回退 core 实现后重建，13 条全部失败于 `session.enterPlanMode is not a function`，0 通过）→ GREEN 13/13；全量 510/510 通过（日志 `.superpowers/sdd/plan.zh/t11-full-unit.log`）。实现：`src/core/plan.ts` 增 `PlanDriftItem`/`PlanModeSnapshot`/`PlanModePhase`/`PlanModeHost`/`PlanModeExitResult`；`src/core/events.ts` 增 `plan_mode_changed` 事件与 `plan_mode` 提示码；`src/core/tools.ts` 的 `ApprovalRequest` 增 `planId`/`planVersion`、`ApprovalDecision` 增 `editedText`；`Session` 增 `planMode` 只读查询、`enterPlanMode()`（记录原档位+基线、切 `workspace_edit`）、`leavePlanMode()`（显式退出恢复原档位、取消待批）、`exitPlanMode()`（读会话计划文件→基线 diff→`requestApproval`→批准写指纹/`approvedText` 并恢复原档位；拒绝/取消回调研）、`reopenPlanForApproval()`（批准后执行前漂移→重建计划回待审）；`dispatchTools` 增加计划闸门：基础 deny 优先、待批期非只读直接拒绝、调研期非只读强制一次性批准（不写权限记忆）、批准计划首次副作用前 `validate` 重查。Ruling：计划审批用独立 `pendingPlanDecision`（会话级，回合 finalize 不取消），与单次工具批准 `pendingApproval` 分离；`exitPlanMode` 的批准请求先于工具批准发生，漂移时零副作用且不消耗工具批准。
 
 ### T12 · 追问工具与回合挂起
 

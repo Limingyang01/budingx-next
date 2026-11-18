@@ -2,7 +2,7 @@
 // Host agnostic: no UI types, JSON serializable.
 import type { PermissionMode } from './permissions.js'
 import type { CommandOutcome } from './exec.js'
-import type { Plan, PendingQuestion, QuestionAnswers, QuestionAnnotations } from './plan.js'
+import type { Plan, PendingQuestion, PlanModePhase, QuestionAnswers, QuestionAnnotations } from './plan.js'
 
 export type SessionState =
   | 'idle'
@@ -36,6 +36,8 @@ export type NoticeCode =
   | 'orphan_keys_found'
   | 'model_limit_reached'
   | 'file_context'
+  /** 计划模式提示：进入调研/待批、漂移回待审或恢复原档位（SP004 §6.2）。 */
+  | 'plan_mode'
 
 export type ErrorClass =
   | 'auth'
@@ -192,6 +194,16 @@ export type SessionEvent =
       finishedAt: number
     }
   | { type: 'plan_updated'; plan: Plan }
+  | {
+      /**
+       * 计划模式单一状态转换（SP004 设计 §6.2）。active=false 表示已离开
+       * 计划模式并恢复 originalMode；phase 描述调研/待批子状态。
+       */
+      type: 'plan_mode_changed'
+      active: boolean
+      phase?: PlanModePhase
+      originalMode?: PermissionMode
+    }
   | {
       type: 'question_requested'
       turnId: string

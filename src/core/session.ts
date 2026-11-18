@@ -38,6 +38,14 @@ import type {
   PermissionPolicy,
   PermissionRequest
 } from './permissions.js'
+import type {
+  Plan,
+  PlanDriftItem,
+  PlanModeExitResult,
+  PlanModeHost,
+  PlanModePhase,
+  PlanModeSnapshot
+} from './plan.js'
 
 export type SessionOptions = {
   provider: ModelProvider
@@ -47,6 +55,8 @@ export type SessionOptions = {
   tools?: ToolHandler[]
   /** SP003: when present, tool calls are decided by the policy. */
   permissionPolicy?: PermissionPolicy
+  /** SP004 §6.2: host integration for plan mode (research/pending/approve). */
+  planMode?: PlanModeHost
   maxIterations?: number
   cancelBudgetMs?: number
   queueAutostartMs?: number
@@ -92,6 +102,10 @@ function previewOf(text: string): string {
   return firstLine.length > 40 ? firstLine.slice(0, 39) + '…' : firstLine
 }
 
+function describeDrift(drift: PlanDriftItem[]): string {
+  return drift.map((item) => `${item.item}（期望 ${item.expected}，实际 ${item.actual}）`).join('；')
+}
+
 export class Session {
   private state: SessionState = 'idle'
   private readonly messages: Message[] = []
@@ -104,8 +118,21 @@ export class Session {
   private approvalForMemory?: { id: string; target: PermissionRequest }
   private lastToolElapsed?: { turnId: string; callId: string; ms: number }
   private pendingApproval?: { requestId: string; resolve: (d: ApprovalDecision) => void }
+  /**
+   * 计划审批可能由宿主 UI 在回合之外发起（ExitPlanMode 工具之外的手动入口），
+   * 因此与单次工具批准分开记录：回合结束不得取消会话级计划审批。
+   */
+  private pendingPlanDecision?: { requestId: string; resolve: (d: ApprovalDecision) => void }
   private queueTimer?: NodeJS.Timeout
   private queuePaused = false
+  /** 计划模式单一状态（SP004 §6.2）：调研/待批与原权限档位。 */
+  private planModeState?: {
+    phase: PlanModePhase
+    originalMode: PermissionMode
+    baseline: PlanModeSnapshot
+  }
+  /** 已批准计划是否已在首次副作用前重查（§6.3）。 */
+  private approvedPlanCheck?: { planId: string; rechecked: boolean }
 
   /** Hosts pause auto-start while boundary commands or credential entry run. */
   setQueuePaused(paused: boolean): void {
@@ -151,6 +178,238 @@ export class Session {
 
   get isBusy(): boolean {
     return this.state !== 'idle'
+  }
+
+  /** 计划模式 UI-only 查询：active/phase/originalMode（SP004 §6.2）。 */
+  get planMode(): { active: boolean; phase?: PlanModePhase; originalMode?: PermissionMode } {
+    const state = this.planModeState
+    if (!state) return { active: false }
+    return { active: true, phase: state.phase, originalMode: state.originalMode }
+  }
+
+  /**
+   * 普通模式进入计划模式：记录原权限档位与研究基线，切换到工作区档位。
+   * 底层硬拒绝仍然优先；调研期非只读工具要一次性批准（§6.2）。
+   */
+  enterPlanMode(): { ok: boolean; reason?: string } {
+    const host = this.options.planMode
+    const policy = this.options.permissionPolicy
+    if (!host) return { ok: false, reason: '宿主未提供计划模式集成' }
+    if (!policy) return { ok: false, reason: '没有权限策略，无法进入计划模式' }
+    if (this.planModeState) return { ok: false, reason: '已经处于计划模式' }
+    const originalMode = policy.getMode()
+    this.planModeState = { phase: 'research', originalMode, baseline: host.snapshot() }
+    this.approvedPlanCheck = undefined
+    policy.setMode('workspace_edit')
+    this.emit({ type: 'plan_mode_changed', active: true, phase: 'research', originalMode })
+    return { ok: true }
+  }
+
+  /**
+   * 用户在调研期显式退出：恢复原权限档位，丢弃待批请求（§6.2）。
+   */
+  leavePlanMode(): { ok: boolean; reason?: string } {
+    const state = this.planModeState
+    if (!state) return { ok: false, reason: '当前不在计划模式' }
+    if (this.pendingApproval) {
+      this.pendingApproval.resolve({ outcome: 'cancelled', via: 'user' })
+      this.pendingApproval = undefined
+    }
+    if (this.pendingPlanDecision) {
+      this.pendingPlanDecision.resolve({ outcome: 'cancelled', via: 'user' })
+      this.pendingPlanDecision = undefined
+    }
+    try {
+      const host = this.options.planMode
+      const plan = host?.store.current()
+      if (host && plan && plan.approval === 'pending') host.store.reject('用户退出计划模式')
+    } catch {
+      // Rejecting an already-consumed plan must not block leaving plan mode.
+    }
+    this.options.permissionPolicy?.setMode(state.originalMode)
+    this.planModeState = undefined
+    this.approvedPlanCheck = undefined
+    this.emit({ type: 'plan_mode_changed', active: false, originalMode: state.originalMode })
+    return { ok: true }
+  }
+
+  /**
+   * 退出计划模式并提交计划审批（§6.2/§6.3）：读取会话计划文件、
+   * 校验研究基线未漂移，再经 ApprovalGateway 取得批准或拒绝。
+   */
+  async exitPlanMode(context: { turnId?: string; callId?: string } = {}): Promise<PlanModeExitResult> {
+    const host = this.options.planMode
+    const policy = this.options.permissionPolicy
+    const state = this.planModeState
+    if (!host || !policy) return { ok: false, message: '宿主未提供计划模式集成，无法退出计划模式' }
+    if (!state) return { ok: false, message: '当前不在计划模式' }
+    if (state.phase === 'pending') return { ok: false, message: '计划审批仍在等待处理，请先批准或拒绝' }
+    const text = (await host.readPlanText().catch(() => undefined))?.trim()
+    if (!text) return { ok: false, message: '会话计划文件缺失或为空：请先写入计划再退出计划模式' }
+    const plan = host.store.current()
+    if (!plan) return { ok: false, message: '当前没有计划：请先写入会话计划文件' }
+    const drift = host.diff(state.baseline, host.snapshot())
+    if (drift.length > 0) {
+      return {
+        ok: false,
+        message: `工作区在研究期间发生漂移，计划未获批准：${describeDrift(drift)}`,
+        drift
+      }
+    }
+    if (plan.approval === 'none' || plan.approval === 'rejected') host.store.requestApproval(text)
+    state.phase = 'pending'
+    this.emit({ type: 'plan_mode_changed', active: true, phase: 'pending', originalMode: state.originalMode })
+    const pending = host.store.current() ?? plan
+    this.emit({ type: 'plan_updated', plan: pending })
+    const turn = this.activeTurn
+    const inTurn = !!turn && (context.turnId === undefined || context.turnId === turn.id)
+    const turnId = context.turnId ?? turn?.id ?? 'plan-mode'
+    const callId = context.callId ?? 'exit-plan-mode'
+    const requestId = randomUUID()
+    const request: ApprovalRequest = {
+      requestId,
+      turnId,
+      callId,
+      name: 'ExitPlanMode',
+      summary: `批准计划：${pending.goal}`,
+      preview: text.split('\n').slice(0, 40),
+      planId: pending.id,
+      planVersion: pending.updatedAt
+    }
+    this.emit({
+      type: 'approval_requested',
+      turnId,
+      requestId,
+      callId,
+      name: request.name,
+      summary: request.summary,
+      ...(request.preview ? { preview: request.preview } : {})
+    })
+    if (inTurn) this.setState('awaiting_approval')
+    const decision = await this.awaitPlanDecision(inTurn ? turn : undefined, request)
+    if (inTurn) this.setState('tool_running')
+    this.emit({
+      type: 'approval_resolved',
+      turnId,
+      requestId,
+      outcome: decision.outcome,
+      via: decision.via
+    })
+    if (decision.outcome === 'cancelled') {
+      state.phase = 'research'
+      this.emit({
+        type: 'plan_mode_changed',
+        active: true,
+        phase: 'research',
+        originalMode: state.originalMode
+      })
+      return { ok: false, message: '计划审批已取消，仍停留在调研阶段', cancelled: true }
+    }
+    if (decision.outcome !== 'allow' && decision.outcome !== 'allow_session') {
+      state.phase = 'research'
+      try {
+        host.store.reject(decision.feedback)
+        this.emit({ type: 'plan_updated', plan: host.store.current() ?? pending })
+      } catch {
+        // A rejected plan may already be consumed; staying in research is enough.
+      }
+      this.emit({
+        type: 'plan_mode_changed',
+        active: true,
+        phase: 'research',
+        originalMode: state.originalMode
+      })
+      const feedback = decision.feedback?.trim() ? `：${decision.feedback.trim()}` : ''
+      return { ok: false, message: `计划未获批准${feedback}` }
+    }
+    let approved: Plan
+    try {
+      approved = host.store.approve(decision.editedText?.trim() ? decision.editedText : text)
+    } catch (error) {
+      state.phase = 'research'
+      this.emit({
+        type: 'plan_mode_changed',
+        active: true,
+        phase: 'research',
+        originalMode: state.originalMode
+      })
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : '批准计划失败'
+      }
+    }
+    const check = host.validate(approved)
+    if (!check.ok) {
+      state.phase = 'research'
+      this.emit({
+        type: 'plan_mode_changed',
+        active: true,
+        phase: 'research',
+        originalMode: state.originalMode
+      })
+      return {
+        ok: false,
+        message: `计划批准后校验失败：${describeDrift(check.drift)}`,
+        drift: check.drift
+      }
+    }
+    policy.setMode(state.originalMode)
+    this.planModeState = undefined
+    this.approvedPlanCheck = { planId: approved.id, rechecked: false }
+    this.emit({ type: 'plan_updated', plan: approved })
+    this.emit({ type: 'plan_mode_changed', active: false, originalMode: state.originalMode })
+    return {
+      ok: true,
+      message: `计划已批准（${approved.id}），已恢复权限档位 ${state.originalMode}`,
+      planId: approved.id,
+      version: approved.updatedAt,
+      edited: !!decision.editedText
+    }
+  }
+
+  private awaitPlanDecision(
+    turn: ActiveTurn | undefined,
+    request: ApprovalRequest
+  ): Promise<ApprovalDecision> {
+    if (turn) return this.requestApproval(turn, request)
+    return new Promise<ApprovalDecision>((resolve) => {
+      const finish = (decision: ApprovalDecision) => {
+        if (this.pendingPlanDecision?.requestId === request.requestId) {
+          this.pendingPlanDecision = undefined
+        }
+        resolve(decision)
+      }
+      this.pendingPlanDecision = { requestId: request.requestId, resolve: finish }
+      this.options.approval.request(request).then(finish, () =>
+        finish({ outcome: 'cancelled', via: 'policy' })
+      )
+    })
+  }
+
+  /** 已批准计划在执行前漂移：重建计划并回到待批（§6.3）。 */
+  private async reopenPlanForApproval(plan: Plan, drift: PlanDriftItem[]): Promise<void> {
+    const host = this.options.planMode
+    if (!host) return
+    const originalMode =
+      this.planModeState?.originalMode ?? this.options.permissionPolicy?.getMode() ?? 'read_only'
+    const text = (await host.readPlanText().catch(() => undefined))?.trim() || plan.goal
+    let next: Plan = plan
+    try {
+      next = host.store.create(plan.goal, plan.steps.map((step) => ({ title: step.title })))
+      host.store.requestApproval(text)
+    } catch {
+      // Without a writable plan store we still keep the session in pending.
+    }
+    this.planModeState = { phase: 'pending', originalMode, baseline: host.snapshot() }
+    this.approvedPlanCheck = undefined
+    this.emit({ type: 'plan_updated', plan: host.store.current() ?? next })
+    this.emit({ type: 'plan_mode_changed', active: true, phase: 'pending', originalMode })
+    this.emit({
+      type: 'notice',
+      level: 'warning',
+      code: 'plan_mode',
+      text: `计划执行前校验发现漂移，需重新批准：${describeDrift(drift)}`
+    })
   }
 
   /** In-process display subscription. The public session event stream is unchanged. */
@@ -226,6 +485,16 @@ export class Session {
 
   dispose(): void {
     if (this.queueTimer) clearTimeout(this.queueTimer)
+    if (this.pendingPlanDecision) {
+      this.pendingPlanDecision.resolve({ outcome: 'cancelled', via: 'policy' })
+      this.pendingPlanDecision = undefined
+    }
+    if (this.planModeState) {
+      // 会话销毁时恢复原权限档位，避免把计划模式档位留在宿主策略上（§6.2）。
+      this.options.permissionPolicy?.setMode(this.planModeState.originalMode)
+      this.planModeState = undefined
+      this.approvedPlanCheck = undefined
+    }
     if (this.activeTurn) this.activeTurn.controller.abort()
     // Host-owned resources: the command runner terminates any background task tree (SP004 §4.4).
     for (const dispose of this.options.disposers ?? []) {
@@ -534,13 +803,16 @@ export class Session {
       const policy = this.options.permissionPolicy
       let needsApproval = handler.requiresApproval?.(input) ?? false
       let permissionRequest: PermissionRequest | undefined
+      // 计划模式的一次性批准：即使宿主勾选“本会话允许”，也不写入记忆（§6.2）。
+      let planModeSingleUse = false
       if (policy) {
         permissionRequest = {
           tool: call.name,
           capability: handler.capability?.(input) ?? 'read',
           path: handler.target?.(input)?.path
         }
-        const verdict = policy.decide(permissionRequest)
+        let verdict = policy.decide(permissionRequest)
+        const capability = permissionRequest.capability
         if (verdict.action === 'deny') {
           this.pushToolResult(
             turn,
@@ -559,6 +831,57 @@ export class Session {
             }
           })
           continue
+        }
+        // §6.3：已批准计划在首次副作用前重查目标与前像；漂移则回到待审，
+        // 本次调用不执行任何副作用，也不消耗一次工具批准。
+        if (
+          this.approvedPlanCheck &&
+          !this.approvedPlanCheck.rechecked &&
+          capability !== 'read'
+        ) {
+          const host = this.options.planMode
+          const plan = host?.store.current()
+          if (host && plan) {
+            const check = host.validate(plan)
+            if (!check.ok) {
+              await this.reopenPlanForApproval(plan, check.drift)
+              this.pushToolResult(
+                turn,
+                call.id,
+                `Plan drifted before execution: ${describeDrift(check.drift)}`,
+                true,
+                ERROR_CODES.permissionDenied
+              )
+              continue
+            }
+          }
+          this.approvedPlanCheck.rechecked = true
+        }
+        if (this.planModeState) {
+          if (this.planModeState.phase === 'pending' && capability !== 'read') {
+            this.pushToolResult(
+              turn,
+              call.id,
+              'Plan approval pending: only read-only tools may run until the plan is approved',
+              true,
+              ERROR_CODES.permissionDenied
+            )
+            this.emit({
+              type: 'denial_recorded',
+              denial: {
+                tool: call.name,
+                ...(permissionRequest.path ? { path: permissionRequest.path } : {}),
+                reason: 'Plan approval pending',
+                at: new Date().toISOString()
+              }
+            })
+            continue
+          }
+          // 调研期：底层已准许的只读照常执行，其余非只读一律一次性批准。
+          if (this.planModeState.phase === 'research' && capability !== 'read') {
+            verdict = { action: 'ask', reason: 'Plan mode: this step needs a one-time approval' }
+            planModeSingleUse = true
+          }
         }
         needsApproval = verdict.action === 'ask'
       }
@@ -600,7 +923,8 @@ export class Session {
           ...(request.preview ? { preview: request.preview } : {})
         })
         const decision = await this.requestApproval(turn, request)
-        remember = decision.outcome === 'allow_session' && this.canRememberApproval(requestId)
+        remember =
+          decision.outcome === 'allow_session' && !planModeSingleUse && this.canRememberApproval(requestId)
         if (this.approvalForMemory?.id === requestId) this.approvalForMemory = undefined
         this.emit({
           type: 'approval_resolved',

@@ -1,5 +1,6 @@
 // SP004 计划/待办/追问 core 端口（设计 §6.1 / §6.4）。
 // Core 只持有契约与纯逻辑；持久化与状态机实现由 src/plan 注入。
+import type { PermissionMode } from './permissions.js'
 
 export const PLAN_STEP_STATUSES = ['pending', 'in_progress', 'completed', 'blocked'] as const
 
@@ -47,6 +48,44 @@ export interface PlanStore {
   /** 进度报告（TP-09）。 */
   progress(): { total: number; completed: number; inProgress: number; blocked: number; pending: number }
 }
+
+/** 指纹漂移项：item 为 root/head/version/fingerprint/approval 或 files:<path>（TP-05）。 */
+export type PlanDriftItem = { item: string; expected: string; actual: string }
+
+/** 计划模式可观察的工作区基线；由宿主按真实文件与 Git HEAD 提供（设计 §6.2）。 */
+export type PlanModeSnapshot = {
+  root: string
+  head?: string
+  files: Record<string, string>
+}
+
+export const PLAN_MODE_PHASES = ['research', 'pending'] as const
+
+/** 调研期（research）允许底层已准许只读；待批期（pending）只读之外一律拒绝。 */
+export type PlanModePhase = (typeof PLAN_MODE_PHASES)[number]
+
+export type PlanModeState = {
+  active: boolean
+  phase?: PlanModePhase
+  originalMode?: PermissionMode
+}
+
+/**
+ * 宿主注入的计划模式集成（设计 §6.2/§6.3）：core 负责单一状态转换与审批接线，
+ * 计划持久化、计划文件读取与基线采集由宿主实现。
+ */
+export type PlanModeHost = {
+  store: PlanStore
+  /** 读取当前会话计划文件正文；缺失或为空返回 undefined。 */
+  readPlanText: () => Promise<string | undefined>
+  snapshot: () => PlanModeSnapshot
+  diff: (baseline: PlanModeSnapshot, current: PlanModeSnapshot) => PlanDriftItem[]
+  validate: (plan: Plan) => { ok: boolean; drift: PlanDriftItem[] }
+}
+
+export type PlanModeExitResult =
+  | { ok: true; message: string; planId: string; version: number; edited: boolean }
+  | { ok: false; message: string; drift?: PlanDriftItem[]; cancelled?: boolean }
 
 export const TODO_STATUSES = ['pending', 'in_progress', 'completed'] as const
 
