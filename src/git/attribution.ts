@@ -51,13 +51,19 @@ function operationOf(index: string, worktree: string): ChangeOperation {
   return 'modify'
 }
 
-/** 把 checkpoint 记录（绝对路径）转成仓库相对路径；越界记录被忽略。 */
+/**
+ * 把 checkpoint 记录转成仓库相对路径；越界记录被忽略。
+ * 工作区写入记录本来就是工作区相对路径（`src/workspace/write.ts` 的 `resolved.relative`），
+ * 宿主也可能写入绝对路径，两种形式都要接受，但只保留确实落在 root 内的路径。
+ */
 export function ownPathsFromCheckpoints(records: ChangeRecord[], root: string): string[] {
   const own = new Set<string>()
   for (const record of records) {
-    const relativePath = relative(root, record.path)
+    const relativePath = isAbsolute(record.path) ? relative(root, record.path) : record.path
     if (relativePath === '' || relativePath.startsWith('..') || isAbsolute(relativePath)) continue
-    own.add(toPosix(relativePath))
+    const normalized = toPosix(relativePath).replace(/^\.\/+/, '')
+    if (normalized === '') continue
+    own.add(normalized)
   }
   return [...own].sort()
 }

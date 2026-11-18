@@ -203,3 +203,12 @@ test('T7-7 checkpoint 记录转仓库相对路径：越界路径被忽略', () =
   store.record({ path: join(tmpdir(), 'outside.txt'), operation: 'update', after: 'z', diff: [], fingerprintAfter: 'fp' })
   assert.deepEqual(ownPathsFromCheckpoints(store.changes(), root), ['a/b.txt', 'c.txt'])
 })
+
+test('T7-8 工作区相对路径的 checkpoint 记录直接可用（与 workspace 写入契约一致）', () => {
+  const store = createCheckpointStore()
+  const root = join(tmpdir(), 'budingx-attr-relative-root')
+  store.record({ path: 'src/app.mjs', operation: 'update', after: 'x', diff: [], fingerprintAfter: 'fp' })
+  store.record({ path: './test/app.test.mjs', operation: 'update', after: 'y', diff: [], fingerprintAfter: 'fp' })
+  store.record({ path: '../outside.txt', operation: 'update', after: 'z', diff: [], fingerprintAfter: 'fp' })
+  assert.deepEqual(ownPathsFromCheckpoints(store.changes(), root), ['src/app.mjs', 'test/app.test.mjs'])
+})
