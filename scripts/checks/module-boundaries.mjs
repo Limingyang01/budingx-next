@@ -67,10 +67,21 @@ function report(file, reason) {
 }
 
 const RULES = {
-  core: { ui: UI_BANNED, io: CORE_IO_BANNED, dirs: ['provider', 'storage', 'tui', 'workspace'] },
+  // SP004 §3：core 只保留纯契约/状态机，新增的 exec/git/plan 也不得被 core 反向依赖。
+  core: {
+    ui: UI_BANNED,
+    io: CORE_IO_BANNED,
+    dirs: ['provider', 'storage', 'tui', 'workspace', 'exec', 'git', 'plan']
+  },
   provider: { ui: UI_BANNED, io: [], dirs: ['storage', 'tui'] },
   storage: { ui: UI_BANNED, io: [], dirs: ['tui'] },
-  workspace: { ui: UI_BANNED, io: [], dirs: ['tui'] }
+  workspace: { ui: UI_BANNED, io: [], dirs: ['tui'] },
+  // 真实进程执行层：允许子进程/文件/路径 IO，但不得反向依赖宿主 UI 与其他能力层。
+  exec: { ui: UI_BANNED, io: [], dirs: ['tui', 'git', 'plan'] },
+  // Git 能力层：允许子进程/文件/路径 IO，不得依赖执行层、计划层或 UI。
+  git: { ui: UI_BANNED, io: [], dirs: ['tui', 'exec', 'plan'] },
+  // 计划层：状态机 + 持久化 + 宿主计划集成（T22 落盘用 node:fs，T15 读 Git HEAD 用 node:child_process）。
+  plan: { ui: UI_BANNED, io: [], dirs: ['tui', 'exec', 'git'] }
 }
 
 for (const [moduleName, rule] of Object.entries(RULES)) {
@@ -85,8 +96,10 @@ for (const [moduleName, rule] of Object.entries(RULES)) {
         continue
       }
       const target = resolve(dirname(file), spec)
+      // 相对导入的模块目录位于仓库根下的 src/<模块>/，因此按前缀判断，
+      // 不能用 '/src/<dir>/'（顶层路径不含前导斜杠，会漏报全部跨模块依赖）。
       const rel = relative(root, target).split('\\').join('/')
-      const hit = rule.dirs.find((dir) => rel.includes(`/src/${dir}/`))
+      const hit = rule.dirs.find((dir) => rel === `src/${dir}` || rel.startsWith(`src/${dir}/`))
       if (hit) report(file, `禁止依赖其他模块 src/${hit}（${spec}）`)
     }
   }

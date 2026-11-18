@@ -320,7 +320,7 @@
 - **RED**：`npm run test:checks` 在规则未加入前不报错 → **加入后**需验证：`core` 若 import `node:child_process` 则被检出（用临时违规文件验证一次，随后移除）
 - **GREEN**：补齐规则与 include
 - **验证**：`npm run test:checks && npm run build`
-- **完成事实**：待填
+- **完成事实**：2026-11-19 完成。`scripts/checks/module-boundaries.mjs` 的 `RULES` 新增 `exec`、`git`、`plan` 三条（均禁 `UI_BANNED`；`exec` 不得依赖 `tui/git/plan`，`git` 不得依赖 `tui/exec/plan`，`plan` 不得依赖 `tui/exec/git`），并把 `exec/git/plan` 加入 `core` 的禁止目录——core 只保留纯契约与状态机。同时发现并修复检查脚本自身的真实缺陷：相对导入的跨模块判定用了 `rel.includes('/src/<dir>/')`，而顶层模块路径是 `src/<dir>/...`（无前导斜杠），导致**所有**跨模块相对依赖都被漏报（既有 workspace/provider/core 规则同样失效）；改为 `rel === 'src/<dir>' || rel.startsWith('src/<dir>/')` 后规则真正生效。`src/tui/tsconfig.json` 的 `include` 已含 `../exec|git|plan/**/*.ts`（各任务落地时已补，本轮复核）。新增三个模块导出面：`src/exec/index.ts`（runner/tools/background/destructive/interpreter/output/persist/readonly-commands/sandbox-policy/sed-edit）、`src/git/index.ts`（attribution/commit/porcelain/status/worktree）、`src/plan/index.ts`（host/serialize/store/tools/validate）。RED 取证：①规则未加入前，在 `src/plan/` 放临时文件 `import { App } from '../tui/app.js'`，`npm run test:checks` 仍「模块边界检查通过」；加入规则后同一文件被报 `禁止依赖其他模块 src/tui（../tui/app.js）`；删除后通过。②在 `src/core/` 放临时文件 `import { spawn } from 'node:child_process'`，被报 `禁止依赖 IO 模块 node:child_process`；删除后通过。修复跨模块前缀判定后对真实代码全量扫描零违规（说明现有分层实际成立）。GREEN：`npm run test:checks` 通过、`npm run build` 通过；全量 `npm run test:unit` **564/564** 通过（`.superpowers/sdd/plan.zh/t16-full-unit.log`，exit=0）。Ruling：计划层允许 `node:fs`/`node:child_process`（T22 要求在 `src/plan/serialize.ts` 落盘计划文件、T15 在 `src/plan/host.ts` 读 Git HEAD），与设计 §3 表格的 `plan` 行（仅允许 `../core/*`）不一致——表格为 MODEL_PROPOSED 且早于 T22 的持久化要求，实际实现以「不得依赖 UI/其他能力层」为硬边界，已在规则注释与本条记录；检查脚本的跨模块漏报属门禁失效缺陷，未放宽阈值而是修正判定。
 
 ### T17 · 全量回归与交付记录
 
