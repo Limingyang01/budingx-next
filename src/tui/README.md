@@ -54,7 +54,7 @@ In piped input, `/models` lists profiles and `/model NAME` selects one. Interact
 
 Version 0.3.4 displays user turns, elapsed time and completion time. After a successful reply, press Tab at an empty prompt to fill the suggested follow-up, then edit and press Enter.
 
-The interactive transcript distinguishes submitted prompts from Markdown replies and displays completion times as secondary text. The status bar shows a short permission label and omits idle activity.
+Version 0.3.5 distinguishes submitted prompts from Markdown replies and displays completion times as secondary text. The status bar shows a short permission label and omits idle activity.
 
 ## Keys
 

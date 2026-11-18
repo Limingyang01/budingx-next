@@ -25,3 +25,5 @@
 推荐 TUI 发布方式现为 [GitHub Actions + npm Trusted Publishing](docs/github-actions-npm.md)：在 Actions 手动 Run workflow，无需 NPM_TOKEN secret。首次建包及账号授信仍需维护者在个人可信设备上验证，未配置前不宣称可发布。
 
 npm 已发布 [0.3.4](https://www.npmjs.com/package/budingx/v/0.3.4)，可用 `npm install -g budingx@latest` 安装或升级。详见 [0.3.4 发行说明](release-notes/v0.3.4.md)。
+
+下一发布候选为 [0.3.5 · 会话排版与状态栏](release-notes/v0.3.5.md)。
