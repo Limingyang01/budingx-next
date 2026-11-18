@@ -87,6 +87,8 @@ export interface CommandRunner {
   /** 取消后台任务（终止整棵进程树）；已终态幂等返回 false。 */
   cancel(taskId: string): boolean
   list(): CommandResult[]
+  /** 会话结束时终止全部运行中后台任务（design §4.4，Session.dispose 接线）。 */
+  dispose?(): void
 }
 
 // 超时与输出常量（设计 §4.3，数值对齐参考 F-01/F-02/F-04）。

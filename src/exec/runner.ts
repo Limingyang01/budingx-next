@@ -13,6 +13,7 @@ import { selectInterpreter } from './interpreter.js'
 import { isBlockingWaitCommand, isInteractiveCommand } from './readonly-commands.js'
 import { createSandboxPolicy, type SandboxPolicy } from './sandbox-policy.js'
 import { OutputCollector, capMergedText, formatStream } from './output.js'
+import { createBackgroundTable } from './background.js'
 
 export interface CommandRunnerOptions {
   /** 缺省工作目录（会话项目根）。 */
@@ -63,6 +64,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
   const sandboxPolicy = options.sandboxPolicy ?? createSandboxPolicy()
   const platform = options.platform ?? process.platform
   const timeouts = resolveTimeoutConfig(process.env)
+  const background = createBackgroundTable({ kill: (child) => killTree(child, spawnFn, platform) })
 
   async function run(spec: CommandSpec, context: { signal: AbortSignal; cwd: string }): Promise<CommandResult> {
     const started = Date.now()
@@ -123,6 +125,25 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
     child.stdout?.on('data', (chunk: Buffer) => stdoutCollector.push(chunk))
     child.stderr?.on('data', (chunk: Buffer) => stderrCollector.push(chunk))
 
+    // 后台路径：同一启动门禁后立即返回 running + taskId，终态经 status/list 查询（design §4.4）。
+    if (spec.runInBackground === true) {
+      const taskId = background.register(
+        {
+          command: spec.command,
+          interpreter: interpreter.label,
+          cwd,
+          timeoutMs,
+          autoBackgrounded: false,
+          backgroundedByUser: true
+        },
+        child,
+        stdoutCollector,
+        stderrCollector,
+        context.signal
+      )
+      return early({ outcome: 'running', taskId, backgroundedByUser: true })
+    }
+
     return await new Promise<CommandResult>((resolve) => {
       let settled = false
       let forced: { outcome: 'timeout' | 'cancelled'; reason: string } | undefined
@@ -175,11 +196,11 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
     })
   }
 
-  // T3 仅前台；后台任务状态/取消/列表由 T4 实现。
   return {
     run,
-    status: () => undefined,
-    cancel: () => false,
-    list: () => []
+    status: (taskId) => background.status(taskId),
+    cancel: (taskId) => background.cancel(taskId),
+    list: () => background.list(),
+    dispose: () => background.dispose()
   }
 }

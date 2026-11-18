@@ -142,7 +142,7 @@
   5. AbortSignal 触发 → 任务转 `cancelled`（CE-14）
 - **GREEN**：后台任务表（内存）、Windows `taskkill /T /F` + `child.kill()` 双保险、POSIX 进程组 SIGTERM→SIGKILL
 - **验证**：`npm run build && node --test src/exec/test/background.test.mjs`
-- **完成事实**：待填
+- **完成事实（2026-11-18）**：RED 5 条真实进程失败（旧实现把后台命令当前台执行，断言失败/超时）→ GREEN 5/5；全量 `npm run test:unit` 417/417 通过。`src/exec/background.ts` 内存任务表：register 立即 running+taskId（`task-<uuid>`）、status/list 实时输出快照、cancel 幂等（终态/未知 id 返回 false）、超时 timer 与 AbortSignal 均走 killTree；孙进程取消后 5s 内消失实测通过（Windows taskkill /T /F 先于 child.kill 兜底）。Ruling：`CommandRunner` 增可选 `dispose?(): void`（Session.dispose 接线需要）；status/list 按 T1 契约返回 CommandResult 快照（outcome=任务状态），BackgroundTask 为内部记录类型供 T18/T19 落盘与事件使用。
 
 ### T5 · 工具适配器与同一权限入口
 
