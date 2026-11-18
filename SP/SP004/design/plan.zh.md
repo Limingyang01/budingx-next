@@ -338,7 +338,14 @@
   5. 交叉验证门禁 `npm run merge:gate`
 - **RED**：不适用（验收阶段；每个 AC 已有单测 + 功能用例）
 - **GREEN 判据**：逐条 AC 映射到实际用例与计数；未执行项标 UNVERIFIED；真终端人工与 live Provider 明确 UNVERIFIED
-- **完成事实**：待填
+- **完成事实（2026-11-19，Windows 11 / Node 24.15.0 / 无头环境）**：
+  - 门禁序列全部执行并留证：`npm run build` 通过；`npm run test:unit` **564/564**；`npm run test:checks`「模块边界检查通过」；`npm run spec:check`「OK: 路线图、能力清单与任务清单自洽」（能力清单 91 项：必交 49 / 建议 26 / 可选 9 / 范围外 7）；`npm run skills:check`「Skill entries are current」；`npm run test:release` 17/17；`npm run merge:test` 5/5；`npm test` **607 通过 0 失败**（skills 10 + spec 11 + unit 564 + release 17 + merge 5）。
+  - `SP/SP004/test-report.md` 重写为 v2：§0 执行证据表；§1 VIS-01…04（行为级 PASS、像素 UNVERIFIED）；§2 PROTO-01…04 全 PASS（PROTO-04 说明本轮无 TodoWrite 独立工具，以 TodoStore + 派生卡片验证）；§3 SAFE-01/GIT-01/GIT-02/SRC-01/SRC-02 PASS、SAFE-02 部分 UNVERIFIED；§4 **48 条 AC 逐条表**（AC / 承载任务 / 证据文件与用例数 / 验证层 L0 纯逻辑、L1 真实进程或 Git、L2 伪 TTY / 结果）PASS 45 条，CE-11、CE-19、CT-07、SAFE-02 标部分或整体 UNVERIFIED 并给恢复条件；§5 未验证项与恢复条件；§6 本轮变更与验证范围。
+  - `SP/SP004/requirements-summary.md`：首行状态、四条功能索引的阶段/验证/集成状态/下一步、「实际验收」、「未完成/延期项」、变更记录全部回写为「实施与验证完成，待合入 master（30 个本地提交，HEAD 1f166fb）」，AC 验收指向 test-report §4。
+  - 四份功能 `STATUS.md`：状态行改「实施与验证完成，待合入 master」，「进度与验收」写入 607/607 与各自 UNVERIFIED 限制，新增「2026-11-19 实施完成提交」段。
+  - `PRODUCT.md` 同变更同步：说明书版本 v1.10→v1.11、更新日期 2026-11-19；§1 能力归属句、§2.2 SP004 状态、§5.4 标题与限制段、§7 已知限制表行均改为「仓库内已实现、待随下一版本发布」并指向验收报告。
+  - **Ruling**：T17 只做汇总与回写，不改产品代码；48 条 AC 表以「实际执行的用例文件 + 用例数 + 验证层」为证据粒度，禁止用任务完成事实替代用例证据；无隔离后端导致的 CE-11/CE-19 与生产闸门 CT-07、SAFE-02 明确保留 UNVERIFIED，不用「已实现」掩盖环境缺口；像素级视觉对照与 live Provider 不在本轮可执行范围，恢复条件写在 test-report §5。
+  - **未验证项（与 test-report §5 一致）**：真实平台执行隔离后端；编码任务完成证据闸门在生产 runtime 的启用；真实终端像素级/双尺寸视觉对照；live Provider 端到端；npm 发布包安装后核验；AST 复核的分值边界。
 
 ---
 

@@ -1,56 +1,127 @@
 # SP004 验收与验证报告 · 真实编码任务
 
-状态：**v1.3 文档修订，产品验收 UNVERIFIED，实施待用户确认**。文档起点 `363d1eb`，核对的本地 master `5b0e7cc`，参考 TUI `b5c9be8`。本报告与[设计](design/design.zh.md)及[实施计划](design/plan.zh.md) v1.3 配套。
+状态：**实施完成，全量门禁通过，待合入 master 与人工验收**。分支 `feature/SP004/command-execution`，文档起点 `363d1eb`，实施基线 `e808679`，参考 TUI revision `b5c9be8`。本报告与[设计](design/design.zh.md)及[实施计划](design/plan.zh.md)配套。
+
+## 0. 本轮执行证据
+
+环境：Windows 11，Node.js 24.15.0，`git` 2.x，本地终端无头（CI 式伪 TTY）。所有命令在仓库根执行。
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 构建 | `npm run build` | 通过（tsc，无错误） |
+| 单元/功能 | `npm run test:unit` | **564/564 通过**（`node --test src/*/test/*.test.mjs`） |
+| 模块边界 | `npm run test:checks` | 「模块边界检查通过」 |
+| 规格自洽 | `npm run spec:check` | 「OK: 路线图、能力清单与任务清单自洽」（能力 91 项） |
+| 技能入口 | `npm run skills:check` | 「Skill entries are current」 |
+| 发布脚本 | `npm run test:release` | 17/17 通过 |
+| 合入门禁脚本 | `npm run merge:test` | 5/5 通过 |
+| 全量 | `npm test` | **607 通过 / 0 失败**（skills 10 + spec 11 + unit 564 + release 17 + merge 5） |
+| 交叉验证门禁 | `npm run merge:gate` | 见 `artifacts/merge-gate/`（本地审计，未提交） |
+| 来源 AST 复核 | `node scripts/review/sp004-ast.mjs --reference <参考仓> --reference-revision b5c9be8 --base master` | 改动 39/39 映射，函数对 18901 组，命中 0，自检 3/3 PASS → **PASS**（详见 [ast-review.md](ast-review.md)） |
 
 ## 1. 视觉与交互验收
 
-每个用例从相同的合成会话和工具事件开始。固定参考 revision、终端及版本、语言与权限档位、主题、字体、行高、DPI 和宽度规则。以 100×30、70×20 及运行中 resize 测量。双方记录初始、过渡与终态的单元格、光标、实际按键和 PNG。稳定区域像素目标零差异。仅遮罩预先登记的动态时间戳、ID 和路径；任何视觉差异附坐标、原因和审核结果。界面布局、语义状态、交互和像素分别判定。
+行为与键序在伪 TTY（Ink 真实渲染 + PassThrough 假终端）下逐项断言，均为 PASS；**参考实现像素级对照为 UNVERIFIED**（原因见 §5）。
 
 | ID | 回放步骤与断言 | 关联 AC | 状态 |
 | --- | --- | --- | --- |
-| VIS-01 命令 | 依次回放运行、stdout、stderr 与非零退出、截断及展开、转后台并完成、超时和取消、审批提示。核对卡片位置、输出行宽、颜色、错误与任务关联，取消后焦点回到输入区。 | CE-01、04–07、16–18、CT-08 | UNVERIFIED |
-| VIS-02 计划 | 进入调研，展示计划、移动焦点、修改并批准。重放拒绝反馈、Esc、计划漂移，核对预览和底部审批槽、一次性批准、原档位及输入焦点恢复。 | TP-01、03–05、10 | UNVERIFIED |
-| VIS-03 待办 | 空列表到 pending、进行中、完成，检查排序、状态符号、阻塞位置、长文本折行、展开与 TTL。用参考活跃路径确定键序和时间边界，设置固定假时钟。 | TP-01、02、09 | UNVERIFIED |
-| VIS-04 追问 | 单题与多题，题间切换、单选与多选、Other 输入、预览及备注、确认页退回编辑，再提交；另测 Esc 及迟到响应。核对焦点、输入光标、答案保留和工具结果身份。 | TP-06–08、CT-05、06 | UNVERIFIED |
+| VIS-01 命令 | 运行、stdout、stderr 与非零退出、截断与展开、转后台并完成、取消、审批提示；同一 call ID 只有一条工具结果，取消后焦点回输入区。用例：`tui/test/sp004-cards.test.mjs`（T15-1…3、T15-8…10）、`exec/test/tools.test.mjs` | CE-01、04–07、16–18、CT-08 | PASS（行为）；像素 UNVERIFIED |
+| VIS-02 计划 | 调研展示、焦点移动、编辑正文并批准、拒绝反馈、Esc、漂移重审、原档位与输入焦点恢复、一次性批准。用例：`tui/test/sp004-cards.test.mjs`（T15-4、T15-7、T15-10）、`core/test/plan-mode.test.mjs`、`plan/test/host.test.mjs` | TP-01、03–05、10 | PASS（行为）；像素 UNVERIFIED |
+| VIS-03 待办 | 空列表、pending/进行中/完成、排序、状态符号、阻塞位置、长文本折行、展开与 TTL（固定假时钟 60s）。用例：`tui/test/sp004-cards.test.mjs`（T15-5） | TP-01、02、09 | PASS（行为）；像素 UNVERIFIED |
+| VIS-04 追问 | 单题/多题、题间切换、单选多选、Other 输入、预览与备注、确认后提交、Esc 取消与迟到响应、答案保留、工具结果身份。用例：`tui/test/sp004-cards.test.mjs`（T15-6、8、9）、`core/test/question.test.mjs` | TP-06–08、CT-05、06 | PASS（行为）；像素 UNVERIFIED |
 
-精确视觉采证需设计使用权确认和可运行参考环境。缺任一条件时仍可验证行为、键序和本仓渲染，参考像素保持 UNVERIFIED。参考截图不作为发行资产。真实终端抽查 Windows/Linux 的输入法、按键、主题、调整尺寸与窄屏。
+自动化断言的是帧文本、键序与状态，不是像素：伪 TTY 下没有真实字体/DPI/IME，参考截图不作为发行资产。
 
 ## 2. 工具协议验收
 
-协议样例使用合成参数。验证正常、拒绝、取消与错误路径，每次调用恰有一个最终工具结果，后续任务级通知不重复回填工具结果。捕获下一次 OpenAI 兼容请求，保证 `tool_call_id` 可关联，另跑真实 Provider 时单独记证据。
-
 | ID | 样例与预期 | 任务 | 状态 |
 | --- | --- | --- | --- |
-| PROTO-01 | Bash / PowerShell 四个输入字段、超时单位、未知字段、关闭沙箱字段拒绝；缺 shell 或隔离明确错误；后台回执、退出码、截断和 stderr。 | T2、T3、T5、T18、T19 | UNVERIFIED |
-| PROTO-02 | EnterPlanMode 空对象；ExitPlanMode 从当前会话文件取正文，可接收 `allowedPrompts` 权限意图且不得自动放行；缺文件、编辑后批准、拒绝反馈、取消、恢复与计划漂移。 | T10、T11、T22 | UNVERIFIED |
-| PROTO-03 | AskUserQuestion 1–4 题，每题 2–4 项，含 header、多选和可选预览；宿主注入 Other；答案与备注按题目文字对应，并以原 ID 返回工具结果。取消、重复、过期及非宿主回填有确定结果。 | T12、T15、T22 | UNVERIFIED |
-| PROTO-04 | TodoWrite 使用独立待办项；计划步骤保留阻塞关系。EnterWorktree 校验名称和复用身份；ExitWorktree 验证 keep/remove 及宿主授权，结果回显残留计数。 | T8、T10、T15、T22、T23 | UNVERIFIED |
+| PROTO-01 | Bash/PowerShell 四字段、毫秒超时、未知字段拒绝、关闭沙箱字段拒绝；缺隔离明确错误；后台回执、退出码、截断、stderr。用例：`exec/test/tools.test.mjs`（16）、`exec/test/interpreter.test.mjs`（11）、`exec/test/runner.test.mjs`（13）、`exec/test/auto-background.test.mjs`（3） | T2、T3、T5、T18、T19 | PASS |
+| PROTO-02 | `EnterPlanMode` 空对象；`ExitPlanMode` 读会话计划文件、可带 `allowedPrompts` 但不自动放行；缺文件、编辑后批准、拒绝反馈、取消、恢复、漂移。用例：`plan/test/host.test.mjs`、`core/test/plan-mode.test.mjs`（13）、`plan/test/persist.test.mjs`（8） | T10、T11、T22 | PASS |
+| PROTO-03 | `AskUserQuestion` 1–4 题、每题 2–4 项、header、多选、预览；宿主注入 Other；答案/备注按题目文本对应并以原 call ID 返回；取消、重复、过期有确定结果。用例：`core/test/question.test.mjs`（7）、`tui/test/sp004-cards.test.mjs`（T15-6、8、9） | T12、T15、T22 | PASS |
+| PROTO-04 | 计划步骤与待办项为两个对象、保留阻塞关系；`EnterWorktree` 名称与复用身份；`ExitWorktree` keep/remove 与授权、残留计数。用例：`plan/test/store.test.mjs`（8）、`git/test/worktree.test.mjs`（6）、`git/test/worktree-exit.test.mjs`（6） | T8、T10、T15、T22、T23 | PASS |
+
+说明：本轮未实现 `TodoWrite` 独立工具（设计 §6.1 的 TodoStore 已作为渲染层数据源由 `plan_updated` 派生，见 T15 Ruling），故 PROTO-04 的「独立待办项」以 §6.1 的 `TodoStore` + 派生待办卡片验证，不声称提供 TodoWrite 工具表面。
 
 ## 3. 权限、Git、来源验收
 
 | ID | 验证证据 | 任务 | 状态 |
 | --- | --- | --- | --- |
-| SAFE-01 | 各模式的硬 deny 优先；未知操作无只读豁免；待批、迟到或重复授权不产生副作用；前台、后台及自动转后台执行一致的检查。无必要后端能力时断言零 spawn。 | T5、T11、T19–T21 | UNVERIFIED |
-| SAFE-02 | 在平台隔离后端中运行合成进程，核验整树文件、网络及 Git 元数据约束。使用可访问对照目标防止空测。完成定位→修改→失败测试→修复→通过闭环。 | T14、T20 | UNVERIFIED |
-| GIT-01 | 临时仓原 checkout 同时含 staged、unstaged 和 untracked；成功提交仅在专用分支产生核准树，原索引、文件与 HEAD 不变。 | T7–T9 | UNVERIFIED |
-| GIT-02 | 拒绝未授权、审批后漂移、同文件混合改动、并发 ref 变化、重复授权与意外钩子结果；普通命令入口缺 Git 写权限；失败可安全重试。 | T5、T7、T9、T20 | UNVERIFIED |
-| SRC-01 | 来源记录含参考 SHA、实际行为来源、自有模块与第三方条款；发布清单无参考源码、内部类型、资产、提示词或 bundle。 | T24、T17 | UNVERIFIED |
-| SRC-02 | 本地 TS/TSX 归一化 AST 对比出具匹配范围、长度、分值与片段级处置。跑合成正负例，复核所有阈值命中和重大结构相似点，未解决项不得通过。 | T24 | UNVERIFIED |
+| SAFE-01 | 各模式硬 deny 优先、未知操作无只读豁免、待批/迟到/重复授权不产生副作用、前台/后台/自动转后台共用同一启动门禁、无后端能力时零 spawn。用例：`workspace/test/policy.test.mjs`（11）、`exec/test/tools.test.mjs`、`exec/test/background.test.mjs`（7）、`core/test/plan-mode.test.mjs` | T5、T11、T19–T21 | PASS |
+| SAFE-02 | 平台隔离后端内运行合成进程、核验整树与网络/Git 元数据约束；完成「定位→修改→失败测试→修复→通过」闭环。用例：`exec/test/isolated-project.test.mjs`、`tui/test/coding-loop.test.mjs` | T14、T20 | 部分 UNVERIFIED（见 §5：无真实隔离后端，进程在宿主环境运行） |
+| GIT-01 | 临时仓原 checkout 含 staged/unstaged/untracked；成功提交只在专用分支产生核准树，原索引、文件与 HEAD 不变。用例：`git/test/commit.test.mjs`（11） | T7–T9 | PASS |
+| GIT-02 | 拒绝未授权、审批后漂移、混合改动、并发 ref 变化、重复授权与意外钩子；普通命令入口不获得 Git 写权限；失败可安全重试。用例：`git/test/commit.test.mjs`、`exec/test/tools.test.mjs`（T5-5） | T5、T7、T9、T20 | PASS |
+| SRC-01 | 来源记录含参考 SHA、行为来源、自有模块与第三方条款；制品不含参考源码/内部类型/资产/提示词/bundle。见 `ast-review.md`、`THIRD-PARTY-NOTICES.md` | T24、T17 | PASS（来源记录），发布包核验见 §5 |
+| SRC-02 | 归一化 AST 对比出具范围、长度、分值与处置；合成正负例；未解决项不得通过。见 `ast-review.md` | T24 | PASS（命中 0） |
 
-## 4. 48 条 AC 的回填口径
+## 4. 48 条 AC 回填
 
-功能 AC 为 CE-01…20、CT-01…09、GW-01…09、TP-01…10，按[实施计划映射](design/plan.zh.md#测试收口映射ac--任务--用例)逐条回填。每条证据记录 AC、任务、用例、实际 cwd/命令、运行环境、结果数量、证据定位和恢复条件。L0 契约、L1 真实进程或 Git、L2 伪 TTY、L3 真终端、真实 Provider 与 AST 来源审查分别记录。
+AC 区间：CE-01…20（20）、CT-01…09（9）、GW-01…09（9）、TP-01…10（10），共 48 条，逐条对应到实际用例文件；「计数」为该文件内 `test(` 用例数（全套 564 项中的相关部分），验证层：L0 = 纯逻辑/契约，L1 = 真实进程或真实 Git 仓，L2 = 伪 TTY 端到端。
+
+| AC | 任务 | 证据（文件与用例数） | 验证层 | 结果 |
+| --- | --- | --- | --- | --- |
+| CE-01 | T3/T5 | `exec/runner.test.mjs`(13)、`exec/tools.test.mjs`(16)、`tui/sp004-cards.test.mjs`(10) | L1+L2 | PASS |
+| CE-02 | T2/T3 | `exec/interpreter.test.mjs`(11)、`exec/runner.test.mjs`(13) | L1 | PASS |
+| CE-03 | T2 | `exec/interpreter.test.mjs`(11) | L0 | PASS |
+| CE-04 | T3 | `exec/runner.test.mjs`(13) | L1 | PASS |
+| CE-05 | T3 | `exec/runner.test.mjs`(13)、`exec/output`（经 runner 用例） | L1 | PASS |
+| CE-06 | T4 | `exec/background.test.mjs`(7) | L1 | PASS |
+| CE-07 | T4 | `exec/background.test.mjs`(7)（含 R-03/R-04 终止重试与 exit 兜底） | L1 | PASS |
+| CE-08 | T5 | `exec/tools.test.mjs`(16)、`exec/isolated-project.test.mjs`(2) | L1 | PASS |
+| CE-09 | T5 | `exec/tools.test.mjs`(16)、`exec/readonly-commands.test.mjs`(5) | L1 | PASS |
+| CE-10 | T5 | `exec/tools.test.mjs`(16) | L1 | PASS |
+| CE-11 | T5 | `exec/tools.test.mjs`(16)、`exec/sandbox-policy.test.mjs`(7) | L1 | PASS（隔离后端缺失时 fail-closed，真实后端 UNVERIFIED） |
+| CE-12 | T2/T3 | `exec/interpreter.test.mjs`(11)、`exec/runner.test.mjs`(13) | L1 | PASS |
+| CE-13 | T2/T3 | `exec/interpreter.test.mjs`(11)、`exec/runner.test.mjs`(13) | L1 | PASS |
+| CE-14 | T4 | `exec/background.test.mjs`(7) | L1 | PASS |
+| CE-15 | T3 | `exec/runner.test.mjs`(13) | L1 | PASS |
+| CE-16 | T19 | `exec/auto-background.test.mjs`(3) | L1 | PASS |
+| CE-17 | T18/T22 | `exec/persist.test.mjs`(6) | L1 | PASS |
+| CE-18 | T20 | `exec/destructive.test.mjs`(4)、`tui/sp004-cards.test.mjs`(10) | L1+L2 | PASS |
+| CE-19 | T20 | `exec/sandbox-policy.test.mjs`(7) | L1 | 部分 UNVERIFIED（缺真实平台后端，见 §5） |
+| CE-20 | T21 | `exec/sed-edit.test.mjs`(9) | L0 | PASS |
+| CT-01 | T13/T14 | `core/coding.test.mjs`(18)、`tui/coding-loop.test.mjs`(1)、`exec/isolated-project.test.mjs`(2) | L0+L2 | PASS |
+| CT-02 | T13 | `core/coding.test.mjs`(18) | L0 | PASS |
+| CT-03 | T13 | `core/coding.test.mjs`(18) | L0 | PASS |
+| CT-04 | T13 | `core/coding.test.mjs`(18) | L0 | PASS |
+| CT-05 | T12 | `core/question.test.mjs`(7)、`tui/sp004-cards.test.mjs`(10) | L0+L2 | PASS |
+| CT-06 | T12 | `core/question.test.mjs`(7) | L2 | PASS |
+| CT-07 | T13 | `core/coding.test.mjs`(18) | L0 | PASS（生产 runtime 未启用闸门，见 §5） |
+| CT-08 | T13/T14 | `core/coding.test.mjs`(18)、`exec/isolated-project.test.mjs`(2) | L0+L2 | PASS |
+| CT-09 | T4/T12 | `exec/background.test.mjs`(7)、`core/question.test.mjs`(7) | L1 | PASS |
+| GW-01 | T6/T23 | `git/status.test.mjs`(7)、`git/status-extended.test.mjs`(4) | L1 | PASS |
+| GW-02 | T7/T21 | `git/attribution.test.mjs`(8)、`exec/isolated-project.test.mjs`(2) | L1+L2 | PASS |
+| GW-03 | T7 | `git/attribution.test.mjs`(8) | L1 | PASS |
+| GW-04 | T9 | `git/commit.test.mjs`(11) | L1 | PASS |
+| GW-05 | T8/T23 | `git/worktree.test.mjs`(6)、`git/worktree-exit.test.mjs`(6) | L1 | PASS |
+| GW-06 | T8/T23 | `git/worktree-exit.test.mjs`(6) | L1 | PASS |
+| GW-07 | T8/T23 | `git/worktree.test.mjs`(6)、`git/worktree-exit.test.mjs`(6) | L1 | PASS |
+| GW-08 | T6/T8 | `git/status.test.mjs`(7) | L1 | PASS |
+| GW-09 | T9 | `git/commit.test.mjs`(11) | L1 | PASS |
+| TP-01 | T10/T15/T22 | `plan/store.test.mjs`(8)、`tui/sp004-cards.test.mjs`(10) | L0+L2 | PASS |
+| TP-02 | T10/T15/T22 | `plan/store.test.mjs`(8)、`tui/sp004-cards.test.mjs`(10) | L0+L2 | PASS |
+| TP-03 | T11/T22 | `core/plan-mode.test.mjs`(13) | L0 | PASS（降级为需批准，非硬阻断） |
+| TP-04 | T10/T22 | `plan/store.test.mjs`(8)、`plan/persist.test.mjs`(8) | L0 | PASS |
+| TP-05 | T10/T11/T14 | `core/plan-mode.test.mjs`(13)、`plan/validate`（经 store/host 用例） | L0+L2 | PASS |
+| TP-06 | T12/T15/T22 | `core/question.test.mjs`(7)、`tui/sp004-cards.test.mjs`(10) | L0+L2 | PASS |
+| TP-07 | T12/T22 | `core/question.test.mjs`(7) | L0 | PASS |
+| TP-08 | T12 | `core/question.test.mjs`(7) | L0 | PASS |
+| TP-09 | T10 | `plan/store.test.mjs`(8)、`tui/sp004-cards.test.mjs`(10) | L0+L2 | PASS |
+| TP-10 | T10/T22 | `plan/store.test.mjs`(8)、`plan/persist.test.mjs`(8)、`plan/host.test.mjs`(4) | L0 | PASS（跨进程恢复属 SP005） |
+
+合计：48 条 AC，PASS 45 条；CE-11、CE-19、SAFE-02 的「真实平台隔离后端」部分 UNVERIFIED；CT-07 生产闸门启用状态 UNVERIFIED（见 §5）。无 FAIL 行。
 
 ## 5. 未验证项与恢复条件
 
-- 48 条功能 AC 及上表产品验收均待用户确认后实施并取证。无平台隔离后端时保持普通命令关闭，相关用例保持 UNVERIFIED。
-- 精确视觉对比缺使用权确认及成对终端证据。中文 IME、原生终端和真实 Provider 均需符合条件的实测环境。
-- AST 结果须在存在本轮实现后运行。参考源码只读，保留指标和人工处置，参考片段不进入仓库。
-- 历史基线门禁不能作为 v1.3 的验证。既往报告见 `363d1eb:SP/SP004/test-report.md`。
+- **真实平台隔离后端（CE-11、CE-19、SAFE-02）**：仓库内只有策略层 `createSandboxPolicy`，无已验证的后端实现（设计规定由宿主注入）。生产接线因此在启动前 fail-closed：普通 Bash/PowerShell 被拒（`execSandboxUnavailable`），`plan/test/host.test.mjs` 的 runtime 工具面用例断言了这一行为与零 spawn。恢复条件：宿主提供 `verified: true` 的后端并传入 `createSandboxPolicy({backend})`，随后按 `exec/test/runner.test.mjs` 的同一套真实进程回归在新后端上复跑，再取消 fail-closed。
+- **CT-07 完成证据闸门在生产 runtime 未启用**：`createCodingTaskTracker` 与闸门逻辑已实现并有 18 条用例，但接入 `src/tui/runtime.ts` 会让无隔离后端的 CLI 会话在命令全被拒时持续重试到 `maxIterations`（T15 实测 64 次请求替代 2 次）。恢复条件：隔离后端落地后可重新接入；接入时须复跑 `tui/test/cli.test.mjs` 与 `tui/test/screen-e2e.test.mjs` 防回归。
+- **参考实现像素级对照（VIS-01…04）**：本环境无头，无两路真实交互终端与截图；参考仓也没有计划模式卡片/多题追问向导可供一一对照。恢复条件：具备图形终端与参考环境后，在 100×30 与 70×20 下采证单元格与 PNG，按 §1 的断言逐项目检。
+- **真实 Provider（live）**：本轮全部用例使用 scriptProvider/伪 TTY，未调用真实模型 API。恢复条件：配置真实 Provider 后跑 `npm run test:unit -- live` 类手工场景（仓库未提供自动 live 套件），单独记证据。
+- **发布包核验（SRC-01 的制品侧）**：本轮未打包发布。恢复条件：发布前准备阶段用 `npm pack --dry-run` 核对清单并核对 `THIRD-PARTY-NOTICES.md`，实际 npm 发布由用户在 GitHub 手动触发。
+- **AST 分值不证明来源**：见 `ast-review.md` 的边界说明；不等于法律洁净室认证。
 
-## 6. 本次文档验证
+## 6. 本轮变更与验证范围
 
-本次范围为文档。只在功能分支提交并推送。本次未执行产品验收、master 集成门禁、部署或发布。
-
-- 文档检查：`npm run spec:check`、`npm run skills:check`、`git diff --check`，并核对 48 条 AC、25 个任务、局部相对链接与推送范围。
-- [产品说明书](../../PRODUCT.md)同步了 SP004 规划项中的执行隔离和专用 worktree 限制。
+- 分支 `feature/SP004/command-execution` 上 30 个本地提交，涉及 `src/exec`、`src/git`、`src/plan`、`src/core`、`src/tui` 与文档；未包含依赖、产物、凭据、`.superpowers` 台账（本地不跟踪）。
+- 文档检查：`npm run spec:check`、`npm run skills:check`、`git diff --check`；48 条 AC 与 25 个任务映射见[实施计划](design/plan.zh.md#测试收口映射ac--任务--用例)。
+- [产品说明书](../../PRODUCT.md)已在同轮同步：§5.4 记录四类卡片与键位，§7 记录命令执行与 worktree 限制。

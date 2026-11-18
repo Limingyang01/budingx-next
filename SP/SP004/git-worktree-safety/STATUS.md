@@ -1,6 +1,6 @@
 # Git 与工作树安全 状态
 
-状态：**实施中（T0 完成，进入 T1）**。
+状态：**实施与验证完成，待合入 master**（T6–T9、T23 完成；GW-01…09 已回填）。
 
 ## 当前范围与依据
 
@@ -10,7 +10,12 @@
 
 ## 进度与验收
 
-需求、设计、计划 v1.3 已确认放行（用户 2026-11-18「继续开发SP004」）。T0 完成：基线 359/359 通过；git 2.56.0.windows.4.niugit 可用。本功能实施任务 T6–T9、T23 待前序任务完成后推进，AC 验收待逐任务取证。
+需求、设计、计划 v1.3 已确认放行（用户 2026-11-18「继续开发SP004」）。T6–T9、T23 全部完成并逐任务红绿取证：`npm test` 607/607 通过（unit 564），`npm run test:checks`、`spec:check`、`skills:check` 通过。GW-01…09 逐条映射到实际用例与计数，见[验收报告](../test-report.md) §4。提交经专用 worktree + 临时索引构造核准树，失败不覆盖 ref；删除 worktree 需宿主单次授权与残留计数。
+
+## 2026-11-19 实施完成提交
+
+- 30 个本地提交（HEAD `1f166fb`），分支 `feature/SP004/real-coding-task`；未合入 master，等待 `npm run merge:gate` GREEN 后按 buding-merge 规程合入并推送。
+- 每个任务的 RED/GREEN 证据、缺陷定位与 Ruling 记在[实施计划](../design/plan.zh.md)对应任务的「完成事实」与本地执行台账 `.superpowers/sdd/plan.zh/progress.md`（不跟踪进仓）。
 
 ## 2026-11-18 还原度对齐提交
 
