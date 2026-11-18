@@ -259,7 +259,7 @@
   4. 取消追问 → 发 `question_cancelled`，任务落到可恢复态，不无限等待（TP-08）
 - **GREEN**：复用既有 `awaiting_approval` 状态承载挂起，新增三个事件类型避免破坏既有状态机
 - **验证**：`npm run build && node --test src/core/test/question.test.mjs`；回归 `npm run test:unit`
-- **完成事实**：待填
+- **完成事实**：2026-11-18 完成。新建 `src/core/questions.ts`（`createAskUserQuestionTool`：questions 1–4 题、每题 2–4 选项、`multiSelect` 默认 false、`capability` 恒为 `read` 故任何档位免审批、`target` kind `none`）与 `src/core/test/question.test.mjs` 7 条用例；`src/core/session.ts` 增 `askQuestion`/`answerQuestion`/`cancelQuestion` 与 `pendingQuestion` getter，挂起复用既有 `awaiting_approval` 状态而状态机未扩状态；新事件 `question_requested`/`question_answered`/`question_cancelled` 保持旧消费者不受影响。RED 证据：回退 `session.ts` 并删除 `questions.ts` 后重建，`node --test src/core/test/question.test.mjs` 报 `ERR_MODULE_NOT_FOUND ... dist/core/questions.js`，0 通过 1 失败；恢复实现后 7/7 通过。全量 `npm run test:unit` 517/517 通过（`.superpowers/sdd/plan.zh/t12-full-unit.log`，exit=0）。同轮 Ruling：追问不写工作区，故不走 `prepareApproval`；回答以原 call ID 的单一 `tool_result` 返回，`finalize`/`dispose`/`interrupt` 都会把挂起追问收敛为取消，避免回合无限等待。
 
 ### T13 · 编码任务目标状态机与完成证据
 

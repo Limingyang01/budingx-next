@@ -39,12 +39,16 @@ import type {
   PermissionRequest
 } from './permissions.js'
 import type {
+  PendingQuestion,
   Plan,
   PlanDriftItem,
   PlanModeExitResult,
   PlanModeHost,
   PlanModePhase,
-  PlanModeSnapshot
+  PlanModeSnapshot,
+  Question,
+  QuestionAnswers,
+  QuestionAnnotations
 } from './plan.js'
 
 export type SessionOptions = {
@@ -106,6 +110,25 @@ function describeDrift(drift: PlanDriftItem[]): string {
   return drift.map((item) => `${item.item}（期望 ${item.expected}，实际 ${item.actual}）`).join('；')
 }
 
+type QuestionOutcome =
+  | { status: 'answered'; answers: QuestionAnswers; annotations?: QuestionAnnotations }
+  | { status: 'cancelled' }
+
+/** 追问结果文本：按题目文本关联答案，并保留用户备注（design §6.4）。 */
+function formatQuestionResult(
+  questions: Question[],
+  answers: QuestionAnswers,
+  annotations?: QuestionAnnotations
+): string {
+  const lines = ['用户已回答以下问题：']
+  for (const question of questions) {
+    lines.push(`${question.question} ${answers[question.question] ?? ''}`.trim())
+    const annotation = annotations?.[question.question]
+    if (annotation?.notes?.trim()) lines.push(`  备注：${annotation.notes.trim()}`)
+  }
+  return lines.join('\n')
+}
+
 export class Session {
   private state: SessionState = 'idle'
   private readonly messages: Message[] = []
@@ -133,6 +156,11 @@ export class Session {
   }
   /** 已批准计划是否已在首次副作用前重查（§6.3）。 */
   private approvedPlanCheck?: { planId: string; rechecked: boolean }
+  /** 追问挂起（§6.4）：复用 awaiting_approval 状态，配 question_* 事件。 */
+  private pendingQuestionState?: {
+    question: PendingQuestion
+    resolve: (outcome: QuestionOutcome) => void
+  }
 
   /** Hosts pause auto-start while boundary commands or credential entry run. */
   setQueuePaused(paused: boolean): void {
@@ -367,6 +395,98 @@ export class Session {
     }
   }
 
+  /** UI-only 查询：当前待回答的追问（design §6.4）。 */
+  get pendingQuestion(): PendingQuestion | undefined {
+    return this.pendingQuestionState?.question
+  }
+
+  /**
+   * 在活动回合内挂起并追问用户（§6.4）。复用 awaiting_approval 状态，
+   * 由宿主通过 answerQuestion/cancelQuestion 结束等待；中断回合同样结束等待。
+   */
+  async askQuestion(
+    questions: Question[],
+    context: { turnId?: string; callId?: string } = {}
+  ): Promise<string> {
+    const turn = this.activeTurn
+    if (!turn) throw new Error('追问必须在进行中的回合内发起')
+    if (this.pendingQuestionState) throw new Error('已有待回答的追问，不能并发发起')
+    const questionId = randomUUID()
+    const callId = context.callId ?? ''
+    const pending: PendingQuestion = {
+      questionId,
+      callId,
+      questions,
+      allowFreeText: true,
+      createdAt: Date.now()
+    }
+    this.emit({ type: 'question_requested', turnId: turn.id, callId, question: pending })
+    this.setState('awaiting_approval')
+    const outcome = await new Promise<QuestionOutcome>((resolve) => {
+      const finish = (next: QuestionOutcome) => {
+        if (this.pendingQuestionState?.question.questionId === questionId) {
+          this.pendingQuestionState = undefined
+        }
+        resolve(next)
+      }
+      const onAbort = () => finish({ status: 'cancelled' })
+      turn.controller.signal.addEventListener('abort', onAbort, { once: true })
+      this.pendingQuestionState = { question: pending, resolve: finish }
+    })
+    if (this.state === 'awaiting_approval') this.setState('tool_running')
+    if (outcome.status === 'cancelled') {
+      this.emit({ type: 'question_cancelled', turnId: turn.id, callId, questionId })
+      return 'The question was cancelled; continue without the user answer.'
+    }
+    this.emit({
+      type: 'question_answered',
+      turnId: turn.id,
+      callId,
+      questionId,
+      answers: outcome.answers,
+      ...(outcome.annotations ? { annotations: outcome.annotations } : {})
+    })
+    return formatQuestionResult(questions, outcome.answers, outcome.annotations)
+  }
+
+  /**
+   * 宿主提交回答：校验待处理请求与原始 call ID，返回单一 tool_result
+   * 所需文本（§6.4）。重复、过期与跨回合响应一律无效。
+   */
+  answerQuestion(
+    questionId: string,
+    answers: QuestionAnswers,
+    annotations?: QuestionAnnotations
+  ): { ok: boolean; reason?: string } {
+    const pending = this.pendingQuestionState
+    if (!pending) return { ok: false, reason: '没有待回答的追问' }
+    if (pending.question.questionId !== questionId) {
+      return { ok: false, reason: '追问标识不匹配或已过期' }
+    }
+    if (typeof answers !== 'object' || answers === null) {
+      return { ok: false, reason: '答案必须按题目文本关联的对象' }
+    }
+    const normalized: QuestionAnswers = {}
+    for (const question of pending.question.questions) {
+      const answer = answers[question.question]
+      if (typeof answer !== 'string' || answer.trim() === '') {
+        return { ok: false, reason: `题目缺少答案：${question.question}` }
+      }
+      normalized[question.question] = answer.trim()
+    }
+    pending.resolve({ status: 'answered', answers: normalized, ...(annotations ? { annotations } : {}) })
+    return { ok: true }
+  }
+
+  /** 取消待回答的追问：发 question_cancelled，以同一 call ID 返回取消结果。 */
+  cancelQuestion(questionId?: string): boolean {
+    const pending = this.pendingQuestionState
+    if (!pending) return false
+    if (questionId !== undefined && pending.question.questionId !== questionId) return false
+    pending.resolve({ status: 'cancelled' })
+    return true
+  }
+
   private awaitPlanDecision(
     turn: ActiveTurn | undefined,
     request: ApprovalRequest
@@ -485,6 +605,7 @@ export class Session {
 
   dispose(): void {
     if (this.queueTimer) clearTimeout(this.queueTimer)
+    this.pendingQuestionState?.resolve({ status: 'cancelled' })
     if (this.pendingPlanDecision) {
       this.pendingPlanDecision.resolve({ outcome: 'cancelled', via: 'policy' })
       this.pendingPlanDecision = undefined
@@ -1123,6 +1244,8 @@ export class Session {
       this.pendingApproval.resolve({ outcome: 'cancelled', via: 'user' })
       this.pendingApproval = undefined
     }
+    // 追问在回合结束时必须收敛，绝不让模型无限等待（§6.4 TP-08）。
+    this.pendingQuestionState?.resolve({ status: 'cancelled' })
 
     let restoreText: string | undefined
     if (outcome === 'cancelled' && this.canRestore(turn)) {
