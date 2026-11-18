@@ -4,6 +4,7 @@ import { spawn as nodeSpawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import {
+  EXEC_BLOCKING_BUDGET_MS,
   EXEC_OUTPUT_CAP,
   EXEC_PERSIST_THRESHOLD,
   resolveTimeoutConfig,
@@ -37,6 +38,8 @@ export interface CommandRunnerOptions {
   home?: string
   /** 前台输出落盘阈值（字节）；缺省 EXEC_PERSIST_THRESHOLD（1MB）。 */
   persistThreshold?: number
+  /** 前台阻塞预算（毫秒，T19）；超预算自动转后台。测试可注入缩短，生产默认 EXEC_BLOCKING_BUDGET_MS（15s）。 */
+  blockingBudgetMs?: number
   /** 后台任务完成事件回调（T18 command_finished）。 */
   onCommandFinished?: (event: CommandFinishedEvent) => void
 }
@@ -175,10 +178,49 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
       if (context.signal.aborted) onAbort()
       else context.signal.addEventListener('abort', onAbort, { once: true })
 
+      // T19：阻塞预算——前台命令超预算即移交后台任务表并立即返回，回合不被长时间阻塞（design §4.4）。
+      // 复用同一子进程与收集器（register 不重复挂 data 监听）；超时/取消仍由后台表接管。
+      const blockingBudgetMs = options.blockingBudgetMs ?? EXEC_BLOCKING_BUDGET_MS
+      const budgetTimer = setTimeout(() => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        context.signal.removeEventListener('abort', onAbort)
+        const taskId = background.register(
+          {
+            command: spec.command,
+            interpreter: interpreter.label,
+            cwd,
+            timeoutMs,
+            autoBackgrounded: true,
+            backgroundedByUser: false
+          },
+          child,
+          stdoutCollector,
+          stderrCollector,
+          context.signal
+        )
+        const outputPath =
+          options.sessionId !== undefined
+            ? resolveTaskOutputPath(options.sessionId, taskId, options.home)
+            : undefined
+        resolve(
+          early({
+            outcome: 'running',
+            taskId,
+            autoBackgrounded: true,
+            reason:
+              `命令超过阻塞预算（${blockingBudgetMs}ms）已自动转入后台` +
+              (outputPath !== undefined ? `，输出将写入：${outputPath}` : '')
+          })
+        )
+      }, blockingBudgetMs)
+
       const finalize = async (exitCode: number | undefined) => {
         if (settled) return
         settled = true
         clearTimeout(timer)
+        clearTimeout(budgetTimer)
         context.signal.removeEventListener('abort', onAbort)
         const stdoutSnap = stdoutCollector.snapshot(EXEC_OUTPUT_CAP)
         const stderrSnap = stderrCollector.snapshot(EXEC_OUTPUT_CAP)
@@ -222,6 +264,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
         if (settled) return
         settled = true
         clearTimeout(timer)
+        clearTimeout(budgetTimer)
         context.signal.removeEventListener('abort', onAbort)
         resolve(early({ outcome: 'failed', reason: `进程启动失败：${error.message}` }))
       })

@@ -371,7 +371,7 @@
   3. 转后台后任务可被 `status()` 查询与 `cancel()` 取消（CE-16）
 - **GREEN**：前台执行器用独立计时器，预算到达时移交后台任务表并立即返回
 - **验证**：`npm run build && node --test src/exec/test/auto-background.test.mjs`
-- **完成事实**：待填
+- **完成事实**（2026-11-18）：RED 3 条真实进程失败（超预算命令前台跑完返回 completed、长命令阻塞回合 30s）→ GREEN 3/3；全量 426/426 通过。实现：`CommandRunnerOptions.blockingBudgetMs?`（测试注入缩短，生产默认 `EXEC_BLOCKING_BUDGET_MS=15000`）；前台独立 budgetTimer 到达即移交 `background.register`（复用同一子进程与 full 收集器，register 不重复挂 data 监听），立即返回 `outcome='running'`+`taskId`+`autoBackgrounded=true`+reason（含预算毫秒数与落盘路径）；超时/取消/落盘/完成事件由后台表接管；finalize 与启动失败路径均清 budgetTimer。
 - **备注**：本任务用**缩短的预算常量**（测试注入）以避免 15s 级用例拖慢回归；生产默认值仍为 15000
 
 ### T20 · 隔离后端接线与危险操作提示
