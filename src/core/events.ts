@@ -27,6 +27,7 @@ export type NoticeCode =
   | 'config_migrated'
   | 'orphan_keys_found'
   | 'model_limit_reached'
+  | 'file_context'
 
 export type ErrorClass =
   | 'auth'
@@ -133,6 +134,7 @@ export type SessionEvent =
       callId: string
       name: string
       summary: string
+      preview?: readonly string[]
     }
   | {
       type: 'approval_resolved'

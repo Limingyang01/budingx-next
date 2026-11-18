@@ -18,7 +18,7 @@ import {
 import type { PermissionsStore } from '../storage/permissions.js'
 import { probe, type ProbeResult } from '../provider/openai.js'
 import type { BudingPermissionPolicy, PermissionRule } from '../workspace/policy.js'
-import type { ChangeRecord, UndoOutcome } from '../workspace/checkpoint.js'
+import { changeDiffs, type ChangeRecord, type UndoOutcome } from '../workspace/checkpoint.js'
 import type { Workspace } from '../workspace/paths.js'
 import { diffStats, diffText } from './render/diff-view.js'
 
@@ -82,7 +82,7 @@ export function commandHelp(lang: 'zh' | 'en' = 'en'): string {
   /rules add <allow|deny> <tool|*> [path-glob]  新增规则
   /rules rm <id>        删除规则
   /diff [路径]          查看本会话改动（交互模式打开对话框）
-  /undo [路径]          撤销本会话改动（外部改动会阻止自动撤销）
+  /undo [路径]          撤销最近一组改动或指定文件（外部改动会阻止自动撤销）
   /denials              查看拒绝历史
   /clear                清空会话
   /exit                 退出 budingx`
@@ -104,7 +104,7 @@ export function commandHelp(lang: 'zh' | 'en' = 'en'): string {
   /rules add <allow|deny> <tool|*> [path-glob]  add a rule
   /rules rm <id>        remove a rule
   /diff [path]          show this session's changes (opens a dialog interactively)
-  /undo [path]          undo session changes (foreign edits block automatic undo)
+  /undo [path]          undo the latest change group or a file (foreign edits block undo)
   /denials              show the denial history
   /clear                clear the conversation
   /exit                 leave budingx`
@@ -577,25 +577,23 @@ function diffCommand(
   if (!permission) {
     return { handled: true, error: pick('工作区运行时未启用', 'The workspace runtime is not active') }
   }
-  const changes = permission.checkpointChanges()
-  if (changes.length === 0) {
-    return { handled: true, message: pick('本会话尚无工作区改动', 'No workspace changes in this session') }
-  }
+  const changes = changeDiffs(permission.workspace, permission.checkpointChanges())
   if (argument) {
-    const record = changes.filter((entry) => entry.path === argument).at(-1)
+    const record = changes.find((entry) => entry.path === argument)
     if (!record) {
-      return { handled: true, error: pick(`没有该路径的会话改动：${argument}`, `No session change for ${argument}`) }
+      return { handled: true, error: pick(`没有该路径的当前改动：${argument}`, `No current change for ${argument}`) }
     }
     return {
       handled: true,
-      message: [`── ${record.path} (${record.operation}) ──`, ...diffText(record.diff)].join('\n')
+      message: [`── ${record.path} (${record.operation}) ──`, ...diffText(record.hunks)].join('\n')
     }
   }
-  const byPath = new Map<string, ChangeRecord>()
-  for (const record of changes) byPath.set(record.path, record)
-  const lines = [...byPath.values()].map((record) => {
-    const { additions, removals } = diffStats(record.diff)
-    return ` ${record.path} (${record.operation === 'create' ? pick('新建', 'new') : pick('修改', 'edit')}) +${additions}/-${removals}`
+  if (changes.length === 0) {
+    return { handled: true, message: pick('本会话尚无工作区改动', 'No workspace changes in this session') }
+  }
+  const lines = changes.map((record) => {
+    const { additions, removals } = diffStats(record.hunks)
+    return ` ${record.path} (${record.operation}) +${additions}/-${removals}`
   })
   return {
     handled: true,
@@ -617,7 +615,7 @@ function undoCommand(
     return { handled: true, error: pick('工作区运行时未启用', 'The workspace runtime is not active') }
   }
   const outcome = permission.undo(argument || undefined)
-  if (outcome.undone) {
+  if (outcome.undone && !outcome.reason) {
     return {
       handled: true,
       message: pick(`已撤销：${outcome.paths.join('、')}`, `Undone: ${outcome.paths.join(', ')}`)

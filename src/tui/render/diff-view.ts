@@ -25,7 +25,7 @@ export function diffViewLines(hunks: DiffHunk[], columns = 100): DiffViewLine[] 
           ? String(line.newNo ?? '').padStart(width, ' ')
           : String(line.oldNo ?? '').padStart(width, ' ')
       const marker = line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '
-      const text = line.text
+      const text = line.text.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '')
       const limit = Math.max(20, columns - width - 2)
       const shown = text.length > limit ? text.slice(0, limit - 1) + '…' : text
       lines.push({

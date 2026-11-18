@@ -3,14 +3,13 @@
 import { readFileSync } from 'node:fs'
 import { createElement } from 'react'
 import { render } from 'ink'
-import type { Session } from '../core/session.js'
 import { ConfigStore } from '../storage/config-store.js'
 import { CredentialStore } from '../storage/credentials.js'
 import { mergeSources, profileHost, type ResolvedConfig } from '../storage/profiles.js'
 import { MODES_EN, MODES_ZH } from '../workspace/policy.js'
 import type { PermissionMode } from '../core/permissions.js'
 import { App } from './app.js'
-import { createAgentRuntime, type AgentRuntime } from './runtime.js'
+import { createAgentRuntime, workspacePromptOptions, type AgentRuntime } from './runtime.js'
 import type { CommandContext } from './commands.js'
 import { InkApprovalGateway } from './approval.js'
 import { runCommand } from './commands.js'
@@ -95,10 +94,11 @@ function loadStores(): Stores {
 }
 
 /** Run one turn and stream the answer as plain text. */
-function runTurn(session: Session, text: string): Promise<number> {
+function runTurn({ session, workspace, policy }: AgentRuntime, text: string): Promise<number> {
   return new Promise<number>((resolve) => {
     const off = session.on((event) => {
       if (event.type === 'text_delta') process.stdout.write(event.text)
+      if (event.type === 'notice' && event.code === 'file_context') process.stderr.write(event.text + '\n')
       if (event.type === 'turn_finalized') {
         off()
         if (event.outcome === 'error' && event.error) {
@@ -109,7 +109,7 @@ function runTurn(session: Session, text: string): Promise<number> {
         resolve(0)
       }
     })
-    session.submit(text)
+    session.submit(text, workspacePromptOptions(text, workspace, policy))
   })
 }
 
@@ -170,7 +170,7 @@ async function runPipe(config: ResolvedConfig, stores: Stores): Promise<number> 
       code = 1
       break
     }
-    const turnCode = await runTurn(session, text)
+    const turnCode = await runTurn(runtime, text)
     process.stdout.write('\n')
     if (turnCode !== 0) code = turnCode
   }
@@ -272,7 +272,7 @@ async function main(): Promise<void> {
       configStore: stores.configStore,
       mode: 'read_only'
     })
-    const code = await runTurn(runtime.session, config.prompt)
+    const code = await runTurn(runtime, config.prompt)
     process.stdout.write('\n')
     runtime.session.dispose()
     process.exitCode = code

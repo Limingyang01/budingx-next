@@ -33,3 +33,7 @@
 ## 交接与历史
 
 下一位 Agent 先读 [迭代汇总](../requirements-summary.md) 与本文件；本轮最早未完成步骤为「交付记录与门禁收口」。overlay 用 Ink 自绘，未搬参考仓 typeahead 组件。
+
+## 验收修复分支
+
+`fix/SP003/workspace-tui`。已接通提交、排队、行范围、引号、模糊文件候选和权限提示，覆盖交互与非交互请求入口。详见 [验证报告 §8](../test-report.md#8-验收修复分支)。

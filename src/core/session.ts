@@ -29,6 +29,8 @@ import type {
   ApprovalDecision,
   ApprovalGateway,
   ApprovalRequest,
+  PreparedTool,
+  ToolContext,
   ToolHandler
 } from './tools.js'
 import type {
@@ -54,9 +56,14 @@ export type SessionOptions = {
 export type SubmitOptions = {
   /** File references brought in with @ (SP003 AC FC-04). */
   context?: { source: string; content: string }[]
+  /** Resolve at the model boundary so queued prompts see current files and rules. */
+  resolveContext?: () => {
+    context: NonNullable<SubmitOptions['context']>
+    notices: string[]
+  }
 }
 
-type QueuedInput = { id: string; text: string }
+type QueuedInput = { id: string; text: string; options?: SubmitOptions }
 
 type ActiveTurn = {
   provider: ModelProvider
@@ -137,12 +144,12 @@ export class Session {
     const trimmed = text.trim()
     if (!trimmed) return
     if (this.state !== 'idle') {
-      const item: QueuedInput = { id: randomUUID(), text: trimmed }
+      const item: QueuedInput = { id: randomUUID(), text: trimmed, ...(options ? { options } : {}) }
       this.queue.push(item)
       this.emit({ type: 'input_queued', queueId: item.id, preview: previewOf(trimmed) })
       return
     }
-    void this.startTurn(trimmed, undefined, options?.context).catch((error) => {
+    void this.startTurn(trimmed, undefined, options).catch((error) => {
       this.emit({
         type: 'notice',
         level: 'error',
@@ -221,7 +228,7 @@ export class Session {
   private async startTurn(
     userText: string,
     queued?: QueuedInput,
-    context?: { source: string; content: string }[]
+    options?: SubmitOptions
   ): Promise<void> {
     const turn: ActiveTurn = {
       provider: this.options.resolveProvider?.() ?? this.options.provider,
@@ -243,18 +250,7 @@ export class Session {
     const snapshot = this.options.resolveSnapshot()
     this.emit({ type: 'turn_started', turnId: turn.id, snapshot })
     this.setState('requesting')
-    const userMessage: Message = {
-      id: randomUUID(),
-      role: 'user',
-      blocks: [
-        ...(context ?? []).map((entry) => ({
-          type: 'context' as const,
-          source: entry.source,
-          content: entry.content
-        })),
-        { type: 'text', text: userText }
-      ]
-    }
+    const userMessage = this.userMessage(userText, options)
     turn.messageIds.push(userMessage.id)
     this.messages.push(userMessage)
     await this.runTurn(turn, snapshot)
@@ -509,7 +505,23 @@ export class Session {
         }
         needsApproval = verdict.action === 'ask'
       }
+      let prepared: PreparedTool | undefined
+      let remember = false
       if (needsApproval) {
+        try {
+          prepared = handler.prepareApproval?.(input)
+        } catch (error) {
+          this.pushToolResult(
+            turn,
+            call.id,
+            error instanceof Error ? error.message : 'Could not preview tool operation',
+            true,
+            typeof (error as { code?: unknown } | null)?.code === 'string'
+              ? (error as { code: string }).code
+              : undefined
+          )
+          continue
+        }
         this.setState('awaiting_approval')
         const requestId = randomUUID()
         const request: ApprovalRequest = {
@@ -517,7 +529,8 @@ export class Session {
           turnId: turn.id,
           callId: call.id,
           name: call.name,
-          summary: handler.describe(input)
+          summary: handler.describe(input),
+          ...(prepared ? { preview: prepared.preview } : {})
         }
         this.emit({
           type: 'approval_requested',
@@ -525,9 +538,11 @@ export class Session {
           requestId,
           callId: call.id,
           name: call.name,
-          summary: request.summary
+          summary: request.summary,
+          ...(request.preview ? { preview: request.preview } : {})
         })
         const decision = await this.requestApproval(turn, request)
+        remember = decision.outcome === 'allow_session'
         this.emit({
           type: 'approval_resolved',
           turnId: turn.id,
@@ -535,10 +550,6 @@ export class Session {
           outcome: decision.outcome,
           via: decision.via
         })
-        if (decision.outcome === 'allow_session' && policy && permissionRequest) {
-          // SP003 AC PC-06: remember this target for the rest of the session.
-          policy.remember(permissionRequest)
-        }
         if (decision.outcome !== 'allow' && decision.outcome !== 'allow_session') {
           const feedback =
             decision.feedback && decision.feedback.trim()
@@ -574,11 +585,17 @@ export class Session {
       let isError = false
       let errorCode: string | undefined
       try {
-        content = await handler.execute(input, {
+        const toolContext: ToolContext = {
           signal: turn.controller.signal,
           changes: (records) => this.emit({ type: 'change_set', changes: records }),
           turnId: turn.id
-        })
+        }
+        if (permissionRequest && policy?.decide(permissionRequest).action === 'deny') {
+          this.pushToolResult(turn, call.id, 'Permission changed before execution', true, ERROR_CODES.permissionDenied)
+          continue
+        }
+        content = await (prepared ? prepared.execute(toolContext) : handler.execute(input, toolContext))
+        if (remember && permissionRequest) policy?.remember(permissionRequest)
       } catch (error) {
         content = error instanceof Error ? error.message : 'Tool execution failed'
         isError = true
@@ -648,15 +665,29 @@ export class Session {
     })
   }
 
+  private userMessage(text: string, options?: SubmitOptions): Message {
+    const resolved = options?.resolveContext?.()
+    for (const notice of resolved?.notices ?? []) {
+      this.emit({ type: 'notice', level: 'info', code: 'file_context', text: notice })
+    }
+    return {
+      id: randomUUID(),
+      role: 'user',
+      blocks: [
+        ...(resolved?.context ?? options?.context ?? []).map((entry) => ({
+          type: 'context' as const,
+          ...entry
+        })),
+        { type: 'text', text }
+      ]
+    }
+  }
+
   private injectQueued(turn: ActiveTurn): void {
     if (this.queue.length === 0) return
     const items = this.queue.splice(0, this.queue.length)
     for (const item of items) {
-      const message: Message = {
-        id: randomUUID(),
-        role: 'user',
-        blocks: [{ type: 'text', text: item.text }]
-      }
+      const message = this.userMessage(item.text, item.options)
       turn.messageIds.push(message.id)
       this.messages.push(message)
       this.emit({
@@ -775,6 +806,6 @@ export class Session {
     if (this.state !== 'idle') return
     const item = this.queue.shift()
     if (!item) return
-    void this.startTurn(item.text, item).catch(() => {})
+    void this.startTurn(item.text, item, item.options).catch(() => {})
   }
 }

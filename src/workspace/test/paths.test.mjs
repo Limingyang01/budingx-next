@@ -99,6 +99,10 @@ test('a link pointing outside the root is refused', () => {
     }
     const workspace = createWorkspace(tree.root)
     assert.throws(
+      () => workspace.resolve('escape/missing/child.txt'),
+      (error) => error.code === 'BUDINGX_WORKSPACE_001'
+    )
+    assert.throws(
       () => workspace.resolve('escape/secret.txt'),
       (error) => error.code === 'BUDINGX_WORKSPACE_001'
     )

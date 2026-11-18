@@ -3,7 +3,7 @@
 // honours the ignore matcher; results are truncated with a count summary so
 // the model always knows what it is seeing.
 import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, relative, sep } from 'node:path'
+import { join, posix, relative, sep } from 'node:path'
 import { ERROR_CODES } from '../core/constants.js'
 import { MAX_GLOB_RESULTS, MAX_GREP_RESULTS, MAX_WALK_FILES } from './constants.js'
 import { createIgnoreMatcher, matchGlob, type IgnoreMatcher } from './ignore.js'
@@ -59,14 +59,16 @@ export function walkWorkspaceFiles(
       }
       const full = join(directory, entry.name)
       const rel = relative(workspace.root, full).split(sep).join('/')
-      const isDirectory =
-        entry.isDirectory() || (!entry.isFile() && safeIsDirectory(full))
-      if (isDirectory) {
+      if (!entry.isDirectory() && !entry.isFile()) {
+        // Readdir uses physical directories only; skip ambiguous link entries
+        // instead of revisiting a directory or indexing outside the root.
+        continue
+      }
+      if (entry.isDirectory()) {
         if (ignore.isIgnoredDirectory(full)) continue
         if (!visit(full)) return false
         continue
       }
-      if (!entry.isFile() && !safeIsFile(full)) continue
       if (ignore.isIgnored(full)) continue
       if (options.exclude?.(rel)) continue
       files.push(full)
@@ -77,22 +79,6 @@ export function walkWorkspaceFiles(
 
   visit(startDirectory)
   return { files, relative: relativePaths, capped }
-}
-
-function safeIsDirectory(target: string): boolean {
-  try {
-    return statSync(target).isDirectory()
-  } catch {
-    return false
-  }
-}
-
-function safeIsFile(target: string): boolean {
-  try {
-    return statSync(target).isFile()
-  } catch {
-    return false
-  }
 }
 
 function looksBinary(buffer: Buffer): boolean {
@@ -137,7 +123,7 @@ export function globWorkspace(
     ...(options.exclude ? { exclude: options.exclude } : {})
   })
   const matched = walk.relative.filter((rel) =>
-    matchGlob(options.pattern, withoutBase(rel, baseRel))
+    matchSearchGlob(options.pattern, withoutBase(rel, baseRel))
   )
   const max = options.maxResults ?? MAX_GLOB_RESULTS
   const shown = matched.slice(0, max)
@@ -154,6 +140,13 @@ export function globWorkspace(
   }
 }
 
+function matchSearchGlob(pattern: string, path: string): boolean {
+  const normalized = pattern.replace(/^\/+/, '')
+  return /[\[{]/.test(normalized)
+    ? posix.matchesGlob(path, normalized)
+    : matchGlob(normalized, path)
+}
+
 /** Strip the search base from a root-relative path for pattern matching. */
 function withoutBase(rel: string, baseRel: string): string {
   if (!baseRel || baseRel === '.') return rel
@@ -167,6 +160,7 @@ export type GrepOptions = {
   path?: string
   glob?: string
   caseInsensitive?: boolean
+  lineNumbers?: boolean
   maxResults?: number
   signal?: AbortSignal
   maxFileBytes?: number
@@ -212,7 +206,7 @@ export function grepWorkspace(
   workspace: Workspace,
   options: GrepOptions
 ): SearchSummary {
-  const flags = (options.caseInsensitive ? 'i' : '') + (options.multiline ? 's' : '')
+  const flags = (options.caseInsensitive ? 'i' : '') + (options.multiline ? 'ms' : '')
   let regex: RegExp
   let globalRegex: RegExp
   try {
@@ -232,35 +226,36 @@ export function grepWorkspace(
     )
   }
   const base = options.path ? workspace.resolve(options.path) : undefined
-  if (base && !base.isDirectory) {
-    throw new WorkspaceError(
-      ERROR_CODES.workspaceNotAFile,
-      `Search path is not a directory: ${base.relative}`
-    )
+  if (base && !base.existed) {
+    throw new WorkspaceError(ERROR_CODES.workspaceNotFound, `Search path does not exist: ${base.relative}`)
   }
-  const startReal = base ? base.real : workspace.root
-  const baseRel = base ? base.relative : ''
-  const walk = walkWorkspaceFiles(workspace, startReal, {
-    signal: options.signal,
-    ...(options.exclude ? { exclude: options.exclude } : {})
-  })
+  const baseRel = base?.isDirectory ? base.relative : ''
+  const walk = base && !base.isDirectory
+    ? options.exclude?.(base.relative)
+      ? { files: [], relative: [], capped: false }
+      : { files: [base.real], relative: [base.relative], capped: false }
+    : walkWorkspaceFiles(workspace, base?.real ?? workspace.root, {
+        signal: options.signal,
+        exclude: options.exclude
+      })
   // head_limit: 0 means unlimited, matching the reference.
   const unlimited = options.maxResults === 0
   const max = unlimited ? Number.POSITIVE_INFINITY : (options.maxResults ?? MAX_GREP_RESULTS)
   const skip = Math.max(0, options.offset ?? 0)
-  const maxFileBytes = options.maxFileBytes ?? 2 * 1024 * 1024
+  const maxFileBytes = options.maxFileBytes ?? 32 * 1024 * 1024
 
   type Hit = { rel: string; occurrences: number; mtimeMs: number; lines: string[] }
   const hits: Hit[] = []
   let totalOccurrences = 0
   let skippedBinary = 0
+  let skippedLarge = 0
 
   for (let index = 0; index < walk.files.length; index++) {
     if (options.signal?.aborted) {
       throw new WorkspaceError(ERROR_CODES.coreToolFailed, 'Search cancelled')
     }
     const rel = walk.relative[index]
-    if (options.glob && !matchGlob(options.glob, withoutBase(rel, baseRel))) continue
+    if (options.glob && !matchSearchGlob(options.glob, withoutBase(rel, baseRel))) continue
     if (typeExtensions) {
       const dot = rel.lastIndexOf('.')
       if (dot === -1 || !typeExtensions.includes(rel.slice(dot + 1).toLowerCase())) continue
@@ -271,7 +266,10 @@ export function grepWorkspace(
     try {
       const stats = statSync(file)
       mtimeMs = stats.mtimeMs
-      if (stats.size > maxFileBytes) continue
+      if (stats.size > maxFileBytes) {
+        skippedLarge++
+        continue
+      }
       buffer = readFileSync(file)
     } catch {
       continue
@@ -282,24 +280,31 @@ export function grepWorkspace(
     }
     const text = buffer.toString('utf8').replace(/\r\n/g, '\n')
     const linesOf = text.split('\n')
+    if (linesOf.at(-1) === '') linesOf.pop()
     const matchLineSet = new Set<number>()
     let occurrences = 0
-    if (options.multiline)
-      {
-        globalRegex.lastIndex = 0
-        let match: RegExpExecArray | null
-        while ((match = globalRegex.exec(text)) !== null) {
-          if (match[0].length === 0) {
-            globalRegex.lastIndex++
-            continue
-          }
-          occurrences++
-          const startLine = text.slice(0, match.index).split('\n').length
-          const endLine = text.slice(0, match.index + match[0].length).split('\n').length
-          for (let line = startLine; line <= endLine; line++) matchLineSet.add(line)
+    if (options.multiline) {
+      globalRegex.lastIndex = 0
+      let line = 1
+      let nextBreak = text.indexOf('\n')
+      const lineAt = (offset: number): number => {
+        while (nextBreak !== -1 && nextBreak < offset) {
+          line++
+          nextBreak = text.indexOf('\n', nextBreak + 1)
         }
+        return line
       }
-    else {
+      let match: RegExpExecArray | null
+      while ((match = globalRegex.exec(text)) !== null) {
+        const length = match[0].length
+        if (length === 0) globalRegex.lastIndex++
+        const startLine = lineAt(match.index)
+        if (startLine > linesOf.length) break
+        const endLine = lineAt(match.index + Math.max(0, length - 1))
+        occurrences++
+        for (let matched = startLine; matched <= endLine; matched++) matchLineSet.add(matched)
+      }
+    } else {
       for (let lineNo = 1; lineNo <= linesOf.length; lineNo++) {
         regex.lastIndex = 0
         if (regex.test(linesOf[lineNo - 1])) {
@@ -327,7 +332,8 @@ export function grepWorkspace(
       ranges.forEach(([from, to], rangeIndex) => {
         if (rangeIndex > 0) out.push('--')
         for (let lineNo = from; lineNo <= to; lineNo++) {
-          out.push(`${rel}:${lineNo}:${linesOf[lineNo - 1].slice(0, 500)}`)
+          const prefix = options.lineNumbers === false ? rel + ':' : `${rel}:${lineNo}:`
+          out.push(prefix + linesOf[lineNo - 1].slice(0, 500))
         }
       })
       hits.push({ rel, occurrences, mtimeMs, lines: out })
@@ -336,6 +342,11 @@ export function grepWorkspace(
     }
   }
 
+  const limits = [
+    ...(walk.capped ? [`walk capped at ${walk.files.length} files`] : []),
+    ...(skippedLarge ? [`${skippedLarge} file(s) skipped above ${maxFileBytes} bytes`] : [])
+  ]
+  const limitNote = limits.length ? '\n\n[Incomplete search: ' + limits.join(', ') + ']' : ''
   if (options.outputMode === 'files_with_matches') {
     hits.sort((a, b) => b.mtimeMs - a.mtimeMs || (a.rel < b.rel ? -1 : 1))
     const shownHits = hits.slice(skip, skip + max)
@@ -345,7 +356,7 @@ export function grepWorkspace(
         ? 'No files found'
         : `Found ${hits.length} file${hits.length === 1 ? '' : 's'}${note}\n` +
           shownHits.map((hit) => hit.rel).join('\n')
-    return { text, total: hits.length, shown: shownHits.length, truncated: hits.length > shownHits.length }
+    return { text: text + limitNote, total: hits.length, shown: shownHits.length, truncated: hits.length > shownHits.length || limits.length > 0 }
   }
 
   if (options.outputMode === 'count') {
@@ -356,7 +367,7 @@ export function grepWorkspace(
       shownHits.length === 0
         ? 'No matches found'
         : `${body}\n\nFound ${totalOccurrences} total occurrence${totalOccurrences === 1 ? '' : 's'} across ${hits.length} ${fileWord}.`
-    return { text, total: totalOccurrences, shown: shownHits.length, truncated: hits.length > shownHits.length }
+    return { text: text + limitNote, total: totalOccurrences, shown: shownHits.length, truncated: hits.length > shownHits.length || limits.length > 0 }
   }
 
   const contentLines: string[] = []
@@ -388,9 +399,9 @@ export function grepWorkspace(
     text:
       (contentLines.length === 0 ? 'No matches found' : contentLines.join('\n')) +
       pagination +
-      binaryNote,
+      binaryNote + limitNote,
     total: totalMatchLines,
     shown,
-    truncated
+    truncated: truncated || limits.length > 0
   }
 }

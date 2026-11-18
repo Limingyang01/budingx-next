@@ -171,3 +171,19 @@ npm run merge:gate     # 见 §6
 | `npm test`（skills/spec/unit/checks/release/merge） | GREEN（342 项，0 失败） |
 | `npm run merge:gate` | **GREEN**（2026-11-17T13-39-37Z）；报告 `artifacts/merge-gate/feature-SP003-workspace-tools-2026-11-17T13-39-37-977Z.md`（json 同名）；含 npm test / spec:check / skills:check / pack-smoke 与 outgoing 扫描、test-report 审计 |
 | 合入 master | **已合入**：源 `910e282` → 目标 `master`，merge-base `b0ffc9e`，merge-tree 预演无冲突，实际合并提交 `3e796be`（--no-ff，保留历史）；ancestry 已证明（`git merge-base --is-ancestor 910e282 master` 为真）；合入后在 master 复跑 `npm test` 全绿（342 项，0 失败）；push 与 npm 发布不在授权内 |
+
+## 8. 验收修复分支
+
+2026-11-18｜基线 `master` `76edf2c`｜分支 `fix/SP003/workspace-tui`。依据用户本轮要求在独立工作树完成修复与门禁。此前 §1–7 保留原始交付的历史记录，本节记录验收复查和修复复测。
+
+| 验收点 | 结论 | 证据 |
+| --- | --- | --- |
+| FC-01…09 | PASS（自动化） | 伪 TTY 捕获指定文件行进入 Provider 请求，多个范围、排队时的最新内容、忽略和拒读反馈、空格文件名和模糊候选分别复测。真实 CLI 子进程对本地 HTTP fixture 验证了 `--prompt` 和管道两条入口。 |
+| CP-01…04、PC-06、WT-15/16 | PASS | 审批卡显示改前、改后行，批准后实际文件对应；拒绝时磁盘保持原样，审批期间外部编辑和目标被新建均使计划失效。失败的计划不产生检查点，也不记住审批。 |
+| CP-05…09 | PASS（自动化） | 无参数撤销保留较早回合，恢复原 CRLF 字节；本回合内同一文件两次写入都计入结果，撤销后当前统计归零。只读 Git 源在临时 Git 工作区验证了既有文件变更和未跟踪文件。 |
+| WT-01…03、WT-07、WT-09…12、WT-19 | PASS | 合法 U+FFFD、超过原大小上限的文件范围、CRLF 插入、单文件 Grep、超过 2 MiB 的匹配和超限提示、多行空行、`-i`/`-n`、glob 备选、忽略字符类、缺失父目录路径检查。 |
+| L3 真实终端与线上模型 | UNVERIFIED | 恢复条件为在 Windows Terminal 或 ConHost 手动走完补全、审批滚动和 diff 切换，再用隔离的真实模型配置发起带文件上下文与编辑的回合。 |
+
+- 初始 15 项回归在基线上复现 14 项断言失败。另对 Git 差异源及缺失父目录判定分别确认 RED。最终 `sp003-review-regressions.test.mjs` 扩充至 23 项，连同 CLI、workspace、core 权限、审批、补全、diff 和 wire 回归，专项共 **162 项通过、0 失败、0 跳过**。在 fix 工作树运行 `npm run build`，然后用 `node --test` 运行上述用例。
+- 独立的全量 `npm test` 在最终新增审批复测前执行，365 项通过，模块边界检查通过。提交后再次执行 `npm run merge:gate`，其全量测试和隔离制品验证结果保存到 `artifacts/merge-gate/`。
+- 自审核对了提交范围、审批计划与写盘契约、工作区边界、终端与 CLI 请求入口。Git 差异通过固定的只读 Git 子命令获取，保留会话基线差异。搜索和 Git 快照超限会提示不完整。没有新增依赖或存储迁移，参考仓用于行为比对，由本仓独立实现。产品说明书 §5.1、§5.2、§5.4 已同步。回退范围是本 fix 分支的提交。

@@ -15,6 +15,11 @@ export type ToolContext = {
   turnId?: string
 }
 
+export type PreparedTool = {
+  preview: readonly string[]
+  execute(context: ToolContext): Promise<string>
+}
+
 export type ToolHandler = {
   name: string
   parameters?: Record<string, unknown>
@@ -30,6 +35,7 @@ export type ToolHandler = {
   capability?(input: unknown): ToolCapability
   /** Target of the call, resolved enough for policy decisions. */
   target?(input: unknown): { path?: string; kind: 'file' | 'directory' | 'search' | 'none' }
+  prepareApproval?(input: unknown): PreparedTool
   execute(input: unknown, context: ToolContext): Promise<string>
 }
 
@@ -39,6 +45,7 @@ export type ApprovalRequest = {
   callId: string
   name: string
   summary: string
+  preview?: readonly string[]
 }
 
 export type ApprovalDecision = {

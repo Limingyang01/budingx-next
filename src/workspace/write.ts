@@ -6,7 +6,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import {
   chmodSync,
-  existsSync,
+  linkSync,
   mkdirSync,
   readFileSync,
   renameSync,
@@ -21,8 +21,9 @@ import { WorkspaceError, type Workspace } from './paths.js'
 export type WriteOptions = {
   path: string
   content: string
-  /** SHA-256 hex of the content the caller last saw; absent for new files. */
-  expectedFingerprint?: string
+  /** SHA-256 of the prior content, null for expected absence, undefined for no check. */
+  expectedFingerprint?: string | null
+  expectedPath?: string
   /** Whole-file writes normalize CRLF to LF; Edit supplies false because
    * it preserves the file's dominant line ending itself. */
   normalizeLineEndings?: boolean
@@ -59,28 +60,25 @@ export function writeWorkspaceFile(
       `Path is a directory: ${resolved.relative}`
     )
   }
-  if (!resolved.existed) {
-    // Matching the reference behaviour: Write creates missing parent
-    // directories instead of failing.
-    mkdirSync(dirname(resolved.real), { recursive: true })
-    if (options.expectedFingerprint !== undefined) {
-      throw new WorkspaceError(
-        ERROR_CODES.workspaceEditConflict,
-        `Expected an existing file but ${resolved.relative} does not exist`
-      )
+  function checkBaseline(): void {
+    const current = workspace.resolve(options.path)
+    if (current.real !== resolved.real ||
+        (options.expectedPath !== undefined && current.real !== options.expectedPath)) {
+      throw new WorkspaceError(ERROR_CODES.workspaceEditConflict, `File path changed before writing: ${resolved.relative}`)
     }
-  } else {
-    const onDisk = contentFingerprint(readFileSync(resolved.real))
-    if (
-      options.expectedFingerprint !== undefined &&
-      options.expectedFingerprint !== onDisk
-    ) {
+    if (options.expectedFingerprint === undefined) return
+    const fingerprint = current.existed && !current.isDirectory
+      ? contentFingerprint(readFileSync(current.real))
+      : null
+    if (current.isDirectory || options.expectedFingerprint !== fingerprint) {
       throw new WorkspaceError(
         ERROR_CODES.workspaceEditConflict,
         `File changed since it was read; refusing to overwrite: ${resolved.relative}`
       )
     }
   }
+  checkBaseline()
+  if (!resolved.existed) mkdirSync(dirname(resolved.real), { recursive: true })
 
   // Whole-file writes normalize line endings to LF. The reference learned
   // the hard way that keeping an old file's CRLF here breaks shell
@@ -102,7 +100,14 @@ export function writeWorkspaceFile(
         // Mode preservation is best effort (Windows has no POSIX mode).
       }
     }
-    renameSync(temporary, resolved.real)
+    checkBaseline()
+    if (options.expectedFingerprint === null) {
+      // A create must stay exclusive even if a file appears at the last moment.
+      linkSync(temporary, resolved.real)
+      rmSync(temporary, { force: true })
+    } else {
+      renameSync(temporary, resolved.real)
+    }
   } catch (error) {
     rmSync(temporary, { force: true })
     throw error
