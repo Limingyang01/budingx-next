@@ -29,7 +29,7 @@ import {
   longestCommonPrefix
 } from './render/completion.js'
 import { workspacePromptOptions } from './runtime.js'
-import { ModelManager } from './model-manager.js'
+import { ModelManager, type ModelManagerInput } from './model-manager.js'
 import { readClipboard } from './editor/clipboard.js'
 import { MODES_EN, MODES_ZH, nextMode } from '../workspace/policy.js'
 import { walkWorkspaceFiles } from '../workspace/search.js'
@@ -129,6 +129,7 @@ export function App({
   const chain = useRef(Promise.resolve())
   const pendingActions = useRef(0)
   const managerDone = useRef<(() => void) | undefined>(undefined)
+  const managerInput = useRef<ModelManagerInput | undefined>(undefined)
   const [modelManagerOpen, setModelManagerOpen] = useState(false)
   const [typing, setTyping] = useState(false)
   const typingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -307,7 +308,10 @@ export function App({
     [session, gateway, editor]
   )
   usePaste((text) => {
-    if (managerDone.current) return
+    if (managerDone.current) {
+      managerInput.current?.paste(text)
+      return
+    }
     editor.insert(text.replace(/\r\n?/g, '\n'))
     setInput(editor.text)
     markTyping()
@@ -331,7 +335,10 @@ export function App({
     )
   })
   useInput((text, key) => {
-    if (managerDone.current) return
+    if (managerDone.current) {
+      managerInput.current?.key(text, key)
+      return
+    }
     // Ctrl+V paste fallback for terminals without bracketed-paste support
     // (legacy Windows conhost / cmd). Ink's usePaste relies on DEC 2004
     // which these terminals ignore, so Ctrl+V arrives as a plain ctrl+v
@@ -603,7 +610,7 @@ export function App({
     .filter(Boolean)
     .join('\n')
   if (modelManagerOpen) {
-    return <ModelManager context={{ ...context, session }} readClipboard={readClipboard} close={(notice) => {
+    return <ModelManager context={{ ...context, session }} input={managerInput} readClipboard={readClipboard} close={(notice) => {
       const done = managerDone.current
       setModelManagerOpen(false)
       setHint(notice ?? '')

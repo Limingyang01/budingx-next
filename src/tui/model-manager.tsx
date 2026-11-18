@@ -1,5 +1,5 @@
-import { Box, Text, useInput, usePaste } from 'ink'
-import { useEffect, useRef, useState } from 'react'
+import { Box, Text, type Key } from 'ink'
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import type { ModelProfile } from '../storage/config-store.js'
 import { profileHost, startupProfile } from '../storage/profiles.js'
 import type { CommandContext } from './commands.js'
@@ -18,13 +18,20 @@ function textField(field: Field): field is TextField {
   return field === 'label' || field === 'baseUrl' || field === 'model' || field === 'apiKey'
 }
 
+export type ModelManagerInput = {
+  key: (text: string, key: Key) => void
+  paste: (text: string) => void
+}
+
 export function ModelManager({
   context,
   close,
+  input,
   readClipboard
 }: {
   context: CommandContext
   close: (notice?: string) => void
+  input: RefObject<ModelManagerInput | undefined>
   readClipboard: () => string | undefined
 }) {
   const [view, setView] = useState<View>('list')
@@ -193,8 +200,7 @@ export function ModelManager({
     }
   }
 
-  usePaste(insert)
-  useInput((text, key) => {
+  function handleKey(text: string, key: Key) {
     if (key.escape || key.ctrl && text === 'c') {
       if (action.current) { cancelRequest(); return }
       if (view === 'models') {
@@ -331,6 +337,13 @@ export function ModelManager({
         setCaret(start)
       }
     } else if (!key.ctrl && !key.meta) insert(text)
+  }
+
+  // The app retains its terminal subscriptions. Register this modal's
+  // handlers during layout, before a rendered panel can receive input.
+  useLayoutEffect(() => {
+    input.current = { key: handleKey, paste: insert }
+    return () => { input.current = undefined }
   })
 
   const label: Record<Field, string> = {
