@@ -79,3 +79,11 @@ SP003 验收修复 `9e3984c` 已由 `598fb89` 合入 master。合并后干净工
 SP003 权限模式与会话体验已发布为 [0.3.4](../../release-notes/v0.3.4.md)，npm latest、官方安装与 provenance 已核对。会话修复来自原 0.3.3 候选。[GitHub Actions #13](https://github.com/Limingyang01/budingx-next/actions/runs/44257392923)
 
 权限模式持久化与配色纳入 SP003。进展见 [permission-controls 状态](permission-controls/STATUS.md#权限模式持久化与配色)。
+
+## 会话排版与状态栏精修
+
+在 SP003 验收中补齐以下细节。标记为当前修复分支，公开版本以台账为准。
+
+- 用户提问有独立的底色和前导符号，去掉「你」字样。支持多行、窄屏折行和队列注入。
+- 助手回答按 Markdown 展示标题、强调、列表、链接、表格和代码。代码内的特殊字符原样呈现。
+- 完成、用时和时刻降为辅助信息。底部在空闲时只保留模式及快捷键，模式采用短标签且全自动有红色文字提醒。

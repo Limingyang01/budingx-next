@@ -29,6 +29,7 @@ import {
   fileCandidates,
   longestCommonPrefix
 } from './render/completion.js'
+import { TranscriptMessage } from './render/transcript.js'
 import { workspacePromptOptions } from './runtime.js'
 import { ModelManager, type ModelManagerInput } from './model-manager.js'
 import { readClipboard } from './editor/clipboard.js'
@@ -69,7 +70,6 @@ const COMMAND_NAMES = [
   'quit'
 ]
 const STATUS_ZH: Record<string, string> = {
-  idle: '就绪',
   requesting: '请求中…',
   streaming: '流式输出中…',
   awaiting_approval: '等待审批',
@@ -118,6 +118,10 @@ export function App({
   const offset = Math.min(scrollTop ?? maxScroll, maxScroll)
   const scrolled = fullScreen && offset < maxScroll
   const working = frame.status.state !== 'idle'
+  const modeLabel = (zh
+    ? { read_only: '只读', workspace_edit: '编辑', full_access: '全自动' }
+    : { read_only: 'Read-only', workspace_edit: 'Edit', full_access: 'Full auto' }
+  )[frame.permissionMode]
   const modeColor = {
     read_only: '#56b6c2',
     workspace_edit: '#e5c07b',
@@ -664,11 +668,12 @@ export function App({
     if (text || key.backspace || key.delete) markTyping()
   })
   const config = commandContext.getConfig()
-  const historyLines = useMemo(
-    () => frame.transcript.flatMap((line) => renderTextLines(line, width)),
-    [frame.transcript, width]
+  const history = useMemo(
+    () => frame.transcript.map((entry, index) => (
+      <TranscriptMessage key={index} entry={entry} ascii={!zh} />
+    )),
+    [frame.transcript, zh]
   )
-  const liveText = frame.liveText
   if (modelManagerOpen) {
     return <ModelManager context={{ ...context, session }} input={managerInput} readClipboard={readClipboard} close={(notice) => {
       const done = managerDone.current
@@ -811,13 +816,10 @@ export function App({
         contentOffsetY={fullScreen ? offset : undefined}
       >
         <Box ref={transcriptContent} flexDirection="column" flexShrink={0}>
-          {historyLines.map((line, i) => (
-            <Text key={'history-' + i}>{line}</Text>
-          ))}
-          {liveText &&
-            renderTextLines(liveText, width).map((line, i) => (
-              <Text key={'live-' + i}>{line}</Text>
-            ))}
+          {history}
+          {frame.liveText && (
+            <TranscriptMessage entry={{ kind: 'assistant', text: frame.liveText }} ascii={!zh} />
+          )}
           {frame.notices.map((notice, i) => (
             <Text key={'notice-' + i} color={notice.level === 'error' ? 'red' : 'yellow'}>
               {notice.text}
@@ -912,24 +914,26 @@ export function App({
           )}
         </Box>
         {!fullScreen && completionMenu}
-        <Text wrap={fullScreen ? 'truncate-end' : 'wrap'}>
-          {fullScreen && <Text color={working ? ACCENT : undefined}>{working ? '● ' : '○ '}</Text>}
-          {thinking
-            ? pick('思考中', 'thinking')
-            : zh ? STATUS_ZH[frame.status.state] : frame.status.state}
-          {frame.startedAt !== undefined && ` ${Math.max(0, Math.floor((now - frame.startedAt) / 1000))}${pick(' 秒', 's')}`}
-          {permissionHandles && (
-            <>
-              {' · '}
-              <Text color={modeColor} bold>{pick(MODES_ZH[frame.permissionMode], MODES_EN[frame.permissionMode])}</Text>
-              <Text dimColor>{' · Shift+Tab '}{pick('切换模式', 'cycle mode')}</Text>
-            </>
-          )}
-          {!fullScreen && hint ? ` — ${hint}` : ''}
-        </Text>
+        {(working || permissionHandles || (!fullScreen && hint)) && (
+          <Text wrap={fullScreen ? 'truncate-end' : 'wrap'}>
+            {fullScreen && working && <Text color={ACCENT}>{'● '}</Text>}
+            {working && (thinking
+              ? pick('思考中', 'thinking')
+              : zh ? STATUS_ZH[frame.status.state] : frame.status.state)}
+            {frame.startedAt !== undefined && ` ${Math.max(0, Math.floor((now - frame.startedAt) / 1000))}${pick(' 秒', 's')}`}
+            {permissionHandles && (
+              <>
+                {working && ' · '}
+                <Text color={modeColor}>{modeLabel}</Text>
+                <Text dimColor>{' · Shift+Tab '}{pick('切换模式', 'cycle mode')}</Text>
+              </>
+            )}
+            {!fullScreen && hint ? ` — ${hint}` : ''}
+          </Text>
+        )}
         {permissionHandles && frame.permissionMode === 'full_access' && (
-          <Text color={modeColor} bold>
-            {pick('! 全自动 · 可获准的写入免审批', '! Full auto · eligible writes skip approval')}
+          <Text color={modeColor}>
+            {pick('! 可获准的写入免审批', '! Eligible writes skip approval')}
           </Text>
         )}
         {scrolled && (

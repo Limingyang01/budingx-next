@@ -125,7 +125,7 @@ test('S5 流式中文增量渲染与状态行迁移', async (t) => {
   ui.session.submit('hi')
   await ui.waitFor((frame) => frame.includes('你好') && /流式输出中/.test(frame))
   release()
-  await ui.waitFor((frame) => frame.includes('你好，世界') && /就绪/.test(frame))
+  await ui.waitFor((frame) => frame.includes('你好，世界') && !ui.session.isBusy)
   assert.ok(
     ui.frames().some((frame) => frame.includes('你好') && !frame.includes('你好，世界')),
     '必须存在只含部分增量的中间帧'
@@ -279,10 +279,10 @@ test('full screen pins the prompt and mode hint through height and width resize'
   assertPinned(ui.last(), 24, 60)
   assert.ok(ui.raw().includes('\x1b[?1049h'), 'enter alternate screen')
   await ui.send('\x1b[Z')
-  await ui.waitFor((frame) => frame.includes('完全权限'))
+  await ui.waitFor((frame) => frame.includes('全自动'))
   await ui.resize(42, 18)
   assertPinned(ui.last(), 18, 42)
-  assert.match(ui.last(), /完全权限/)
+  assert.match(ui.last(), /全自动/)
   await ui.send('/exit')
   await ui.send('\r')
   await ui.waitFor(() => ui.raw().includes('\x1b[?1049l'))
@@ -320,7 +320,7 @@ test('session tab title describes the first substantive prompt and signals activ
   await ui.waitFor((frame) => frame.includes('● 请求中'))
   assert.ok(ui.raw().includes('\x1b]0;● 大模型能力对比 · budingx\x07'))
   release()
-  await ui.waitFor((frame) => frame.includes('○ 就绪'))
+  await ui.waitFor(() => ui.raw().includes('\x1b]0;大模型能力对比 · budingx\x07'))
   assert.ok(ui.raw().includes('\x1b]0;大模型能力对比 · budingx\x07'))
   await ui.send('/clear')
   await ui.send('\r')
@@ -337,16 +337,44 @@ test('conversation shows question, elapsed time, completion and editable follow-
   ])
   const ui = await mountTty(t, { fullScreen: true, provider, config: { model: 'fixture' } })
   await ui.send('你是谁\r')
-  await ui.waitFor((frame) => frame.includes('你 › 你是谁') && /思考中 [1-9]\d* 秒/.test(frame))
+  await ui.waitFor((frame) => frame.includes('› 你是谁') && /思考中 [1-9]\d* 秒/.test(frame))
   assert.doesNotMatch(ui.raw(), /hidden-fixture/)
   release()
   await ui.waitFor((frame) =>
     /已完成 · 用时 [1-9]\d* 秒 · \d{2}:\d{2}/.test(frame) && frame.includes('Tab 填入')
   )
-  assert.match(ui.last(), /你 › 你是谁[\s\S]*我是 budingx/)
+  assert.match(ui.last(), /› 你是谁[\s\S]*我是 budingx/)
   await ui.send('\t')
   assert.doesNotMatch(ui.raw(), /hidden-fixture/)
   assert.match(ui.last(), /> 介绍这个项目的主要功能/)
   assert.doesNotMatch(ui.last(), /Tab 填入/)
   assert.equal(ui.session.history.filter(m => m.role === 'user').length, 1)
+})
+
+
+test('assistant Markdown and user prompts have distinct transcript styles', async (t) => {
+  const fixture = agentFixture({ mode: 'read_only' })
+  t.after(() => rmSync(fixture.base, { recursive: true, force: true }))
+  const ui = await mountTty(t, {
+    fullScreen: true,
+    provider: { async *stream() {
+      yield { type: 'text_delta', text: '**编程助手**\n\n- 运行 `npm test`\n\n```txt\n**literal**\n```' }
+      yield done
+    } },
+    commandOverrides: { permission: fixture.permission },
+    config: { model: 'fixture' }
+  })
+  await ui.send('你是谁\r')
+  await ui.waitFor((frame) => frame.includes('已完成'))
+  assert.match(ui.last(), /› 你是谁/)
+  assert.doesNotMatch(ui.last(), /你 ›|就绪|\*\*编程助手\*\*|`npm test`|```/)
+  assert.match(ui.last(), /[•-] 运行 npm test/)
+  assert.match(ui.last(), /\*\*literal\*\*/)
+  await ui.resize(32, 24)
+  assert.ok(frameWidths(ui.last(), stringWidth).every((w) => w <= 32))
+  assert.match(ui.last(), /› 你是谁/)
+  assert.match(ui.last(), /只读 · Shift\+Tab/)
+  assert.doesNotMatch(ui.last(), /就绪/)
+  assert.match(ui.raw(), /\x1b\[[^m]*48;2;[^m]+m[^\r\n]*你是谁/)
+  assert.match(ui.raw(), /\x1b\[2m(?:\x1b\[[0-9;]+m)*已完成/)
 })

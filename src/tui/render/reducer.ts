@@ -79,7 +79,7 @@ export function reduceFrame(
       next.lastAnswer = undefined
       next.suggestFollowUp = false
       if (event.userText) {
-        next.transcript = [...next.transcript, (options.english ? 'You > ' : '你 › ') + event.userText]
+        next.transcript = [...next.transcript, { kind: 'user', text: event.userText }]
       }
       next.liveText = ''
       next.thinking = false
@@ -102,7 +102,7 @@ export function reduceFrame(
       next.thinking = false
       next.liveLines = liveLinesOf(next, options.width)
       if (next.liveLines.length > 0) {
-        next.transcript = [...next.transcript, next.liveText, '']
+        next.transcript = [...next.transcript, { kind: 'assistant', text: next.liveText }]
         next.staticLines = [...next.staticLines, ...next.liveLines, '']
         next.liveText = ''
         next.liveLines = []
@@ -112,7 +112,7 @@ export function reduceFrame(
     case 'tool_call_completed': {
       next.transcript = [
         ...next.transcript,
-        `⚙ ${event.name}(${summarizeInput(event.input)})`
+        { kind: 'plain', text: `⚙ ${event.name}(${summarizeInput(event.input)})` }
       ]
       next.staticLines = [
         ...next.staticLines,
@@ -127,7 +127,7 @@ export function reduceFrame(
     case 'tool_result': {
       next.transcript = [
         ...next.transcript,
-        `${event.isError ? '✗' : '✓'} ${event.callId}: ${event.content}`
+        { kind: 'plain', text: `${event.isError ? '✗' : '✓'} ${event.callId}: ${event.content}` }
       ]
       const lines = renderTextLines(
         `${event.isError ? '✗' : '✓'} ${event.callId}: ${event.content}`,
@@ -143,7 +143,7 @@ export function reduceFrame(
     }
     case 'input_injected': {
       if (event.boundary === 'intra_turn' && event.text) {
-        next.transcript = [...next.transcript, (options.english ? 'You > ' : '你 › ') + event.text]
+        next.transcript = [...next.transcript, { kind: 'user', text: event.text }]
         next.lastQuestion = event.text
       }
       next.queue = next.queue.filter((item) => item.id !== event.queueId)
@@ -177,7 +177,7 @@ export function reduceFrame(
     case 'turn_finalized': {
       next.liveLines = liveLinesOf(next, options.width)
       if (next.liveLines.length > 0) {
-        next.transcript = [...next.transcript, next.liveText, '']
+        next.transcript = [...next.transcript, { kind: 'assistant', text: next.liveText }]
         next.staticLines = [...next.staticLines, ...next.liveLines, '']
         next.liveText = ''
         next.liveLines = []
@@ -195,9 +195,10 @@ export function reduceFrame(
           unknown: '已结束'
         }
         const label = options.english ? event.outcome : labels[event.outcome]
-        next.transcript = [...next.transcript, options.english
-          ? `${label} · ${elapsed}s · ${time}`
-          : `${label} · 用时 ${elapsed} 秒 · ${time}`]
+        next.transcript = [...next.transcript, {
+          kind: 'meta',
+          text: options.english ? `${label} · ${elapsed}s · ${time}` : `${label} · 用时 ${elapsed} 秒 · ${time}`
+        }]
       }
       next.startedAt = undefined
       next.suggestFollowUp = event.outcome === 'completed' && !!next.lastAnswer
@@ -205,7 +206,7 @@ export function reduceFrame(
         next.error = event.error.message
       }
       if (event.outcome === 'cancelled') {
-        next.transcript = [...next.transcript, '[cancelled]']
+        next.transcript = [...next.transcript, { kind: 'meta', text: '[cancelled]' }]
         next.staticLines = [...next.staticLines, '[cancelled]']
       }
       return next

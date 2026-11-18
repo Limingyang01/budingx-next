@@ -21,9 +21,14 @@ export type NoticeItem = {
   text: string
 }
 
+export type TranscriptEntry = {
+  kind: 'user' | 'assistant' | 'meta' | 'plain'
+  text: string
+}
+
 export type Frame = {
   /** Logical transcript entries, retained for both narrower and wider resize. */
-  transcript: string[]
+  transcript: TranscriptEntry[]
   startedAt?: number
   lastQuestion?: string
   lastAnswer?: string
