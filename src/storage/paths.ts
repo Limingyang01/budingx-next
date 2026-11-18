@@ -22,6 +22,10 @@ export function permissionsPath(home?: string): string {
   return join(dataRoot(home), 'permissions.json')
 }
 
+export function permissionModePath(home?: string): string {
+  return join(dataRoot(home), 'permission-mode.json')
+}
+
 export function backupPath(file: string): string {
   return `${file}.bak`
 }

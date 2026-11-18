@@ -31,6 +31,7 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | bootstrap   | 0.1.0 / 0.1.1 | 简易聊天 TUI                                                              | OpenAI 兼容端点配置、SSE 流式对话、内存会话、多行输入、斜杠命令族、npm Trusted Publishing 发布链路、tarball 隔离安装 smoke                             | 已发布（npm `budingx@0.1.1`）         |
 | SP001       | —（规格轮）   | capability-baseline、evaluation-suite、core-boundaries、release-scope     | 能力清单 v1（85 项，验收时必交 53 项；2026-11-17 调整 v1.1：必交 47、r7 将六项记为范围外）、核心边界与不变量、评测集规格与任务清单、发布范围与待决项                                                             | 已验收，**不含产品代码**              |
 | SP002       | 0.2.0         | provider-streaming、model-management、session-lifecycle、tui-conversation | OpenAI 兼容流解析与 tool_calls 装配、错误分类/有界重试/取消/限额、模型档案与凭据仓库、会话状态机与终态契约、工具回合、双中断与排队、Ink 8 多行对话界面 | **已发布**，真实终端人工验证边界见 §7 |
+| SP003       | 待定 | 权限模式偏好 | 交互模式跨启动记忆、三色徽标、全自动提示 | 开发分支 |
 | SP003       | 0.3.3 | 会话体验 | 用户消息、回合计时、助手身份与 Tab 续问 | 已准备发布 |
 | SP003       | 0.3.2 | model-manager | 供应商配置一次、多模型共用；MiniMax 中国站与百炼 Token Plan 模板；全屏会话与终端标签状态 | 已发布 |
 | SP003       | 0.3.1 | model-manager | 模型档案面板、供应商模板、自动拉取模型 ID、连接验证 | 已发布 |
@@ -160,13 +161,19 @@ budingx --prompt "Hello" --timeout 120000
 | 命令 | 示例与结果 |
 | --- | --- |
 | `/permission` | 查看当前权限模式。 |
-| `/permission <read\|workspace\|full>` | `/permission workspace` 开启工作区内修改。默认 `read` 只读，`full` 自动执行可获准的写入。Shift+Tab 循环切换。 |
+| `/permission <read\|workspace\|full>` | `/permission workspace` 开启工作区内修改。首次启动默认只读，`full` 自动执行可获准的写入。Shift+Tab 循环切换。 |
 | `/rules` 或 `/rules list` | 列出持久化规则及规则 ID。被拒绝规则盖住的允许规则会显示遮蔽提示。 |
 | `/rules add <allow\|deny> <工具或*> [路径-glob]` | `/rules add deny Read private/**` 拒绝读取指定目录里的文件。路径省略时匹配该工具的所有目标；当前命令的 glob 参数不含空格。 |
 | `/rules rm <规则ID>` | 先用 `/rules list` 查看实际 ID，再执行如 `/rules rm r-1`。 |
 | `/denials` | 查看本会话的权限拒绝及原因。 |
 
 规则顺序为拒绝、允许、模式默认。工作区和凭据保护底线在所有模式生效。需要审批时可用 ↑↓ 浏览拟写入的差异，`1` 允许一次，`2` 在本会话记住该目标，`3` 拒绝并可输入反馈，Esc 直接拒绝。
+
+**权限模式偏好（SP003 开发分支）**。交互终端通过 Shift+Tab 或 `/permission` 切换后，把用户选择保存在 `~/.budingx/permission-mode.json`。以后启动交互终端时恢复该选择，包括从其他工作区启动。首次运行、偏好无效或权限规则损坏时从只读启动。管道与 `--prompt` 各自从只读启动。
+
+- **青色 · 仅可查看**。写操作被拒绝。
+- **黄色 · 工作区内修改**。按权限规则和已有审批机制处理写入。
+- **红色 · 完全权限**。显示「全自动 · 可获准的写入免审批」。拒绝规则、凭据保护和工作区边界继续生效。
 
 #### 5.3.3 文件引用、差异与撤销
 
@@ -228,6 +235,7 @@ budingx --prompt "Hello" --timeout 120000
 | 0.3.1 | 2026-11-18 | SP003 模型管理修复，见 [发行说明](release-notes/v0.3.1.md) | 已发布 |
 | 0.3.2 | 2026-11-18 | 模型配置与厂商兼容修复、全屏会话，见 [发行说明](release-notes/v0.3.2.md) | 已发布，`latest` |
 | 0.3.3 | 2026-11-18 | 回合计时、助手身份与 Tab 续问，见 [发行说明](release-notes/v0.3.3.md) | 已准备发布 |
+| 待定 | 2026-11-18 | SP003 权限模式持久化、三色状态与全自动提示 | 开发分支 |
 | —（规划调整，无产品行为变化） | 2026-11-17 | 路线图 r6：TUI 单端优先；SP008/SP009/SP016–SP018 暂缓、多端架构入口保留；TUI 三权限模式固定；能力清单分母 53→47；说明书 v1.3 | 规划文档调整 |
 | —（规划调整） | 2026-11-18 | 路线图 r7：移出五个原暂缓 SP，保留通用宿主契约，必交能力仍为 47 | 规划文档调整 |
 | —（规划调整） | 2026-11-18 | 路线图 r8：现行 SP001–SP016 连续编号，能力与产品版本不变 | 规划文档调整 |

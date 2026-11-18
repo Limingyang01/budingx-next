@@ -15,7 +15,7 @@ import stringWidth from 'string-width'
 import type { SessionEvent } from '../core/events.js'
 import type { Session } from '../core/session.js'
 import type { InkApprovalGateway } from './approval.js'
-import { runCommand, type CommandContext } from './commands.js'
+import { changePermissionMode, runCommand, type CommandContext } from './commands.js'
 import { EditorBuffer } from './editor/buffer.js'
 import { applyKey } from './editor/keys.js'
 import { reduceFrame, renderTextLines } from './render/reducer.js'
@@ -118,6 +118,11 @@ export function App({
   const offset = Math.min(scrollTop ?? maxScroll, maxScroll)
   const scrolled = fullScreen && offset < maxScroll
   const working = frame.status.state !== 'idle'
+  const modeColor = {
+    read_only: '#56b6c2',
+    workspace_edit: '#e5c07b',
+    full_access: '#ff6b6b'
+  }[frame.permissionMode]
   const thinking = frame.thinking &&
     (frame.status.state === 'requesting' || frame.status.state === 'streaming')
   useEffect(() => {
@@ -551,7 +556,13 @@ export function App({
     if (key.shift && key.tab && permissionHandles) {
       // SP003 design §3.8: cycle the three fixed modes.
       const next = nextMode(permissionHandles.policy.getMode())
-      permissionHandles.policy.setMode(next)
+      if (!changePermissionMode(permissionHandles, next)) {
+        setHint(pick(
+          '此会话已切换权限模式，但无法保存启动模式',
+          'Permission mode changed for this session. Could not save the startup mode.'
+        ))
+        return
+      }
       setHint(
         pick(`权限模式：${MODES_ZH[next]}`, `Permission mode: ${MODES_EN[next]}`)
       )
@@ -901,20 +912,26 @@ export function App({
           )}
         </Box>
         {!fullScreen && completionMenu}
-        <Text dimColor wrap={fullScreen ? 'truncate-end' : 'wrap'}>
+        <Text wrap={fullScreen ? 'truncate-end' : 'wrap'}>
           {fullScreen && <Text color={working ? ACCENT : undefined}>{working ? '● ' : '○ '}</Text>}
           {thinking
             ? pick('思考中', 'thinking')
             : zh ? STATUS_ZH[frame.status.state] : frame.status.state}
           {frame.startedAt !== undefined && ` ${Math.max(0, Math.floor((now - frame.startedAt) / 1000))}${pick(' 秒', 's')}`}
-          {permissionHandles
-            ? ` · ${pick(
-                MODES_ZH[frame.permissionMode],
-                MODES_EN[frame.permissionMode]
-              )} · Shift+Tab ${pick('切换模式', 'cycle mode')}`
-            : ''}
+          {permissionHandles && (
+            <>
+              {' · '}
+              <Text color={modeColor} bold>{pick(MODES_ZH[frame.permissionMode], MODES_EN[frame.permissionMode])}</Text>
+              <Text dimColor>{' · Shift+Tab '}{pick('切换模式', 'cycle mode')}</Text>
+            </>
+          )}
           {!fullScreen && hint ? ` — ${hint}` : ''}
         </Text>
+        {permissionHandles && frame.permissionMode === 'full_access' && (
+          <Text color={modeColor} bold>
+            {pick('! 全自动 · 可获准的写入免审批', '! Full auto · eligible writes skip approval')}
+          </Text>
+        )}
         {scrolled && (
           <Text dimColor wrap="truncate-end">
             {pick('浏览历史 · PageDown 向下', 'History · PageDown to scroll down')}

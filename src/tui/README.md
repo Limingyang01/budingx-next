@@ -86,3 +86,7 @@ User data is stored under `~/.budingx` only. The session itself stays in memory 
 The release workflow verifies Windows and Linux tests plus real tarball installation. macOS installation is not yet certified. Update with npm install -g budingx@latest; uninstall with npm uninstall -g budingx.
 
 Source and roadmap: https://github.com/Limingyang01/budingx-next
+
+## Permission mode preference
+
+In an interactive terminal, `/permission read|workspace|full` or Shift+Tab saves your choice to `~/.budingx/permission-mode.json`. New interactive sessions restore that choice across workspaces. The badge is cyan for read-only, yellow for workspace edit, and red for full access. In full access, the status area also indicates that eligible writes skip approval. Pipe and `--prompt` invocations start in read-only mode.

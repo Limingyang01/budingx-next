@@ -5,7 +5,7 @@ import type { PermissionMode } from '../core/permissions.js'
 import { createOpenAiProvider } from '../provider/openai.js'
 import { ConfigStore } from '../storage/config-store.js'
 import { dataRoot, permissionsPath } from '../storage/paths.js'
-import { PermissionsStore } from '../storage/permissions.js'
+import { PermissionsStore, readPermissionMode, savePermissionMode } from '../storage/permissions.js'
 import type { ResolvedConfig } from '../storage/profiles.js'
 import {
   createPermissionPolicy,
@@ -44,6 +44,7 @@ export type AgentRuntime = {
   session: Session
   workspace: Workspace
   policy: BudingPermissionPolicy
+  setPermissionMode(mode: PermissionMode): boolean
   permissionStore: PermissionsStore
   checkpoint: CheckpointStore
   /** Live record of refusals for /denials (SP003 AC PC-10). */
@@ -58,6 +59,7 @@ export type AgentRuntimeOptions = {
   approval: ApprovalGateway
   configStore: ConfigStore
   mode?: PermissionMode
+  persistPermissionMode?: boolean
   /** Test seam for the user data location; production uses ~/.budingx. */
   home?: string
 }
@@ -88,7 +90,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   const policy = createPermissionPolicy({
     workspace,
     rules: load.file.rules as PermissionRule[],
-    mode: options.mode ?? 'read_only',
+    mode: options.mode ?? (options.persistPermissionMode && !load.corrupt
+      ? readPermissionMode(options.home)
+      : 'read_only'),
     ...(options.home ? { dataRootOverride: dataRoot(options.home) } : {})
   })
   // Search results honour Read deny rules (SP003 T18i): a file the policy
@@ -121,7 +125,18 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   session.on((event) => {
     if (event.type === 'denial_recorded') denials.push(event.denial)
   })
-  return { session, workspace, policy, permissionStore, checkpoint, denials, warnings }
+  function setPermissionMode(mode: PermissionMode): boolean {
+    policy.setMode(mode)
+    if (!options.persistPermissionMode) return true
+    try {
+      savePermissionMode(mode, options.home)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  return { session, workspace, policy, setPermissionMode, permissionStore, checkpoint, denials, warnings }
 }
 
 export function createConfiguredSession(

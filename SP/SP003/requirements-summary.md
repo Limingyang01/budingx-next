@@ -77,3 +77,5 @@ SP003 验收修复 `9e3984c` 已由 `598fb89` 合入 master。合并后干净工
 0.3.2 已从 master 发布，npm latest、官方包安装与运行及 provenance 已核对。见 [0.3.2 发行说明](../../release-notes/v0.3.2.md)和[GitHub Actions #12](https://github.com/Limingyang01/budingx-next/actions/runs/44248899298)。
 
 SP003 会话体验修复已准备为 [0.3.3](../../release-notes/v0.3.3.md)，当前公开版本为 0.3.2。
+
+权限模式持久化与配色纳入 SP003。进展见 [permission-controls 状态](permission-controls/STATUS.md#权限模式持久化与配色)。
