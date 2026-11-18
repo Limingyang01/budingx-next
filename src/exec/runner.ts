@@ -281,6 +281,10 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
         context.signal.removeEventListener('abort', onAbort)
         resolve(early({ outcome: 'failed', reason: `进程启动失败：${error.message}` }))
       })
+      child.on('exit', () => {
+        // 强制结束（超时/取消）时子进程退出即可收敛，不等待残留孙进程关闭管道。
+        if (forced !== undefined && !settled) void finalize(undefined)
+      })
       child.on('close', (code) => void finalize(code ?? undefined))
     })
   }

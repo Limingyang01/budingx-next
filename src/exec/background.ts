@@ -200,6 +200,11 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
       settled: false
     }
     child.on('error', (error) => void finalize(record, undefined, `进程启动失败：${error.message}`))
+    // 子进程已退出但孙进程可能仍持有 stdout/stderr 管道（taskkill 只命中直接子进程时）：
+    // 取消/超时等强制路径以 exit 立即收敛终态，不等待管道关闭。
+    child.on('exit', () => {
+      if (record.forced !== undefined && !record.settled) void finalize(record, undefined)
+    })
     child.on('close', (code) => void finalize(record, code ?? undefined))
     if (signal.aborted) record.onAbort()
     else signal.addEventListener('abort', record.onAbort, { once: true })

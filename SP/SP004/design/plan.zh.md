@@ -213,6 +213,8 @@
 - **GREEN**：构造审批快照，校验补丁和树，调用受控提交入口。无法证明带有效钩子的实际提交树一致时中止。真实仓库 fixture 检查结果 tree 和原 checkout 状态。
 - **验证**：`npm run build && node --test src/git/test/commit.test.mjs`。
 
+- **完成事实**（2026-11-18）：RED 11 条真实 Git 用例（临时仓库 fixture，含 worktree 复用 T8）→ GREEN 11/11；全量 489/489 通过。实现 `src/git/commit.ts`：`patchDigestOf(files)`（路径排序 + 内容 SHA-256）、`createCommitAuthorization({worktree,branch,head,message,files})`→`{authorization,preview}`、`commitWithAuthorization(authorization,files)`→`{sha,tree,branch,files}`。门禁：仅产品管理专用 worktree（`--git-dir` ≠ `--git-common-dir`）与专用分支（含 `-budingx/`），原 checkout 直接提交被拒；索引已暂存/未合并/自定义钩子路径/`pre-commit|prepare-commit-msg|commit-msg` 存在/`commit.gpgsign=true`/缺 user.name|email 一律拒绝；专用 worktree 出现未审批改动（混合归属）或审批内容与工作区实际内容不一致即拒绝。受控索引用临时 `GIT_INDEX_FILE` 从已审 HEAD `read-tree` + `hash-object -w` + `update-index --cacheinfo` 构造，`write-tree` 与授权 `expectedTree` 比对；`commit-tree` 生成对象后 `update-ref refs/heads/<branch> <sha> <已审HEAD>` 条件更新，并发漂移即失败。一次性授权：成功或失败都置 `consumed=true`（不可复用/重试），失败保留工作区证据且不动用户索引。Ruling：钩子/签名检测采用「存在即拒绝」的保守策略（受控提交后端不经钩子）；测试临时仓库清理先 `git worktree remove --force` 再带重试删除，规避 Windows 链接 worktree 文件锁。
+
 ### T10 · 计划状态机与审批（src/plan）
 
 - **设计**：§6.1、§6.3
