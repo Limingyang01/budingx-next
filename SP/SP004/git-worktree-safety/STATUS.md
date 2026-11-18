@@ -32,7 +32,7 @@
 ## 2026-11-18 还原度对齐提交
 
 - 本次对齐提交（规划与文档对齐，无产品代码）；交叉验证门禁 GREEN，全量 375 项自动化通过。
-- **推送未执行**：本会话 git push 两次失败——① 无可用 Git 写凭据（远端可达但 push 认证失败）② 重试时网络不可达；远端分支仍停在 `f0cf5a6`。恢复条件：在具备凭据的会话推送并以 `git ls-remote` 核对远端 SHA 为本次提交。
+- **推送已执行**：合并 master 后提交 `8438f1f` 已推送至 `origin/feature/SP004/real-coding-task`，远端 SHA `8438f1fe231acc4c0fad0117c7e833a65e0d7993` 与本地一致（`git ls-remote` 核对）。推送需先配置 Git 凭据助手——本机 Git 自带 `git-credential-manager.exe`，Windows 凭据管理器已存有 GitHub 凭据；配置 `credential.helper` 指向该可执行文件（带空格路径须用 `!"..."` 形式包裹）后推送成功。
 - 详见[迭代汇总的提交与推送记录](../requirements-summary.md)。
 
 ## 集成与发布
