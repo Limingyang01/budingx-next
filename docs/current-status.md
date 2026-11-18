@@ -1,6 +1,6 @@
 # 当前状态
 
-日期：2026-11-19。**0.3.6 已通过 OIDC 发布，npm latest 已核对。** Windows 和 Linux 的 CI 验证、官方源隔离安装及本地 HTTP 冒烟均通过。**SP004「真实编码任务」已实施、验证（`npm test` 607 项通过）并合入 master，源码版本已准备为 0.4.0，待维护者触发发布工作流。**
+日期：2026-11-19。**0.3.6 已通过 OIDC 发布，npm latest 已核对。** Windows 和 Linux 的 CI 验证、官方源隔离安装及本地 HTTP 冒烟均通过。**SP004「真实编码任务」已实施、验证（`npm test` 615 项通过）并合入 master，源码版本已准备为 0.4.0，待维护者触发发布工作流。**
 
 ## 已有
 
@@ -88,7 +88,7 @@ SP002 的制品布局已变更（bin 由 `dist/cli.js` 改为 `dist/tui/cli.js`�
 
 ## SP004 合入回执（2026-11-19）
 
-源/目标固定：`feature/SP004/real-coding-task`（HEAD `868eae6`）→ `master`（原 `5b0e7cc`），merge-base `e808679`，`--no-ff` 合并提交 `fdfdae8`，ancestry 证明通过。前置门禁 `npm run merge:gate` GREEN（`artifacts/merge-gate/feature-SP004-real-coding-task-2026-11-18T16-16-59-047Z.md`：outgoing 31 提交 91 文件、禁带路径违规 0、FAIL 行 0、UNVERIFIED 9 行且恢复条件节存在；`npm test`/`spec:check`/`skills:check`/`pack-smoke` 退出码 0）。合并时 `PRODUCT.md` 与 `docs/current-status.md` 因 master 已发布 0.3.6 出现文本冲突，按「保留已发布事实 + SP004 现状」人工解决，无代码冲突。合入后复验：`npm test` 0 失败、`CI=true npm test` 0 失败、`spec:check`/`skills:check`/`release` 17 项通过。推送：`origin/master` `5b0e7cc..1460fa3`、`origin/feature/SP004/real-coding-task` `da5bed1..868eae6`，`git ls-remote` 核对与本地一致（master `1460fa325dfc03f3088b6c209879b9a2965eeaee`）。未执行：打 tag、npm 发布、分支删除。
+源/目标固定：`feature/SP004/real-coding-task`（HEAD `868eae6`）→ `master`（原 `5b0e7cc`），merge-base `e808679`，`--no-ff` 合并提交 `fdfdae8`，ancestry 证明通过。前置门禁 `npm run merge:gate` GREEN（`artifacts/merge-gate/feature-SP004-real-coding-task-2026-11-18T16-16-59-047Z.md`：outgoing 31 提交 91 文件、禁带路径违规 0、FAIL 行 0、UNVERIFIED 9 行且恢复条件节存在；`npm test`/`spec:check`/`skills:check`/`pack-smoke` 退出码 0）。合并时 `PRODUCT.md` 与 `docs/current-status.md` 因 master 已发布 0.3.6 出现文本冲突，按「保留已发布事实 + SP004 现状」人工解决，无代码冲突。合入后复验：`npm test` 0 失败、`CI=true npm test` 0 失败、`spec:check`/`skills:check`/`release` 17 项通过。推送：`origin/master` `5b0e7cc..1460fa3`、`origin/feature/SP004/real-coding-task` `da5bed1..868eae6`，`git ls-remote` 核对与本地一致（master `1460fa325dfc03f3088b6c209879b9a2965eeaee`）。未执行：打 tag、npm 发布、分支删除。合入后补记：T25 按设计 §7.3/§8 补齐 `EnterWorktree`/`ExitWorktree` 工具表面与删除强制审批（`a76c815`，全量 615/615），并新增 `SP/SP004/reference-parity.md` 记录参考 TUI（`b5c9be8`）对照；工具面未接入生产会话，限制与恢复条件见验收报告 §5。
 
 ## 0.2.0 正式发布完成（2026-11-17）
 
