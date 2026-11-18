@@ -8,9 +8,9 @@ export type GitStatus = {
   gitAvailable: boolean
   head?: string
   branch?: string
-  /** 远端地址（可能含 token，需脱敏；T23 接入）。 */
+  /** 远端地址（已脱敏，绝不把凭据交给模型；T23）。 */
   remoteUrl?: string
-  /** HEAD 是否已推送到远端（T23 接入）。 */
+  /** HEAD 是否已推送到远端（T23）。 */
   isHeadOnRemote?: boolean
   staged: string[]
   unstaged: string[]
@@ -18,7 +18,7 @@ export type GitStatus = {
   conflicted: string[]
   /** 结构化条目（含索引/工作区状态码），用于判定操作类型（T7）。 */
   changes?: PorcelainEntry[]
-  /** 仓库内 worktree 数量（T23 接入）。 */
+  /** 仓库内 worktree 数量（T23）。 */
   worktreeCount?: number
   ahead?: number
   behind?: number
@@ -65,6 +65,21 @@ function runGit(
       }
     )
   })
+}
+
+/** 脱掉 URL 中的凭据：`https://user:token@host/repo` → `https://host/repo`（design §7.1）。 */
+export function sanitizeRemoteUrl(url: string): string {
+  const trimmed = url.trim()
+  // scp 形式（git@host:org/repo.git）本身不含密码，用户名不敏感，保持原样。
+  const schemeMatch = /^([a-z][a-z0-9+.-]*):\/\//i.exec(trimmed)
+  if (schemeMatch === null) return trimmed
+  const rest = trimmed.slice(schemeMatch[0].length)
+  const at = rest.lastIndexOf('@')
+  const slash = rest.indexOf('/')
+  if (at === -1) return trimmed
+  // 只去掉 authority 段里的 userinfo，避免误伤路径里的 '@'。
+  if (slash !== -1 && at > slash) return trimmed
+  return `${schemeMatch[1]}://${rest.slice(at + 1)}`
 }
 
 function emptyStatus(gitAvailable: boolean): GitStatus {
@@ -114,6 +129,33 @@ export async function readGitStatus(cwd: string, options: ReadGitStatusOptions =
   if (headRun.ok) {
     const head = headRun.stdout.trim()
     if (head !== '') status.head = head
+  }
+
+  // 远端地址：origin 优先，其次第一个远端；返回值一律脱敏（design §7.1）。
+  const originRun = await runGit(command, ['config', '--get', 'remote.origin.url'], cwd, options.env)
+  let rawRemote: string | undefined
+  if (originRun.ok && originRun.stdout.trim() !== '') {
+    rawRemote = originRun.stdout.trim()
+  } else {
+    const remotesRun = await runGit(command, ['remote'], cwd, options.env)
+    const first = remotesRun.ok ? remotesRun.stdout.split('\n').map((line) => line.trim()).find((line) => line !== '') : undefined
+    if (first !== undefined) {
+      const firstRun = await runGit(command, ['config', '--get', `remote.${first}.url`], cwd, options.env)
+      if (firstRun.ok && firstRun.stdout.trim() !== '') rawRemote = firstRun.stdout.trim()
+    }
+  }
+  if (rawRemote !== undefined) status.remoteUrl = sanitizeRemoteUrl(rawRemote)
+
+  // HEAD 是否已在远端分支上（只读判定；无远端或读取失败则省略字段）。
+  if (status.head !== undefined && rawRemote !== undefined) {
+    const containsRun = await runGit(command, ['branch', '-r', '--contains', status.head], cwd, options.env)
+    if (containsRun.ok) status.isHeadOnRemote = containsRun.stdout.trim() !== ''
+  }
+
+  // worktree 数量（含主工作区），失败则省略字段。
+  const worktreeRun = await runGit(command, ['worktree', 'list', '--porcelain'], cwd, options.env)
+  if (worktreeRun.ok) {
+    status.worktreeCount = worktreeRun.stdout.split('\n').filter((line) => line.startsWith('worktree ')).length
   }
   return status
 }

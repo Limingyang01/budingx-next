@@ -1,6 +1,7 @@
-// SP004 T8 · worktree 进出（design §7.3，AC GW-05/GW-06/GW-07）。
-// 只做纯 git 路径（hook 包装留 SP006）：git worktree add / list，不改主工作区。
+// SP004 T8/T23 · worktree 进出（design §7.3，AC GW-05/GW-06/GW-07）。
+// 只做纯 git 路径（hook 包装留 SP006）：git worktree add / list / remove，不改主工作区。
 // 失败必须保持原 cwd 不变且不留半成品；名称与路径都做越界校验。
+// 删除一律需要宿主单次授权，并先列出可确认的残留（未提交文件/未合并提交）。
 import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, realpathSync, rmSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
@@ -21,10 +22,35 @@ export type WorktreeSession = {
 export type WorktreeEnterResult = Required<Pick<WorktreeSession, 'path' | 'branch' | 'baseBranch'>> &
   Pick<WorktreeSession, 'originalCwd'>
 
+export type WorktreeExitAction = 'keep' | 'remove'
+
+/** 宿主单次删除授权：绑定具体 worktree 与专用分支，模型参数本身无授权效力。 */
+export type WorktreeRemovalAuthorization = {
+  id: string
+  /** 被授权删除的 worktree 真实路径。 */
+  worktree: string
+  /** 被授权删除的专用分支。 */
+  branch: string
+  /** 是否允许丢弃未提交改动与未合并提交。 */
+  discardChanges: boolean
+}
+
 export type WorktreeExitResult = {
   cwd: string
-  action: 'keep'
+  action: WorktreeExitAction
   path: string
+  /** action='remove' 时实际被丢弃的未提交文件数。 */
+  discardedFiles?: number
+  /** action='remove' 时实际被丢弃的未合并提交数。 */
+  discardedCommits?: number
+}
+
+export type ExitWorktreeInput = WorktreeSession & {
+  /** 默认 keep；remove 会删除 worktree 与专用分支。 */
+  action?: WorktreeExitAction
+  /** 模型表达的丢弃意图；必须与宿主授权同时成立（GW-06）。 */
+  discard_changes?: boolean
+  authorization?: WorktreeRemovalAuthorization
 }
 
 export type EnterWorktreeInput = {
@@ -36,8 +62,6 @@ export type EnterWorktreeInput = {
   home?: string
 }
 
-export type ExitWorktreeInput = WorktreeSession
-
 /** 名称规则（F-18）：≤41 字符、小写字母/数字/连字符/下划线开头且整体合法。 */
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-_]{0,40}$/
 
@@ -45,12 +69,42 @@ export function isValidWorktreeName(name: string): boolean {
   return NAME_PATTERN.test(name)
 }
 
+/** slug 段字符集（F-18）：字母、数字、点、下划线、连字符。 */
+const SLUG_SEGMENT_PATTERN = /^[A-Za-z0-9._-]+$/
+
+/**
+ * 校验工作区/计录路径 slug（F-18）：总长 ≤64，按 `/` 分段，每段非空且合法，
+ * 禁止 `.`/`..` 段，避免路径穿越与空路径片段。
+ */
+export function validateWorktreeSlug(slug: string): { ok: boolean; reason?: string } {
+  if (slug === '') return { ok: false, reason: 'slug 不能为空' }
+  if (slug.length > 64) return { ok: false, reason: 'slug 超过 64 字符' }
+  for (const segment of slug.split('/')) {
+    if (segment === '') {
+      return { ok: false, reason: 'slug 含空段：不能以 / 开头或结尾，也不能出现连续 //' }
+    }
+    if (segment === '.' || segment === '..') {
+      return { ok: false, reason: `slug 不允许 ${segment} 段` }
+    }
+    if (!SLUG_SEGMENT_PATTERN.test(segment)) {
+      return { ok: false, reason: `slug 段含非法字符：${segment}` }
+    }
+  }
+  return { ok: true }
+}
+
+export function assertWorktreeSlug(slug: string): string {
+  const result = validateWorktreeSlug(slug)
+  if (!result.ok) throw new Error(`非法 slug：${JSON.stringify(slug)}；${result.reason}`)
+  return slug
+}
+
 /** 仓库目录 slug：仅用于在 worktree 根下分目录，不参与分支命名。 */
 export function repoSlug(repoPath: string): string {
   const raw = basename(repoPath).toLowerCase()
   const slug = raw.replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '')
   const safe = slug === '' ? 'repo' : slug
-  return safe.slice(0, 64)
+  return assertWorktreeSlug(safe)
 }
 
 function flattenSlug(name: string): string {
@@ -173,10 +227,74 @@ export async function enterWorktree(input: EnterWorktreeInput): Promise<Worktree
   return { path: targetPath, branch, baseBranch, originalCwd: cwd }
 }
 
-/** 退出 worktree：默认 keep（保留目录与分支，不删除）。 */
-export function exitWorktree(current: ExitWorktreeInput): WorktreeExitResult {
+/** 统计 worktree 内未提交文件数（含暂存、未暂存、未跟踪；重命名按一条记录计）。 */
+async function countPendingFiles(worktreePath: string): Promise<number> {
+  const statusRun = await runGit(['status', '--porcelain=v1', '-z'], worktreePath)
+  if (!statusRun.ok) return 0
+  return statusRun.stdout.split('\0').filter((entry) => entry !== '').length
+}
+
+/** 统计专用分支相对基准分支的未合并提交数。 */
+async function countUnmergedCommits(repoCwd: string, baseBranch: string, branch: string): Promise<number> {
+  const countRun = await runGit(['rev-list', '--count', `refs/heads/${baseBranch}..refs/heads/${branch}`], repoCwd)
+  if (!countRun.ok) {
+    throw new Error(`无法复核未合并提交数量：${countRun.stderr.trim() || 'git rev-list 失败'}`)
+  }
+  const parsed = Number.parseInt(countRun.stdout.trim(), 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+}
+
+/**
+ * 退出 worktree：默认 keep（保留目录与分支，不删除）。
+ * remove 必须先通过宿主单次授权；存在残留（未提交文件/未合并提交）时还要
+ * discard_changes 与授权里的 discardChanges 同时成立，否则拒绝并列出残留（GW-06）。
+ */
+export async function exitWorktree(current: ExitWorktreeInput): Promise<WorktreeExitResult> {
   const target = current.originalCwd ?? current.path
-  return { cwd: target, action: 'keep', path: current.path }
+  const action = current.action ?? 'keep'
+  if (action === 'keep') return { cwd: target, action: 'keep', path: current.path }
+
+  const authorization = current.authorization
+  if (authorization === undefined) {
+    throw new Error('删除 worktree 需要宿主单次授权：缺少 authorization（未经授权不会删除任何文件）')
+  }
+  if (comparablePath(authorization.worktree) !== comparablePath(current.path) || authorization.branch !== current.branch) {
+    throw new Error(`授权与目标 worktree 不匹配，拒绝删除：授权 ${authorization.worktree}@${authorization.branch}`)
+  }
+
+  const repoCwd = current.originalCwd ?? current.path
+  const entry = await findWorktreeEntry(repoCwd, current.path)
+  if (entry === undefined || entry.branch !== current.branch) {
+    throw new Error(
+      `无法复核 worktree 身份，拒绝删除；可确认残留：路径 ${current.path}、分支 ${current.branch}`
+    )
+  }
+
+  const discardedFiles = await countPendingFiles(current.path)
+  const discardedCommits = await countUnmergedCommits(repoCwd, current.baseBranch, current.branch)
+  const hasResidue = discardedFiles > 0 || discardedCommits > 0
+  if (hasResidue && !(current.discard_changes === true && authorization.discardChanges === true)) {
+    throw new Error(
+      `worktree 存在可确认的残留：未提交文件 ${discardedFiles} 个、未合并提交 ${discardedCommits} 个；` +
+        '删除需要 discard_changes=true 且宿主明确授权'
+    )
+  }
+
+  const removed = await runGit(['worktree', 'remove', '--force', current.path], repoCwd)
+  if (!removed.ok) {
+    throw new Error(`删除 worktree 失败：${removed.stderr.trim() || removed.stdout.trim()}；可确认残留：路径 ${current.path}`)
+  }
+  const deleted = await runGit(['branch', '-D', current.branch], repoCwd)
+  if (!deleted.ok) {
+    throw new Error(`删除专用分支失败：${deleted.stderr.trim() || deleted.stdout.trim()}；可确认残留：分支 ${current.branch}`)
+  }
+  return {
+    cwd: target,
+    action: 'remove',
+    path: current.path,
+    discardedFiles,
+    discardedCommits
+  }
 }
 
 /** 真实路径助手：用于宿主核对 worktree 身份（测试与 T23 复用）。 */

@@ -73,7 +73,7 @@ test('T8-2 退出 worktree：回到原 cwd，目录与分支保留（GW-06）', 
   const { repo, root, cleanup } = makeRepo()
   try {
     const entered = await enterWorktree({ cwd: repo, name: 'keep-me', root })
-    const exited = exitWorktree({ ...entered, originalCwd: repo })
+    const exited = await exitWorktree({ ...entered, originalCwd: repo })
     assert.equal(exited.cwd, repo)
     assert.equal(exited.action, 'keep')
     assert.ok(existsSync(entered.path), '默认 keep 不删除隔离目录')

@@ -456,7 +456,12 @@
   8. 移除后回执含 `discardedFiles`/`discardedCommits` 计数（GW-06）
 - **GREEN**：按 F-17/F-18 语义实现
 - **验证**：`npm run build && node --test src/git/test/status-extended.test.mjs src/git/test/worktree-exit.test.mjs`
-- **完成事实**：待填
+- **完成事实**：已交付（10 项新用例，全量 550 通过）。
+  - `src/git/status.ts`：新增 `sanitizeRemoteUrl(url)`（脱掉 `scheme://userinfo@` 段，scp 形式不含密码保持原样）；`readGitStatus` 追加远端读取（`remote.origin.url` 优先，其次第一个远端，返回值一律脱敏）、`isHeadOnRemote`（`git branch -r --contains <head>`，无远端/读取失败省略字段）、`worktreeCount`（`git worktree list --porcelain` 的 `worktree ` 行数）；所有 git 调用继续经 `runGit` 带 `--no-optional-locks`。
+  - `src/git/worktree.ts`：新增 `validateWorktreeSlug(slug)`/`assertWorktreeSlug(slug)`（总长 ≤64、按 `/` 分段、每段非空且匹配 `[A-Za-z0-9._-]`、禁 `.`/`..` 段）；`repoSlug` 改为超长/非法时**明确拒绝**而非静默截断；`exitWorktree` 改为 async，默认 `keep`；`remove` 要求宿主 `WorktreeRemovalAuthorization`（绑定 worktree 真实路径与专用分支，`discardChanges` 布尔），先 `findWorktreeEntry` 复核身份，无法复核时拒绝并列出可确认残留路径/分支；统计 `discardedFiles`（worktree 内 `status --porcelain -z` 条目数）与 `discardedCommits`（`rev-list --count base..branch`）；存在残留时必须 `discard_changes===true` 且授权 `discardChanges===true` 才删除，否则抛错列出计数；删除顺序为 `worktree remove --force` 后 `branch -D`，任一步失败都带残留信息抛错，成功回执含两项计数。
+  - 证据：RED = 回退两个实现文件后新用例双双 `SyntaxError: The requested module ... does not provide an export named 'sanitizeRemoteUrl' / 'validateWorktreeSlug'`（0 通过 2 失败）；恢复并 `npm run build` 后 **10/10 通过**；T23-1 用 `GIT_TRACE2_EVENT` 跟踪文件逐条断言 git argv 含 `--no-optional-locks`；T23-2 断言 `https://user:secret-token@...` 脱敏后不含 token 且 ssh/scp 形式原样；T23-4 用本地 bare 仓库证明未推送→`true`、本地新提交→`false`、无远端→字段省略；T23-8 证明缺 `discard_changes` 拒绝、补齐后删除并回执 `discardedFiles:0`/`discardedCommits:1`。
+  - 全量 `npm run test:unit` **550/550 通过**（`.superpowers/sdd/plan.zh/t23-full-unit.log`，exit=0）；`npm run test:checks` 模块边界检查通过。
+  - Ruling（T23）：①退出默认 `keep`，`remove` 把授权做成宿主签发的结构化对象而非布尔，避免模型自述绕过；②残留计数在删除前统计并在回执中原样返回，供交付记录审计；③`repoSlug` 不再截断（超 64 明确报错），与 F-18 一致且避免不同仓库映射到同一目录；④T8 既有退出用例随 async 化补 `await`，语义不变。
 
 ---
 
