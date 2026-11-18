@@ -74,3 +74,5 @@
 维护者执行 [运行 #7](https://github.com/Limingyang01/budingx-next/actions/runs/44055301185)，两个验证平台和 publish job 全部成功；官方 npm latest=0.2.0，发布源码 `6ed77d8a93335f8b261493e1fa4f0994ce4bc7bd`。官方安装、HTTP smoke、46 签名/5 attestation 核验通过，ledger 已 published。原始 CI artifact 因下载要求认证未取得，采用公开 provenance 与独立安装证据收尾；L3 真终端人工仍未验证。
 
 2026-11-18 完成旧 TUI 对照复验，覆盖输入、布局、滚动、流式对话、排队、审批和工具状态。见 [测试报告 §20](test-report.md#20-旧-tui-对照复验2026-11-18)。
+
+本轮 TUI 复验发现的交互差异已合入 master，纳入 [0.3.6 发布候选](../../release-notes/v0.3.6.md)。

@@ -6,6 +6,8 @@
 
 SP003 的 **0.3.5 已发布**，npm latest 指向 0.3.5。[GitHub Actions #14](https://github.com/Limingyang01/budingx-next/actions/runs/44262744543) 的 Windows、Linux 与 OIDC 发布均成功，官方源隔离安装及签名核验通过。详见 [v0.3.5 发行说明](../release-notes/v0.3.5.md)。
 
+下一发布候选为 [0.3.6](../release-notes/v0.3.6.md)。手动运行使用 `master`、`0.3.6`、`latest`，取消 `dry_run`。
+
 SP003 的 **0.3.4 已发布**，当时为 npm latest。[GitHub Actions #13](https://github.com/Limingyang01/budingx-next/actions/runs/44257392923) 的 Windows、Linux 与 OIDC 发布均成功，官方源隔离安装及签名核验通过。详见 [v0.3.4 发行说明](../release-notes/v0.3.4.md)。
 
 SP003 的 **0.3.2 已发布**，当时为 npm latest。[GitHub Actions #12](https://github.com/Limingyang01/budingx-next/actions/runs/44248899298) 的 Windows、Linux 与 OIDC 发布均成功，官方源隔离安装及签名核验通过。详见 [v0.3.2 发行说明](../release-notes/v0.3.2.md)。

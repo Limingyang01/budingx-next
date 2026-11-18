@@ -93,3 +93,5 @@ SP003 权限模式与会话体验已发布为 [0.3.4](../../release-notes/v0.3.4
 用户要求对齐旧 TUI 的对话显示与操作。本轮补齐滚轮回看、固定输入区、主题色进度、工具状态和两档权限，并保留现有 Provider 协议和发布入口。详见 [验证报告](test-report.md#repl-交互对齐)。
 
 阶段状态和逐项验收见 [SP002 与 SP003 旧 TUI 差异清单](repl-alignment-gap-checklist.md)。
+
+本轮 REPL 修复已合入 master，纳入 [0.3.6 发布候选](../../release-notes/v0.3.6.md)。

@@ -10,6 +10,7 @@
 - 面向 `.agents`、`.claude`、`.budingx` 的发现入口和维护脚本。
 - 用于维护的私有 package.json；其 `0.0.0` 不是产品发布版本。
 - TUI 0.3.5 台账为 published。本版完善 Markdown 回复、提问高亮、回合信息和短模式标签。详见 [0.3.5 发行说明](../release-notes/v0.3.5.md)。
+- SP002／SP003 终端交互修复已合入 master，纳入 [0.3.6 发布候选](../release-notes/v0.3.6.md)。
 - 实际 Node/TypeScript 构建、测试、版本准备与发布编排，实际 tarball 隔离安装 smoke 已通过。
 - **SP002 新增**：`src/core`（事件契约、会话/回合状态机、工具回合、输入队列、消息规范化）、`src/provider`（OpenAI 兼容流解析、tool_calls 碎片、错误分类、有界重试、取消、连通探测）、`src/storage`（`~/.budingx` 配置与凭据仓库、模型档案 CRUD、三源合并）、`src/tui` 的 Ink 8 对话界面（渲染 reducer、多行编辑器、审批卡、双中断与排队）。
 - **SP003 新增（已合入 master `598fb89`）**：`src/workspace`（路径边界与忽略规则、Read/Write/Edit/Glob/Grep、行级 diff、检查点撤销、三模式策略与规则、`@` 上下文）、`src/core` 的权限端口与策略判定接线、`src/storage/permissions.ts`（`~/.budingx/permissions.json`）、TUI 侧审批三档与拒绝反馈、模式徽标与 Shift+Tab 轮播、diff 两级对话框与多源切换、`@`/`/` 统一补全。

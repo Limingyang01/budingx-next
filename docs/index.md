@@ -24,7 +24,7 @@
 
 首发使用与交付：[TUI README](../src/tui/README.md)、[版本管理](versioning.md)、[首发状态](requirements/tui-bootstrap/STATUS.md)。
 
-当前发布：[0.3.5 · SP003 会话排版与紧凑状态栏](../release-notes/v0.3.5.md)（npm latest）。
+当前发布：[0.3.5 · SP003 会话排版与紧凑状态栏](../release-notes/v0.3.5.md)（npm latest）。 发布候选为 [0.3.6](../release-notes/v0.3.6.md)。
 
 源码模块组织见 [仓库布局](repository-layout.md)。
 
