@@ -64,6 +64,8 @@
 
 用户确认 v1.3 后执行。核对实际 master / feature / upstream、可用 Windows 与 POSIX 解释器、证据环境及既有门禁。重新对照权限模式、Session 接口和现有渲染入口。产出隔离后端及各平台能力探测结果、参考 TUI 的执行条件和视觉权利确认状态。缺已验证隔离能力时普通 shell 保持关闭，对应实测记录 UNVERIFIED。验证 `git status --short --branch`、`git log -1 master`、`npm run spec:check`，并记录基线测试命令及数量。
 
+**完成事实（2026-11-18）**：用户「继续开发SP004」+「继续」视为 v1.3 确认与实施放行。分支 `feature/SP004/real-coding-task` 与远端一致、工作区干净；master=origin/master=`5b0e7cc`；参考仓 `b5c9be8` 干净只读。node v24.15.0；git 2.56.0.windows.4.niugit；Git Bash 5.2.12、Windows PowerShell 5.1.19041.6456、pwsh7 均可用。无 WindowsSandbox/docker/bwrap → 无已验证隔离后端，普通 shell 默认关闭，真实后端隔离实测 UNVERIFIED（T20 以宿主注入可信上下文取证）。视觉权利未确认 → 像素级 UNVERIFIED，按行为交互验收。`npm run spec:check`、`npm run test:checks` 通过；`npm run test:unit` = **359/359 通过**（基线按 359 计；文档旧记 332 为更早基线；G01 并发缺陷本次全量未复现，不在本轮修改）。环境修复：node_modules 缺 lowlight/marked/hast，`npm ci` 恢复。接口核对：`ToolCapability` 需增 `execute`；Session 分派按 capability 走策略、`dispose()` 需终止后台；新模块 `src/exec`、`src/git`、`src/plan` 由 T16 加入 tsconfig include；测试从 `src/tui/dist/` 导入编译产物。
+
 ### T1 · core 命令执行与计划端口（纯契约）
 
 - **设计**：§4.1、§3

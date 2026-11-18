@@ -1,6 +1,6 @@
 # SP004 · 真实编码任务
 
-状态：**文档 v1.3 修订，待用户确认；产品实施暂停**｜功能分支 `feature/SP004/real-coding-task`｜文档起点 `363d1eb`｜本地 master 核对点 `5b0e7cc`｜参考 TUI `b5c9be8`
+状态：**实施中（T0 完成，进入 T1）**｜功能分支 `feature/SP004/real-coding-task`｜文档起点 `363d1eb`｜本地 master 核对点 `5b0e7cc`｜参考 TUI `b5c9be8`
 
 ## 本轮目标与边界
 
@@ -15,7 +15,7 @@
   - USER_CONFIRMED（2026-11-17 委托）：取消常规人工审查，设计文档为 Agent 自审对象；自审通过即包含从 master 创建功能分支、计划/实施/测试/交付自主推进、各阶段本地提交（中文提交说明）、交叉验证门禁 GREEN 后按 buding-merge 合入 master，并**自主推送远端**；打标签、npm 发布、远端设置、分支/worktree 删除不在委托内。
   - USER_CONFIRMED（2026-11-17 r6）：权限模式固定三档（仅可查看/工作区内修改/完全权限），SP003/SP004 交付；完全权限不得绕过 deny 规则与凭据保护。
   - 边界：本轮验证用本地 fixture、临时目录与真实进程完成；真实模型端到端依赖用户凭据（沿用 SP002 凭据状态，无则记 UNVERIFIED）。
-- 本次授权涵盖文档修订、在当前 SP004 功能分支提交和推送。v1.3 的技术取舍待用户确认后进入 T0。
+- 本次授权涵盖文档修订、在当前 SP004 功能分支提交和推送。用户「继续开发SP004」+「继续」（2026-11-18）视为对 v1.3 的确认与实施放行；T0 已完成。
 
 ## 需求索引（迭代进度入口）
 
@@ -23,10 +23,10 @@
 
 | 功能/优化目录 | 来源 / 身份 | 验收目标 | 责任范围 | 阶段 | 需求 / 设计 / 计划 / STATUS | 验证 | 集成状态 | 下一步 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| [command-execution](command-execution/requirements.md) | 路线图（USER_CONFIRMED 名称）；AC 切分 MODEL_PROPOSED | CE-01…20：真实进程执行、退出码/输出分离、Windows quoting、cwd/环境、超时、输出上限、后台任务状态与取消、三模式边界、底线规则、交互式明确失败、阻塞命令拦截、中断传播、**阻塞预算自动转后台、后台输出落盘、破坏性命令警告、执行隔离门禁、命令内受限编辑** | 新增 `src/exec` 模块 + core 端口契约 | 需求/设计/计划已修订 · 实施待确认 | [需求 v0.3](command-execution/requirements.md) ／ [设计 v1.3](design/design.zh.md) ／ [计划 v1.3](design/plan.zh.md) ／ [STATUS](command-execution/STATUS.md) | 未开始（未执行） | 未开始（未提交） | **待用户放行后**：在现有分支执行 T1–T5、T18–T21 |
-| [coding-task-loop](coding-task-loop/requirements.md) | 路线图；AC 切分 MODEL_PROPOSED | CT-01…09：测试失败回喂修复循环、最大迭代、排队补充、用户转向、追问与回答、完成证据门槛、命令失败不吞、中断传播 | core 回合编排 + 工具结果契约 | 需求/设计/计划已修订 · 实施待确认 | [需求 v0.3](coding-task-loop/requirements.md) ／ [设计 v1.3](design/design.zh.md) ／ [计划 v1.3](design/plan.zh.md) ／ [STATUS](coding-task-loop/STATUS.md) | 未开始（未执行） | 未开始（未提交） | **待用户放行后**：执行 T12–T14 |
-| [git-worktree-safety](git-worktree-safety/requirements.md) | 路线图；AC 切分 MODEL_PROPOSED | GW-01…09：脏工作区识别、用户改动不丢、改动归属、未授权不写、worktree 进出与失败回落、非 Git 仓库明确、提交范围受控、**slug 校验、恢复复用、keep/remove 退出语义、remoteUrl 脱敏** | 新增 `src/git` 模块 | 需求/设计/计划已修订 · 实施待确认 | [需求 v0.3](git-worktree-safety/requirements.md) ／ [设计 v1.3](design/design.zh.md) ／ [计划 v1.3](design/plan.zh.md) ／ [STATUS](git-worktree-safety/STATUS.md) | 未开始（未执行） | 未开始（未提交） | **待用户放行后**：执行 T6–T9、T23 |
-| [task-planning](task-planning/requirements.md) | 路线图；CAP-L2-08/CAP-L3-15；AC 切分 MODEL_PROPOSED | TP-01…10：计划状态机与进度、计划模式降级为需批准、建议≠批准、用户可编辑计划与拒绝反馈、执行前基线校验、结构化多题追问、取消追问、完成报告真实、**计划持久化与落盘** | core 计划端口 + `src/plan` + 工具族 + TUI 四类局部场景 | 需求/设计/计划已修订 · 实施待确认 | [需求 v0.3](task-planning/requirements.md) ／ [设计 v1.3](design/design.zh.md) ／ [计划 v1.3](design/plan.zh.md) ／ [STATUS](task-planning/STATUS.md) | 未开始（未执行） | 未开始（未提交） | **待用户放行后**：执行 T10–T12、T15、T22 |
+| [command-execution](command-execution/requirements.md) | 路线图（USER_CONFIRMED 名称）；AC 切分 MODEL_PROPOSED | CE-01…20：真实进程执行、退出码/输出分离、Windows quoting、cwd/环境、超时、输出上限、后台任务状态与取消、三模式边界、底线规则、交互式明确失败、阻塞命令拦截、中断传播、**阻塞预算自动转后台、后台输出落盘、破坏性命令警告、执行隔离门禁、命令内受限编辑** | 新增 `src/exec` 模块 + core 端口契约 | 需求/设计/计划 v1.3 · 实施中（T0 完成） | [需求 v0.3](command-execution/requirements.md) ／ [设计 v1.3](design/design.zh.md) ／ [计划 v1.3](design/plan.zh.md) ／ [STATUS](command-execution/STATUS.md) | T0 基线通过；AC 未取证 | 未开始（未提交） | **实施中**：在现有分支执行 T1–T5、T18–T21 |
+| [coding-task-loop](coding-task-loop/requirements.md) | 路线图；AC 切分 MODEL_PROPOSED | CT-01…09：测试失败回喂修复循环、最大迭代、排队补充、用户转向、追问与回答、完成证据门槛、命令失败不吞、中断传播 | core 回合编排 + 工具结果契约 | 需求/设计/计划 v1.3 · 实施中（T0 完成） | [需求 v0.3](coding-task-loop/requirements.md) ／ [设计 v1.3](design/design.zh.md) ／ [计划 v1.3](design/plan.zh.md) ／ [STATUS](coding-task-loop/STATUS.md) | T0 基线通过；AC 未取证 | 未开始（未提交） | **实施中**：执行 T12–T14 |
+| [git-worktree-safety](git-worktree-safety/requirements.md) | 路线图；AC 切分 MODEL_PROPOSED | GW-01…09：脏工作区识别、用户改动不丢、改动归属、未授权不写、worktree 进出与失败回落、非 Git 仓库明确、提交范围受控、**slug 校验、恢复复用、keep/remove 退出语义、remoteUrl 脱敏** | 新增 `src/git` 模块 | 需求/设计/计划 v1.3 · 实施中（T0 完成） | [需求 v0.3](git-worktree-safety/requirements.md) ／ [设计 v1.3](design/design.zh.md) ／ [计划 v1.3](design/plan.zh.md) ／ [STATUS](git-worktree-safety/STATUS.md) | T0 基线通过；AC 未取证 | 未开始（未提交） | **实施中**：执行 T6–T9、T23 |
+| [task-planning](task-planning/requirements.md) | 路线图；CAP-L2-08/CAP-L3-15；AC 切分 MODEL_PROPOSED | TP-01…10：计划状态机与进度、计划模式降级为需批准、建议≠批准、用户可编辑计划与拒绝反馈、执行前基线校验、结构化多题追问、取消追问、完成报告真实、**计划持久化与落盘** | core 计划端口 + `src/plan` + 工具族 + TUI 四类局部场景 | 需求/设计/计划 v1.3 · 实施中（T0 完成） | [需求 v0.3](task-planning/requirements.md) ／ [设计 v1.3](design/design.zh.md) ／ [计划 v1.3](design/plan.zh.md) ／ [STATUS](task-planning/STATUS.md) | T0 基线通过；AC 未取证 | 未开始（未提交） | **实施中**：执行 T10–T12、T15、T22 |
 
 ## TUI、协议与安全验收
 
@@ -37,7 +37,7 @@
 ## 验收与交接
 
 - 本轮出口门槛（对照路线图 SP004）：① 隔离项目完成定位→修改→运行测试→修复；② 用户追问/转向、Git 脏工作区、Windows quoting、后台状态/取消/输出上限和自身修改撤销有实测；③ 没有提交或推送授权不执行 Git 发布；④ 无旧仓源码/提示词/内部类型迁入，模块边界检查通过。
-- 实际验收：**未开始**（文档阶段完成，实施待用户放行）。
+- 实际验收：**实施中**（T0 完成：基线 359/359 通过、环境与隔离探测完成；T1 起逐任务红绿取证）。
 - 未完成/延期项：全部实现与验证项待放行；L3 真终端人工与 live Provider 端到端即使实施后仍预计为 UNVERIFIED（恢复条件见设计 §10）。
 - 下一轮输入（预计，供 SP005）：命令任务与计划状态随会话生命周期存活但不跨进程恢复的契约；后台任务句柄的生命周期边界；本轮后台输出仅驻内存，跨进程持久化留给 SP005。
 - 风险/回退：
@@ -59,7 +59,7 @@
 
 ## 验收与交接
 
-本版验收入口为 [test-report.md](test-report.md)。48 条 AC 和真终端、实隔离、Provider、AST 结果均待实施取证。已发布产品的实际使用说明和版本由当前发布记录管理。用户确认 v1.3 后再开始 T0。
+本版验收入口为 [test-report.md](test-report.md)。48 条 AC 和真终端、实隔离、Provider、AST 结果均待实施取证。已发布产品的实际使用说明和版本由当前发布记录管理。用户已确认 v1.3，T0 完成，实施推进中。
 
 ## 变更记录
 
@@ -72,3 +72,4 @@
 | 2026-11-18 | 与**路线图 r8** 对齐核对（提交前复核） | 并行会话推进 AGENTS.md 与路线图到 r8（现行 SP001–SP016 连续编号） | SP004 功能目录、出口门槛与六个 CAP 归属（CAP-L2-04/05/06/08、CAP-L3-09/15）**全部未变**；r8 重编号只涉及 SP004 之后的轮次 → **无需回退任何设计决策**。设计 §9.6 已补 r8 复核小节 |
 | 2026-11-18 | **文档提交并推送**（分支 `feature/SP004/real-coding-task`，仅文档，无产品代码） | 用户会话「提交文档并且推送远端，我会审查」 | 提交 `84f2004`，远端 SHA 已核对一致；本轮**只提交文档**；实施、代码、测试、交付、合入 master 均未执行，仍待用户放行 |
 | 2026-11-18 | 修订设计、计划、验收、需求与状态至本版 | 用户要求对照参考 TUI、明确协议和独立实现并修复安全缺口 | 只提交推送文档至现有分支；开发等待用户确认 |
+| 2026-11-18 | **实施放行，T0 完成**：基线 `npm run test:unit` = 359/359 通过（旧记 332 为更早基线）；环境修复 npm ci；隔离后端探测无已验证后端（普通 shell 默认关闭，实测 UNVERIFIED）；视觉权利未确认（像素级 UNVERIFIED）；计划 T0 补完成事实 | 用户「继续开发SP004」+「继续」视为 v1.3 确认与放行 | 进入 T1 core 端口；执行台账 `.superpowers/sdd/plan.zh/progress.md` |
