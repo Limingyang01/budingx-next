@@ -1,7 +1,7 @@
 # budingx 产品说明书
 
 > **npm 已发布版本**：0.3.0（`latest`）
-> **本分支**：SP003 模型管理修复，计划随 0.3.1 发布；源码包版本暂为 0.3.0。
+> **当前发布候选**：0.3.1 · SP003 模型管理修复，已准备，等待手动发布。
 > **说明书版本**：v1.5
 > **更新日期**：2026-11-18
 > **产品形态**：独立 MIT 许可的终端 Coding Agent（Node.js ≥ 22.18 + TypeScript，不依赖 Bun）
@@ -31,7 +31,7 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | bootstrap   | 0.1.0 / 0.1.1 | 简易聊天 TUI                                                              | OpenAI 兼容端点配置、SSE 流式对话、内存会话、多行输入、斜杠命令族、npm Trusted Publishing 发布链路、tarball 隔离安装 smoke                             | 已发布（npm `budingx@0.1.1`）         |
 | SP001       | —（规格轮）   | capability-baseline、evaluation-suite、core-boundaries、release-scope     | 能力清单 v1（85 项，验收时必交 53 项；2026-11-17 调整 v1.1：必交 47、r7 将六项记为范围外）、核心边界与不变量、评测集规格与任务清单、发布范围与待决项                                                             | 已验收，**不含产品代码**              |
 | SP002       | 0.2.0         | provider-streaming、model-management、session-lifecycle、tui-conversation | OpenAI 兼容流解析与 tool_calls 装配、错误分类/有界重试/取消/限额、模型档案与凭据仓库、会话状态机与终态契约、工具回合、双中断与排队、Ink 8 多行对话界面 | **已发布**，真实终端人工验证边界见 §7 |
-| SP003       | 0.3.1（拟） | model-manager | 模型档案面板、供应商模板、自动拉取模型 ID、连接验证 | 本分支，待发布 |
+| SP003       | 0.3.1 | model-manager | 模型档案面板、供应商模板、自动拉取模型 ID、连接验证 | 已准备发布 |
 | SP003       | 0.3.0         | workspace-tools、change-preview、permission-controls、file-context         | 工作区文件工具（读取/写入/精确编辑/文件匹配/内容检索，含越界防护与读后编辑门）、结构化 diff 预览与本会话改动撤销、三档权限模式与审批三档、权限规则与拒绝记录、`@` 引用与统一补全 | **已发布** |
 
 ### 2.2 后续交付规划（[路线图 r8](docs/iteration-plan.md)）
@@ -100,7 +100,7 @@ budingx --prompt "Hello" --timeout 120000
 
 - 交互终端内使用 `/models` 管理本地模型档案，步骤见 [SP003 模型管理](#模型管理)。模型档案和密钥分别存放在 `~/.budingx/config.json` 和 `~/.budingx/credentials.json`。
 - 自动化或临时运行使用启动参数或环境变量。例如 `budingx --prompt "总结本目录" --timeout 120000`。管道模式的 `/models` 只列出档案，`/model <名称或ID>` 可以切换。
-- 公开的 0.3.0 使用旧版命令。新面板和移除 `/provider` 的行为属于本修复分支，计划随 0.3.1 发布。当前分支包版本暂保持 0.3.0。
+- 公开的 0.3.0 使用旧版命令。本手册中的新面板和移除 `/provider` 的行为适用于 0.3.1。
 
 ## 5. 使用说明（按交付迭代）
 
@@ -130,7 +130,7 @@ budingx --prompt "Hello" --timeout 120000
 
 #### 模型管理
 
-以下面板用法计划随 0.3.1 发布。
+本节适用于已准备的 0.3.1。
 
 1. 启动 `budingx`，输入 `/models`，按 `N` 新建。
 2. 选择 DeepSeek、Qwen / 阿里云百炼、Kimi / 月之暗面、GLM / 智谱、火山方舟 / 豆包、硅基流动、OpenAI 或 OpenRouter。面板预填端点并定位到隐藏的 API Key 字段。粘贴后按 Enter 拉取模型，输入关键字可筛选列表。
@@ -204,6 +204,7 @@ budingx --prompt "Hello" --timeout 120000
 | 0.1.1 | 2026-11-16 | 发布链路修复与维护版（OIDC Trusted Publishing 实测）     | 历史已发布       |
 | 0.2.0 | 2026-11-17 | SP002 模型与会话闭环；升级说明见 release-notes/v0.2.0.md | 历史已发布 |
 | 0.3.0 | 2026-11-18 | SP003 工作区与安全修改；升级说明见 release-notes/v0.3.0.md | 已发布，`latest` |
+| 0.3.1 | 2026-11-18 | SP003 模型管理修复，见 [发行说明](release-notes/v0.3.1.md) | 已准备发布 |
 | —（规划调整，无产品行为变化） | 2026-11-17 | 路线图 r6：TUI 单端优先；SP008/SP009/SP016–SP018 暂缓、多端架构入口保留；TUI 三权限模式固定；能力清单分母 53→47；说明书 v1.3 | 规划文档调整 |
 | —（规划调整） | 2026-11-18 | 路线图 r7：移出五个原暂缓 SP，保留通用宿主契约，必交能力仍为 47 | 规划文档调整 |
 | —（规划调整） | 2026-11-18 | 路线图 r8：现行 SP001–SP016 连续编号，能力与产品版本不变 | 规划文档调整 |

@@ -24,7 +24,7 @@
 
 首发使用与交付：[TUI README](../src/tui/README.md)、[版本管理](versioning.md)、[首发状态](requirements/tui-bootstrap/STATUS.md)。
 
-当前发布候选：[0.3.0 · SP003 发行说明](../release-notes/v0.3.0.md)（已准备，等待手动发布）。npm latest 仍为 [0.2.0 · SP002](../release-notes/v0.2.0.md)。
+当前发布候选：[0.3.1 · SP003 模型管理修复](../release-notes/v0.3.1.md)（已准备，等待手动发布）。当前 npm latest 为 [0.3.0 · SP003](../release-notes/v0.3.0.md)。
 
 源码模块组织见 [仓库布局](repository-layout.md)。
 

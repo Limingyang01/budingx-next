@@ -208,3 +208,9 @@ npm run merge:gate     # 见 §6
 | 真实账号和终端 | UNVERIFIED | 恢复条件是用各模板的授权测试 Key 验证实际模型可用性，并用 Windows Terminal 与 ConHost 手动验证输入法、剪贴板和窄屏。 |
 
 专项回归 54 项通过，随后命令专项为 14 项通过（新增文档覆盖、发现路由和默认选择断言）。交叉验证对提交后精确内容执行并生成 `artifacts/merge-gate/` 回执。实现独立编写；未复制旧仓源码、未新增依赖或读取实际用户凭据。回退以该 fix 提交为界；无自动配置迁移和 npm 上传。
+
+## 0.3.1 合并与发布准备
+
+- `fix/SP003/model-management` 的 `8902b24` 门禁 GREEN，合并提交为 `8556ba4489c59278c5f833b3ef0955c70bea71b0`。检出精确合并提交后以 `CI=true npm test` 重跑，375 项通过、0 失败、0 跳过，模块边界检查通过。
+- 0.3.0 的 Windows、Linux 和 OIDC 发布见 [GitHub Actions #9](https://github.com/Limingyang01/budingx-next/actions/runs/44218571836)。官方隔离安装及 HTTP 冒烟通过，核验 46 个 registry signatures、5 个 attestations；provenance 的源码、工作流、运行和 SHA-512 与已发布包一致。原 CI artifact 下载需认证（HTTP 401），台账以公开来源及实际安装证据回填。
+- 同轮修复使用 `npm run version:prepare -- patch --iteration SP003` 准备 0.3.1。发布预演对精确准备提交执行，回执保存在忽略目录 `artifacts/release/`；实际发布由维护者在 GitHub 手动触发。更新了产品使用说明的发布版本提示，按迭代归类及文档编写规范继续保留。
