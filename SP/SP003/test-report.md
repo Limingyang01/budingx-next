@@ -221,3 +221,28 @@ npm run merge:gate     # 见 §6
 - [GitHub Actions #11](https://github.com/Limingyang01/budingx-next/actions/runs/44229230445) 从 `314fedf0a84b74b40a1b077de5dfcbeaeaa97a78` 完成 Windows、Linux 阶段和 OIDC 发布。公共 npm 发布于 `2026-11-18T03:20:51.605Z`，dist-tag `latest` 核对为 `0.3.1`。
 - 官方源隔离安装通过，绝对路径 npm shim 输出 `0.3.1`，管道 `/models` 与本地 HTTP 流式请求通过。npm 验证 46 个 registry signatures 和 5 个 attestations。SHA-512 与候选预演、npm 安装锁和 provenance 的 subject 一致，provenance 工作流、源码和运行 URL 核对通过。
 - CI 原始 artifact 下载返回 HTTP 401。发布台账保留该证据边界，并记录公开 provenance 和独立安装，不代替真实 Provider 或终端输入法验证。
+
+## 0.3.2 厂商模板与连接兼容修复
+
+分支 `fix/SP003/minimax-032`，基线 `af6b6d3`。用户确认 Qwen 已改用 Token Plan 地址后可调用。0.3.2 在独立分支准备，当前 npm latest 仍为 0.3.1。
+
+| 项 | 结论 | 证据 |
+| --- | --- | --- |
+| MiniMax 探测 | PASS | 低预算以及仅有思考内容的两条 fixture 在旧代码上复现失败。新实现采用有界 completion 预算和低思考档，覆盖正文、仅思考及真实工具回填判断。 |
+| 档案模板与列表 | PASS | 伪 TTY 验证 MiniMax 中国站和 Qwen Token Plan 从模板、隐藏粘贴 Key 到选择并应用。命令回归覆盖百炼工作空间 URL、Token Plan 专用 URL、列表缺失建议和 401 不降级。 |
+| 工具续跑 | PASS | 同档案、主机和模型的工具回合携带 opt-in 思考；切换档案后省略。非 MiniMax 请求形状保持。 |
+| 外部 Provider | UNVERIFIED | 恢复条件是用对应地域与套餐的授权 Key，在 MiniMax 中国站与百炼 Token Plan 验证实际连接和真实工具往返。此轮没有读取用户 Key。 |
+
+专项 55 项与模型面板 5 项均通过。交叉验证和真实制品 dry-run 在该修复分支的确切提交上运行，回执位于忽略的 `artifacts/`。产品说明与模板迁移见 [0.3.2 发行说明](../../release-notes/v0.3.2.md)。
+- 首次全量门禁复现模型面板刚显示时首个快捷键丢失（Ink 子视图的输入事件通过被动 effect 注册）。改为主应用维持输入监听，模型面板在布局阶段接管处理；回归保留原输入与持久化断言。
+
+### 0.3.2 模型共享回归
+
+- 红绿验证覆盖批量建档只保存一份 Key、同组切换与删到最后一个才移除密钥，以及已有单模型档案显式添加同组、同端点的独立账号互不共享。
+- 模拟真实配置保存失败后验证恢复旧 Key。更换同域名的端点路径时共享 Key 不沿用，活动档案也刷新。CLI 子进程从独立临时 home 启动，切换同组模型后本地 HTTP fixture 验证 Authorization。
+- 伪 TTY 验证空格多选、筛选后保留已选模型、批量保存、A 添加同组沿用 Key，密钥不回显。专项命令与 CLI 25 项通过，模型面板 6 项通过。没有新增依赖和持久化格式版本，也未读取实际用户配置。
+- 原 0.3.2 候选仍为 prepared，最终提交重跑门禁与 dry-run。真实厂商回执和 Windows 真终端输入法仍待对应环境验证。
+
+### 0.3.2 全屏与会话标签回归
+
+`npm run build` 通过。使用 `node --test src/tui/test/screen-e2e.test.mjs src/tui/test/header.test.mjs` 验证 26 项，通过 26 项，覆盖备用屏幕进入与退出、窗口缩放、Shift+Tab、长会话翻页和会话标题状态转换。Windows Terminal 实际标签观感与中文输入法仍待真终端验证。

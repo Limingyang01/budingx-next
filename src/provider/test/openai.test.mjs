@@ -457,3 +457,38 @@ test('connection-test cancellation aborts the provider request', async () => {
   controller.abort()
   assert.equal((await pending).ok, false)
 })
+
+test('MiniMax Flash probe reserves room for reasoning and actually checks tool calls', async () => {
+  const calls = []
+  const result = await probe({
+    baseUrl: 'https://api.minimax.cn/v1', model: 'MiniMax-M3.1-Flash', apiKey: 'fixture'
+  }, {
+    tools: true,
+    fetchImpl: async (url, request) => {
+      const body = JSON.parse(request.body)
+      calls.push({ url, body })
+      if (!body.max_completion_tokens || body.max_completion_tokens < 128) {
+        return Response.json({ choices: [{ finish_reason: 'length', message: { content: null, reasoning_content: 'Thinking' } }] })
+      }
+      return Response.json({ choices: [{ finish_reason: body.tools ? 'tool_calls' : 'stop', message: body.tools
+        ? { content: null, tool_calls: [{ id: 'echo-1', type: 'function', function: { name: 'echo', arguments: '{}' } }] }
+        : { content: 'ok', reasoning_content: 'Thinking' }
+      }] })
+    }
+  })
+  assert.equal(result.ok, true)
+  assert.equal(result.supportsTools, true)
+  assert.equal(calls.length, 2)
+  assert.ok(calls.every(({ url, body }) =>
+    url === 'https://api.minimax.cn/v1/chat/completions' && body.reasoning_effort === 'low' && !('max_tokens' in body)))
+})
+
+test('a dialect-compatible MiniMax probe recognizes a reasoning-only exhausted response', async () => {
+  const result = await probe({ baseUrl: 'https://api.minimax.cn/v1', model: 'MiniMax-M3.1-Flash' }, {
+    fetchImpl: async () => Response.json({
+      choices: [{ finish_reason: 'length', message: { content: null, reasoning_content: 'Thinking' } }]
+    })
+  })
+  assert.equal(result.ok, true)
+  assert.match(result.message, /reasoning/i)
+})

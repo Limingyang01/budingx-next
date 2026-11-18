@@ -9,7 +9,7 @@
 - 6 个适配本仓的项目流程技能（含版本准备），以及 MIT 许可的 15 个 Superpowers 开发技能；第三方开发技能单独登记。
 - 面向 `.agents`、`.claude`、`.budingx` 的发现入口和维护脚本。
 - 用于维护的私有 package.json；其 `0.0.0` 不是产品发布版本。
-- 当前 src/tui 版本为 0.3.1，台账为 published。详见 [0.3.1 发行说明](../release-notes/v0.3.1.md)。
+- 当前修复分支的 src/tui 版本为 0.3.2，台账为 prepared。它补齐 MiniMax 中国站与百炼 Token Plan 模板，公开版本仍为 0.3.1。详见 [0.3.1 发行说明](../release-notes/v0.3.1.md)。
 - 实际 Node/TypeScript 构建、测试、版本准备与发布编排，实际 tarball 隔离安装 smoke 已通过。
 - **SP002 新增**：`src/core`（事件契约、会话/回合状态机、工具回合、输入队列、消息规范化）、`src/provider`（OpenAI 兼容流解析、tool_calls 碎片、错误分类、有界重试、取消、连通探测）、`src/storage`（`~/.budingx` 配置与凭据仓库、模型档案 CRUD、三源合并）、`src/tui` 的 Ink 8 对话界面（渲染 reducer、多行编辑器、审批卡、双中断与排队）。
 - **SP003 新增（已合入 master `598fb89`）**：`src/workspace`（路径边界与忽略规则、Read/Write/Edit/Glob/Grep、行级 diff、检查点撤销、三模式策略与规则、`@` 上下文）、`src/core` 的权限端口与策略判定接线、`src/storage/permissions.ts`（`~/.budingx/permissions.json`）、TUI 侧审批三档与拒绝反馈、模式徽标与 Shift+Tab 轮播、diff 两级对话框与多源切换、`@`/`/` 统一补全。

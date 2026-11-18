@@ -11,7 +11,10 @@ function textOf(blocks: MessageBlock[]): string {
     .join('')
 }
 
-export function normalizeForApi(messages: Message[]): ApiMessage[] {
+export function normalizeForApi(
+  messages: Message[],
+  preserveToolReasoning?: (message: Message) => boolean
+): ApiMessage[] {
   const usedCallIds = new Set<string>()
   const seenCallIds = new Set<string>()
   const result: ApiMessage[] = []
@@ -64,10 +67,17 @@ export function normalizeForApi(messages: Message[]): ApiMessage[] {
     }
     const text = textOf(message.blocks)
     if (toolCalls.length > 0) {
+      const reasoning = preserveToolReasoning?.(message)
+        ? message.blocks
+            .filter((block): block is Extract<MessageBlock, { type: 'thinking' }> => block.type === 'thinking')
+            .map((block) => block.text)
+            .join('')
+        : ''
       result.push({
         role: 'assistant',
         content: text || null,
-        tool_calls: toolCalls
+        tool_calls: toolCalls,
+        ...(reasoning ? { reasoning_content: reasoning } : {})
       })
     } else if (text) {
       result.push({ role: 'assistant', content: text })

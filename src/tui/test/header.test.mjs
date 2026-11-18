@@ -5,8 +5,10 @@ import {
   ACCENT,
   lineWidth,
   renderHeader,
+  sessionTopic,
   setupHint,
   terminalStrategy,
+  terminalTitle,
   truncatePath
 } from '../dist/tui/render/header.js'
 
@@ -142,4 +144,12 @@ test('ASCII 兜底屏保持英文文案（老控制台代码页安全）', () =>
   assert.match(text, /Welcome to budingx/)
   assert.match(text, /Tips for getting started/)
   assert.ok(!/[\u4e00-\u9fff]/.test(text), 'ASCII 屏不得含中文')
+})
+
+test('session title skips greetings, strips terminal escapes and does not reveal credentials', () => {
+  assert.equal(sessionTopic('你好！'), undefined)
+  assert.equal(sessionTopic('梳理\x1b[31m任务\x1b[0m'), '梳理任务')
+  assert.equal(sessionTopic('记住这个值 fixture-secret-value', 'fixture-secret-value'), '会话')
+  assert.equal(sessionTopic('Use bearer fixture-auth'), '会话')
+  assert.equal(terminalTitle('整理项目', true), '\x1b]0;● 整理项目 · budingx\x07')
 })

@@ -5,7 +5,7 @@ import { createElement } from 'react'
 import { render } from 'ink'
 import { ConfigStore } from '../storage/config-store.js'
 import { CredentialStore } from '../storage/credentials.js'
-import { mergeSources, profileHost, startupProfile, type ResolvedConfig } from '../storage/profiles.js'
+import { mergeSources, profileCredentialBinding, profileCredentialRef, startupProfile, type ResolvedConfig } from '../storage/profiles.js'
 import { MODES_EN, MODES_ZH } from '../workspace/policy.js'
 import type { PermissionMode } from '../core/permissions.js'
 import { App } from './app.js'
@@ -13,6 +13,7 @@ import { createAgentRuntime, workspacePromptOptions, type AgentRuntime } from '.
 import type { CommandContext } from './commands.js'
 import { InkApprovalGateway } from './approval.js'
 import { runCommand } from './commands.js'
+import { terminalStrategy } from './render/header.js'
 
 const MODE_ORDER: PermissionMode[] = ['read_only', 'workspace_edit', 'full_access']
 
@@ -75,7 +76,7 @@ function loadStores(): Stores {
   const configStore = new ConfigStore()
   const credentialStore = new CredentialStore()
   const stored = configStore.load()
-  const orphanCount = credentialStore.orphanIds(stored.models.map((p) => p.id)).length
+  const orphanCount = credentialStore.orphanIds(stored.models.map(profileCredentialRef)).length
   if (orphanCount)
     process.stderr.write(
       `Orphan credentials: ${orphanCount}; use O in the interactive /models panel\n`
@@ -86,7 +87,7 @@ function loadStores(): Stores {
         profileId: profile.id,
         baseUrl: profile.baseUrl,
         model: profile.model,
-        apiKey: credentialStore.get(profile.id, profileHost(profile))
+        apiKey: credentialStore.get(profileCredentialRef(profile), profileCredentialBinding(profile))
       }
     : {}
   return { configStore, credentialStore, file }
@@ -187,6 +188,8 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
   }
   const session = runtime.session
 
+  const fullScreen = process.env.TERM !== 'dumb' &&
+    terminalStrategy(process.env, process.platform) === 'pixel'
   const instance = render(
     createElement(App, {
       session,
@@ -205,11 +208,12 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
       },
       version,
       cwd: process.cwd(),
+      fullScreen,
       onExit: () => {
         instance.unmount()
       }
     }),
-    { exitOnCtrlC: false }
+    { exitOnCtrlC: false, alternateScreen: fullScreen }
   )
   await instance.waitUntilExit()
   session.dispose()

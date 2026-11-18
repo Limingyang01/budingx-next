@@ -454,3 +454,22 @@ export type ApprovalDecision = {
 - 模型面板占用输入且在回合边界打开。关闭或取消后恢复队列；网络结果按取消信号丢弃，密钥不进入聊天输入、帧输出和历史。
 
 接口文档：[DeepSeek 模型列表](https://api-docs.deepseek.com/api/list-models/) · [阿里云百炼模型列表](https://help.aliyun.com/zh/model-studio/list-models) · [火山方舟模型列表](https://console.volcengine.com/ark/region%3Acn-beijing/docs/models-api) · [硅基流动模型列表](https://api-docs.siliconflow.cn/docs/api/models-get)。
+
+## 0.3.2 MiniMax 与百炼套餐兼容修复
+
+用户 2026-11-18 报告 MiniMax 测试连接显示 `invalid_stream`，要求内置 MiniMax、独立分支和 0.3.2。Qwen 的实际原因经用户验证为 Token Plan 需要对应 URL。改动归 SP003 模型管理修复。
+
+1. MiniMax 中国站模板预填官方 OpenAI 兼容地址。官方 M3 系列的思考会计入生成预算，探测使用 `max_completion_tokens`，Flash 使用低思考档；仍验证响应结构、HTTP 鉴权与工具调用。识别预算耗尽后仅有思考的响应，提示接通但未产生正文。
+2. MiniMax M3 的工具续跑只回传相同档案、模型及主机来源的工具思考，其他 Provider 默认不携带。保留原非 MiniMax 请求形状。仓库复用现有 OpenAI 工具回合和旧 TUI 模型列表交互机制，独立实现厂商兼容。
+3. 百炼按量与 Token Plan 范本分别绑定官方地址。工作空间模型列表用原生 API；套餐和通用端点先用兼容列表。不支持列表时给建议或手填。401/403 保持失败提示，并指向 Key、端点和套餐。
+4. 验证顺序：先复现 MiniMax 探测误报，再测模板录入和列表退路、模型切换边界、全量回归、交叉验证门禁与 0.3.2 dry-run。保持独立修复分支，发布另行执行。
+
+### 0.3.2 共享供应商配置
+
+用户要求同一供应商配置一次即可使用多个模型。列表按空格标记多个 ID，Enter 返回表单后一次保存；A 从已有模型显式添加同组模型。列表不可用时 A 可手填新增模型 ID。
+
+沿用现有档案数组与密钥引用。仅显式创建的组使用 group UUID 共享引用，绑定完整的规范化 Base URL。历史档案保持按档案 ID 与主机查找，格式版本不变，既有数据无需迁移。显式分组时只在完全相同端点迁移旧 Key，组内改 Key 或端点只更新该组。最后一个模型被删时才清理共享 Key。异账号可独立建组，按域名不会自动复用。凭据先写，档案写入失败则恢复原凭据快照。
+
+### 0.3.2 全屏会话与终端标签
+
+沿用 BudingX 的紫色与标识。现代交互终端使用 Ink alternate screen，固定底部编辑器和模式提示，中间视口默认跟随最新输出，用 PageUp／PageDown 翻页。旧式 Windows 控制台继续使用原有行内布局。标题使用 OSC 0，启动时设置为 `budingx`，首次实质输入生成限宽标题。仅本地计算，过滤控制字符并抑制含常见凭据特征的标题。信号点复用回合状态。`/clear` 重置标题，退出由 Ink 恢复终端主屏。

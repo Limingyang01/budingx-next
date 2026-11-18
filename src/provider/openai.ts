@@ -98,6 +98,7 @@ export type ProbeResult = {
   errorClass?: ErrorClass
   message: string
   supportsTools?: boolean
+  reasoningOnly?: boolean
 }
 
 class IdleTimeoutError extends Error {
@@ -150,6 +151,22 @@ function toolSpecs(tools: ToolSpec[] | undefined) {
   }))
 }
 
+function miniMaxModel(baseUrl: string, model: string): boolean {
+  let host: string
+  try { host = new URL(baseUrl).hostname }
+  catch { return false }
+  return /^(api\.minimax\.(cn|io)|api\.minimaxi\.com)$/.test(host) &&
+    /^minimax-m3(?:\.1-flash(?:-preview)?)?$/i.test(model)
+}
+
+function miniMaxProbeParameters(model: string) {
+  return {
+    max_completion_tokens: 512,
+    reasoning_split: true,
+    ...(/^minimax-m3\.1-flash/i.test(model) ? { reasoning_effort: 'low' } : {})
+  }
+}
+
 export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
   const limits = { ...DEFAULT_LIMITS, ...options.limits }
   const fetchImpl = options.fetchImpl ?? fetch
@@ -186,7 +203,11 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
       messages: request.messages,
       stream: request.stream !== false
     }
-    if (request.maxTokens !== undefined) body.max_tokens = request.maxTokens
+    const miniMax = miniMaxModel(options.baseUrl, request.model)
+    if (miniMax) body.reasoning_split = true
+    if (request.maxTokens !== undefined) {
+      body[miniMax ? 'max_completion_tokens' : 'max_tokens'] = request.maxTokens
+    }
     const specs = toolSpecs(request.tools)
     if (specs) body.tools = specs
 
@@ -477,6 +498,7 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
   }
 
   return {
+    preserveToolReasoning: (model) => miniMaxModel(options.baseUrl, model),
     async *stream(request: ChatRequest): AsyncGenerator<ProviderEvent> {
       let attemptNumber = 0
       while (attemptNumber < limits.maxAttempts) {
@@ -567,6 +589,7 @@ export async function probe(
   const fetchImpl = options.fetchImpl ?? fetch
   const secrets = profile.apiKey ? [profile.apiKey] : []
   const timeoutMs = options.timeoutMs ?? 10000
+  const miniMax = miniMaxModel(profile.baseUrl, profile.model)
 
   const call = async (body: Record<string, unknown>) => {
     const controller = new AbortController()
@@ -602,7 +625,7 @@ export async function probe(
     const { response, payload } = await call({
       model: profile.model,
       messages: [{ role: 'user', content: 'ok' }],
-      max_tokens: 1,
+      ...(miniMax ? miniMaxProbeParameters(profile.model) : { max_tokens: 1 }),
       stream: false
     })
     if (!response.ok) {
@@ -616,11 +639,11 @@ export async function probe(
         )
       }
     }
-    if (
-      !Array.isArray(payload?.choices) ||
-      !payload.choices[0]?.message ||
-      typeof payload.choices[0].message.content !== 'string'
-    ) {
+    const choice = Array.isArray(payload?.choices) ? payload.choices[0] : undefined
+    const reasoningOnly = miniMax && choice?.finish_reason === 'length' &&
+      !choice.message?.content && typeof choice.message?.reasoning_content === 'string' &&
+      Boolean(choice.message.reasoning_content.trim())
+    if (payload?.error || (typeof choice?.message?.content !== 'string' && !reasoningOnly)) {
       return {
         ok: false,
         errorClass: 'invalid_stream',
@@ -628,12 +651,14 @@ export async function probe(
       }
     }
     if (!options.tools) {
-      return { ok: true, message: 'Provider reachable' }
+      return reasoningOnly
+        ? { ok: true, reasoningOnly: true, message: 'Provider reachable; the probe returned reasoning without an answer' }
+        : { ok: true, message: 'Provider reachable' }
     }
     const { response: toolResponse, payload: toolPayload } = await call({
       model: profile.model,
       messages: [{ role: 'user', content: 'ok' }],
-      max_tokens: 64,
+      ...(miniMax ? miniMaxProbeParameters(profile.model) : { max_tokens: 64 }),
       stream: false,
       tool_choice: { type: 'function', function: { name: 'echo' } },
       tools: [

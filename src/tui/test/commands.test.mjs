@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import { commandHelp, runCommand } from '../dist/tui/commands.js'
 import { ConfigStore } from '../dist/storage/config-store.js'
 import { CredentialStore } from '../dist/storage/credentials.js'
-import { saveModel, removeModel, testProfile, loadModelIds } from '../dist/tui/model-management.js'
+import { saveModel, removeModel, testProfile, loadModelIds, selectProfile } from '../dist/tui/model-management.js'
 import { createProfile, profileHost, startupProfile } from '../dist/storage/profiles.js'
 
 function stores() {
@@ -184,11 +184,11 @@ test('the product guide covers every advertised command in its usage section', (
 test('discovery uses the verified model-list route and explicit unsupported fallback', async () => {
   const { context: ctx } = context()
   const signal = new AbortController().signal
-  const qwen = { ...draft, baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1' }
+  const qwen = { ...draft, baseUrl: 'https://fixture.cn-beijing.maas.aliyuncs.com/compatible-mode/v1' }
   const result = await loadModelIds({
     ...ctx,
     discoverModels: async (url, key) => {
-      assert.equal(url, 'https://dashscope.aliyuncs.com/api/v1/models?capabilities=TG&page_size=100')
+      assert.equal(url, 'https://fixture.cn-beijing.maas.aliyuncs.com/api/v1/models?capabilities=TG&page_size=100')
       assert.equal(key, draft.apiKey)
       return ['qwen-fixture']
     }
@@ -205,4 +205,78 @@ test('explicitly empty startup default does not select a remaining legacy profil
   const file = { version: 1, models: [model] }
   assert.equal(startupProfile(file), model)
   assert.equal(startupProfile({ ...file, defaultModelId: null }), undefined)
+})
+
+test('Token Plan stays on its own compatible URL and does not mask authentication failures', async () => {
+  const { context: ctx } = context()
+  const signal = new AbortController().signal
+  const plan = { ...draft, baseUrl: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1' }
+  const unsupported = { ...ctx, discoverModels: async (url, key) => {
+    assert.equal(url, plan.baseUrl + '/models')
+    assert.equal(key, draft.apiKey)
+    throw new Error('HTTP 404')
+  } }
+  assert.deepEqual(await loadModelIds(unsupported, plan, signal), { models: ['auto'], suggested: true })
+  const denied = { ...ctx, discoverModels: async () => { throw new Error('HTTP 401') } }
+  await assert.rejects(loadModelIds(denied, plan, signal), /401/)
+})
+
+test('one saved provider configuration shares a key across selected models and survives deleting one', () => {
+  const { context: ctx, config, store } = context()
+  const first = saveModel(ctx, { ...draft, modelIds: ['model-two', 'model-three'] }, true)
+  assert.equal(store.configStore.load().models.length, 3)
+  assert.equal(store.credentialStore.list().length, 1)
+  const two = store.configStore.load().models.find((item) => item.model === 'model-two')
+  selectProfile(ctx, two)
+  assert.equal(config.apiKey, draft.apiKey)
+  removeModel(ctx, first.id)
+  assert.equal(store.credentialStore.list().length, 1)
+  assert.equal(config.model, 'model-two')
+  removeModel(ctx, two.id)
+  assert.equal(store.credentialStore.list().length, 1)
+  const last = store.configStore.load().models[0]
+  removeModel(ctx, last.id)
+  assert.equal(store.credentialStore.list().length, 0)
+})
+
+test('adding to a legacy profile opts into sharing without merging another account on the same endpoint', () => {
+  const { context: ctx, config, store } = context()
+  const first = saveModel(ctx, { ...draft, label: 'account-a', startupDefault: true }, true)
+  const separate = saveModel(ctx, { ...draft, label: 'account-b', apiKey: 'other-key' }, false)
+  const second = saveModel(ctx, { ...draft, model: 'model-two', attachTo: first.id, label: '', apiKey: '' }, false)
+  assert.equal(store.credentialStore.list().length, 2)
+  assert.equal(config.apiKey, draft.apiKey)
+  selectProfile(ctx, second)
+  assert.equal(config.apiKey, draft.apiKey)
+  const after = store.configStore.load().models.find((item) => item.id === first.id)
+  saveModel(ctx, { ...draft, id: first.id, updatedAt: after.updatedAt, label: after.label,
+    apiKey: 'new-shared-key', startupDefault: true }, false)
+  assert.equal(config.apiKey, 'new-shared-key')
+  selectProfile(ctx, separate)
+  assert.equal(config.apiKey, 'other-key')
+})
+
+
+test('shared credentials stay bound to the exact endpoint and failed promotion keeps the legacy key', () => {
+  const { context: ctx, store, config } = context()
+  const first = saveModel(ctx, { ...draft, startupDefault: true }, true)
+  const other = { ...draft, attachTo: first.id, label: '', model: 'model-two', apiKey: '' }
+  const before = store.credentialStore.load()
+  assert.throws(() => saveModel({
+    ...ctx, configStore: { load: () => store.configStore.load(), save: () => { throw new Error('fixture disk error') } }
+  }, other, false), /fixture disk error/)
+  assert.deepEqual(store.credentialStore.load(), before)
+  assert.equal(store.configStore.load().models.length, 1)
+
+  const second = saveModel(ctx, other, true)
+  assert.equal(config.apiKey, draft.apiKey)
+  const parent = store.configStore.load().models.find((model) => model.id === first.id)
+  saveModel(ctx, {
+    ...draft, id: first.id, updatedAt: parent.updatedAt, apiKey: '',
+    baseUrl: 'https://one.invalid/another-plan', startupDefault: true
+  }, false)
+  assert.equal(config.profileId, second.id)
+  assert.equal(config.baseUrl, 'https://one.invalid/another-plan')
+  assert.equal(config.apiKey, '')
+  assert.equal(store.credentialStore.list().length, 0)
 })

@@ -4,6 +4,7 @@ import {
   useApp,
   useInput,
   useStdout,
+  useBoxMetrics,
   usePaste,
   useCursor,
   measureElement,
@@ -18,7 +19,7 @@ import { runCommand, type CommandContext } from './commands.js'
 import { EditorBuffer } from './editor/buffer.js'
 import { applyKey } from './editor/keys.js'
 import { reduceFrame, renderTextLines } from './render/reducer.js'
-import { renderHeader, setupHint, terminalStrategy } from './render/header.js'
+import { ACCENT, renderHeader, sessionTopic, setupHint, terminalStrategy, terminalTitle } from './render/header.js'
 import { initialFrame } from './render/types.js'
 import { diffStats, diffViewLines } from './render/diff-view.js'
 import {
@@ -29,7 +30,7 @@ import {
   longestCommonPrefix
 } from './render/completion.js'
 import { workspacePromptOptions } from './runtime.js'
-import { ModelManager } from './model-manager.js'
+import { ModelManager, type ModelManagerInput } from './model-manager.js'
 import { readClipboard } from './editor/clipboard.js'
 import { MODES_EN, MODES_ZH, nextMode } from '../workspace/policy.js'
 import { walkWorkspaceFiles } from '../workspace/search.js'
@@ -42,6 +43,7 @@ export type AppProps = {
   commandContext: Omit<CommandContext, 'session'>
   version: string
   cwd?: string
+  fullScreen?: boolean
   onExit: () => void
 }
 
@@ -80,14 +82,18 @@ export function App({
   commandContext,
   version,
   cwd,
+  fullScreen = false,
   onExit
 }: AppProps) {
   const { exit } = useApp()
   const { stdout } = useStdout()
   const terminal = stdout as NodeJS.WriteStream
-  const [width, setWidth] = useState(terminal.columns || 80)
+  const [{ width, rows }, setSize] = useState(() => ({
+    width: terminal.columns || 80,
+    rows: terminal.rows || 24
+  }))
   useEffect(() => {
-    const resize = () => setWidth(terminal.columns || 80)
+    const resize = () => setSize({ width: terminal.columns || 80, rows: terminal.rows || 24 })
     stdout.on('resize', resize)
     return () => {
       stdout.off('resize', resize)
@@ -100,6 +106,19 @@ export function App({
     (mode) => initialFrame(mode ?? 'read_only')
   )
   const [input, setInput] = useState('')
+  const [topic, setTopic] = useState<string>()
+  const [scrollTop, setScrollTop] = useState<number>()
+  const transcriptBox = useRef<DOMElement>(null)
+  const transcriptContent = useRef<DOMElement>(null)
+  const viewport = useBoxMetrics(transcriptBox)
+  const contentMetrics = useBoxMetrics(transcriptContent)
+  const maxScroll = Math.max(0, contentMetrics.height - viewport.clientHeight)
+  const offset = Math.min(scrollTop ?? maxScroll, maxScroll)
+  const scrolled = fullScreen && offset < maxScroll
+  const working = frame.status.state !== 'idle'
+  useEffect(() => {
+    if (fullScreen) stdout.write(terminalTitle(topic, working))
+  }, [stdout, fullScreen, topic, working])
   const [hint, setHint] = useState('')
   const [dialog, setDialog] = useState<DiffDialog | null>(null)
   const [gitAvailable, setGitAvailable] = useState(false)
@@ -129,6 +148,7 @@ export function App({
   const chain = useRef(Promise.resolve())
   const pendingActions = useRef(0)
   const managerDone = useRef<(() => void) | undefined>(undefined)
+  const managerInput = useRef<ModelManagerInput | undefined>(undefined)
   const [modelManagerOpen, setModelManagerOpen] = useState(false)
   const [typing, setTyping] = useState(false)
   const typingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -274,13 +294,14 @@ export function App({
   useEffect(() => {
     setCompletionIndex(0)
   }, [completion?.token.token, completion?.token.kind])
-  const approvalPageSize = Math.max(1, Math.min(10, (terminal.rows || 24) - 12))
+  const approvalPageSize = Math.max(1, Math.min(10, rows - 13))
   const submitPrompt = (text: string) => {
     if (!context.getConfig().model.trim()) {
       setHint(pick('请先配置并选择模型', 'Configure and select a model first'))
       return
     }
     const permission = commandContext.permission
+    setTopic((previous) => previous ?? sessionTopic(text, context.getConfig().apiKey))
     session.submit(text, permission
       ? workspacePromptOptions(text, permission.workspace, permission.policy)
       : undefined)
@@ -289,6 +310,10 @@ export function App({
     () =>
       session.on((event) => {
         dispatch(event)
+        if (event.type === 'conversation_cleared') {
+          setTopic(undefined)
+          setScrollTop(undefined)
+        }
         if (event.type === 'turn_finalized' || event.type === 'change_set') {
           // Files may have appeared or disappeared; refresh completion.
           fileCache.current = null
@@ -307,31 +332,40 @@ export function App({
     [session, gateway, editor]
   )
   usePaste((text) => {
-    if (managerDone.current) return
+    if (managerDone.current) {
+      managerInput.current?.paste(text)
+      return
+    }
     editor.insert(text.replace(/\r\n?/g, '\n'))
     setInput(editor.text)
     markTyping()
   })
+  const beforeCursor = editor.lines
+    .slice(0, editor.cursor.line)
+    .concat(Array.from(editor.lines[editor.cursor.line]).slice(0, editor.cursor.col).join(''))
+    .join('\n')
+  const cursorLines = renderTextLines('> ' + beforeCursor, width)
+  const draftLines = fullScreen ? renderTextLines('> ' + input, width) : []
+  const composerRows = Math.max(1, Math.min(4, Math.floor(rows / 6)))
+  const draftStart = fullScreen
+    ? Math.max(0, Math.min(draftLines.length - composerRows, cursorLines.length - composerRows))
+    : 0
   useLayoutEffect(() => {
     if (!inputBox.current) return
     const box = measureElement(inputBox.current)
-    const before = editor.lines
-      .slice(0, editor.cursor.line)
-      .concat(
-        Array.from(editor.lines[editor.cursor.line]).slice(0, editor.cursor.col).join('')
-      )
-      .join('\n')
-    const lines = renderTextLines('> ' + before, width)
     const next = {
-      x: box.x + stringWidth(lines.at(-1) ?? '') % width,
-      y: box.y + lines.length - 1
+      x: box.x + stringWidth(cursorLines.at(-1) ?? '') % width,
+      y: box.y + cursorLines.length - 1 - draftStart
     }
     setPosition((previous) =>
       previous?.x === next.x && previous.y === next.y ? previous : next
     )
   })
   useInput((text, key) => {
-    if (managerDone.current) return
+    if (managerDone.current) {
+      managerInput.current?.key(text, key)
+      return
+    }
     // Ctrl+V paste fallback for terminals without bracketed-paste support
     // (legacy Windows conhost / cmd). Ink's usePaste relies on DEC 2004
     // which these terminals ignore, so Ctrl+V arrives as a plain ctrl+v
@@ -418,6 +452,12 @@ export function App({
       } else if (key.downArrow) {
         setDetailScroll((s) => s + 1)
       }
+      return
+    }
+    if (fullScreen && (key.pageUp || key.pageDown)) {
+      const page = Math.max(1, viewport.clientHeight - 1)
+      const next = Math.max(0, Math.min(maxScroll, offset + (key.pageUp ? -page : page)))
+      setScrollTop(next === maxScroll ? undefined : next)
       return
     }
     const approval = frame.approval
@@ -532,6 +572,7 @@ export function App({
     if (action.submit) {
       const submitted = editor.text.trim()
       if (!submitted) return
+      setScrollTop(undefined)
       editor.commit(submitted)
       editor.clear()
       setInput('')
@@ -603,7 +644,7 @@ export function App({
     .filter(Boolean)
     .join('\n')
   if (modelManagerOpen) {
-    return <ModelManager context={{ ...context, session }} readClipboard={readClipboard} close={(notice) => {
+    return <ModelManager context={{ ...context, session }} input={managerInput} readClipboard={readClipboard} close={(notice) => {
       const done = managerDone.current
       setModelManagerOpen(false)
       setHint(notice ?? '')
@@ -690,9 +731,26 @@ export function App({
       </Box>
     )
   }
-  return (
+  const completionMenu = completion && (
     <Box flexDirection="column">
-      <Box flexDirection="column">
+      {completion.candidates.map((candidate, index) => (
+        <Text key={candidate.value} inverse={index === completionIndexSafe}>
+          {(completion.token.kind === 'command' ? '/' : '@') + candidate.value}
+          {candidate.directory
+            ? pick('  [目录]', '  [dir]')
+            : candidate.kind === 'command'
+              ? pick('  [命令]', '  [cmd]')
+              : ''}
+        </Text>
+      ))}
+      <Text dimColor>
+        {pick('↑↓ 选择 · Tab 插入 · Esc 关闭', 'up/down select · tab insert · esc dismiss')}
+      </Text>
+    </Box>
+  )
+  return (
+    <Box flexDirection="column" height={fullScreen ? rows : undefined}>
+      <Box flexDirection="column" flexShrink={0}>
         {renderHeader({
           version,
           model: config.model,
@@ -700,9 +758,10 @@ export function App({
           keyPresent: !!config.apiKey.trim(),
           cwd,
           columns: width,
-          strategy
-        }).map((line, i) => (
-          <Text key={i}>
+          strategy,
+          compact: fullScreen
+        }).slice(0, fullScreen && rows < 18 ? 1 : undefined).map((line, i) => (
+          <Text key={i} wrap={fullScreen ? 'truncate-end' : 'wrap'}>
             {line.map((span, j) => (
               <Text
                 key={j}
@@ -717,30 +776,43 @@ export function App({
           </Text>
         ))}
       </Box>
-      {historyLines.map((line, i) => (
-        <Text key={'history-' + i}>{line}</Text>
-      ))}
-      {liveText &&
-        renderTextLines(liveText, width).map((line, i) => (
-          <Text key={'live-' + i}>{line}</Text>
-        ))}
-      {frame.notices.map((notice, i) => (
-        <Text key={'notice-' + i} color={notice.level === 'error' ? 'red' : 'yellow'}>
-          {notice.text}
-        </Text>
-      ))}
-      {commandCount > 0 && (
-        <Text color="yellow">
-          {pick('排队命令：', 'Queued commands: ')}
-          {commandCount}
-        </Text>
-      )}
-      {frame.queue.map((item) => (
-        <Text key={item.id} color="yellow">
-          {pick('⧗ 排队：', '[queued] ')}
-          {item.preview}
-        </Text>
-      ))}
+      <Box
+        ref={transcriptBox}
+        flexDirection="column"
+        flexGrow={fullScreen ? 1 : undefined}
+        flexBasis={fullScreen ? 0 : undefined}
+        overflowY={fullScreen ? 'hidden' : undefined}
+        contentOffsetY={fullScreen ? offset : undefined}
+      >
+        <Box ref={transcriptContent} flexDirection="column" flexShrink={0}>
+          {historyLines.map((line, i) => (
+            <Text key={'history-' + i}>{line}</Text>
+          ))}
+          {liveText &&
+            renderTextLines(liveText, width).map((line, i) => (
+              <Text key={'live-' + i}>{line}</Text>
+            ))}
+          {frame.notices.map((notice, i) => (
+            <Text key={'notice-' + i} color={notice.level === 'error' ? 'red' : 'yellow'}>
+              {notice.text}
+            </Text>
+          ))}
+          {commandCount > 0 && (
+            <Text color="yellow">
+              {pick('排队命令：', 'Queued commands: ')}
+              {commandCount}
+            </Text>
+          )}
+          {frame.queue.map((item) => (
+            <Text key={item.id} color="yellow">
+              {pick('⧗ 排队：', '[queued] ')}
+              {item.preview}
+            </Text>
+          ))}
+          {fullScreen && frame.error && <Text color="red">{frame.error}</Text>}
+          {fullScreen && hint && <Text>{hint}</Text>}
+        </Box>
+      </Box>
       {rejectEntry && (
         <Box flexDirection="column" borderStyle="round" borderColor="yellow">
           <Text color="yellow">
@@ -791,40 +863,41 @@ export function App({
           </Text>
         </Box>
       )}
-      {frame.error && <Text color="red">{frame.error}</Text>}
-      <Box flexDirection="column">
-        <Box ref={inputBox}>
-          <Text>{`> ${input}`}</Text>
-        </Box>
-        {completion && (
-          <Box flexDirection="column">
-            {completion.candidates.map((candidate, index) => (
-              <Text key={candidate.value} inverse={index === completionIndexSafe}>
-                {(completion.token.kind === 'command' ? '/' : '@') + candidate.value}
-                {candidate.directory
-                  ? pick('  [目录]', '  [dir]')
-                  : candidate.kind === 'command'
-                    ? pick('  [命令]', '  [cmd]')
-                    : ''}
-              </Text>
-            ))}
-            <Text dimColor>
-              {pick('↑↓ 选择 · Tab 插入 · Esc 关闭', 'up/down select · tab insert · esc dismiss')}
-            </Text>
-          </Box>
+      {!fullScreen && frame.error && <Text color="red">{frame.error}</Text>}
+      <Box flexDirection="column" flexShrink={0}>
+        {fullScreen && completionMenu}
+        {fullScreen && (
+          <Box
+            height={1}
+            borderStyle="single"
+            borderColor={ACCENT}
+            borderLeft={false}
+            borderRight={false}
+            borderBottom={false}
+          />
         )}
-        <Text dimColor>
+        <Box ref={inputBox}>
+          <Text>{fullScreen ? draftLines.slice(draftStart, draftStart + composerRows).join('\n') : `> ${input}`}</Text>
+        </Box>
+        {!fullScreen && completionMenu}
+        <Text dimColor wrap={fullScreen ? 'truncate-end' : 'wrap'}>
+          {fullScreen && <Text color={working ? ACCENT : undefined}>{working ? '● ' : '○ '}</Text>}
           {zh ? STATUS_ZH[frame.status.state] : frame.status.state}
           {permissionHandles
             ? ` · ${pick(
                 MODES_ZH[frame.permissionMode],
                 MODES_EN[frame.permissionMode]
-              )}`
+              )} · Shift+Tab ${pick('切换模式', 'cycle mode')}`
             : ''}
-          {hint ? ` — ${hint}` : ''}
+          {!fullScreen && hint ? ` — ${hint}` : ''}
         </Text>
+        {scrolled && (
+          <Text dimColor wrap="truncate-end">
+            {pick('浏览历史 · PageDown 向下', 'History · PageDown to scroll down')}
+          </Text>
+        )}
         {setupHint(config, strategy) && (
-          <Text color="yellow">{setupHint(config, strategy)}</Text>
+          <Text color="yellow" wrap={fullScreen ? 'truncate-end' : 'wrap'}>{setupHint(config, strategy)}</Text>
         )}
       </Box>
     </Box>
