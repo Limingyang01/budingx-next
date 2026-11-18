@@ -56,7 +56,7 @@ Version 0.3.4 displays user turns, elapsed time and completion time. After a suc
 
 Version 0.3.5 distinguishes submitted prompts from Markdown replies and displays completion times as secondary text. The status bar shows a short permission label and omits idle activity.
 
-The active turn indicator sits above the input. Tool rows use a pulsing theme dot while pending, a green dot on success, and a red dot on failure. A short result appears below the tool name.
+The active turn indicator sits above the input. Queued prompts appear below it. Tool rows use a pulsing theme dot while pending, a green dot on success, and a red dot on failure. A short result appears below the tool name.
 
 ## Keys
 
@@ -66,6 +66,7 @@ The active turn indicator sits above the input. Tool rows use a pulsing theme do
 - Shift+Tab — switch Allow edits and Full auto
 - Mouse wheel or PageUp / PageDown — scroll the conversation in full-screen mode
 - Ctrl+End — return to the latest message
+- Home / End or Ctrl+A / Ctrl+E — move to the start or end of the current input line
 - Ctrl+C — interrupt while a turn runs; at the prompt, press twice to exit
 - ↑ / ↓ — recall earlier input, select completions, or scroll a diff
 - 1 / 2 / 3 — allow once, remember for this session, or deny a pending tool approval

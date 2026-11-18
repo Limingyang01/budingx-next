@@ -170,6 +170,8 @@ export function App({
   setCursorPosition(cursorPosition)
   const commands = useRef<string[]>([])
   const [commandCount, setCommandCount] = useState(0)
+  const queuePreviewRows = fullScreen ? Math.max(1, Math.min(3, Math.floor(rows / 12))) : frame.queue.length
+  const hiddenQueued = Math.max(0, frame.queue.length - queuePreviewRows)
   const chain = useRef(Promise.resolve())
   const pendingActions = useRef(0)
   const managerDone = useRef<(() => void) | undefined>(undefined)
@@ -836,18 +838,6 @@ export function App({
               {notice.text}
             </Text>
           ))}
-          {commandCount > 0 && (
-            <Text color="yellow">
-              {pick('排队命令：', 'Queued commands: ')}
-              {commandCount}
-            </Text>
-          )}
-          {frame.queue.map((item) => (
-            <Text key={item.id} color="yellow">
-              {pick('⧗ 排队：', '[queued] ')}
-              {item.preview}
-            </Text>
-          ))}
           {fullScreen && frame.error && <Text color="red">{frame.error}</Text>}
           {fullScreen && hint && <Text>{hint}</Text>}
         </Box>
@@ -940,7 +930,21 @@ export function App({
             <Text>{fullScreen ? draftLines.slice(draftStart, draftStart + composerRows).join('\n') : `> ${input}`}</Text>
           )}
         </Box>
+        {fullScreen && (
+          <Box height={1} borderStyle="single" borderColor="gray"
+            borderLeft={false} borderRight={false} borderBottom={false}
+          />
+        )}
         {!fullScreen && completionMenu}
+        {frame.queue.slice(0, queuePreviewRows).map((item, index) => (
+          <Text key={item.id} dimColor wrap={fullScreen ? 'truncate-end' : 'wrap'}>
+            {pick('⧗ 排队 · ', '[queued] ')}{item.preview.replace(/\s+/g, ' ')}
+            {index === queuePreviewRows - 1 && hiddenQueued > 0 && ` (+${hiddenQueued})`}
+          </Text>
+        ))}
+        {commandCount > 0 && (
+          <Text dimColor>{pick('排队命令：', 'Queued commands: ')}{commandCount}</Text>
+        )}
         {(permissionHandles || (!fullScreen && hint)) && (
           <Text wrap={fullScreen ? 'truncate-end' : 'wrap'}>
             {permissionHandles && (
@@ -948,6 +952,9 @@ export function App({
                 <Text color={modeColor}>{modeLabel}</Text>
                 <Text dimColor>{' · Shift+Tab '}{pick('切换模式', 'cycle mode')}</Text>
               </>
+            )}
+            {working && !frame.approval && (
+              <Text dimColor>{permissionHandles ? ' · ' : ''}{pick('Esc 打断', 'Esc interrupt')}</Text>
             )}
             {!fullScreen && hint ? ` — ${hint}` : ''}
           </Text>
