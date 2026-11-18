@@ -10,10 +10,11 @@
 
 首发 bootstrap 或明确授权的本机交互发布入口是在仓库根目录执行 **`npm run publish`**，由跨平台 Node 发布入口完成检查、构建、打包、实际安装测试和 registry 发布，再核对回执。无参数的稳定发布使用已准备且经审阅的版本，默认发布到 https://registry.npmjs.org；不静默自增版本、不顺带提交/推送/tag。
 
-当前 npm latest 为 0.3.0（SP003）。0.3.1 修复已准备，请在 Actions 选择 `master`、`0.3.1`、`latest` 并取消 `dry_run`。本机预演：
+当前 npm latest 为 0.3.1（SP003）。下一版准备好后，以实际候选版本执行本机预演：
 
-```text
-npm run publish -- --dry-run --expected-version 0.3.1 --tag latest
+```powershell
+$releaseVersion = (Get-Content src/tui/package.json -Raw | ConvertFrom-Json).version
+npm run publish -- --dry-run --expected-version $releaseVersion --tag latest
 ```
 
 裸 `publish` 不是默认 PowerShell 命令。`npm run publish` 是项目编排入口，`npm publish` 是 npm 原生命令；两者不能混为一谈。入口内部对验证过的 tarball 调用 npm publish；不得在待发布包的同名 publish 生命周期里递归调用自己。npm 生命周期包括 prepublishOnly/prepack/prepare 等不同阶段，prepare 在一些安装场景也会执行，因此不能把上传或完整发布编排塞入安装钩子。[npm scripts 官方说明](https://docs.npmjs.com/cli/v11/using-npm/scripts/)

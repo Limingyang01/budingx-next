@@ -215,3 +215,9 @@ npm run merge:gate     # 见 §6
 - 0.3.0 的 Windows、Linux 和 OIDC 发布见 [GitHub Actions #9](https://github.com/Limingyang01/budingx-next/actions/runs/44218571836)。官方隔离安装及 HTTP 冒烟通过，核验 46 个 registry signatures、5 个 attestations；provenance 的源码、工作流、运行和 SHA-512 与已发布包一致。原 CI artifact 下载需认证（HTTP 401），台账以公开来源及实际安装证据回填。
 - 同轮修复使用 `npm run version:prepare -- patch --iteration SP003` 准备 0.3.1。发布预演对精确准备提交执行，回执保存在忽略目录 `artifacts/release/`；实际发布由维护者在 GitHub 手动触发。更新了产品使用说明的发布版本提示，按迭代归类及文档编写规范继续保留。
 - 首次 0.3.1 发布预演检出了伪终端模型输入测试的时序问题，写入档案前测试读取了结果。辅助流程改为逐步等待面板、字段焦点和保存回显，原有密钥持久化及隐藏断言保留。最终候选重新执行发布预演。
+
+## 0.3.1 公开发布回执
+
+- [GitHub Actions #11](https://github.com/Limingyang01/budingx-next/actions/runs/44229230445) 从 `314fedf0a84b74b40a1b077de5dfcbeaeaa97a78` 完成 Windows、Linux 阶段和 OIDC 发布。公共 npm 发布于 `2026-11-18T03:20:51.605Z`，dist-tag `latest` 核对为 `0.3.1`。
+- 官方源隔离安装通过，绝对路径 npm shim 输出 `0.3.1`，管道 `/models` 与本地 HTTP 流式请求通过。npm 验证 46 个 registry signatures 和 5 个 attestations。SHA-512 与候选预演、npm 安装锁和 provenance 的 subject 一致，provenance 工作流、源码和运行 URL 核对通过。
+- CI 原始 artifact 下载返回 HTTP 401。发布台账保留该证据边界，并记录公开 provenance 和独立安装，不代替真实 Provider 或终端输入法验证。

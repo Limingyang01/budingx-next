@@ -40,7 +40,7 @@ src/
 
 ## 打包与隔离安装验证
 
-`node scripts/release/pack-smoke.mjs` 在仓库外临时目录真实打包、安装 tarball 并对本地 fixture 发起一次真实 HTTP 流式请求（不上传、不发布）。`npm run publish -- --dry-run` 是完整发布演练，需要台账中存在 prepared 版本条目；当前候选为 SP003 的 0.3.1，完整预演使用 `npm run publish -- --dry-run --expected-version 0.3.1 --tag latest`。0.3.0 已发布，回执见对应发行说明。
+`node scripts/release/pack-smoke.mjs` 在仓库外临时目录真实打包、安装 tarball 并对本地 fixture 发起一次真实 HTTP 流式请求（不上传、不发布）。`npm run publish -- --dry-run` 是完整发布演练，需要台账中存在 prepared 版本条目；0.3.1 已发布，回执见对应发行说明。准备下一版后，用 `npm run publish -- --dry-run --expected-version <版本> --tag latest` 验证该候选。
 
 ## 验证边界
 
