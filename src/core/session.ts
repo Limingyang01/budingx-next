@@ -50,6 +50,8 @@ export type SessionOptions = {
   maxIterations?: number
   cancelBudgetMs?: number
   queueAutostartMs?: number
+  /** Host resources to release on dispose, e.g. the foreground/background command runner (SP004 §4.4). */
+  disposers?: (() => void)[]
   onEvent?: (event: SessionEvent) => void
 }
 
@@ -225,6 +227,14 @@ export class Session {
   dispose(): void {
     if (this.queueTimer) clearTimeout(this.queueTimer)
     if (this.activeTurn) this.activeTurn.controller.abort()
+    // Host-owned resources: the command runner terminates any background task tree (SP004 §4.4).
+    for (const dispose of this.options.disposers ?? []) {
+      try {
+        dispose()
+      } catch {
+        // Disposal is best effort; one failing resource must not block the rest.
+      }
+    }
     this.listeners.clear()
     this.toolPreviewListeners.clear()
   }
@@ -638,7 +648,9 @@ export class Session {
         const toolContext: ToolContext = {
           signal: turn.controller.signal,
           changes: (records) => this.emit({ type: 'change_set', changes: records }),
-          turnId: turn.id
+          turnId: turn.id,
+          callId: call.id,
+          emit: (event) => this.emit(event)
         }
         if (permissionRequest && policy?.decide(permissionRequest).action === 'deny') {
           this.pushToolResult(turn, call.id, 'Permission changed before execution', true, ERROR_CODES.permissionDenied)

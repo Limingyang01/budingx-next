@@ -85,7 +85,14 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
     onFinished: options.onCommandFinished
   })
 
-  async function run(spec: CommandSpec, context: { signal: AbortSignal; cwd: string }): Promise<CommandResult> {
+  async function run(
+    spec: CommandSpec,
+    context: {
+      signal: AbortSignal
+      cwd: string
+      onStarted?(info: { taskId?: string; startedAt: number }): void
+    }
+  ): Promise<CommandResult> {
     const started = Date.now()
     const base = (): CommandResult => ({
       outcome: 'failed',
@@ -117,11 +124,12 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
         reason: '该命令属于阻塞等待族，前台执行会长时间占用回合；请改用 runInBackground 后台执行'
       })
     }
-    const decision = sandboxPolicy.decide({ tool: 'Bash', command: spec.command })
+    const interpreterTool = spec.interpreter ?? 'Bash'
+    const decision = sandboxPolicy.decide({ tool: interpreterTool, command: spec.command })
     if (decision.action === 'deny') {
       return early({ outcome: 'blocked', reason: decision.reason })
     }
-    const interpreter = selectInterpreter('Bash', platform)
+    const interpreter = selectInterpreter(interpreterTool, platform)
     if ('error' in interpreter) {
       return early({ outcome: 'failed', reason: interpreter.error })
     }
@@ -161,8 +169,13 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
         stderrCollector,
         context.signal
       )
+      // 命令已真正启动才通知宿主（拒绝路径零 spawn，也就不发 command_started）。
+      context.onStarted?.({ taskId, startedAt: started })
       return early({ outcome: 'running', taskId, backgroundedByUser: true })
     }
+
+    // 前台命令已真正启动：通知宿主（拒绝路径零 spawn，不发 command_started）。
+    context.onStarted?.({ startedAt: started })
 
     return await new Promise<CommandResult>((resolve) => {
       let settled = false

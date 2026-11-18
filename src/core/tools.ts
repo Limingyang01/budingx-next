@@ -1,6 +1,6 @@
 // Tool and approval ports owned by Core (SP002 design §3.3, SP003 §4.1 v2).
 
-import type { ChangeRecordSummary } from './events.js'
+import type { ChangeRecordSummary, SessionEvent } from './events.js'
 import type { ToolCapability } from './permissions.js'
 
 export type ToolContext = {
@@ -13,6 +13,10 @@ export type ToolContext = {
   changes?(records: ChangeRecordSummary[]): void
   /** Id of the running turn, for per-turn change grouping (SP003 T18). */
   turnId?: string
+  /** Id of the model tool call this execution belongs to (SP004 T5). */
+  callId?: string
+  /** Lets adapters publish out-of-band events such as command_started (SP004 T5). */
+  emit?(event: SessionEvent): void
 }
 
 export type PreparedTool = {

@@ -151,6 +151,7 @@
 - **Consumes/Produces**：执行路由和 SP003 策略 → Bash、PowerShell 的模型 schema 和公共结果适配器。
 - **RED → GREEN**：先验证字段名与单位、未知字段拒绝、硬 deny 优先、未识别目标无豁免、禁止通用入口获得 Git 写权限。前台、后台和自动后台复用同一启动门禁；同一调用只输出一个工具结果，非零状态、耗时、截断和后台回执可断言。
 - **验证**：`npm run build && node --test src/exec/test/tools.test.mjs`。
+- **完成事实**（2026-11-18）：RED 16 条先失败（模块缺失/属性缺失）→ GREEN 16/16；全量 456/456 通过。实现 `src/exec/tools.ts`：`createExecTools({runner,defaultCwd,platform?,sandboxBackendId?})` 产出 Bash、PowerShell 两个 ToolHandler；`readArgs` 严格校验字段（未知字段直接拒绝，cwd/env/隔离字段由宿主管有）；能力分类把「已校验只读白名单命令 + 非后台」归为 `read`（CE-09 免审批），其余归 `execute`；`gitGuidance` 把非白名单 git 命令引导到受控入口且零 spawn；`prepareApproval` 预览含命令/解释器/工作目录/超时/执行方式/隔离后端/交互式与阻塞提示/破坏性警告；`execute` 经 runner 执行并转成 `exit_code:` + stdout/stderr 分段 + `background_task_id`/`auto_backgrounded`/`persisted_output_*` + `--- note ---` 的稳定文本。配套改动：`ToolContext` 增加 `callId`/`emit`，`SessionOptions` 增加 `disposers`（`Session.dispose()` 同步终止后台任务，CE-17/T5-16），`CommandSpec` 增加 `interpreter`，`CommandRunner.run` 增加 `onStarted`（只在真正 spawn 后发 `command_started`），`policy.ts` 为 `execute` 增加判定路径并在仅可查看模式下拒绝命令入口（CE-08，即使命令在只读白名单内）。
 
 ### T6 · Git 只读状态识别
 

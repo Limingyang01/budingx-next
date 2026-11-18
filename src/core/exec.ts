@@ -13,6 +13,8 @@ export type CommandSpec = {
   timeoutMs?: number
   /** 是否转为后台执行。 */
   runInBackground?: boolean
+  /** 解释器家族（SP004 T5）：Bash 缺省；PowerShell 仅在 Windows 可用。 */
+  interpreter?: 'Bash' | 'PowerShell'
 }
 
 export const COMMAND_OUTCOMES = [
@@ -81,7 +83,15 @@ export type BackgroundTask = {
 
 /** 核心只持有契约；真实执行由 src/exec 注入。 */
 export interface CommandRunner {
-  run(spec: CommandSpec, context: { signal: AbortSignal; cwd: string }): Promise<CommandResult>
+  run(
+    spec: CommandSpec,
+    context: {
+      signal: AbortSignal
+      cwd: string
+      /** 命令真正启动后回调（含后台任务 ID），供宿主发 command_started（SP004 T5）。 */
+      onStarted?(info: { taskId?: string; startedAt: number }): void
+    }
+  ): Promise<CommandResult>
   /** 查询后台任务状态与输出。 */
   status(taskId: string): CommandResult | undefined
   /** 取消后台任务（终止整棵进程树）；已终态幂等返回 false。 */
