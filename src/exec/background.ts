@@ -8,6 +8,7 @@ import {
   type CommandResult
 } from '../core/exec.js'
 import { OutputCollector, capMergedText, formatStream } from './output.js'
+import { buildCommandFinishedEvent, persistOutput, resolveTaskOutputPath } from './persist.js'
 
 interface BackgroundRecord {
   task: BackgroundTask
@@ -26,6 +27,10 @@ interface BackgroundRecord {
 export interface BackgroundTableOptions {
   /** 终止整棵进程树（runner 注入，Windows taskkill /T /F + 兜底）。 */
   kill: (child: ChildProcess) => void
+  /** 输出落盘的会话隔离配置（T18；缺省时不落盘）。 */
+  persist?: { sessionId: string; home?: string }
+  /** 后台任务完成事件（T18；command_finished）。 */
+  onFinished?: (event: ReturnType<typeof buildCommandFinishedEvent>) => void
 }
 
 export interface BackgroundRegistration {
@@ -73,7 +78,9 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
       interrupted: record.forced !== undefined || undefined,
       reason: record.forced?.reason ?? record.reason,
       autoBackgrounded: record.task.autoBackgrounded || undefined,
-      backgroundedByUser: record.task.backgroundedByUser || undefined
+      backgroundedByUser: record.task.backgroundedByUser || undefined,
+      persistedOutputPath: record.task.outputPath,
+      persistedOutputSize: record.task.outputSize
     }
   }
 
@@ -83,15 +90,15 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
     options.kill(record.child)
   }
 
-  function finalize(record: BackgroundRecord, exitCode: number | undefined, errorReason?: string): void {
+  async function finalize(record: BackgroundRecord, exitCode: number | undefined, errorReason?: string): Promise<void> {
     if (record.settled) return
     record.settled = true
-    record.finishedAt = Date.now()
+    const finishedAt = Date.now()
     clearTimeout(record.timer)
     record.signal.removeEventListener('abort', record.onAbort)
     const stdoutSnap = record.stdout.snapshot(EXEC_OUTPUT_CAP)
     const stderrSnap = record.stderr.snapshot(EXEC_OUTPUT_CAP)
-    record.task.state = record.forced
+    const state = record.forced
       ? record.forced.outcome
       : errorReason !== undefined
         ? 'failed'
@@ -99,12 +106,41 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
           ? 'completed'
           : 'failed'
     // 被信号终止/强制结束时不伪造退出码。
-    record.task.exitCode = record.forced || errorReason !== undefined ? undefined : exitCode
+    const finalExitCode = record.forced || errorReason !== undefined ? undefined : exitCode
+    // T18：完整输出落盘到会话隔离路径（best-effort，不影响命令结果）。
+    let outputPath: string | undefined
+    let outputSize: number | undefined
+    if (options.persist) {
+      try {
+        const content = Buffer.concat([record.stdout.fullContent(), record.stderr.fullContent()]).toString('utf8')
+        const path = resolveTaskOutputPath(options.persist.sessionId, record.task.taskId, options.persist.home)
+        const persisted = await persistOutput(path, content)
+        outputPath = persisted.path
+        outputSize = persisted.size
+      } catch {
+        // 落盘失败不改变命令终态；状态快照仍可查询。
+      }
+    }
+    // 终态字段原子发布：落盘完成前 status 仍报 running，避免读到缺输出路径的半终态。
+    record.finishedAt = finishedAt
+    record.task.state = state
+    record.task.exitCode = finalExitCode
     record.task.stdout = formatStream(stdoutSnap)
     record.task.stderr = formatStream(stderrSnap)
     record.task.truncated =
       stdoutSnap.truncated || stderrSnap.truncated || stdoutSnap.bytes + stderrSnap.bytes > EXEC_OUTPUT_CAP
+    record.task.outputPath = outputPath
+    record.task.outputSize = outputSize
     if (errorReason !== undefined) record.reason = errorReason
+    options.onFinished?.(
+      buildCommandFinishedEvent({
+        taskId: record.task.taskId,
+        outcome: state,
+        exitCode: finalExitCode,
+        outputPath,
+        finishedAt
+      })
+    )
   }
 
   function register(
@@ -141,8 +177,8 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
       ),
       settled: false
     }
-    child.on('error', (error) => finalize(record, undefined, `进程启动失败：${error.message}`))
-    child.on('close', (code) => finalize(record, code ?? undefined))
+    child.on('error', (error) => void finalize(record, undefined, `进程启动失败：${error.message}`))
+    child.on('close', (code) => void finalize(record, code ?? undefined))
     if (signal.aborted) record.onAbort()
     else signal.addEventListener('abort', record.onAbort, { once: true })
     records.set(taskId, record)

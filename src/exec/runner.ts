@@ -2,8 +2,10 @@
 // core 只持有契约；真实进程由本模块注入。拒绝路径（缺隔离/交互式/阻塞/硬上限/预取消）零 spawn。
 import { spawn as nodeSpawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import {
   EXEC_OUTPUT_CAP,
+  EXEC_PERSIST_THRESHOLD,
   resolveTimeoutConfig,
   type CommandResult,
   type CommandRunner,
@@ -14,6 +16,7 @@ import { isBlockingWaitCommand, isInteractiveCommand } from './readonly-commands
 import { createSandboxPolicy, type SandboxPolicy } from './sandbox-policy.js'
 import { OutputCollector, capMergedText, formatStream } from './output.js'
 import { createBackgroundTable } from './background.js'
+import { persistOutput, resolveTaskOutputPath, type CommandFinishedEvent } from './persist.js'
 
 export interface CommandRunnerOptions {
   /** 缺省工作目录（会话项目根）。 */
@@ -28,6 +31,14 @@ export interface CommandRunnerOptions {
   allowBlocking?: boolean
   /** 平台注入（测试用）；缺省 process.platform。 */
   platform?: NodeJS.Platform
+  /** 会话 ID（T18 输出落盘的会话隔离键）；缺省时不落盘。 */
+  sessionId?: string
+  /** 数据根 home 注入（测试用）；缺省 os.homedir()。 */
+  home?: string
+  /** 前台输出落盘阈值（字节）；缺省 EXEC_PERSIST_THRESHOLD（1MB）。 */
+  persistThreshold?: number
+  /** 后台任务完成事件回调（T18 command_finished）。 */
+  onCommandFinished?: (event: CommandFinishedEvent) => void
 }
 
 /** 终止整棵进程树：Windows taskkill /T /F，POSIX 进程组 SIGKILL；均带 child.kill 兜底。 */
@@ -64,7 +75,12 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
   const sandboxPolicy = options.sandboxPolicy ?? createSandboxPolicy()
   const platform = options.platform ?? process.platform
   const timeouts = resolveTimeoutConfig(process.env)
-  const background = createBackgroundTable({ kill: (child) => killTree(child, spawnFn, platform) })
+  const persistThreshold = options.persistThreshold ?? EXEC_PERSIST_THRESHOLD
+  const background = createBackgroundTable({
+    kill: (child) => killTree(child, spawnFn, platform),
+    persist: options.sessionId !== undefined ? { sessionId: options.sessionId, home: options.home } : undefined,
+    onFinished: options.onCommandFinished
+  })
 
   async function run(spec: CommandSpec, context: { signal: AbortSignal; cwd: string }): Promise<CommandResult> {
     const started = Date.now()
@@ -120,8 +136,9 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
     // stdin 立即关闭：交互式子进程因 EOF 退出，不无限挂起。
     child.stdin?.end()
 
-    const stdoutCollector = new OutputCollector(EXEC_OUTPUT_CAP)
-    const stderrCollector = new OutputCollector(EXEC_OUTPUT_CAP)
+    // full 模式保留完整输出块，供落盘使用（快照仍按上限截断）。
+    const stdoutCollector = new OutputCollector(EXEC_OUTPUT_CAP, true)
+    const stderrCollector = new OutputCollector(EXEC_OUTPUT_CAP, true)
     child.stdout?.on('data', (chunk: Buffer) => stdoutCollector.push(chunk))
     child.stderr?.on('data', (chunk: Buffer) => stderrCollector.push(chunk))
 
@@ -158,7 +175,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
       if (context.signal.aborted) onAbort()
       else context.signal.addEventListener('abort', onAbort, { once: true })
 
-      const finalize = (exitCode: number | undefined) => {
+      const finalize = async (exitCode: number | undefined) => {
         if (settled) return
         settled = true
         clearTimeout(timer)
@@ -171,6 +188,20 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
         const output = capMergedText(stdoutSnap.text + stderrSnap.text, mergedBytes, EXEC_OUTPUT_CAP)
         const truncated = stdoutSnap.truncated || stderrSnap.truncated || mergedBytes > EXEC_OUTPUT_CAP
         const outcome = forced ? forced.outcome : exitCode === 0 ? 'completed' : 'failed'
+        // T18：超大前台输出落盘到会话隔离路径（best-effort，不影响命令结果）。
+        let persistedOutputPath: string | undefined
+        let persistedOutputSize: number | undefined
+        if (options.sessionId !== undefined && mergedBytes > persistThreshold) {
+          try {
+            const content = Buffer.concat([stdoutCollector.fullContent(), stderrCollector.fullContent()]).toString('utf8')
+            const path = resolveTaskOutputPath(options.sessionId, `task-${randomUUID()}`, options.home)
+            const persisted = await persistOutput(path, content)
+            persistedOutputPath = persisted.path
+            persistedOutputSize = persisted.size
+          } catch {
+            // 落盘失败不改变命令终态。
+          }
+        }
         resolve({
           outcome,
           // 被信号终止/强制结束时不伪造退出码。
@@ -182,7 +213,9 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
           bytes: mergedBytes,
           durationMs: Date.now() - started,
           interrupted: forced !== undefined || undefined,
-          reason: forced?.reason
+          reason: forced?.reason,
+          persistedOutputPath,
+          persistedOutputSize
         })
       }
       child.on('error', (error) => {
@@ -192,7 +225,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
         context.signal.removeEventListener('abort', onAbort)
         resolve(early({ outcome: 'failed', reason: `进程启动失败：${error.message}` }))
       })
-      child.on('close', (code) => finalize(code ?? undefined))
+      child.on('close', (code) => void finalize(code ?? undefined))
     })
   }
 

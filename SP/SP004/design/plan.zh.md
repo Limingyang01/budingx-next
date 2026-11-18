@@ -354,7 +354,7 @@
   4. 任务完成 → 产生 `command_finished` 事件，含 taskId/状态/退出码/输出路径（CE-17）
 - **GREEN**：按 `~/.budingx` 会话隔离路径写文件；**不写用户项目目录**
 - **验证**：`npm run build && node --test src/exec/test/persist.test.mjs`
-- **完成事实**：待填
+- **完成事实（2026-11-18）**：RED 6 条（模块缺失）→ GREEN 6/6；全量 `npm run test:unit` 423/423（417+6）。新增 `src/exec/persist.ts`（resolveTaskOutputPath/persistOutput/buildCommandFinishedEvent）；`OutputCollector` 增 full 模式与 fullContent()；runner 增 sessionId/home/persistThreshold/onCommandFinished 注入，前台超阈值落盘回传 persistedOutputPath/Size；background 落盘后**终态原子发布**（修复轮询读到半终态竞态），完成回调发 command_finished。落盘 best-effort 不影响命令终态；数据只写 `~/.budingx/sessions/<sid>/tasks/`，不写用户项目。Ruling：完整输出内存全量保留（受超时约束），流式落盘留后续优化。
 
 ### T19 · 阻塞预算自动转后台
 
