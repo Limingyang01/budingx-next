@@ -233,7 +233,7 @@
   7. 基线漂移校验：文件缺失/指纹变化/HEAD 变化 → `ok=false` 且 `drift` 列出差异项（TP-05）
 - **GREEN**：纯状态机实现
 - **验证**：`npm run build && node --test src/plan/test/store.test.mjs`
-- **完成事实**：待填
+- **完成事实**（2026-11-18）：RED 8 条纯逻辑用例（模块缺失 `ERR_MODULE_NOT_FOUND dist/plan/store.js`，0 通过）→ GREEN 8/8；全量 497/497 通过。实现 `src/plan/store.ts`：`createPlanStore({snapshot,now,id})` 内存状态机（`create` 校验目标/1–50 步并生成稳定 `step-N`；`update` 校验状态枚举、`blockedBy` 重复/自引用/悬空引用；`requestApproval` 仅 `none|rejected` 可请求；`approve` 在 pending 时写入 `Plan.fingerprint`（结构化证据稳定 JSON）与 `approvedText`；`reject` 以 `approvedText` 回传「拒绝原因：…」；`progress` 复用 core `planProgress`）、`planEvidenceOf(plan,snapshot)`（键顺序固定 `root/head/version/files`，文件按路径排序；`version` 取 `Plan.updatedAt`）、`planFingerprintOf`、`createTodoStore()`（整表替换、三字段三状态校验、进度 completed/total）。`src/plan/validate.ts`：`validateBeforeExecute(plan,snapshot)` 逐项比对 `approval`/`fingerprint`/`root`/`head`/`version`/`files:<path>`（缺失与变更分开表述，指纹不可解析单独报错），返回 `{ok,drift[]}` 供调用方打回待审。Ruling：Store 只暴露 7 个审批状态机方法，键集合断言证明无执行入口（TP-04）；拒绝原因无独立类型字段，写入 `approvedText` 复用展示通道；`tsconfig` 增 `../plan/**/*.ts`。
 
 ### T11 · 计划模式闸门
 
