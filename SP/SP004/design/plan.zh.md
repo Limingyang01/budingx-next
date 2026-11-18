@@ -124,7 +124,7 @@
   9. 阻塞等待族命令 → `outcome='blocked'` 且 `reason` 指引后台（CE-13）
 - **GREEN**：使用托管操作或隔离后端启动，拒绝路径先验证零 spawn。实现 stdin 立即关闭、stdout/stderr 分流累积、字节上限截断（保留首尾）、超时 timer、AbortSignal 监听
 - **验证**：`npm run build && node --test src/exec/test/runner.test.mjs`
-- **完成事实**：待填
+- **完成事实（2026-11-18）**：RED 模块缺失失败 → GREEN 13/13 通过，全量 412/412（399 + 新增 13）。`createCommandRunner` 拒绝顺序（全部零 spawn，注入计数 spawn 断言）：预 abort → 硬上限拒启 → 交互式族 failed → 阻塞族 blocked（指引 runInBackground）→ 隔离门禁 deny → 解释器缺失 failed；通过后 `spawn(shell, [...args, command], { shell:false, windowsHide:true })`，stdin 立即关闭，stdout/stderr 分流累积（保留首尾各 cap/2 + 精确总字节），合并输出同上限再截断，标注「[输出已截断：显示 N 字节 / 共 M 字节]」。超时/取消经 `killTree` 终止整棵进程树。Ruling：设计 CommandSpec 无 args 字段，RED#4 以引号包裹命令文本验证参数原样到达；killTree 在 Windows 必须等 `taskkill /PID <pid> /T /F` 完成后再 child.kill 兜底（先杀父进程会导致 taskkill 无法定位孤儿子进程，实测超时用例 60s 不终止）。status/cancel/list 为 T3 桩，T4 实现。
 
 ### T4 · 后台任务与进程树取消
 
