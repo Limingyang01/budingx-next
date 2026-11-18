@@ -146,3 +146,58 @@ test('MiniMax China and Qwen Token Plan presets prefill their own endpoint and u
     { url: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/models', key: 'fixture-token-plan-key' }
   ])
 })
+
+test('multiple model IDs can be selected once and more can be added with the same saved key', async (t) => {
+  const requests = []
+  const ui = await mountTty(t, {
+    commandOverrides: {
+      async discoverModels(endpoint, key) {
+        requests.push({ endpoint, key })
+        return ['model-one', 'model-two', 'model-three']
+      }
+    }
+  })
+  await openModels(ui)
+  await ui.waitFor((frame) => frame.includes('N 新建'))
+  await ui.send('n')
+  await ui.waitFor((frame) => frame.includes('选择供应商'))
+  await ui.send('\r')
+  await ui.waitFor((frame) => frame.includes('> API Key'))
+  await ui.send('fixture-shared-key')
+  await ui.send('\r')
+  await ui.waitFor((frame) => frame.includes('[ ] model-one'))
+  await ui.send(' ')
+  await ui.waitFor((frame) => frame.includes('[x] model-one'))
+  await ui.send('\x1b[B')
+  await ui.send(' ')
+  await ui.waitFor((frame) => frame.includes('[x] model-two'))
+  await ui.send('three')
+  await ui.waitFor((frame) => frame.includes('筛选 (1/3)'))
+  await ui.send('\r')
+  await ui.waitFor((frame) => frame.includes('同时添加') && frame.includes('model-two'))
+  await ui.send('\r')
+  await ui.waitFor((frame) => frame.includes('已保存并切换模型'))
+  assert.equal(ui.configStore.load().models.length, 2)
+  assert.equal(ui.credentialStore.list().length, 1)
+  assert.equal(ui.config().model, 'model-one')
+
+  await openModels(ui)
+  await ui.waitFor((frame) => frame.includes('A 添加同组模型') && frame.includes('model-two'))
+  await ui.send('a')
+  await ui.waitFor((frame) => frame.includes('筛选') && frame.includes('model-three'))
+  await ui.send('three')
+  await ui.waitFor((frame) => frame.includes('筛选 (1/3)'))
+  await ui.send('\r')
+  await ui.waitFor((frame) => frame.includes('沿用已存端点与密钥') && frame.includes('model-three'))
+  await ui.send('\r')
+  await ui.waitFor((frame) => frame.includes('已保存并切换模型'))
+  assert.equal(ui.configStore.load().models.length, 3)
+  assert.equal(ui.credentialStore.list().length, 1)
+  assert.equal(ui.config().model, 'model-three')
+  assert.equal(ui.config().apiKey, 'fixture-shared-key')
+  assert.deepEqual(requests, [
+    { endpoint: 'https://api.deepseek.com/models', key: 'fixture-shared-key' },
+    { endpoint: 'https://api.deepseek.com/models', key: 'fixture-shared-key' }
+  ])
+  assert.doesNotMatch(ui.raw(), /fixture-shared-key/)
+})

@@ -39,7 +39,7 @@ Configuration priority is **CLI arguments > BUDINGX\_\* environment > stored pro
 
 Run `/models` in an interactive terminal to open the manager. Use N to add a profile, E to edit it, D to delete it, T to test the connection, and Enter to use the selected profile at the next turn. Use S for startup default and O for explicit orphan-key cleanup.
 
-Choose a provider template, paste an API key into the hidden field, and press Enter to load model IDs. Custom accepts a compatible base URL and a manually entered or discovered model ID. Save retains the profile. Save and use also selects it for the conversation. Keys stay separate from profile configuration and are bound to the profile and host. `/provider` has been removed in 0.3.1.
+Choose a provider template, paste an API key into the hidden field, and press Enter to load model IDs. Custom accepts a compatible base URL and a manually entered or discovered model ID. Save retains the profile. Save and use also selects it for the conversation. In 0.3.2, use Space to mark several discovered models before pressing Enter. They share one saved endpoint and key. Use A on an existing model to add another under its saved configuration. Editing a shared endpoint or key affects its group; deleting a model keeps the key until the last group member is removed. `/provider` has been removed in 0.3.1.
 
 In piped input, `/models` lists profiles and `/model NAME` selects one. Interactive changes to profiles are available in the manager. See the repository's PRODUCT.md for examples and permissions.
 

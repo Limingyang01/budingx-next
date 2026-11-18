@@ -1,6 +1,11 @@
+import { randomUUID } from 'node:crypto'
 import { discoverModels, probe } from '../provider/openai.js'
-import { createProfile, normalizeBaseUrl, profileHost, startupProfile, updateProfile } from '../storage/profiles.js'
-import type { ModelProfile } from '../storage/config-store.js'
+import {
+  createProfile, normalizeBaseUrl, profileCredentialBinding, profileCredentialRef,
+  startupProfile, updateProfile
+} from '../storage/profiles.js'
+import type { CredentialsFile } from '../storage/credentials.js'
+import type { ConfigFile, ModelProfile } from '../storage/config-store.js'
 import type { CommandContext } from './commands.js'
 
 type Stores = Pick<CommandContext, 'configStore' | 'credentialStore' | 'getConfig' | 'setConfig'>
@@ -24,6 +29,8 @@ export const providerTemplates: { name: string; baseUrl: string; suggested?: str
 
 export type ModelDraft = {
   id?: string
+  attachTo?: string
+  modelIds?: string[]
   updatedAt?: string
   label: string
   baseUrl: string
@@ -34,7 +41,7 @@ export type ModelDraft = {
 }
 
 export function selectProfile(stores: Stores, profile: ModelProfile) {
-  const apiKey = stores.credentialStore.get(profile.id, profileHost(profile)) ?? ''
+  const apiKey = stores.credentialStore.get(profileCredentialRef(profile), profileCredentialBinding(profile)) ?? ''
   stores.setConfig({
     ...stores.getConfig(),
     baseUrl: profile.baseUrl,
@@ -55,10 +62,12 @@ function checkedKey(key: string): string {
 
 export function draftConnection(stores: Stores, draft: ModelDraft) {
   const baseUrl = normalizeBaseUrl(draft.baseUrl.trim())
-  const host = new URL(baseUrl).host
+  const refId = draft.id ?? draft.attachTo
+  const profile = refId ? stores.configStore.load().models.find((item) => item.id === refId) : undefined
+  if (draft.attachTo && profile?.baseUrl !== baseUrl) throw new Error('Use the saved provider endpoint')
   const model = draft.model.trim()
   const apiKey = checkedKey(draft.apiKey)
-    || (draft.id ? stores.credentialStore.get(draft.id, host) : undefined)
+    || (profile ? stores.credentialStore.get(profileCredentialRef(profile), profileCredentialBinding(profile, baseUrl)) : undefined)
     || ''
   return { baseUrl, model, apiKey }
 }
@@ -97,58 +106,141 @@ export async function testProfile(ctx: CommandContext, draft: ModelDraft, signal
   return (ctx.probe ?? probe)(connection, { signal, tools: draft.tools })
 }
 
-export function saveModel(stores: Stores, draft: ModelDraft, use: boolean): ModelProfile {
-  const file = stores.configStore.load()
-  const priorDefault = startupProfile(file)?.id
-  const old = draft.id ? file.models.find((model) => model.id === draft.id) : undefined
-  if (draft.id && !old) throw new Error('Model profile no longer exists')
-  if (old && draft.updatedAt && old.updatedAt !== draft.updatedAt) throw new Error('Profile changed; reopen it before saving')
-  const baseUrl = normalizeBaseUrl(draft.baseUrl.trim())
-  const model = draft.model.trim()
-  const input = { baseUrl, model, label: draft.label.trim() || model.slice(0, 64), tools: draft.tools }
-  if (file.models.some((item) => item.id !== draft.id && item.label === input.label)) {
-    throw new Error('A profile with that label already exists')
+function nextLabel(model: string, names: Set<string>): string {
+  const label = model.slice(0, 64)
+  if (!names.has(label)) return label
+  for (let n = 2; ; n++) {
+    const suffix = ` (${n})`
+    const candidate = label.slice(0, 64 - suffix.length) + suffix
+    if (!names.has(candidate)) return candidate
   }
-  const profile = old ? updateProfile(old, input) : createProfile(input)
-  const key = checkedKey(draft.apiKey)
-  const host = profileHost(profile)
-  const changedHost = old && profileHost(old) !== host
-  const credentials = key || changedHost ? stores.credentialStore.load() : undefined
-  if (key) stores.credentialStore.set(profile.id, host, key)
-  else if (changedHost) stores.credentialStore.remove(profile.id)
-  file.models = old
-    ? file.models.map((item) => item.id === old.id ? profile : item)
-    : [...file.models, profile]
-  if (draft.startupDefault) file.defaultModelId = profile.id
-  else if (priorDefault === profile.id || file.models.length === 1) file.defaultModelId = null
+}
 
+function persistProfiles(
+  stores: Stores,
+  file: ConfigFile,
+  changeCredentials?: (credentials: CredentialsFile) => void
+) {
+  const previous = changeCredentials ? stores.credentialStore.load() : undefined
+  if (previous && changeCredentials) {
+    const next = structuredClone(previous)
+    changeCredentials(next)
+    stores.credentialStore.save(next)
+  }
   try {
     stores.configStore.save(file)
   } catch (error) {
-    if (credentials) stores.credentialStore.save(credentials)
+    if (previous) stores.credentialStore.save(previous)
     throw error
   }
-  if (use || stores.getConfig().profileId === profile.id) selectProfile(stores, profile)
-  return profile
+}
+
+export function saveModel(stores: Stores, draft: ModelDraft, use: boolean): ModelProfile {
+  const file = stores.configStore.load()
+  const priorDefault = startupProfile(file)?.id
+  const targetId = draft.id ?? draft.attachTo
+  const anchor = targetId ? file.models.find((model) => model.id === targetId) : undefined
+  if (targetId && !anchor) throw new Error('Model profile no longer exists')
+  if (anchor && draft.updatedAt && anchor.updatedAt !== draft.updatedAt) throw new Error('Profile changed; reopen it before saving')
+  const old = draft.id ? anchor : undefined
+  const baseUrl = normalizeBaseUrl(draft.baseUrl.trim())
+  if (draft.attachTo && baseUrl !== anchor?.baseUrl) {
+    throw new Error('Adding to a provider configuration requires its saved endpoint')
+  }
+
+  const oldRef = anchor ? profileCredentialRef(anchor) : undefined
+  const grouped = anchor && oldRef !== anchor.id
+  const members = anchor ? file.models.filter((item) => profileCredentialRef(item) === oldRef) : []
+  if (grouped && members.some((member) => member.baseUrl !== anchor.baseUrl)) {
+    throw new Error('Shared provider configuration has inconsistent endpoints')
+  }
+  const sameModel = new Map(members.map((item) => [item.model, item]))
+  const models = new Set([draft.model.trim(), ...(draft.modelIds ?? []).map((item) => item.trim())])
+  const primaryModel = draft.model.trim()
+  if (!primaryModel) throw new Error('Model name is required')
+
+  const names = new Set(file.models.filter((item) => item.id !== old?.id).map((item) => item.label))
+  const label = draft.label.trim() || nextLabel(primaryModel, names)
+  const alreadyExists = sameModel.get(primaryModel)
+  if (old && alreadyExists && alreadyExists.id !== old.id) throw new Error('This model already belongs to the provider configuration')
+  const input = { baseUrl, model: primaryModel, label, tools: draft.tools }
+  const existingPrimary = draft.attachTo ? alreadyExists : undefined
+  if (!existingPrimary && names.has(label)) throw new Error('A profile with that label already exists')
+  const primary = old ? updateProfile(old, input) : existingPrimary ?? createProfile(input)
+  names.add(primary.label)
+
+  const additions: ModelProfile[] = []
+  for (const model of models) {
+    if (model === primaryModel || sameModel.has(model)) continue
+    const name = nextLabel(model, names)
+    additions.push(createProfile({ baseUrl, model, label: name, tools: draft.tools }))
+    names.add(name)
+  }
+
+  const affected = new Map(members.map((item) => [item.id, item]))
+  affected.set(primary.id, primary)
+  for (const item of additions) affected.set(item.id, item)
+  const ref = grouped && oldRef ? oldRef : affected.size > 1 ? 'group:' + randomUUID() : primary.id
+  const key = checkedKey(draft.apiKey)
+  const stamp = new Date().toISOString()
+  const next = Array.from(affected.values(), (item) => ({
+    ...item,
+    apiKeyRef: ref,
+    baseUrl,
+    updatedAt: stamp
+  }))
+  const saved = next.find((item) => item.id === primary.id)!
+  const updated = new Map(next.map((item) => [item.id, item]))
+  const existing = new Set(file.models.map((item) => item.id))
+  file.models = [
+    ...file.models.map((item) => updated.get(item.id) ?? item),
+    ...next.filter((item) => !existing.has(item.id))
+  ]
+  if (draft.startupDefault) file.defaultModelId = saved.id
+  else if (!draft.attachTo && (priorDefault === saved.id || file.models.length === 1)) file.defaultModelId = null
+
+  const binding = profileCredentialBinding(saved)
+  const oldBinding = anchor ? profileCredentialBinding(anchor) : undefined
+  const refChanged = Boolean(oldRef && oldRef !== ref)
+  const bindingChanged = Boolean(oldBinding && oldBinding !== binding)
+  const copyKey = refChanged && anchor?.baseUrl === baseUrl
+  persistProfiles(stores, file, key || refChanged || bindingChanged ? (credentials) => {
+    // Only migrate an existing key when explicitly grouping the exact same endpoint.
+    const inherited = copyKey && oldRef && credentials.hosts?.[oldRef] === oldBinding
+      ? credentials.keys[oldRef] : ''
+    if (oldRef && (refChanged || bindingChanged)) {
+      delete credentials.keys[oldRef]
+      if (credentials.hosts) delete credentials.hosts[oldRef]
+    }
+    const nextKey = key || inherited
+    if (nextKey) {
+      credentials.keys[ref] = nextKey
+      credentials.hosts = { ...credentials.hosts, [ref]: binding }
+    }
+  } : undefined)
+  const activeId = stores.getConfig().profileId
+  const active = activeId ? updated.get(activeId) : undefined
+  if (use) selectProfile(stores, saved)
+  else if (active) selectProfile(stores, active)
+  return saved
 }
 
 export function removeModel(stores: Stores, id: string, replacementId?: string) {
   const file = stores.configStore.load()
-  if (!file.models.some((model) => model.id === id)) throw new Error('Model profile no longer exists')
+  const profile = file.models.find((model) => model.id === id)
+  if (!profile) throw new Error('Model profile no longer exists')
   const remaining = file.models.filter((model) => model.id !== id)
   const replacement = remaining.find((model) => model.id === replacementId)
   if (replacementId && !replacement) throw new Error('Replacement profile no longer exists')
   const wasActive = stores.getConfig().profileId === id
   if (startupProfile(file)?.id === id) file.defaultModelId = replacement?.id ?? null
   file.models = remaining
-  const credentials = stores.credentialStore.load()
-  stores.credentialStore.remove(id)
-  try {
-    stores.configStore.save(file)
-  } catch (error) {
-    stores.credentialStore.save(credentials)
-    throw error
-  }
+  const ref = profileCredentialRef(profile)
+  const shared = remaining.some((model) => profileCredentialRef(model) === ref)
+  persistProfiles(stores, file, shared ? undefined : (credentials) => {
+    delete credentials.keys[ref]
+    if (credentials.hosts) delete credentials.hosts[ref]
+  })
   if (wasActive) {
     if (replacement) selectProfile(stores, replacement)
     else stores.setConfig({ ...stores.getConfig(), profileId: undefined, model: '', apiKey: '' })
