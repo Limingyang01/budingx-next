@@ -287,3 +287,9 @@ npm run merge:gate     # 见 §6
 - [GitHub Actions #13](https://github.com/Limingyang01/budingx-next/actions/runs/44257392923) 从 `a68e6a179df6288f47d6dcca60bfcdd91c22d048` 完成 Windows、Linux 验证与 OIDC 发布。npm 发布时间为 `2026-11-18T07:19:20.042Z`，`latest` 指向 `0.3.4`。
 - 官方包隔离安装通过，命令入口返回 `0.3.4`，本地 HTTP 流式请求通过。在隔离用户目录保存完全权限后，管道启动仍显示只读。已验证 46 个 registry signatures 和 5 个 attestations。SHA-512 与候选预演、安装锁和 provenance 的 subject 一致。provenance 的源码、工作流和运行地址与本次发布一致。
 - Actions 原始回执下载需登录（HTTP 401）。发布台账依据公开 provenance 和官方包独立安装证据登记。真实供应商回答措辞和 Windows Terminal 实际显示仍待对应环境验证。
+
+### 会话排版与状态栏精修
+
+对照旧仓的独立用户消息组件、Markdown tokenizer 和辅助信息样式，沿用行为机制并用 BudingX 色彩独立实现。Markdown 解析使用公开的 Marked 18.2.1，未迁入旧仓产品代码。原用例在旧渲染上复现原始 Markdown、消息前缀和底部空闲状态。
+
+专项 36 项通过。伪 TTY 断言提问底色、去掉角色前缀、强调与代码呈现、完成行低亮度和只读短标签，并在 32 列检查折行。已回归模式颜色、全自动提示、权限切换、输入补全和历史滚动。Windows Terminal 实机显示为 UNVERIFIED，恢复条件为在真实终端比较常规与窄屏下的消息层级和配色。

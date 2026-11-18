@@ -8,6 +8,7 @@
 | react-ink 开发技能 | [dhruvjainin/absolute](https://github.com/dhruvjainin/absolute)（原 AbsolutelySkilled/AbsolutelySkilled），revision `1c8c79ae7d24df8779cb7847e676a3ab73bd400b` | MIT；[原许可证](skills/react-ink/LICENSE) | `skills/react-ink/`，SKILL.md、references 与 sources.yaml 原文保留 |
 | tui-design 开发技能 | [gfargo/tui-design-skill](https://github.com/gfargo/tui-design-skill)，revision `74e095c177a387c61d368478074a1a94937d3aa1`；经 [podo/design-agent-skills](https://github.com/podo/design-agent-skills) 的 `tui-design-skill` 指针发现 | MIT；[原许可证](skills/tui-design/LICENSE) | `skills/tui-design/`，SKILL.md、references 与 agents/openai.yaml 原文保留 |
 | yaml | [yaml](https://github.com/eemeli/yaml)，2.8.3 | ISC，随依赖附带许可证 | 仅开发期解析技能 YAML frontmatter，不是产品依赖 |
+| marked | [markedjs/marked](https://github.com/markedjs/marked)，18.2.1 | MIT，随依赖附带许可证 | SP003 TUI 仅用于解析回答的 Markdown token，终端展示层独立实现 |
 | ink | [ink](https://github.com/vadimdemedes/ink)，8.0.0 | MIT，随依赖附带许可证 | SP002 起仅用于终端渲染层（对话界面、`<Static>` 历史落盘、输入区与审批卡） |
 | react | [react](https://github.com/facebook/react)，19.3.1 | MIT，随依赖附带许可证 | SP002 起仅作为 ink 的运行时 UI 引擎；不进入 Core/Provider/Storage |
 | string-width | [string-width](https://github.com/sindresorhus/string-width)，9.0.0 | MIT，随依赖附带许可证 | SP002 起用于输入编辑器与渲染折行的显示宽度计算（显式依赖，不依赖 ink 的传递树） |
