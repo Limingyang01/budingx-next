@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import type { ModelProfile } from './config-store.js'
+import type { ConfigFile, ModelProfile } from './config-store.js'
 
 export type { ModelProfile }
+
+export function startupProfile(file: ConfigFile): ModelProfile | undefined {
+  if (file.defaultModelId === null) return undefined
+  return file.models.find((profile) => profile.id === file.defaultModelId) ?? file.models[0]
+}
 
 export type Config = {
   baseUrl: string

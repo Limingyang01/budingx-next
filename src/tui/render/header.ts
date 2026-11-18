@@ -67,7 +67,7 @@ const WORDS = {
     noModel: '模型：未配置',
     noEndpoint: '端点未设置',
     sep: '·',
-    hint: '尚未配置 · 运行 /provider add <label> <base-url> <model>'
+    hint: '尚未配置 · 运行 /models'
   },
   ascii: {
     welcome: 'Welcome to budingx',
@@ -81,7 +81,7 @@ const WORDS = {
     noModel: 'model: not configured',
     noEndpoint: 'endpoint not set',
     sep: '-',
-    hint: 'Not configured - run /provider add <label> <base-url> <model>'
+    hint: 'Not configured - run /models'
   }
 } as const
 
@@ -243,7 +243,7 @@ function welcome(input: HeaderInput): Line[] {
     const boxWidth = leftWidth + rightWidth + 6
     const right: Line[] = [
       ...feed(words.tips, [
-        '/provider add <label> <base-url> <model>',
+        '/models',
         words.tipKey,
         words.tipHelp
       ]),

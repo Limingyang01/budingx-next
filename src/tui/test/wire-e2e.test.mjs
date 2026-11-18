@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
+import { addCustomModel, openModels } from './helpers/model-keys.mjs'
 import { mountTty } from './helpers/mount-tty.mjs'
 import { createConfiguredSession } from '../dist/tui/runtime.js'
 import { createOpenAiProvider } from '../dist/provider/openai.js'
@@ -42,11 +43,7 @@ test('W1 UI 配置两模型、隐藏密钥、真实 HTTP 切换和默认持久�
     ['a', a.baseUrl, 'fixture-key-A', 'model-A'],
     ['b', b.baseUrl, 'fixture-key-B', 'model-B']
   ]) {
-    await ui.send('/provider add ' + label + ' ' + url + ' ' + model + '\r')
-    await ui.send('/provider key ' + label + '\r')
-    await ui.waitFor((frame) => frame.includes('隐藏输入'))
-    await ui.send(key + '\r')
-    await ui.waitFor((frame) => frame.includes('密钥已保存'))
+    await addCustomModel(ui, { label, baseUrl: url, key, model })
   }
   await ui.send('/model a\r')
   await ui.send('first\r')
@@ -68,7 +65,10 @@ test('W1 UI 配置两模型、隐藏密钥、真实 HTTP 切换和默认持久�
       (m) => m.role === 'assistant' && m.content === 'wire-answer-A'
     )
   )
-  await ui.send('/provider default b\r')
+  await openModels(ui)
+  await ui.send('\x1b[B')
+  await ui.send('s')
+  await ui.send('\x1b')
   const stored = ui.configStore.load()
   assert.equal(stored.defaultModelId, stored.models.find((m) => m.label === 'b').id)
   assert.equal(ui.raw().includes('fixture-key-A'), false)
@@ -88,10 +88,7 @@ test('W2 HTTP 鉴权失败可见、不污染历史，修正密钥后续聊', asy
   await ui.send('fail\r')
   await ui.waitFor((frame) => frame.includes('401') && !ui.session.isBusy)
   assert.equal(ui.session.history.length, 0)
-  await ui.send('/provider add good ' + api.baseUrl + ' m\r')
-  await ui.send('/provider key good\r')
-  await ui.send('fixture-valid\r')
-  await ui.send('/model good\r')
+  await addCustomModel(ui, { label: 'good', baseUrl: api.baseUrl, model: 'm', key: 'fixture-valid', use: true })
   await ui.send('recover\r')
   await ui.waitFor((frame) => frame.includes('wire-recovered') && !ui.session.isBusy)
   assert.deepEqual(api.requests[1].body.messages, [{ role: 'user', content: 'recover' }])

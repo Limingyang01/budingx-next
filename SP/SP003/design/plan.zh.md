@@ -373,3 +373,14 @@ T18 之后的收口任务：T17（交付记录、test-report、说明书与文�
 - F2（CP-01…09、PC-06、WT-15/16）回归覆盖审批前 diff、批准冲突、回合统计与撤销，修复变更计划和检查点。
 - F3（WT-01…03、WT-07、WT-09…12、WT-19）回归覆盖检索、范围读取、匹配和编码边界，保留现有工作区约束。
 - F4 更新说明书和证据记录，执行聚焦 test、npm test 与 npm run merge:gate。修复留在 fix 分支。
+
+## 0.3.1 模型面板修复任务
+
+| 任务 | 验收 | 代码和验证 |
+| --- | --- | --- |
+| MM-F1 | 管理入口、表单与移除旧命令 | `commands.ts` 与 `model-manager.tsx`；空列表、Custom、新增/编辑/删除/切换、管道列表、旧命令拒绝 |
+| MM-F2 | 模板与模型发现、连接测试 | `model-management.ts` 与 `provider/openai.ts`；厂商模板、Bearer 绑定、列表解析、鉴权失败提示和手填 |
+| MM-F3 | 数据与会话不变量 | 复用档案和凭据仓库；验证旧数据、密钥不回显、不同主机不复用、默认替代和队列边界 |
+| MM-F4 | 用户文档 | `PRODUCT.md` 按交付迭代组织命令，随包 README 同步，写作约定归档到 `docs/documentation.md` |
+
+实施在 `fix/SP003/model-management`；0.3.1 留待发布准备阶段。

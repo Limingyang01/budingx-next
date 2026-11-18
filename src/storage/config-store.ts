@@ -21,7 +21,8 @@ export type ModelProfile = {
 
 export type ConfigFile = {
   version: number
-  defaultModelId?: string
+  /** null opts out of startup selection. Older files can omit this field. */
+  defaultModelId?: string | null
   models: ModelProfile[]
   [key: string]: unknown
 }

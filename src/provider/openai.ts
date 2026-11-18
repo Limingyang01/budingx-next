@@ -14,7 +14,11 @@ import { classifyHttpStatus, providerError, sanitize } from './errors.js'
 import { SseParser } from './sse.js'
 import { setTimeout as wait } from 'node:timers/promises'
 
-async function readJsonLimited(response: Response, signal: AbortSignal): Promise<any> {
+async function readJsonLimited(
+  response: Response,
+  signal: AbortSignal,
+  limit = 16384
+): Promise<any> {
   if (!response.body) throw new Error('Missing response body')
   const reader = response.body.getReader()
   const abort = () => {
@@ -30,9 +34,9 @@ async function readJsonLimited(response: Response, signal: AbortSignal): Promise
       signal.throwIfAborted()
       if (chunk.done) break
       text += decoder.decode(chunk.value, { stream: true })
-      if (text.length > 16384) throw new Error('Response exceeds probe/error limit')
+      if (text.length > limit) throw new Error('Response exceeds JSON size limit')
     }
-    return JSON.parse(text)
+    return JSON.parse(text + decoder.decode())
   } finally {
     signal.removeEventListener('abort', abort)
     await reader.cancel().catch(() => {})
@@ -82,6 +86,7 @@ export type ProbeProfile = {
 }
 
 export type ProbeOptions = {
+  signal?: AbortSignal
   tools?: boolean
   timeoutMs?: number
   limits?: Partial<ProviderLimits>
@@ -523,6 +528,38 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
   }
 }
 
+export async function discoverModels(
+  endpoint: string,
+  apiKey: string,
+  options: Pick<ProbeOptions, 'signal' | 'timeoutMs' | 'fetchImpl'> = {}
+): Promise<string[]> {
+  const timeout = AbortSignal.timeout(options.timeoutMs ?? 10000)
+  const signal = options.signal ? AbortSignal.any([timeout, options.signal]) : timeout
+  const response = await (options.fetchImpl ?? fetch)(endpoint, {
+    method: 'GET',
+    redirect: 'error',
+    signal,
+    headers: apiKey ? { Authorization: 'Bearer ' + apiKey } : {}
+  })
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {})
+    throw new Error(`HTTP ${response.status}`)
+  }
+  const payload = await readJsonLimited(response, signal, 4 * 1024 * 1024)
+  const models = Array.isArray(payload?.data)
+    ? payload.data
+    : payload?.data?.models ?? payload?.output?.models
+  if (!Array.isArray(models)) throw new Error('Invalid model list')
+  const keys = new Set<string>()
+  for (const model of models) {
+    const id = model?.id ?? model?.model_id ?? model?.modelId ?? model?.model
+    if (typeof id === 'string' && id.trim() && id.length <= 256 && !/[\x00-\x1f\x7f]/.test(id)) {
+      keys.add(id)
+    }
+  }
+  return [...keys]
+}
+
 export async function probe(
   profile: ProbeProfile,
   options: ProbeOptions = {}
@@ -534,11 +571,12 @@ export async function probe(
   const call = async (body: Record<string, unknown>) => {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
+    const signal = options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal
     try {
       const response = await fetchImpl(`${profile.baseUrl}/chat/completions`, {
         method: 'POST',
         redirect: 'error',
-        signal: controller.signal,
+        signal,
         headers: {
           'Content-Type': 'application/json',
           ...(profile.apiKey ? { Authorization: `Bearer ${profile.apiKey}` } : {})
@@ -547,7 +585,7 @@ export async function probe(
       })
       let payload
       try {
-        payload = await readJsonLimited(response, controller.signal)
+        payload = await readJsonLimited(response, signal)
       } catch {
         if (controller.signal.aborted)
           throw providerError('timeout', 'Provider probe timed out')

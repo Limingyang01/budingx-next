@@ -43,7 +43,7 @@ test('S1 未配置首屏：中文欢迎框、几何不越界、配置引导、�
   assert.match(frame, /欢迎使用 budingx/)
   assert.match(frame, /快速上手/)
   assert.match(frame, /模型：未配置/)
-  assert.match(frame, /尚未配置 · 运行 \/provider add/)
+  assert.match(frame, /尚未配置 · 运行 \/models/)
   assert.match(frame, /╭/)
   assert.match(frame, /╯/)
   assert.ok(frameWidths(frame, stringWidth).every((wd) => wd <= 100))

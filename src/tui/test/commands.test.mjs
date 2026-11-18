@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { runCommand } from '../dist/tui/commands.js'
+import { commandHelp, runCommand } from '../dist/tui/commands.js'
 import { ConfigStore } from '../dist/storage/config-store.js'
 import { CredentialStore } from '../dist/storage/credentials.js'
-import { createProfile, profileHost } from '../dist/storage/profiles.js'
+import { saveModel, removeModel, testProfile, loadModelIds } from '../dist/tui/model-management.js'
+import { createProfile, profileHost, startupProfile } from '../dist/storage/profiles.js'
 
 function stores() {
   const home = mkdtempSync(join(tmpdir(), 'budingx-commands-'))
@@ -52,7 +53,9 @@ test('/help 返回命令说明', async () => {
   const { context: ctx } = context()
   const outcome = await runCommand('/help', ctx)
   assert.equal(outcome.handled, true)
-  assert.match(outcome.message, /\/provider/)
+  assert.match(outcome.message, /\/models/)
+  assert.doesNotMatch(outcome.message, /\/provider/)
+  assert.match((await runCommand('/provider add a', ctx)).error, /Unknown command/)
 })
 
 test('/config 隐藏 key 明文', async () => {
@@ -76,37 +79,27 @@ test('/model 切换不清空会话历史', async () => {
   assert.equal(config.baseUrl, 'https://second.example.test/v1')
 })
 
-test('/provider add 后可列出，rm 会连带删除 key', async () => {
-  const { context: ctx, store } = context()
-  const added = await runCommand(
-    '/provider add first https://api.example.test/v1 model-one',
-    ctx
-  )
-  assert.equal(added.error, undefined)
-  const stored = store.configStore.load()
-  assert.equal(stored.models.length, 1)
-  const profile = stored.models[0]
-  store.credentialStore.set(profile.id, profileHost(profile), 'sk-value')
 
-  const listed = await runCommand('/models', ctx)
-  assert.match(listed.message, /first/)
+const draft = {
+  label: 'first', baseUrl: 'https://one.invalid/v1', model: 'model-one',
+  apiKey: 'fixture-key', tools: true, startupDefault: false
+}
 
-  const removed = await runCommand(`/provider rm ${profile.id}`, ctx)
-  assert.equal(removed.error, undefined)
-  assert.equal(store.configStore.load().models.length, 0)
-  assert.equal(store.credentialStore.list().length, 0)
+test('models is interactive in the TUI and a read-only list in pipes', async () => {
+  const { context: ctx } = context()
+  saveModel(ctx, draft, false)
+  assert.match((await runCommand('/models', ctx)).message, /first/)
+  assert.deepEqual(await runCommand('/models', { ...ctx, interactive: true }), {
+    handled: true, openModels: true
+  })
 })
 
-test('/provider add 拒绝重复档案名与非法输入', async () => {
+test('saving rejects duplicate labels and invalid model and key inputs', () => {
   const { context: ctx } = context()
-  await runCommand('/provider add first https://api.example.test/v1 model-one', ctx)
-  const duplicate = await runCommand(
-    '/provider add first https://api.example.test/v1 model-two',
-    ctx
-  )
-  assert.match(duplicate.error, /already exists/i)
-  const incomplete = await runCommand('/provider add only-label', ctx)
-  assert.match(incomplete.error, /Usage/i)
+  saveModel(ctx, draft, false)
+  assert.throws(() => saveModel(ctx, { ...draft, model: 'model-two' }, false), /already exists/)
+  assert.throws(() => saveModel(ctx, { ...draft, label: 'empty-model', model: '' }, false), /required/)
+  assert.throws(() => saveModel(ctx, { ...draft, label: 'bad-key', apiKey: 'a b' }, false), /Invalid API key/)
 })
 
 test('未知命令给出明确错误', async () => {
@@ -128,95 +121,88 @@ test('/clear 清空会话', async () => {
   assert.equal(cleared.length, 1)
 })
 
-test('/provider check 用档案凭据探测并报告工具能力', async () => {
-  const { context: ctx, store } = context()
-  const added = await runCommand(
-    '/provider add first https://api.example.test/v1 model-one',
-    ctx
-  )
-  assert.equal(added.error, undefined)
-  const profile = store.configStore.load().models[0]
-  store.credentialStore.set(profile.id, profileHost(profile), 'sk-value')
 
+test('connection test uses the bound key, requested model and tools preference', async () => {
+  const { context: ctx } = context()
+  const profile = saveModel(ctx, draft, false)
   const requests = []
-  const outcome = await runCommand(`/provider check ${profile.id}`, {
+  const result = await testProfile({
     ...ctx,
     probe: async (target, options) => {
       requests.push({ target, options })
       return { ok: true, message: 'reachable', supportsTools: true }
     }
-  })
-  assert.equal(outcome.error, undefined)
-  assert.match(outcome.message, /reachable/)
-  assert.match(outcome.message, /tool calls supported/)
-  assert.equal(requests.length, 1)
-  assert.equal(requests[0].target.model, 'model-one')
-  assert.equal(requests[0].target.apiKey, 'sk-value')
+  }, { ...draft, id: profile.id, apiKey: '' }, new AbortController().signal)
+  assert.deepEqual(requests[0].target, { baseUrl: draft.baseUrl, model: draft.model, apiKey: draft.apiKey })
   assert.equal(requests[0].options.tools, true)
+  assert.equal(result.supportsTools, true)
 })
 
-test('/provider check 在缺少凭据时明确拒绝且不发出请求', async () => {
-  const { context: ctx } = context()
-  await runCommand('/provider add first https://api.example.test/v1 model-one', ctx)
-  const stored = ctx.configStore.load()
-  let called = 0
-  const outcome = await runCommand(`/provider check ${stored.models[0].id}`, {
-    ...ctx,
-    probe: async () => {
-      called++
-      return { ok: true, message: 'reachable' }
-    }
-  })
-  assert.match(outcome.error, /No key stored/i)
-  assert.equal(called, 0)
+test('saving an edited profile keeps its ID, default, capabilities and same-host key', () => {
+  const { context: ctx, store, config } = context()
+  const profile = saveModel(ctx, { ...draft, tools: false, startupDefault: true }, true)
+  const edited = saveModel(ctx, {
+    ...draft, id: profile.id, model: 'other', label: 'renamed',
+    apiKey: '', tools: false, startupDefault: true
+  }, false)
+  assert.equal(edited.id, profile.id)
+  assert.equal(store.configStore.load().defaultModelId, profile.id)
+  assert.equal(config.model, 'other')
+  assert.equal(config.apiKey, draft.apiKey)
+  assert.equal(edited.capabilities.tools, false)
 })
 
-test('G02/G03 编辑档案并设置默认', async () => {
-  const { context: ctx, store } = context()
-  await runCommand('/provider add first https://one.invalid/v1 one', ctx)
-  await runCommand('/provider add second https://two.invalid/v1 two', ctx)
-  const edit = await runCommand(
-    '/provider edit second renamed https://new.invalid/v1 new-model',
-    ctx
-  )
-  assert.equal(edit.error, undefined)
-  assert.equal(store.configStore.load().models[1].model, 'new-model')
-  assert.equal((await runCommand('/provider default renamed', ctx)).error, undefined)
-  const loaded = store.configStore.load()
-  assert.equal(loaded.defaultModelId, loaded.models[1].id)
-})
-test('G01 命令请求隐藏录入且拒绝参数密钥', async () => {
-  const { context: ctx } = context()
-  await runCommand('/provider add first https://one.invalid/v1 one', ctx)
-  const result = await runCommand('/provider key first', ctx)
-  assert.equal(result.error, undefined)
-  assert.equal(result.keyRequest.host, 'one.invalid')
-  const rejected = await runCommand('/provider key first test-secret', ctx)
-  assert.ok(rejected.error)
-  assert.equal(JSON.stringify(rejected).includes('test-secret'), false)
-})
-test('G05/G06 能力修改及显式孤儿清理', async () => {
-  const { context: ctx, store } = context()
-  await runCommand('/provider add first https://one.invalid/v1 one', ctx)
-  assert.equal((await runCommand('/provider tools first off', ctx)).error, undefined)
-  assert.equal(store.configStore.load().models[0].capabilities.tools, false)
-  store.credentialStore.set('orphan', 'one.invalid', 'fixture-key')
-  assert.match((await runCommand('/provider orphans', ctx)).message, /orphan/i)
-  assert.equal(store.credentialStore.list().length, 1)
-  await runCommand('/provider orphans clean', ctx)
-  assert.equal(store.credentialStore.list().length, 0)
-})
-
-test('G04 活动档案编辑换主机清空凭据，删除后不再继续使用', async () => {
-  const { context: ctx, config } = context()
-  await runCommand('/provider add one https://one.invalid/v1 old', ctx)
-  await runCommand('/model one', ctx)
-  config.apiKey = 'fixture-active-key'
-  await runCommand('/provider edit one renamed https://other.invalid/v1 new', ctx)
-  assert.equal(config.baseUrl, 'https://other.invalid/v1')
-  assert.equal(config.model, 'new')
+test('changing hosts clears the stored key, deleting an active/default profile applies the replacement', () => {
+  const { context: ctx, store, config } = context()
+  const first = saveModel(ctx, { ...draft, startupDefault: true }, true)
+  const second = saveModel(ctx, { ...draft, label: 'second', model: 'two' }, false)
+  saveModel(ctx, { ...draft, id: first.id, baseUrl: 'https://changed.invalid/v1',
+    apiKey: '', startupDefault: true }, false)
   assert.equal(config.apiKey, '')
-  await runCommand('/provider rm renamed', ctx)
+  assert.equal(store.credentialStore.get(first.id, profileHost(first)), undefined)
+  assert.throws(() => removeModel(ctx, first.id, 'missing'), /Replacement/)
+  removeModel(ctx, first.id, second.id)
+  assert.equal(store.configStore.load().defaultModelId, second.id)
+  assert.equal(config.model, 'two')
+  removeModel(ctx, second.id)
   assert.equal(config.model, '')
-  assert.equal(config.apiKey, '')
+  assert.equal(store.credentialStore.list().length, 0)
+  assert.equal(store.configStore.load().defaultModelId, null)
+})
+
+test('the product guide covers every advertised command in its usage section', () => {
+  const handbook = readFileSync(new URL('../../../PRODUCT.md', import.meta.url), 'utf8')
+  const usage = handbook.split('## 5. 使用说明')[1].split('## 6. 数据与隐私')[0]
+  for (const [, name] of commandHelp('en').matchAll(/^\s+(\/[a-z]+)\b/gm)) {
+    assert.ok(usage.includes(name), 'Missing usage for ' + name)
+  }
+  for (const iteration of ['Bootstrap', 'SP002', 'SP003']) {
+    assert.ok(usage.includes(iteration), 'Missing usage section for ' + iteration)
+  }
+})
+
+test('discovery uses the verified model-list route and explicit unsupported fallback', async () => {
+  const { context: ctx } = context()
+  const signal = new AbortController().signal
+  const qwen = { ...draft, baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1' }
+  const result = await loadModelIds({
+    ...ctx,
+    discoverModels: async (url, key) => {
+      assert.equal(url, 'https://dashscope.aliyuncs.com/api/v1/models?capabilities=TG&page_size=100')
+      assert.equal(key, draft.apiKey)
+      return ['qwen-fixture']
+    }
+  }, qwen, signal)
+  assert.deepEqual(result, { models: ['qwen-fixture'], suggested: false })
+  const glm = { ...draft, baseUrl: 'https://open.bigmodel.cn/api/paas/v4' }
+  const unsupported = { ...ctx, discoverModels: async () => { throw new Error('HTTP 404') } }
+  assert.equal((await loadModelIds(unsupported, glm, signal)).suggested, true)
+  await assert.rejects(loadModelIds(unsupported, { ...draft, baseUrl: 'https://custom.invalid/v1' }, signal), /404/)
+})
+
+test('explicitly empty startup default does not select a remaining legacy profile', () => {
+  const model = createProfile(draft)
+  const file = { version: 1, models: [model] }
+  assert.equal(startupProfile(file), model)
+  assert.equal(startupProfile({ ...file, defaultModelId: null }), undefined)
 })
