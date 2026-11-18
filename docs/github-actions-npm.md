@@ -6,9 +6,9 @@
 
 SP003 的 **0.3.1 已发布**并成为 npm latest。[运行 #11](https://github.com/Limingyang01/budingx-next/actions/runs/44229230445) 的 Windows、Linux 与 OIDC 发布均成功，官方源隔离安装通过。详见 [v0.3.1 发行说明](../release-notes/v0.3.1.md)。
 
-SP002 的 **0.2.0 已发布**，npm latest=0.2.0，台账为 published。维护者执行的 [运行 #7](https://github.com/Limingyang01/budingx-next/actions/runs/44055301185) 基于 6ed77d8，Windows/Linux 验证和 OIDC 发布均成功。公开安装、签名和 provenance 已核验，见 [v0.2.0](../release-notes/v0.2.0.md)。原始 CI artifact 下载要求登录，尚未取得；台账使用公开来源和独立安装证据，不伪造 CI report。不得重发 0.2.0。
+SP002 的 **0.2.0 已发布**，当时 npm latest=0.2.0，台账为 published。维护者执行的 [运行 #7](https://github.com/Limingyang01/budingx-next/actions/runs/44055301185) 基于 6ed77d8，Windows/Linux 验证和 OIDC 发布均成功。公开安装、签名和 provenance 已核验，见 [v0.2.0](../release-notes/v0.2.0.md)。原始 CI artifact 下载要求登录，尚未取得；台账使用公开来源和独立安装证据，不伪造 CI report。不得重发 0.2.0。
 
-0.3.2 修复准备见 [发行说明](../release-notes/v0.3.2.md)。合入并推送后，手动运行使用 `master`、`0.3.2`、`latest`，取消 `dry_run`。
+0.3.2 发布候选已合入 master，见 [发行说明](../release-notes/v0.3.2.md)。手动运行使用 `master`、`0.3.2`、`latest`，取消 `dry_run`。
 
 ## 历史发布回执（2026-11-16）
 

@@ -246,3 +246,7 @@ npm run merge:gate     # 见 §6
 ### 0.3.2 全屏与会话标签回归
 
 `npm run build` 通过。使用 `node --test src/tui/test/screen-e2e.test.mjs src/tui/test/header.test.mjs` 验证 26 项，通过 26 项，覆盖备用屏幕进入与退出、窗口缩放、Shift+Tab、长会话翻页和会话标题状态转换。Windows Terminal 实际标签观感与中文输入法仍待真终端验证。
+
+### 0.3.2 主线集成
+
+源提交 `edd6a4e` 的交叉验证门禁 GREEN，覆盖 5 个提交和 34 个文件。合并预演无冲突，已在独立工作树合入 master（合并提交 `35bb2a1`），确认合并结果与预演树一致。发布预演以最终 master 提交为准，回执留存在本地 `artifacts/release/`；正式发布由维护者在 GitHub Actions 手动触发。
