@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const violations = []
 
-const UI_BANNED = ['ink', 'react', 'node:readline', 'node:tty', 'chalk', 'ansi-', 'blessed', 'yoga-layout']
+const UI_BANNED = ['ink', 'marked', 'react', 'node:readline', 'node:tty', 'chalk', 'ansi-', 'blessed', 'yoga-layout']
 const CORE_IO_BANNED = [
   'node:fs',
   'node:http',
@@ -96,7 +96,7 @@ const productManifest = JSON.parse(
   readFileSync(join(root, 'src', 'tui', 'package.json'), 'utf8')
 )
 const rootManifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
-const allowedDeps = ['ink', 'react', 'string-width']
+const allowedDeps = ['ink', 'marked', 'react', 'string-width']
 const actualDeps = Object.keys(productManifest.dependencies ?? {}).sort()
 for (const dep of actualDeps) {
   if (!allowedDeps.includes(dep)) {
