@@ -7,6 +7,8 @@ import { stripVTControlCharacters } from 'node:util'
 import { mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { addCustomModel, openModels } from './helpers/model-keys.mjs'
+import { createProfile, profileHost } from '../dist/storage/profiles.js'
 import { App } from '../dist/tui/app.js'
 import { Session } from '../dist/core/session.js'
 import { InkApprovalGateway } from '../dist/tui/approval.js'
@@ -100,6 +102,12 @@ async function mount(t, provider, tools = [], commandOverrides = {}) {
     config: () => config
   }
 }
+function seed(ui, ...names) {
+  const models = names.map((label) => createProfile({ label, baseUrl: 'https://' + label + '.invalid/v1', model: label }))
+  ui.configStore.save({ version: 1, models })
+  for (const profile of models) ui.credentialStore.set(profile.id, profileHost(profile), 'fixture-key')
+}
+
 const idle = {
   async *stream() {
     yield { type: 'text_delta', text: 'answer' }
@@ -108,12 +116,8 @@ const idle = {
 }
 test('G01 Ink 隐藏 Key 输入、持久化且不回显', async (t) => {
   const ui = await mount(t, idle)
-  await ui.send('/provider add work https://fixture.invalid/v1 model')
-  await ui.send('\r')
-  await ui.send('/provider key work')
-  await ui.send('\r')
-  await ui.send('fixture-super-secret')
-  await ui.send('\r')
+  await addCustomModel(ui, { label: 'work', baseUrl: 'https://fixture.invalid/v1',
+    model: 'model', key: 'fixture-super-secret', use: true })
   const profile = ui.configStore.load().models[0]
   assert.equal(
     ui.credentialStore.get(profile.id, 'fixture.invalid'),
@@ -136,12 +140,13 @@ test('G07 Ink 忙时命令回合结束执行一次', async (t) => {
   })
   ui.session.submit('working')
   await pause()
-  await ui.send('/provider add queued https://fixture.invalid/v1 model')
-  await ui.send('\r')
-  assert.equal(ui.configStore.load().models.length, 0)
+  await openModels(ui)
+  assert.doesNotMatch(ui.last(), /Model management|模型管理/)
   release()
-  await pause(80)
-  assert.equal(ui.configStore.load().models.length, 1)
+  await pause(150)
+  assert.match(ui.last(), /Model management|模型管理/)
+  await ui.send('\x1b')
+
 })
 test('G08/G12 Ink bracketed paste 不发送、光标移动编辑及 resize', async (t) => {
   let turns = 0
@@ -247,23 +252,17 @@ test('G04/G07 异步命令阻止新提示词和自动队列抢跑', async (t) =>
       }
     }
   )
-  await ui.send('/provider add a https://a.invalid/v1 a')
-  await ui.send('\r')
-  await ui.send('/provider key a')
-  await ui.send('\r')
-  await ui.send('fixture-key')
-  await ui.send('\r')
-  await ui.send('/provider add b https://b.invalid/v1 b')
-  await ui.send('\r')
-  await ui.send('/provider check a')
-  await ui.send('\r')
-  await ui.send('/model b')
+  seed(ui, 'a', 'b')
+  await openModels(ui)
+  await ui.send('t')
+  assert.equal(models.length, 0)
+  release()
+  await pause(120)
+  await ui.send('\x1b[B')
   await ui.send('\r')
   await ui.send('hello')
   await ui.send('\r')
-  assert.equal(models.length, 0)
-  release()
-  await pause(180)
+  await pause(150)
   assert.deepEqual(models, ['b'])
 })
 
@@ -288,23 +287,21 @@ test('G07 自动队列等待回合边界的异步命令', async (t) => {
       }
     }
   )
-  await ui.send('/provider add a https://a.invalid/v1 a')
-  await ui.send('\r')
-  await ui.send('/provider key a')
-  await ui.send('\r')
-  await ui.send('fixture-key')
-  await ui.send('\r')
+  seed(ui, 'a')
   ui.session.submit('first')
   await pause()
-  await ui.send('/provider check a')
-  await ui.send('\r')
+  await openModels(ui)
   await ui.send('second')
   await ui.send('\r')
   releaseTurn()
-  await pause(550)
+  await pause(500)
+  await ui.send('t')
   assert.equal(n, 1)
   releaseProbe()
-  await pause(550)
+  await pause(120)
+  assert.equal(n, 1)
+  await ui.send('\x1b')
+  await pause(530)
   assert.equal(n, 2)
 })
 
@@ -328,22 +325,18 @@ test('G07 排在延迟提示词后面的 clear 仍等待新回合结束', async 
       }
     }
   )
-  await ui.send('/provider add a https://a.invalid/v1 a')
-  await ui.send('\r')
-  await ui.send('/provider key a')
-  await ui.send('\r')
-  await ui.send('fixture-key')
-  await ui.send('\r')
-  await ui.send('/provider check a')
-  await ui.send('\r')
+  seed(ui, 'a')
+  await openModels(ui)
+  await ui.send('t')
+  releaseProbe()
+  await pause(120)
+  await ui.send('\x1b')
   await ui.send('hello')
   await ui.send('\r')
   await ui.send('/clear')
   await ui.send('\r')
-  releaseProbe()
-  await pause(150)
+  await pause(120)
   assert.equal(ui.session.isBusy, true)
-  assert.equal(ui.session.history.length, 1)
   assert.doesNotMatch(ui.last(), /Conversation cleared|会话已清空/)
   releaseTurn()
   await pause(150)

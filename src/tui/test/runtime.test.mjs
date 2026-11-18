@@ -8,7 +8,8 @@ import { once } from 'node:events'
 import { ConfigStore } from '../dist/storage/config-store.js'
 import { CredentialStore } from '../dist/storage/credentials.js'
 import { createProfile, profileHost } from '../dist/storage/profiles.js'
-import { createConfiguredSession, saveProfileKey } from '../dist/tui/runtime.js'
+import { saveModel } from '../dist/tui/model-management.js'
+import { createConfiguredSession } from '../dist/tui/runtime.js'
 import { runCommand } from '../dist/tui/commands.js'
 function stores() {
   const root = mkdtempSync(join(tmpdir(), 'budingx-runtime-'))
@@ -110,33 +111,17 @@ test('G01 录入凭据按主机绑定，活动档案刷新，非法输入不保�
     timeoutMs: 50,
     source: 'file'
   }
-  saveProfileKey(
-    { id: p.id, host: profileHost(p) },
-    'fixture-key',
-    st,
-    () => config,
-    (n) => (config = n)
-  )
+  const ctx = { ...st, getConfig: () => config, setConfig: (next) => { config = next } }
+  const draft = { id: p.id, label: p.label, baseUrl: p.baseUrl, model: p.model,
+    tools: true, startupDefault: false, apiKey: 'fixture-key' }
+  const saved = saveModel(ctx, draft, false)
   assert.equal(config.apiKey, 'fixture-key')
-  assert.equal(st.credentialStore.get(p.id, 'one.invalid'), 'fixture-key')
-  assert.throws(() =>
-    saveProfileKey(
-      { id: p.id, host: 'other.invalid' },
-      'another-key',
-      st,
-      () => config,
-      (n) => (config = n)
-    )
-  )
-  assert.throws(() =>
-    saveProfileKey(
-      { id: p.id, host: profileHost(p) },
-      'bad\nkey',
-      st,
-      () => config,
-      (n) => (config = n)
-    )
-  )
+  assert.equal(st.credentialStore.get(p.id, profileHost(p)), 'fixture-key')
+  assert.equal(st.credentialStore.get(p.id, 'other.invalid'), undefined)
+  assert.throws(() => saveModel(ctx, { ...draft, apiKey: 'bad\nkey' }, false), /invalid/i)
+  assert.throws(() => saveModel(ctx, { ...draft, updatedAt: saved.updatedAt + '-stale' }, false), /changed/)
+  assert.equal(st.credentialStore.get(p.id, profileHost(p)), 'fixture-key')
+
 })
 test('G15 配置超时作用于慢连接', async (t) => {
   const s = createServer(() => {})

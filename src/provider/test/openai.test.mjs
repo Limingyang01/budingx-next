@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { test } from 'node:test'
-import { createOpenAiProvider, probe } from '../../tui/dist/provider/openai.js'
+import { createOpenAiProvider, discoverModels, probe } from '../../tui/dist/provider/openai.js'
 
 async function withServer(t, handler) {
   const server = createServer(handler)
@@ -413,4 +413,47 @@ test('live 回归：无参数工具也发送显式 object schema', async () => {
     type: 'object',
     properties: {}
   })
+})
+
+test('model discovery requests compatible and DashScope lists over local HTTP', async (t) => {
+  const requests = []
+  const server = createServer((req, res) => {
+    requests.push([req.method, req.url, req.headers.authorization])
+    res.setHeader('content-type', 'application/json')
+    if (req.url === '/bad/models') {
+      res.writeHead(401).end('{"error":{"message":"sensitive vendor detail"}}')
+    } else if (req.url === '/follow/models') {
+      res.writeHead(307, { Location: '/target/models' }).end()
+    } else if (req.url.startsWith('/api/v1/models')) {
+      res.end('{"output":{"models":[{"model":"qwen-fixture"}]}}')
+    } else {
+      res.end('{"data":[{"id":"local-test"},{"id":"local-test"},{"id":"\\u001b[1munsafe"},{"ignored":true}]}')
+    }
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  t.after(() => { server.closeAllConnections(); server.close() })
+  const base = 'http://127.0.0.1:' + server.address().port
+  assert.deepEqual(await discoverModels(base + '/v1/models', 'fixture-key'), ['local-test'])
+  assert.deepEqual(await discoverModels(base + '/api/v1/models?page_size=100', 'fixture-key'), ['qwen-fixture'])
+  await assert.rejects(discoverModels(base + '/bad/models', 'fixture-key'), /^Error: HTTP 401$/)
+  await assert.rejects(discoverModels(base + '/follow/models', 'fixture-key'))
+  assert.deepEqual(requests, [
+    ['GET', '/v1/models', 'Bearer fixture-key'],
+    ['GET', '/api/v1/models?page_size=100', 'Bearer fixture-key'],
+    ['GET', '/bad/models', 'Bearer fixture-key'],
+    ['GET', '/follow/models', 'Bearer fixture-key']
+  ])
+})
+
+test('connection-test cancellation aborts the provider request', async () => {
+  const controller = new AbortController()
+  const pending = probe({ baseUrl: 'https://fixture.invalid/v1', model: 'fixture' }, {
+    signal: controller.signal,
+    fetchImpl: async (_, request) => new Promise((_, reject) => {
+      request.signal.addEventListener('abort', () => reject(request.signal.reason), { once: true })
+    })
+  })
+  controller.abort()
+  assert.equal((await pending).ok, false)
 })

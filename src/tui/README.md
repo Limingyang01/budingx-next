@@ -37,35 +37,18 @@ Configuration priority is **CLI arguments > BUDINGX\_\* environment > stored pro
 
 ## Model profiles
 
-Profiles live in `~/.budingx` (resolved from the current user's home; never `~/.claude`). Configuration is stored in `~/.budingx/config.json`, credentials separately in `~/.budingx/credentials.json` so exporting or sharing the configuration never carries a key.
+Run `/models` in an interactive terminal to open the manager. Use N to add a profile, E to edit it, D to delete it, T to test the connection, and Enter to use the selected profile at the next turn. Use S for startup default and O for explicit orphan-key cleanup.
 
-```powershell
-budingx
-/provider add work https://api.example.com/v1 my-model
-/provider key work
-# Enter the key in the hidden prompt, then press Enter
-/provider check work
-/provider default work
-/models
-/model work
-/provider rm work
-```
+Choose a provider template, paste an API key into the hidden field, and press Enter to load model IDs. Custom accepts a compatible base URL and a manually entered or discovered model ID. Save retains the profile. Save and use also selects it for the conversation. Keys stay separate from profile configuration and are bound to the profile and host. `/provider` is removed in the model-manager update planned for 0.3.1.
 
-Edit syntax: `/provider edit NAME NEW_LABEL BASE_URL MODEL` (all fields required; labels cannot contain spaces). Editing the active profile updates its request configuration; changing hosts clears the active key. Removing the active profile requires selecting another model. Boundary commands are serialized with later prompts; automatic queue starts wait for commands and hidden key entry to finish.
-
-Each profile owns its own key, bound to the profile id **and** the base URL host. Changing the host drops the binding, so a key is never forwarded to a different server. Keys are never printed: `/config` shows only the last four characters.
+In piped input, `/models` lists profiles and `/model NAME` selects one. Interactive changes to profiles are available in the manager. See the repository's PRODUCT.md for examples and permissions.
 
 ## Commands
 
 - /help — help
 - /config — show endpoint, model, key state (masked) and the configuration source
-- /models — list stored model profiles
+- /models — open the model manager (list profiles in a pipe)
 - /model NAME — switch the model; the conversation is kept and the switch applies from the next turn
-- /provider add|edit|rm|check — manage and verify model profiles
-- /provider key NAME — hidden key entry/update (interactive terminal only; Esc cancels)
-- /provider default NAME — persist the startup default
-- /provider tools NAME on|off — set the profile tool capability flag
-- /provider orphans [clean] — count orphan credentials; explicitly clean with `clean`
 - /clear — clear the in-memory conversation and its visible transcript (input history and pending prompts remain)
 - /exit or /quit — exit
 

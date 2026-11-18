@@ -127,11 +127,11 @@ test('首屏任何形态都不接触密钥内容', () => {
 test('未配置时给出可执行的配置引导（现代终端中文 / ASCII 兜底英文）', () => {
   assert.equal(
     setupHint({ model: '', apiKey: '' }),
-    '尚未配置 · 运行 /provider add <label> <base-url> <model>'
+    '尚未配置 · 运行 /models'
   )
   assert.equal(
     setupHint({ model: '', apiKey: '' }, 'ascii'),
-    'Not configured - run /provider add <label> <base-url> <model>'
+    'Not configured - run /models'
   )
   assert.equal(setupHint({ model: 'm', apiKey: 'k' }), undefined)
 })

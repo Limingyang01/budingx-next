@@ -5,7 +5,7 @@ import { createElement } from 'react'
 import { render } from 'ink'
 import { ConfigStore } from '../storage/config-store.js'
 import { CredentialStore } from '../storage/credentials.js'
-import { mergeSources, profileHost, type ResolvedConfig } from '../storage/profiles.js'
+import { mergeSources, profileHost, startupProfile, type ResolvedConfig } from '../storage/profiles.js'
 import { MODES_EN, MODES_ZH } from '../workspace/policy.js'
 import type { PermissionMode } from '../core/permissions.js'
 import { App } from './app.js'
@@ -54,7 +54,7 @@ const version = readProductVersion()
 const help = `budingx ${version} — independent terminal coding agent
 Usage: budingx [--model NAME] [--base-url URL] [--timeout MS] [--prompt TEXT]
 Environment: BUDINGX_API_KEY, BUDINGX_MODEL, BUDINGX_BASE_URL
-Commands: /help /config /models /model NAME /provider add|edit|rm|check|key|default|tools|orphans
+Commands: /help /config /models /model NAME
   /permission [read|workspace|full] /rules [add|rm] /diff [path] /undo [path] /denials /clear /exit
 Keys: Esc interrupts, Shift+Tab cycles permission modes (read-only / workspace edit / full access),
 Enter submits, Ctrl+C interrupts and exits. @path attaches a workspace file, Tab completes.
@@ -78,10 +78,9 @@ function loadStores(): Stores {
   const orphanCount = credentialStore.orphanIds(stored.models.map((p) => p.id)).length
   if (orphanCount)
     process.stderr.write(
-      `Orphan credentials: ${orphanCount}; use /provider orphans [clean]\n`
+      `Orphan credentials: ${orphanCount}; use O in the interactive /models panel\n`
     )
-  const profile =
-    stored.models.find((entry) => entry.id === stored.defaultModelId) ?? stored.models[0]
+  const profile = startupProfile(stored)
   const file = profile
     ? {
         profileId: profile.id,
@@ -153,10 +152,6 @@ async function runPipe(config: ResolvedConfig, stores: Stores): Promise<number> 
         exit: () => {},
         permission: permissionContext(runtime)
       })
-      if (outcome.keyRequest) {
-        process.stderr.write('Error: Key entry requires an interactive terminal\n')
-        code = 1
-      }
       if (outcome.error) {
         code = 1
         process.stderr.write(`Error: ${outcome.error}\n`)

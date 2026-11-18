@@ -11,7 +11,6 @@ import {
 } from 'ink'
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 import stringWidth from 'string-width'
-import { execFileSync } from 'node:child_process'
 import type { SessionEvent } from '../core/events.js'
 import type { Session } from '../core/session.js'
 import type { InkApprovalGateway } from './approval.js'
@@ -29,7 +28,9 @@ import {
   fileCandidates,
   longestCommonPrefix
 } from './render/completion.js'
-import { saveProfileKey, workspacePromptOptions } from './runtime.js'
+import { workspacePromptOptions } from './runtime.js'
+import { ModelManager } from './model-manager.js'
+import { readClipboard } from './editor/clipboard.js'
 import { MODES_EN, MODES_ZH, nextMode } from '../workspace/policy.js'
 import { walkWorkspaceFiles } from '../workspace/search.js'
 import { changeDiffs } from '../workspace/checkpoint.js'
@@ -56,7 +57,6 @@ const COMMAND_NAMES = [
   'config',
   'models',
   'model',
-  'provider',
   'permission',
   'rules',
   'diff',
@@ -128,11 +128,8 @@ export function App({
   const [commandCount, setCommandCount] = useState(0)
   const chain = useRef(Promise.resolve())
   const pendingActions = useRef(0)
-  const keyDone = useRef<(() => void) | undefined>(undefined)
-  const keyEntry = useRef<{ id: string; host: string; secret: string } | undefined>(
-    undefined
-  )
-  const [enteringKey, setEnteringKey] = useState(false)
+  const managerDone = useRef<(() => void) | undefined>(undefined)
+  const [modelManagerOpen, setModelManagerOpen] = useState(false)
   const [typing, setTyping] = useState(false)
   const typingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const mounted = useRef(true)
@@ -145,8 +142,7 @@ export function App({
     () => () => {
       mounted.current = false
       clearTimeout(typingTimer.current)
-      keyEntry.current = undefined
-      keyDone.current?.()
+      managerDone.current?.()
       gateway.cancelAll()
     },
     [gateway]
@@ -192,22 +188,16 @@ export function App({
         })
       }
       if (!mounted.current) return
-      const result = await runCommand(text, { ...context, session })
+      const result = await runCommand(text, { ...context, session, interactive: true })
       if (result.exit) {
         leave()
         return
       }
-      if (result.keyRequest) {
-        keyEntry.current = { ...result.keyRequest, secret: '' }
-        setEnteringKey(true)
-        setHint(
-          pick(
-            '请输入 API Key（隐藏输入），Enter 保存，Esc 取消',
-            'Enter API key (hidden); Enter saves, Esc cancels'
-          )
-        )
+      if (result.openModels) {
+        setPosition(undefined)
+        setModelManagerOpen(true)
         await new Promise<void>((resolve) => {
-          keyDone.current = resolve
+          managerDone.current = resolve
         })
       } else setHint(result.error ?? result.message ?? '')
     })
@@ -248,7 +238,7 @@ export function App({
       )
     : [])
   const completion = useMemo(() => {
-    if (dialog || frame.approval || overlayDismissed || enteringKey) return null
+    if (dialog || frame.approval || overlayDismissed || modelManagerOpen) return null
     const lineText = editor.lines[editor.cursor.line] ?? ''
     const token = activeToken(lineText, editor.cursor.col, COMMAND_NAMES)
     if (!token) return null
@@ -273,7 +263,7 @@ export function App({
     dialog,
     frame.approval,
     overlayDismissed,
-    enteringKey,
+    modelManagerOpen,
     editor,
     permissionHandles
   ])
@@ -317,14 +307,7 @@ export function App({
     [session, gateway, editor]
   )
   usePaste((text) => {
-    if (keyEntry.current) {
-      if (/[\r\n]/.test(text)) {
-        setHint(pick('密钥不能包含换行', 'Key must be a single line'))
-        return
-      }
-      keyEntry.current.secret += text
-      return
-    }
+    if (managerDone.current) return
     editor.insert(text.replace(/\r\n?/g, '\n'))
     setInput(editor.text)
     markTyping()
@@ -340,46 +323,24 @@ export function App({
       .join('\n')
     const lines = renderTextLines('> ' + before, width)
     const next = {
-      x: box.x + (enteringKey ? 2 : stringWidth(lines.at(-1) ?? '') % width),
-      y: box.y + (enteringKey ? 0 : lines.length - 1)
+      x: box.x + stringWidth(lines.at(-1) ?? '') % width,
+      y: box.y + lines.length - 1
     }
     setPosition((previous) =>
       previous?.x === next.x && previous.y === next.y ? previous : next
     )
   })
   useInput((text, key) => {
+    if (managerDone.current) return
     // Ctrl+V paste fallback for terminals without bracketed-paste support
     // (legacy Windows conhost / cmd). Ink's usePaste relies on DEC 2004
     // which these terminals ignore, so Ctrl+V arrives as a plain ctrl+v
     // keypress. Read the system clipboard and insert it directly.
-    if (key.ctrl && text === 'v' && !keyEntry.current && !rejectEntry && !dialog) {
+    if (key.ctrl && text === 'v' && !rejectEntry && !dialog) {
       try {
-        let clip = ''
-        if (process.platform === 'win32') {
-          clip = execFileSync('powershell', ['-NoProfile', '-Command', 'Get-Clipboard -Raw'], {
-            encoding: 'utf8',
-            timeout: 3000,
-            windowsHide: true
-          })
-        } else if (process.platform === 'darwin') {
-          clip = execFileSync('pbpaste', [], { encoding: 'utf8', timeout: 3000 })
-        } else {
-          // Linux: try xclip then xsel
-          try {
-            clip = execFileSync('xclip', ['-selection', 'clipboard', '-o'], {
-              encoding: 'utf8',
-              timeout: 3000
-            })
-          } catch {
-            clip = execFileSync('xsel', ['--clipboard', '--output'], {
-              encoding: 'utf8',
-              timeout: 3000
-            })
-          }
-        }
+        const clip = readClipboard()
         if (clip) {
-          const cleaned = clip.replace(/\r\n?/g, '\n').replace(/\n$/, '')
-          editor.insert(cleaned)
+          editor.insert(clip)
           setInput(editor.text)
           bumpEditor()
           markTyping()
@@ -418,51 +379,6 @@ export function App({
       if (!key.ctrl && !key.meta && text) {
         setRejectEntry({ ...rejectEntry, text: rejectEntry.text + text })
       }
-      return
-    }
-    if (keyEntry.current) {
-      const entry = keyEntry.current
-      if (key.escape || (key.ctrl && text === 'c')) {
-        keyDone.current?.()
-        keyDone.current = undefined
-        entry.secret = ''
-        keyEntry.current = undefined
-        setEnteringKey(false)
-        setHint(pick('已取消密钥录入', 'Key entry cancelled'))
-        return
-      }
-      if (key.return) {
-        keyEntry.current = undefined
-        setEnteringKey(false)
-        try {
-          saveProfileKey(
-            entry,
-            entry.secret,
-            context,
-            context.getConfig,
-            context.setConfig
-          )
-          setHint(
-            pick(
-              '密钥已保存；使用 /model 选择档案',
-              'Key saved; use /model to select the profile'
-            )
-          )
-        } catch {
-          setHint(
-            pick(
-              '密钥无效或档案已变化，请重新录入',
-              'Invalid key or changed profile; restart entry'
-            )
-          )
-        }
-        entry.secret = ''
-        keyDone.current?.()
-        keyDone.current = undefined
-        return
-      }
-      if (key.backspace || key.delete) entry.secret = entry.secret.slice(0, -1)
-      else if (!key.ctrl && !key.meta) entry.secret += text
       return
     }
     if (dialog && permissionHandles) {
@@ -686,6 +602,15 @@ export function App({
   const liveText = [frame.liveThinking ? '· ' + frame.liveThinking : '', frame.liveText]
     .filter(Boolean)
     .join('\n')
+  if (modelManagerOpen) {
+    return <ModelManager context={{ ...context, session }} readClipboard={readClipboard} close={(notice) => {
+      const done = managerDone.current
+      setModelManagerOpen(false)
+      setHint(notice ?? '')
+      managerDone.current = undefined
+      done?.()
+    }} />
+  }
   if (dialog && permissionHandles) {
     // SP003 AC CP-07/CP-08: two-level dialog, source switch, single column
     // in every width (a split column would cut hunks on narrow terminals).
@@ -869,7 +794,7 @@ export function App({
       {frame.error && <Text color="red">{frame.error}</Text>}
       <Box flexDirection="column">
         <Box ref={inputBox}>
-          <Text>{enteringKey ? '> ' : `> ${input}`}</Text>
+          <Text>{`> ${input}`}</Text>
         </Box>
         {completion && (
           <Box flexDirection="column">

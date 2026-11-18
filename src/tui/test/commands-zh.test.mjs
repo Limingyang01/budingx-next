@@ -41,7 +41,7 @@ test('zh：/help 与 /clear 与未知命令回显中文', async () => {
   const { ctx } = context('zh')
   const help = await runCommand('/help', ctx)
   assert.match(help.message, /命令：/)
-  assert.match(help.message, /\/provider/)
+  assert.match(help.message, /\/models/)
   const clear = await runCommand('/clear', ctx)
   assert.equal(clear.message, '会话已清空')
   const unknown = await runCommand('/nope', ctx)
@@ -72,15 +72,10 @@ test('zh：/model 切换中文回显且不清史', async () => {
   assert.equal(cleared.length, 0)
 })
 
-test('zh：/provider 用法与重名错误中文', async () => {
-  const { ctx, configStore } = context('zh')
-  const usage = await runCommand('/provider add', ctx)
-  assert.equal(usage.error, '用法：/provider add <label> <base-url> <model>')
-  const added = await runCommand('/provider add dup https://api.example.test/v1 m', ctx)
-  assert.match(added.message, /已添加档案 dup/)
-  const dup = await runCommand('/provider add dup https://api.example.test/v1 m', ctx)
-  assert.equal(dup.error, '已存在同名档案：dup')
-  assert.equal(configStore.load().models.length, 1)
+test('zh：/models 使用说明和已移除命令反馈', async () => {
+  const { ctx } = context('zh')
+  assert.match((await runCommand('/models extra', ctx)).error, /用法：\/models/)
+  assert.match((await runCommand('/provider add', ctx)).error, /未知命令/)
 })
 
 test('默认（无 lang）保持英文，管道/机器面不受中文化影响', async () => {
