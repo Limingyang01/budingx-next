@@ -1,6 +1,6 @@
 # SP004 · 真实编码任务
 
-状态：**DOCS-READY**（2026-11-18 文档阶段完成 + 参考仓只读审计修订，实施待用户放行）｜更新：2026-11-18｜负责人：Agent 执行 SDD（2026-11-17 委托自审），用户验收 master 结果
+状态：**文档 v1.3 修订，待用户确认；产品实施暂停**｜功能分支 `feature/SP004/real-coding-task`｜文档起点 `363d1eb`｜本地 master 核对点 `5b0e7cc`｜参考 TUI `b5c9be8`
 
 ## 本轮目标与边界
 
@@ -15,7 +15,7 @@
   - USER_CONFIRMED（2026-11-17 委托）：取消常规人工审查，设计文档为 Agent 自审对象；自审通过即包含从 master 创建功能分支、计划/实施/测试/交付自主推进、各阶段本地提交（中文提交说明）、交叉验证门禁 GREEN 后按 buding-merge 合入 master，并**自主推送远端**；打标签、npm 发布、远端设置、分支/worktree 删除不在委托内。
   - USER_CONFIRMED（2026-11-17 r6）：权限模式固定三档（仅可查看/工作区内修改/完全权限），SP003/SP004 交付；完全权限不得绕过 deny 规则与凭据保护。
   - 边界：本轮验证用本地 fixture、临时目录与真实进程完成；真实模型端到端依赖用户凭据（沿用 SP002 凭据状态，无则记 UNVERIFIED）。
-- 计划/批准身份：迭代编号、功能名称与出口门槛为 USER_CONFIRMED（路线图 r6）；四份需求的 AC 切分为 MODEL_PROPOSED，随设计文档一并自审；技术方案（模块划分、命令执行契约、Git 门禁、计划状态机）为 MODEL_PROPOSED，待设计自审通过后写入 `design/plan.zh.md`。
+- 本次授权涵盖文档修订、在当前 SP004 功能分支提交和推送。v1.3 的技术取舍待用户确认后进入 T0。
 
 ## 需求索引（迭代进度入口）
 
@@ -23,31 +23,16 @@
 
 | 功能/优化目录 | 来源 / 身份 | 验收目标 | 责任范围 | 阶段 | 需求 / 设计 / 计划 / STATUS | 验证 | 集成状态 | 下一步 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| [command-execution](command-execution/requirements.md) | 路线图（USER_CONFIRMED 名称）；AC 切分 MODEL_PROPOSED | CE-01…20：真实进程执行、退出码/输出分离、Windows quoting、cwd/环境、超时、输出上限、后台任务状态与取消、三模式边界、底线规则、交互式明确失败、阻塞命令拦截、中断传播、**阻塞预算自动转后台、后台输出落盘、破坏性命令警告、沙箱能力声明层、命令内受限编辑** | 新增 `src/exec` 模块 + core 端口契约 | ✅需求→✅设计→✅计划→▶实施→测试→交付 | [需求 v0.2](command-execution/requirements.md) ／ [设计 v1.1](design/design.zh.md) ／ [计划 v1.1](design/plan.zh.md) ／ [STATUS](command-execution/STATUS.md) | 未开始（未执行） | 未开始（未提交） | **待用户放行后**：创建分支并执行 T1–T5、T18–T21 |
-| [coding-task-loop](coding-task-loop/requirements.md) | 路线图；AC 切分 MODEL_PROPOSED | CT-01…09：测试失败回喂修复循环、最大迭代、排队补充、用户转向、追问与回答、完成证据门槛、命令失败不吞、中断传播 | core 回合编排 + 工具结果契约 | ✅需求→✅设计→✅计划→▶实施→测试→交付 | [需求 v0.1](coding-task-loop/requirements.md) ／ [设计 v1.1](design/design.zh.md) ／ [计划 v1.1](design/plan.zh.md) ／ [STATUS](coding-task-loop/STATUS.md) | 未开始（未执行） | 未开始（未提交） | **待用户放行后**：执行 T12–T14 |
-| [git-worktree-safety](git-worktree-safety/requirements.md) | 路线图；AC 切分 MODEL_PROPOSED | GW-01…09：脏工作区识别、用户改动不丢、改动归属、未授权不写、worktree 进出与失败回落、非 Git 仓库明确、提交范围受控、**slug 校验、恢复复用、keep/remove 退出语义、remoteUrl 脱敏** | 新增 `src/git` 模块 | ✅需求→✅设计→✅计划→▶实施→测试→交付 | [需求 v0.1](git-worktree-safety/requirements.md) ／ [设计 v1.1](design/design.zh.md) ／ [计划 v1.1](design/plan.zh.md) ／ [STATUS](git-worktree-safety/STATUS.md) | 未开始（未执行） | 未开始（未提交） | **待用户放行后**：执行 T6–T9、T23 |
-| [task-planning](task-planning/requirements.md) | 路线图；CAP-L2-08/CAP-L3-15；AC 切分 MODEL_PROPOSED | TP-01…10：计划状态机与进度、计划模式降级为需批准、建议≠批准、用户可编辑计划与拒绝反馈、执行前基线校验、结构化多题追问、取消追问、完成报告真实、**计划持久化与落盘** | core 计划端口 + `src/plan` + 工具族 + TUI 最小卡片 | ✅需求→✅设计→✅计划→▶实施→测试→交付 | [需求 v0.1](task-planning/requirements.md) ／ [设计 v1.1](design/design.zh.md) ／ [计划 v1.1](design/plan.zh.md) ／ [STATUS](task-planning/STATUS.md) | 未开始（未执行） | 未开始（未提交） | **待用户放行后**：执行 T10–T12、T15、T22 |
+| [command-execution](command-execution/requirements.md) | 路线图（USER_CONFIRMED 名称）；AC 切分 MODEL_PROPOSED | CE-01…20：真实进程执行、退出码/输出分离、Windows quoting、cwd/环境、超时、输出上限、后台任务状态与取消、三模式边界、底线规则、交互式明确失败、阻塞命令拦截、中断传播、**阻塞预算自动转后台、后台输出落盘、破坏性命令警告、执行隔离门禁、命令内受限编辑** | 新增 `src/exec` 模块 + core 端口契约 | 需求/设计/计划已修订 · 实施待确认 | [需求 v0.3](command-execution/requirements.md) ／ [设计 v1.3](design/design.zh.md) ／ [计划 v1.3](design/plan.zh.md) ／ [STATUS](command-execution/STATUS.md) | 未开始（未执行） | 未开始（未提交） | **待用户放行后**：在现有分支执行 T1–T5、T18–T21 |
+| [coding-task-loop](coding-task-loop/requirements.md) | 路线图；AC 切分 MODEL_PROPOSED | CT-01…09：测试失败回喂修复循环、最大迭代、排队补充、用户转向、追问与回答、完成证据门槛、命令失败不吞、中断传播 | core 回合编排 + 工具结果契约 | 需求/设计/计划已修订 · 实施待确认 | [需求 v0.3](coding-task-loop/requirements.md) ／ [设计 v1.3](design/design.zh.md) ／ [计划 v1.3](design/plan.zh.md) ／ [STATUS](coding-task-loop/STATUS.md) | 未开始（未执行） | 未开始（未提交） | **待用户放行后**：执行 T12–T14 |
+| [git-worktree-safety](git-worktree-safety/requirements.md) | 路线图；AC 切分 MODEL_PROPOSED | GW-01…09：脏工作区识别、用户改动不丢、改动归属、未授权不写、worktree 进出与失败回落、非 Git 仓库明确、提交范围受控、**slug 校验、恢复复用、keep/remove 退出语义、remoteUrl 脱敏** | 新增 `src/git` 模块 | 需求/设计/计划已修订 · 实施待确认 | [需求 v0.3](git-worktree-safety/requirements.md) ／ [设计 v1.3](design/design.zh.md) ／ [计划 v1.3](design/plan.zh.md) ／ [STATUS](git-worktree-safety/STATUS.md) | 未开始（未执行） | 未开始（未提交） | **待用户放行后**：执行 T6–T9、T23 |
+| [task-planning](task-planning/requirements.md) | 路线图；CAP-L2-08/CAP-L3-15；AC 切分 MODEL_PROPOSED | TP-01…10：计划状态机与进度、计划模式降级为需批准、建议≠批准、用户可编辑计划与拒绝反馈、执行前基线校验、结构化多题追问、取消追问、完成报告真实、**计划持久化与落盘** | core 计划端口 + `src/plan` + 工具族 + TUI 四类局部场景 | 需求/设计/计划已修订 · 实施待确认 | [需求 v0.3](task-planning/requirements.md) ／ [设计 v1.3](design/design.zh.md) ／ [计划 v1.3](design/plan.zh.md) ／ [STATUS](task-planning/STATUS.md) | 未开始（未执行） | 未开始（未提交） | **待用户放行后**：执行 T10–T12、T15、T22 |
 
-## 与 TUI 还原度的关系（2026-11-18 对齐）
+## TUI、协议与安全验收
 
-用户 2026-11-18 要求针对参考仓 buding-worker-space 还原能力与 TUI 布局/UI/交互。该要求作为 SP001–SP016 的**横向约束**落地（见[路线图 r9](../../docs/iteration-plan.md)「TUI 还原度要求」与[还原度基线](../../docs/tui-fidelity-gap-baseline.md)），**不新增 SP 编号、不改变 SP004 的依赖与出口门槛**。
+[设计 v1.3](design/design.zh.md) 固定四类 SP004 局部场景与 48 条既有 AC。以参考 TUI 的终端单元格、同环境像素及按键回放分别取证。精确视觉复现和截图取证待确认参考设计使用权；全局终端布局和键位系统仍由 SP006 交付。
 
-**SP004 在还原度上的职责边界**：
-
-| 归类 | SP004 是否交付 | 说明 |
-| --- | --- | --- |
-| L1 布局骨架（首屏/消息区/输入区/页脚四区） | 否 | 属 SP006 P0 批次；本轮卡片渲染沿用既有 src/tui/render 结构 |
-| L2 交互契约（上下文键位/chord） | 否 | 属 SP006 P0 批次；本轮不新增键位面 |
-| L3 能力面（工具族与主循环） | **是（本轮主体）** | 命令执行、计划/待办、追问、Git 隔离——这些是还原度的能力底座 |
-| L3 能力面的**卡片表现** | **是（本轮最小实现）** | 计划/待办/追问/命令四类卡片按参考行为事实渲染最小形态；完整卡片族属 SP006 P1 |
-
-**本轮对还原度的三项具体义务**：
-
-1. **卡片是还原度的一部分，不是附赠**：设计 §6.5 的「TUI 最小卡片」须与工具实现同步交付，不得出现「能力有了但界面没接」的状态。
-2. **不得为赶进度降级卡片**：卡片形态（状态符号、阻塞来源、选项列表、退出码与截断标记）按参考行为事实对齐；参考仓更丰富的卡片动画/TTL/展开留 SP006，但**最小形态不得缺席**。
-3. **本轮不预支 SP006 的渲染层改造**：不得在 src/tui/render 内引入虚拟列表、冻结缓存、帧缓冲差分或键位上下文系统——那是 SP006 P0 的独立可验收批次，本轮只接线不改造，避免一轮同时背「补能力」与「改渲染层」而再次做不理想。
-
-**明确保留的边界**：权限模式仍为三档（仅可查看/工作区内修改/完全权限），参考仓 7 模式只作安全底线语义来源，**不还原模式数量**；本轮新增的工具族按行为事实自写，**不复制参考仓源码、提示词、内部类型或 bundle**；参考副本中为 no-op stub 的工具目录不作为能力来源。
+[实施计划](design/plan.zh.md) T0–T24 覆盖工具协议、单次审批、宿主隔离、专用 worktree 提交以及独立实现与 AST 复核。验收状态与恢复条件见[验收报告](test-report.md)。
 
 ## 验收与交接
 
@@ -72,6 +57,10 @@
   - 根因线索：用例断言 `ui.configStore.load().models[0]`，并发时可能读到被其他用例污染的配置存储（`models[0]` 为 `undefined`）。
   - **处置**：属 SP003/既有 TUI 测试的隔离问题，**不在 SP004 授权范围内**，本轮不修改；记录在此供后续修复。实施 SP004 时若受影响，需在 T0 阶段先定位并隔离。
 
+## 验收与交接
+
+本版验收入口为 [test-report.md](test-report.md)。48 条 AC 和真终端、实隔离、Provider、AST 结果均待实施取证。已发布产品的实际使用说明和版本由当前发布记录管理。用户确认 v1.3 后再开始 T0。
+
 ## 变更记录
 
 | 日期 | 范围或状态变化 | 原因/来源 | 影响及处理 |
@@ -82,3 +71,4 @@
 | 2026-11-18 | 与**路线图 r7** 对齐核对 | 并行会话推进 AGENTS.md 与路线图到 r7 | SP004 功能目录与出口门槛**未变**；CAP-L2-05（PowerShell 独立交付）确认仍必交 → OPEN-05 关闭；CAP-L3-09（沙箱）降为可选且目标改为「明确声明能力与局限，不冒充 OS 沙箱」→ 正面印证 v1.1 沙箱修正 |
 | 2026-11-18 | 与**路线图 r8** 对齐核对（提交前复核） | 并行会话推进 AGENTS.md 与路线图到 r8（现行 SP001–SP016 连续编号） | SP004 功能目录、出口门槛与六个 CAP 归属（CAP-L2-04/05/06/08、CAP-L3-09/15）**全部未变**；r8 重编号只涉及 SP004 之后的轮次 → **无需回退任何设计决策**。设计 §9.6 已补 r8 复核小节 |
 | 2026-11-18 | **文档提交并推送**（分支 `feature/SP004/real-coding-task`，仅文档，无产品代码） | 用户会话「提交文档并且推送远端，我会审查」 | 提交 `84f2004`，远端 SHA 已核对一致；本轮**只提交文档**；实施、代码、测试、交付、合入 master 均未执行，仍待用户放行 |
+| 2026-11-18 | 修订设计、计划、验收、需求与状态至本版 | 用户要求对照参考 TUI、明确协议和独立实现并修复安全缺口 | 只提交推送文档至现有分支；开发等待用户确认 |

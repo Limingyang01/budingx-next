@@ -43,7 +43,7 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 
 | 迭代  | 目标                    | 主要功能目录                                                                                               | 状态 |
 | ----- | ----------------------- | ---------------------------------------------------------------------------------------------------------- | ---- |
-| SP004 | 真实编码任务            | command-execution、coding-task-loop、git-worktree-safety、task-planning                                    | 规划中 |
+| SP004 | 真实编码任务 | 计划、待办、命令与追问；普通命令要求已验证的执行隔离，提交限专用 worktree | 文档待确认，未实施 |
 | SP005 | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         | 规划中 |
 | SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 规划中 |
 | SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | 规划中 |

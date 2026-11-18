@@ -1,9 +1,9 @@
 # SP004 · 真实编码任务 · 设计文档
 
 - 需求 slug：`command-execution`、`coding-task-loop`、`git-worktree-safety`、`task-planning`
-- 已确认 SP：SP004（USER_CONFIRMED，路线图 r6）
-- 版本：v1.1
-- 状态：**draft（待 Agent 自审）**
+- 已确认 SP：SP004（USER_CONFIRMED，路线图 r9）
+- 版本：v1.3
+- 状态：**文档修订待用户确认，实施暂停**｜参考 TUI: `b5c9be8`｜文档起点: `363d1eb`｜核对的本地 master: `5b0e7cc`
 - 材料来源：
   - 路线图 SP004 行（`docs/iteration-plan.md`）— USER_CONFIRMED
   - 能力矩阵「终端及后台任务」「Git 与 worktree」「任务计划、追问与用户转向」— USER_CONFIRMED
@@ -23,7 +23,7 @@
 | 命令执行 | **不存在**。`src/workspace` 只有 Read/Write/Edit/Glob/Grep 五个文件工具 | Agent 可执行真实进程命令：退出码/stdout/stderr 分离、跨平台 quoting、cwd/环境可控、超时、输出上限、后台任务可查可取消 |
 | 编码闭环 | Session 有工具回合与迭代骨架，但**没有「测试失败→修复」语义**，也没有任何能产生失败输出的工具 | Agent 能完成定位→修改→运行测试→读取失败→修复→复测；用户可追问与转向 |
 | Git 安全 | **不存在**。工作区工具与 Git 无关 | 识别脏工作区/staged/untracked；改动归属只含 Agent 自身；worktree 进出可恢复；无授权不执行提交/推送 |
-| 计划与追问 | **不存在**。没有计划/待办状态 | 多步骤计划可拆解、展示、批准；计划模式阻断写操作；执行前基线校验；结构化追问可等待/取消 |
+| 计划与追问 | **不存在**。没有计划/待办状态 | 多步骤计划可拆解、展示、批准；计划模式下受控审批写操作；执行前基线校验；结构化追问可等待/取消 |
 
 ### 1.2 目标（出口门槛，USER_CONFIRMED）
 
@@ -82,7 +82,7 @@
 ### 2.3 假设（须在实施时验证）
 
 - A-1：目标工作区存在 `git` 可执行文件（Git for Windows / POSIX git）。**未检测到时** Git 能力返回「非 Git 仓库或无 git 可用」，不得伪造状态。
-- A-2：Windows 上 `cmd.exe` 与 `powershell.exe` 均可用；本轮默认解释器策略见 §4.2。
+- A-2：解释器须在宿主或隔离后端探测；本轮默认解释器策略见 §4.2。
 - A-3：`node:child_process.spawn` 支持 `windowsHide`；进程树终止依赖 `taskkill /T /F`（Windows）与进程组信号（POSIX）。
 
 ---
@@ -197,21 +197,9 @@ export interface CommandRunner {
 
 ### 4.2 解释器与 quoting（CE-02 / CE-03）
 
-**问题**：Windows 上 `cmd.exe` 与 `powershell.exe` 对引号的解释不同，同一命令串在两个解释器下行为不同。
-
-**方案（MODEL_PROPOSED）**
-
-1. 工具面提供两个工具：
-   - `Bash`：POSIX 语义；在 Windows 上用 `cmd.exe /d /s /c` 包裹，在 POSIX 上用 `/bin/sh -c`。
-   - `PowerShell`：Windows PowerShell 语义；在 Windows 上用 `powershell.exe -NoProfile -NonInteractive -Command`；**在 POSIX 上不可用**（返回明确失败「本平台无 PowerShell」）。
-2. **元字符策略（明确规则，可复现）**：
-   - `Bash` 工具在 Windows 上**不自动解释** `& | > < ^` 等元字符——因为 `cmd.exe` 一定会解释。改为：**`Bash` 工具在所有平台都把命令文本原样交给解释器，并要求调用方自行使用平台语法**；工具在结果中回显**实际使用的解释器**（`cmd.exe` / `sh` / `powershell.exe`）与**实际命令行**，使行为可复现、可诊断。
-   - 工具参数另提供 `args: string[]`（可选）。提供时**绕过 shell**，直接以参数数组 spawn（无任何引号/元字符解释）。这是 Windows 上唯一能保证空格/Unicode 路径 100% 正确的路径。
-3. **路径与 Unicode（CE-02）**：
-   - `cwd` 统一解析为绝对路径并做边界检查（工作区内或显式授权的 worktree 目录内）。
-   - `args` 数组形式下不做任何转义，空格与中文路径原样传递（Windows 使用 `windowsVerbatimArguments = true`）。
-   - `command` 文本形式下，Windows 走 `cmd.exe` 的既有转义规则；文档与工具 `summary` 明确告知「含空格路径请用 `args` 形式」。
-4. **环境（CE-15）**：基线环境为 `process.env` 的**白名单拷贝**（`PATH`、`HOME`、`USERPROFILE`、`TEMP`、`TMP`、`SystemRoot`、`ComSpec`、`LANG`…），**不**注入宿主无关的完整环境；`env` 传入项覆盖基线项；结果中不回显环境变量值。
+- Bash 使用经宿主确认的 POSIX Bash。Windows 基线为 Git Bash，POSIX 基线为 Bash。找不到时返回解释器不可用，保持同一命令语义。PowerShell 在 Windows 使用实际探测到的 Windows PowerShell，本轮 POSIX 返回明确不可用。
+- 模型提供原样 `command`。文本命令仅在 §4.7 的隔离边界中交给对应解释器。宿主受控操作使用可信可执行文件的绝对路径、`shell: false` 与参数数组。Windows 使用 Node 默认参数 quoting，真实进程逐项核对空格、中文、引号、尾反斜杠与空参数。内部 argv 通道由宿主构造。
+- `cwd` 由会话有效项目根解析并验证真实路径。环境由宿主按白名单构造，清除继承的凭据、Git 控制变量和解释器启动钩子。公开工具的路径、环境与 argv 权限由宿主持有。
 
 ### 4.3 超时、输出上限与交互式（CE-04 / CE-05 / CE-12 / CE-13）
 
@@ -285,45 +273,15 @@ export type BackgroundTask = {
 
 ### 4.5 权限接线（CE-08…CE-11）
 
-**`core/permissions.ts` 扩展**：`ToolCapability` 由 `'read' | 'write'` 扩为 `'read' | 'write' | 'execute'`（MODEL_PROPOSED）。
+工具分派先解析能力、解释器及规范化目标，再应用显式 deny、凭据与用户数据根保护、路径权限和 Git 门禁，最后计算普通模式权限及计划模式附加条件。用户规则、快路径及审批均受硬性策略约束。前台、后台、自动转后台共用首次启动检查和同一个执行上下文。待确认请求必须绑定实际解析结果及工作区身份，启动前复核。
 
-**判定链路（单一来源，不允许 `src/exec` 自行放行）**
+| 执行类别 | 规则 |
+| --- | --- |
+| 宿主托管只读操作 | 使用严格语法和固定操作白名单，逐参数和路径校验。只接受已证明无副作用的固定调用。通过可信实现执行，隔离外部程序、仓库钩子及外部辅助行为。仅可查看模式仍沿用 CE-08 的命令入口限制。计划模式的只读豁免服从底层 deny。 |
+| 宿主托管写入与 Git | 受限编辑走既有 Workspace 写入与 checkpoint。Git 状态、提交和 worktree 分别走 §7 的受控入口。Shell 或 argv 请求识别到 Git 写操作时引导使用受控入口，普通命令审批不授予 Git 权限。 |
+| 其余进程 | 统一要求 §4.7 的托管隔离能力。未知参数、复合命令和不透明目标不得获得只读豁免。缺必要隔离能力时在 spawn 前拒绝。 |
 
-```text
-模型请求 Bash/PowerShell
-  → Session 组装 PermissionRequest{tool:'Bash', capability:'execute', path?:目标路径}
-  → PermissionPolicy.decide()
-      ① 底线规则（永远 deny，不可覆盖）：
-         - 越界路径（含 junction）→ deny
-         - 凭据类文件名（.env/.pem/.key/credentials.json…）→ deny
-         - ~/.budingx 数据根 → deny
-         - .git 目录 → ask（强制询问，三档下均不自动放行）
-      ② 模式：
-         - read_only      → deny（命令执行不在「仅可查看」范围内，CE-08）
-         - workspace_edit → ask（默认询问；只读命令族可豁免，见下）
-         - full_access    → allow（但底线规则仍生效，CE-10）
-      ③ 用户规则（allow/deny）→ 命中则覆盖②
-  → allow → 执行；ask → 走既有 ApprovalGateway 三档；deny → 不执行，返回 denied 理由
-```
-
-**只读命令族豁免（CE-08 的实现细节）**：v1.1 修正为**结构化命令表**（对齐参考 F-09），而非粗白名单：
-
-```ts
-/** 命令 → 允许的子命令 → 参数名 → 参数类型 */
-export type ReadOnlyCommandSpec = {
-  /** 允许的子命令（未列出则该命令无子命令概念）。 */
-  subcommands?: string[]
-  /** 允许的参数名 → 类型（'none' 表示开关型，'string'/'number' 表示取值型）。 */
-  flags?: Record<string, 'none' | 'string' | 'number'>
-}
-```
-
-- 表内容对齐参考（46 项规模）：`git diff/log/show/status/ls-files/rev-parse/rev-list/describe/cat-file/blame/shortlog/reflog/for-each-ref/merge-base/config --get/remote/branch（仅列表）/tag（仅列表）/worktree list/stash list/ls-remote/grep` + `gh pr view/list/diff/checks`、`gh issue view/list`、`gh repo view`、`gh run list/view`、`gh auth status`、`gh release list/view`、`gh workflow list/view`。
-- **未知参数即不豁免**：`git diff --unknown-flag` 不算只读 → 按需询问。
-- 豁免**仅在 `workspace_edit` 模式生效**；`read_only` 模式仍整体 deny 命令执行（CE-08）；`full_access` 自动执行。
-- 豁免判定为**保守**：不在表中的一律按需询问。
-
-**底线规则的命令侧扩展（CE-11）**：命令文本中出现 `~/.budingx`、`.budingx`、已知凭据路径（`.env`、`credentials.json`、`*.pem`、`*.key`）时**拒绝**。此检查在 `src/exec` 内作为**最后一道闸**执行（在策略 allow 之后），确保完全权限模式也不绕过。
+工作区内修改模式下合格只读操作可免审批，其余默认询问。完全权限只对通过硬性策略与执行后端检查的普通操作自动批准。路径与域名文本扫描可提高错误提示质量，安全判定由受控操作或隔离后端落实。
 
 ### 4.6 破坏性命令警告层（CE-18，v1.1 新增）
 
@@ -341,37 +299,14 @@ export type ReadOnlyCommandSpec = {
 - 警告文案：「⚠ 该命令可能造成不可逆的数据丢失：<原因>」。
 - **只读模式下的破坏性命令**：底线拒绝（写能力被禁），不进入警告路径。
 
-### 4.7 沙箱能力声明层（CE-19，v1.1 新增）
+### 4.7 执行隔离与能力声明（CE-19）
 
-> 对齐参考 F-10 的**能力面**（不实现 OS 级沙箱；OS 级隔离留 SP011 worktree-isolation）。
+SP004 接入宿主显式配置的隔离后端，产品不在本轮自研通用 OS 沙箱。后端须经能力探测及真实进程验收方可启用。工具只接受宿主建立的执行会话和能力描述，模型无法选取、关闭或声明隔离能力。
 
-**声明结构**
-
-```ts
-export type SandboxPolicy = {
-  /** 允许写入的路径（工作区根 + 显式授权目录）。 */
-  allowWrite: string[]
-  /** 拒绝写入的路径（凭据、用户数据根、.git 等）。 */
-  denyWrite: string[]
-  /** 允许读取的路径（工作区根 + 显式授权目录）。 */
-  allowRead: string[]
-  /** 拒绝读取的路径（凭据文件、用户数据根）。 */
-  denyRead: string[]
-  /** 允许访问的网络域名；空数组表示不限制网络。 */
-  allowedDomains: string[]
-  /** 为 true 时仅允许 managedDomains。 */
-  allowManagedDomainsOnly: boolean
-  /** 为 true 时只读路径（managed read paths only）。 */
-  allowManagedReadPathsOnly: boolean
-}
-```
-
-**规则**
-
-- 该策略在**完全权限模式**下**仍然生效**（不可绕过）——这是「完全权限不等于无限制」的落地形式。
-- 命令执行前：命令涉及的路径若落在 `denyWrite`/`denyRead` → 拒绝（并给出规则来源）。
-- 网络域名策略：命令文本中出现 URL/域名时，若 `allowedDomains` 非空且域名不在其中 → 提示/拒绝（**提议**：本轮仅提示，不阻断，因域名提取易误判；阻断留后续）。
-- **不提供** `dangerouslyDisableSandbox` 参数（见 §9.4）。
+- 受控策略覆盖允许读写的项目视图、禁止读取或写入的凭据及用户数据、Git 元数据、允许的网络目的地，并作用于整棵进程树。隔离视图不得暴露宿主 Git 元数据、Git 凭据或可写远端。工作区之外及链接穿越按隔离后端和宿主文件边界验证。
+- 网络默认关闭。配置域名策略时，只有后端能强制执行该策略才允许联网，否则拒绝该执行请求。用户确认和完全权限均不得降级隔离。拒绝使用明确的结构化错误，TUI 说明缺失能力。
+- 无已验证后端时只开放 §4.5 的宿主托管操作，普通 Bash/PowerShell 命令不可用。T0 记录 Windows/Linux 的实际后端及能力探测，T20 通过实际进程证据前，隔离和任意命令闭环记为 UNVERIFIED。普通临时目录、worktree 和字符串扫描本身均不提供进程隔离。
+- 启动前的限制与运行时的策略分别记录。拒绝、取消、超时及进程退出事件携带同一请求身份，最终结果只产生一次。
 
 ### 4.8 命令内受限编辑（CE-20，v1.1 新增）
 
@@ -384,38 +319,13 @@ export type SandboxPolicy = {
 - **危险 flag 组合**：拒绝（如 `-i` 与 `-n` 同时、备份后缀指向越界路径等）。
 - **路径校验**：目标文件必须在工作区内；否则拒绝。
 - **呈现**：识别为命令内编辑时，**额外产出结构化 diff**（复用 SP003 的 `diffLines`），使改动可预览、可走检查点撤销。
-- **与 Edit 工具的关系**：命令内编辑**不替代** Edit 工具；其改动同样登记进 SP003 `CheckpointStore`（改动归属的唯一真相来源，GW-02/GW-03 依赖它）。
+- **与 Edit 工具的关系**：命令内编辑**不替代** Edit 工具；其改动同样登记进 SP003 `CheckpointStore`（与索引和前像共同用于归属验证，见 §7.2）。
 
-### 4.9 工具装配（拟新增 `src/exec/tools.ts`）
+### 4.9 模型工具协议（CE-01 / CE-06 / CE-16 / CE-17）
 
-```ts
-export function createCommandTools(options: {
-  runner: CommandRunner
-  cwd: string
-}): { tools: ToolHandler[] }
-```
+模型侧 `Bash` / `PowerShell` 参数为 `{command, timeout?, description?, run_in_background?}`，超时单位为毫秒，对应内部 `timeoutMs`。字段形态核对参考仓相应 Tool schema。拒绝未知字段，宿主内部使用的 `cwd`、`env`、`args` 及策略控制字段保持私有。参考提供的 `dangerouslyDisableSandbox` 在本仓明确禁用。
 
-产出两个 `ToolHandler`：`Bash` 与 `PowerShell`。
-- `capability: () => 'execute'`
-- `requiresApproval: () => true`（策略判定优先；`requiresApproval` 仅在无策略时生效）
-- `target(input)`: 从 `cwd`/`command` 中解析目标路径用于策略判定；解析不出则 `{ kind: 'none' }`。
-- `execute(input, ctx)`: 组装 `CommandSpec` → `runner.run(spec, { signal: ctx.signal, cwd })` → 返回 `JSON.stringify(result)` 或人可读摘要（**必须包含 exitCode**）。
-
-**结果文本格式（固定，保证模型可解析）**：
-
-```text
-exit_code: 0
-interpreter: cmd.exe
-duration_ms: 123
---- stdout ---
-...
---- stderr ---
-...
-```
-
-若被截断，追加 `--- truncated --- 段落` 说明；若转后台，追加 `background_task_id` 与 `auto_backgrounded`（对齐参考 F-02 的可读回执）；若超大输出落盘，追加 `persisted_output_path` 与 `persisted_output_size`（F-04）。
-
----
+每个已接受的工具调用按原 call ID 产生一个终态工具结果。Bash 与 PowerShell 的结果统一由同一内部结构派生，区分 stdout、stderr、终态、可用退出码和截断信息。后台启动用同一 call ID 返回启动回执及任务 ID，随后完成通知属于任务事件，禁止再补第二个工具结果。拒绝、不可用、取消、超时和进程非零退出的结果保留错误语义。没有真实退出码时省略该字段。结构化结果由单一适配器编码，TUI 消费事件和结构化数据；附加退出码、路径脱敏和错误码是本仓协议扩展，须在契约 fixture 中固定。
 
 ## 5. 编码任务循环（coding-task-loop）
 
@@ -582,43 +492,24 @@ export interface TodoStore {
 }
 ```
 
-### 6.2 计划模式（TP-03 / CAP-L2-08）
+`TodoWrite` 的模型输入为 `{ todos: [{ content, status, activeForm }] }`，替换当前会话待办列表。计划步骤完整保留阻塞信息，待办结果按原调用 ID 回填。宿主校验状态枚举并处理空列表。
 
-> **v1.1 修正（关键）**：v1.0 写「计划模式阻断所有 write 与 execute 能力」，与参考 F-11 冲突——参考仓的 plan 是**权限模式**（`mode: 'plan'`），plan 模式下 Bash **不被硬阻断**（`permissions.ts:1276` 显示 plan+bypass 可 allow）。硬阻断会让「计划模式内无法调研运行结果」，使用体验下降。本节按审计结论重写。
+### 6.2 计划模式与审批状态（TP-03 / TP-04）
 
-参考仓用 `EnterPlanMode`/`ExitPlanMode` 工具族表达，新仓对应：
-
-| 工具 | 语义 |
-| --- | --- |
-| `EnterPlanMode` | 进入计划模式：**记住当前权限模式**（新仓字段 `preMode`，对齐参考 `prePlanMode`），并把写类/执行类工具的判定**降级为需批准**；只读工具与只读命令**免批准**。记录基线快照（工作区文件指纹摘要 + Git HEAD）。 |
-| `ExitPlanMode` | 退出计划模式。**必须携带计划内容**：退出时提交计划 → 计划进入 `approval='pending'`。**未批准前不得自动执行写操作。** 退出时**恢复 `preMode`**（参考 `handlePlanModeTransition` 的语义）。 |
-
-**「降级为需批准」的精确语义（v1.1）**
-
-| 工具能力 | 计划模式内 | 说明 |
+| 当前状态 | 触发 | 下一步和权限 |
 | --- | --- | --- |
-| `read`（Read/Glob/Grep/LSP 等） | **允许** | 调研是计划阶段的正当行为 |
-| `write`（Write/Edit/NotebookEdit 等） | **需批准** | 从「模式自动允许」降级为「逐次询问」；批准后放行（参考的权限弹窗机制） |
-| `execute`（Bash/PowerShell） | **需批准**（只读命令族免批准） | 允许在计划阶段跑只读命令；写盘命令逐次询问。**不硬阻断**（F-11） |
-| `git` 写操作 | **需批准** | 同 write |
+| 普通模式 | `EnterPlanMode` | 记录原权限档位和基线，进入调研。原有硬拒绝优先。 |
+| 调研 | 工具请求 | 允许底层已准许的只读操作。其他写入、运行命令须先通过硬性策略，再获得绑定本次请求的一次性批准。 |
+| 调研 | `ExitPlanMode` | 读取当前会话计划文件并展示审批，保持原档位待恢复。缺文件或空计划返回工具错误并停在调研。 |
+| 待批 | 批准 | 宿主提交原文或用户修改后的正文，计算批准指纹，先校验再恢复原档位。计划批准记录不自动授予 Git 或命令特权。 |
+| 待批 | 拒绝或取消 | 返回原工具调用的拒绝反馈或取消结果，保持调研。用户显式退出调研时恢复原权限档位。 |
+| 待批 | 其他写入、执行或 Git 写请求 | 挂起原回合；并发入口拒绝，避免等待审批时启动副作用。 |
 
-**与 v1.0 的差异及理由**：v1.0 的硬阻断是**更严格**的偏离，但会造成实际不可用——模型在计划阶段无法执行 `git status`、`npm test` 等调研命令，无法产出有证据的计划。本轮改为「降级为需批准」，既保住「建议≠批准」的底线，又不牺牲调研能力。计划模式**不解除**底线规则（越界、凭据、用户数据根仍拒绝）。
-
-**写操作「未批准不得自动执行」的实现点（TP-03/TP-04）**：计划处于 `approval='pending'` 时，`write`/`execute` 工具在获得**显式批准**前不执行；被拒或未批准时，工具**不执行**并返回结构化结果（`计划待批准：先批准计划或退出计划模式`），该结果回填给模型，让模型知道为什么没做成。
+`EnterPlanMode` 模型请求为空对象。`ExitPlanMode` 使用会话计划文件，模型调用无需携带计划正文。接收可选 `allowedPrompts` 作为展示和审查的权限意图，字段不会直接创建权限规则；本仓未接受的额外审批字段登记为协议差异。经确认的宿主编辑正文属于审批输入。参考源为 `src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts` 与相应审批组件。本轮保留原权限档位恢复与反馈流程，参考仓额外权限档位不进入本轮。
 
 ### 6.3 批准与执行前校验（TP-04 / TP-05）
 
-- 建议（计划文本）≠ 批准：`ExitPlanMode` 只产出待审计划；**批准是独立动作**。
-- **批准通道（v1.1 修正，对齐 F-13）**：批准走**权限弹窗**通道（复用 SP003 的 `ApprovalGateway`），而非一个抽象的 `approve()` 调用。理由：参考仓的批准与「用户可否编辑计划」「拒绝时带反馈」是一体的。
-- **批准输入可含用户编辑后的计划正文**：`approvedText`（对齐参考 `planWasEdited`）。批准时若用户改过正文，**重新计算指纹**并以编辑后的正文为准。
-- **拒绝必须携带反馈**：`reject(reason)` 的 `reason` 回灌给模型（对齐参考 F-13 的「拒绝时带反馈」），使模型能据此修订，而不是只得到一个「被拒」。
-- 批准后、第一次写操作前，校验：
-  1. 工作区根路径未变；
-  2. Git HEAD 未变（若为 Git 仓库）；
-  3. 计划涉及的文件仍存在且内容指纹与批准时一致（缺失/漂移即拒绝）。
-  4. 漂移项以结构化列表回报：`{ item, expected, actual }`。
-- 校验失败 → 拒绝执行，要求重新审视计划；**不静默继续**。
-- **v1.1 标注**：参考仓**没有**实现执行前校验（`VerifyPlanExecutionTool` 为 `@generated stub`）。本节是**新仓自主增强**，不是能力对齐项（见 §9.1 F-19、§9.4）。
+复用 `ApprovalGateway` 传递 planId、版本、call ID、编辑正文或反馈。计划指纹绑定工作区根、Git HEAD、计划版本及明确的目标文件前像。已批准计划首次产生副作用前重查；工作区、HEAD、目标或计划发生漂移时返回结构化原因并回到待审。计划批准和单次工具批准分别耗用，迟到、重复或已取消的审批结果不改变状态。
 
 ### 6.4 追问（TP-06 / TP-07 / TP-08 / CT-05 / CT-06）
 
@@ -647,6 +538,7 @@ export type Question = {
 
 export type PendingQuestion = {
   questionId: string
+  callId: string
   questions: Question[]
   /** 允许用户自由文本作答（Other 选项自动存在）。 */
   allowFreeText: boolean
@@ -663,20 +555,13 @@ export type QuestionAnnotations = Record<string, { preview?: string; notes?: str
 - `AskUserQuestion` 工具参数：`{ questions: Question[] }`，题数 1–4；**校验**：题目文本全局唯一；同一题内选项 `label` 唯一；不满足即拒绝并说明。
 - **Other 选项自动存在**（参考 F-15：「There should be no 'Other' option, that will be provided automatically」）——模型不需自行构造 Other，宿主提供自由作答入口。
 - 回合**挂起**：`Session` 进入 `awaiting_approval`（复用既有审批状态，避免新增状态造成契约变更；事件用新的 `question_requested`/`question_answered`）。
-- 回答：`{ questionId, answers: QuestionAnswers, annotations?: QuestionAnnotations }`；答案经 `Session` 注入为 **user 消息**（role=user），保证进入历史（CT-06/TP-07）。
-- 取消：`question_cancelled` → 任务停在 `awaiting_user`→`failed`（可恢复状态，不无限等待，TP-08）。
+- 回答：`{ questionId, answers, annotations? }` 由宿主提交，Session 校验待处理请求与原 call ID，返回一个 `tool_result`。结果携带按题目文字关联的答案与备注，Provider 通过既有正规化映射保留同一调用 ID。TUI 可展示为用户回答，历史中的协议角色保持工具结果。模型输入禁止伪造回答。
+- 取消：发出 `question_cancelled`，以同一 call ID 返回一个取消结果并结束等待。重复、过期与跨回合响应无效。
 - 追问**消耗迭代预算**（计入 `MAX_ITERATIONS`）：追问后仍需继续迭代，计入更安全。
 
-### 6.5 TUI 最小卡片（TP-01/TP-02 可视化）
+### 6.5 TUI 表面
 
-本轮只做**最小渲染**：
-- 计划卡片：步骤列表 + 状态符号（`✔` 完成 / `■` 进行中 / `□` 待办 / `⊘` 阻塞）+ 阻塞来源。
-- 追问卡片：问题文本 + 选项列表 + 提示「选择或输入回答」。
-- 命令卡片：命令文本 + 解释器 + 退出码 + 输出摘要（截断）。
-
-**不**做（SP006）：完成项 TTL、ctrl+t 展开、todo 卡片动画、完整 `/plan` `/tasks` 命令族。
-
----
+四类界面与工具同步交付。布局、交互状态、消息回显与验收基线见 §9.7。TUI 消费同一工具事件，保持原问题、命令或计划与其结果的归属。
 
 ## 7. Git 与工作树安全（git-worktree-safety）
 
@@ -716,43 +601,33 @@ export type GitStatus = {
 
 ### 7.2 改动归属（GW-02 / GW-03）
 
-**来源**：SP003 的 `CheckpointStore` 已记录本会话写入的每个文件（path/operation/before/after/diff）。本轮**复用**它作为「Agent 自有改动」的唯一真相来源：
-
-- `Agent 自有改动集合 = checkpoint.records.map(r => r.path)`。
-- 生成改动摘要时，**只**取自有集合；staged/unstaged 中属于用户既有的部分**明确标注为「用户既有改动，未触碰」**（GW-02/GW-03）。
-- **禁止**：自动 `git reset`、`git stash`、`git checkout --`、`git clean`。本轮 `src/git` **不提供**任何这类写操作的实现（GW-02）。
+以 Git HEAD、索引、工作区基线和 checkpoint 前像/后像共同验证归属。路径只用于定位。摘要可在内容证据清晰时列出 Agent 补丁；混有既有修改、外部漂移或来源未知的文件标记为冲突，不纳入可提交范围。通用命令产出的改动在归属未验证前保留为待检查状态。禁止自动 stash、reset、clean 或覆盖用户文件。
 
 ### 7.3 worktree 进出（GW-05 / GW-06 / GW-07）
 
 | 能力 | 规则（MODEL_PROPOSED，对齐 F-18） |
 | --- | --- |
-| 进入 | `git worktree add <path> -b <branch>`；`<path>` 默认 `~/.budingx/worktrees/<repo-slug>/<name>`（§9 OPEN-01）；`<name>` 需通过 slug 校验 |
+| 进入 | `git worktree add <path> -b <branch>`；`<path>` 默认 `~/.budingx/worktrees/<repo-slug>/<name>`（§10 OPEN-01）；`<name>` 需通过 slug 校验 |
 | **slug 校验（F-18）** | 总长 ≤ 64 字符；按 `/` 分段，**每段非空**且只含字母、数字、点、下划线、连字符；**禁止 `.` 与 `..` 段**（防路径穿越）；违反即拒绝 |
 | 分支名 | `<base-branch>-budingx/<flattened-slug>`；`/` 折叠为 `+`（对齐参考 F-18 的 `flattenSlug`），保证映射单射；名称冲突时拒绝并提示已有分支名 |
 | 隔离性 | 新 worktree 是独立目录；主工作区已有 staged/unstaged/untracked **不受影响**（GW-05） |
-| **恢复复用（F-18）** | 目标 worktree 已存在时**恢复复用**（切回该目录），不重复创建 |
+| **恢复复用（F-18）** | 目标已存在时核对真实路径、仓库共同 Git 目录、专用分支和管理标记，再恢复复用；冲突、链接或无法确认归属时拒绝 |
 | 退出 | 回到原工作目录；**默认 `keep`**（保留 worktree 与分支，不删除） |
-| **退出 `remove`（F-18）** | 显式 `action: 'remove'` 时删除 worktree 与分支；若 worktree 有**未提交文件或未合并提交**，**必须显式 `confirm: true`**，否则**拒绝并列出残留项**；执行后回执含 `discardedFiles` / `discardedCommits` 计数 |
+| **退出 `remove`（F-18）** | 显式 `action: 'remove'` 时删除 worktree 与分支；所有删除均须宿主单次明确授权；若 worktree 有未提交文件或未合并提交，还须提交 `discard_changes` 请求并由宿主收集用户明确批准。若身份、当前变更或状态无法复核则拒绝删除并列出可确认的残留；执行后回执含 `discardedFiles` / `discardedCommits` 计数 |
 | 失败回落 | 创建失败（名称冲突、目录权限、磁盘满、非 Git 仓库）→ 明确失败原因 + **保持原 cwd 不变** + 不留半成品（GW-07）；若已创建但后续步骤失败 → 清理本次新建的目录（仅本轮自己创建的路径，不触碰未知路径） |
 | 会话作用域 | worktree 是**会话级**（与参考仓一致）。会话结束不自动删除 |
 | **hook 包装（F-18，P3）** | 参考支持「hook 驱动的 worktree 包装」（非纯 git）。**本轮只做纯 git 路径**，hook 包装留 SP006 hooks 轮次 |
 
+工具协议使用 `EnterWorktree {name?}` 和 `ExitWorktree {action, discard_changes?}`。会话记录验证过的仓库身份、专用分支和真实路径。模型参数表达意图，删除授权由宿主单次记录绑定该 worktree 及残留状态，模型参数本身无授权效力。
+
 ### 7.4 提交门禁（GW-04 / GW-09）
 
-**本轮交付**：
+本轮受控提交采用独占的、由产品管理的 worktree 及其专用分支。用户原 checkout 的分支、索引和工作文件保持原样。用户请求在原 checkout 直接提交时返回受控入口限制。模型通用命令无 Git 写权限，push 未开放。
 
-1. `GitStatus` 只读能力。
-2. **提交范围分析**（GW-09）：给定 Agent 自有改动集合，产出「将要纳入的文件清单」+「不纳入的用户改动清单」。
-3. **受控提交执行**（GW-09 的一部分）：`git commit` 仅在**有明确授权**时执行，且：
-   - 提交前重新校验范围清单（防止范围漂移）；
-   - 只 `git add` 自有文件（逐个显式 `git add -- <path>`，**不用 `git add .` / `-A`**）；
-   - 提交信息由用户提供或 Agent 生成但**必须经用户确认**（§9 OPEN-02）；
-   - 提交后产出 SHA 与包含文件清单。
-4. **门禁**（GW-04）：模型请求提交/推送时，若无授权记录 → 拒绝并记录 `denial_recorded`（复用 SP003 的拒绝追踪）。**推送（push）本轮不实现**——路线图明确「没有提交或推送授权不执行 Git 发布」，且 push 属于用户明确保留的授权边界。
-
-**授权记录**：会话内维护 `gitAuthorizations: Set<'commit'>`，来源为用户显式动作（TUI 确认）。模型**无法**自行写入该集合。
-
----
+1. 受控入口验证 worktree 与仓库身份、专用分支、基线 HEAD 和索引状态。已暂存、混合归属、外部改动、未合并状态与异常 Git 配置均中止。只接收来源明确的 Agent 文件变更。
+2. 审批界面展示目标分支、HEAD、补丁与提交信息。一次性授权绑定仓库与 worktree 身份、目标 ref、HEAD、补丁摘要、预计 tree 与提交信息。审批后发生任何相关漂移都须重新审查。
+3. 从已审核快照构造受控索引，校验 tree 与授权一致。Git 提交在专用分支上执行。用受控索引生成不可变 tree 和 commit 对象，条件更新专用分支 ref 时要求旧值等于已审 HEAD。若存在适用的 Git 提交钩子或签名策略而受控提交后端无法保留，则拒绝提交。专用 worktree 的索引仅在锁内核准和推进，竞争失败中止。后台命令无权修改用于提交的状态。
+4. 失败时保留用户工作及可恢复证据，释放本次授权，避免改动用户索引。成功回执返回 SHA 和实际提交文件清单。临时仓库验证已有用户暂存项、同文件混合改动、并发漂移、重复授权、失败重试及受控入口之外的 Git 写请求。
 
 ## 8. 对参考实现的对照与有意偏离
 
@@ -763,8 +638,8 @@ export type GitStatus = {
 | Bash 后台输出写任务文件 | 后台输出驻内存任务表（截断保留），**不落盘用户目录** | 避免污染用户数据；跨进程持久化属 SP005 |
 | Ctrl+B 手动转后台 | 本轮不实现（属 SP006 TUI 体验） | 路线图分工 |
 | `EnterWorktree`/`ExitWorktree` 工具表面 | 等价（会话级），目录位置独立于项目仓库 | MODEL_PROPOSED |
-| `EnterPlanMode`/`ExitPlanMode` + 计划审批卡片 | 等价 + 计划模式阻断**所有**写与执行能力 | MODEL_PROPOSED（更严格，§9 OPEN-04） |
-| todo 卡片 ✔/■/□ + blocked by + 30s TTL + ctrl+t | 本轮交付数据结构与最小卡片；TTL/展开属 SP006 | 路线图分工 |
+| `EnterPlanMode`/`ExitPlanMode` + 计划审批卡片 | 计划模式按 §6.2 审批 | 权限状态对齐见 §6.2 |
+| todo 卡片 ✔/■/□ + blocked by + 30s TTL + ctrl+t | 本轮按 §9.7 验证对应卡片及其局部交互 | 路线图分工 |
 | `AskUserQuestion` 选择题卡片 | 等价（工具 + 结构化选项 + 等待/取消） | MODEL_PROPOSED |
 | shift+tab 权限模式轮播 | SP003 已交付，本轮不重复 | 已有能力 |
 | 只读命令豁免审批 | 保守白名单，仅 `workspace_edit` 模式豁免 | MODEL_PROPOSED（更保守） |
@@ -776,6 +651,8 @@ export type GitStatus = {
 ---
 
 ## 9. 参考仓对照审计结果（2026-11-18 只读复核）
+
+§9.1–§9.6 保留历史审计。涉及本轮实现取舍，执行 v1.3 的 §4、§6、§7 与 §9.7。
 
 > 方法：对本地参考仓 `budingWorkerSpace` 做**只读**grep 审计（未修改、未复制任何源码）。以下每条均给出行为事实与证据位置；「未证实」表示未能从本次只读证据确认。
 > 用途：修正本设计的遗漏边界与语义偏差，并登记有意偏离。
@@ -887,63 +764,28 @@ export type GitStatus = {
 
 ---
 
-## 9.7 TUI 还原度约束（2026-11-18 对齐）
+### 9.7 TUI 视觉、交互与独立实现验收
 
-用户 2026-11-18 要求针对参考仓 buding-worker-space 还原能力与 TUI 布局/UI/交互。该要求作为横向约束落地（[路线图 r9](../../../docs/iteration-plan.md)「TUI 还原度要求」节；[还原度基线](../../../docs/tui-fidelity-gap-baseline.md)），**不新增 SP 编号、不改变 SP004 的依赖与出口门槛**。
+参考提交为 `buding-worker-space@b5c9be8`，以 TUI 活跃路径为准。SP004 覆盖下表的局部界面和状态，全局四区布局、渲染引擎、通用键位系统归 SP006。产品既有三档权限、受控执行和 Git 授权差异须单独登记。
 
-### 9.7.1 本轮在还原度上的位置
-
-还原度分三层，本轮只负责 L3（能力面）与 L3 的卡片表现：
-
-| 层 | 内容 | 归属 | 本轮 |
-| --- | --- | --- | --- |
-| L1 布局骨架 | 首屏/消息区/输入区/页脚四区 | SP006 P0 | 不做 |
-| L2 交互契约 | 上下文键位/chord/保留键 | SP006 P0 | 不做 |
-| L3 能力面 | 工具族与 Agent 主循环 | **SP004（能力）/ SP007（子代理）** | **本轮主体** |
-| L3 卡片表现 | 工具卡片的视觉形态 | SP004 最小 / SP006 P1 完整 | **本轮最小形态** |
-
-### 9.7.2 卡片表现的对齐要求
-
-§6.5 的「TUI 最小卡片」须与工具实现**同步交付**。参考行为事实与本轮最小形态的对应：
-
-| 参考事实 | 本轮最小形态 | 差异（归 SP006） |
+| 场景 | 参考入口 | 必验状态和动作 |
 | --- | --- | --- |
-| todo 卡片 ✔/■/□ + blocked by | 计划卡片步骤列表 + 状态符号（✔/■/□/⊘）+ 阻塞来源 | 完成项 30s TTL、ctrl+t 展开、行数自适应 |
-| AskUserQuestion 选择题卡片 | 追问卡片：问题文本 + 选项列表 + 提示「选择或输入回答」 | 键盘导航细节、反馈输入态 |
-| Bash 工具卡片（命令/解释器/退出码/输出摘要） | 命令卡片：命令文本 + 解释器 + 退出码 + 输出摘要（带截断标记） | 卡片动画与折叠汇总 |
-| EnterPlanMode/ExitPlanMode 计划审批卡片 | 计划模式闸门 + 批准/拒绝反馈 | 审批卡片的完整三档与前缀规则编辑 |
+| VIS-01 命令 | `src/tools/BashTool/BashToolResultMessage.tsx`、`src/tools/PowerShellTool/UI.tsx`、`src/components/shell/OutputLine.tsx` | 前台运行、成功、stderr 和非零码、截断和展开、后台通知、超时和取消、权限提示。比对消息位置、输出密度、缩进、颜色及折行。 |
+| VIS-02 计划审批 | `src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx` | 进入调研、计划预览、选项焦点、批准或编辑、反馈拒绝、Esc 取消、恢复输入焦点及权限档位。校验底部审批区与计划快照。 |
+| VIS-03 待办 | `src/components/TaskListV2.tsx`、`src/tools/TodoWriteTool/TodoWriteTool.ts` | pending、进行中、完成、空列表、阻塞关系、长列表折行和收起展开。TTL、切换按键和状态符号以参考活跃组件及回放记录为准。计划步骤和 TodoWrite 各自保持原状态语义。 |
+| VIS-04 追问 | `src/components/permissions/AskUserQuestionPermissionRequest/` | 单题、跨题、单选、多选、Other、预览及备注、提交确认、返回编辑、取消。逐步验证焦点、选择保留、光标、结果与 call ID。 |
 
-**约束**：
+同一宿主固定终端模拟器及版本、主题、字体及行高、DPI、语言、Unicode 宽度规则、环境与窗口大小。标准 100×30，窄屏 70×20，并回放两者间 resize。使用合成数据，锁时钟并遮罩明确列出的时间戳、随机 ID 和绝对路径，稳定样式、边框、颜色、焦点和文字位置不得遮罩。逐状态对比终端单元格的字形、坐标、样式及光标，记录按键序列和操作结果。成对 PNG 用同一渲染环境逐像素比较稳定区域，预期零差异；经确认的差异须附坐标、原因及核准记录。补真实终端键盘、输入法与主题抽查。位图、单元格和交互分别记录结果。
 
-- 最小形态**不得缺席**——不允许「能力已实现但卡片未接线」的状态进入交付。
-- 卡片状态符号、阻塞来源、选项结构、退出码与截断标记按上表对齐；不得自造与参考语义冲突的表述。
-- 折叠汇总（Read N files / Searched N patterns）属 SP006 P0 / CAP-L1-30，本轮**不预支**。
+确认参考设计使用权后开展精确视觉复现与成对取证。待确认期间可按行为和交互验收并采用本仓视觉表达，像素项保持 UNVERIFIED。参考截图、实际会话与用户数据不进入产品和发布包。参考基线无法运行时源码事实只支持设计复核，截图验收保持 UNVERIFIED。
 
-### 9.7.3 本轮明确不做（防止预支 SP006）
+### 9.8 独立实现与 AST 复核
 
-- 不在 src/tui/render 内引入虚拟列表、冻结缓存、帧缓冲差分、上下文键位系统或 chord 分发——这些是 SP006 P0 的独立可验收批次。
-- 不改四区骨架的布局结构；本轮只增加卡片**内容**，不改现有行的排布机制。
-- 不做 Vim 模式、鼠标选区、备用屏（R-A 可选项，非 P0/P1 门槛）。
+参考输入限可观察行为、工具协议事实和合成样例。本仓从既有 Session、权限、存储及 Ink 组件独立实现。参考源码、提示词、内部类型、配置、生成产物和私有资产不得复制、逐文件改写或混入制品。记录参考 revision、行为来源、公共规格、实际改动模块和设计选择。
 
-### 9.7.5 master 前进对本轮的影响（2026-11-18 晚间同步）
+T24 使用本仓 TypeScript 解析器本地只读比较双方对应 TS/TSX 模块中的改动函数或组件。固定 revision、工具版本和排除项。仅开放与 SP004 有关的参考源码路径；输出位置、片段长度、分值、复核结论与来源分类。比较语法节点、操作符、控制流和 JSX 结构，忽略 trivia，统一局部标识符。至少报告 30 节点的连续相同归一化子树，或双方均至少 60 节点且归一化节点序列相似度 ≥ 0.80 的函数对。阈值为本轮拟定的人工复核触发线，AST 分数不证明来源。
 
-本轮设计初稿基于 master `8556ba4`。master 已推进至 `e808679`（0.3.5 已发布、0.3.6 候选，30 个提交），以下变化**直接影响本轮实现**，实施时以新基线为准：
-
-| 变化 | master 现状 | 对 SP004 的影响 |
-| --- | --- | --- |
-| **权限模式轮播** | `src/workspace/policy.ts` 的 `nextMode` 改为仅 `workspace_edit ↔ full_access` 两档循环（`read_only` 不再进入 Shift+Tab 轮播）；三档模式枚举与 `MODES_ZH`/`MODES_EN` 标签仍在 | 本轮 §4.5 权限接线与 §6.2 计划模式闸门须按新轮播语义核对；**三档模式本身不变**（用户固定的仅可查看/工作区内修改/完全权限），变的是交互轮播路径 |
-| **交互式写入快路径** | 新增 `autoAcceptWorkspaceEdits` 选项：交互态下工作区普通写入可免审批，但**敏感目标**（`.git`/`.vscode`/`.idea`/`.claude`/`.codex`/`.agents`/`.github/workflows`/`.gitconfig`/`.mcp.json` 等）仍单独判定 | 本轮 `src/exec` 的命令写入判定须复用该快路径与敏感目标判定，**不得自行放行**；底线规则优先级不变 |
-| **`src/core` 契约扩展** | `session.ts`（+70 行）、`normalize.ts`、`events.ts`、`permissions.ts` 均有改动 | 本轮 T1 新增的 `core/exec.ts`、`core/plan.ts`、`core/coding.ts` 与既有 session/permissions 契约的合并点须按新基线核对，避免覆盖 master 的新增字段 |
-| **TUI 渲染能力** | 新增 `render/history-window.tsx`（折叠汇总 + 虚拟列表）、`render/transcript.tsx`（Markdown + 转录）、`editor/mouse.ts`（滚轮）；diff-view 引入 `lowlight` | 本轮 T15 卡片渲染应**复用**这些既有能力，不另起一套；还原度 P0 缺口相应收窄（见[还原度基线](../../../docs/tui-fidelity-gap-baseline.md)§3.6） |
-| **新增运行时依赖** | `marked@18.2.1`、`lowlight@3.3.0`（master 引入，已登记第三方声明） | 本轮**不新增**运行时依赖；若卡片需要 Markdown/着色，复用既有依赖 |
-
-**实施前置**：SP004 开跑前须在 `master`/`e808679` 基线上重新核对 §4.5、§6.2 的权限接线与 T1 的 core 端口合并点；本文其余设计（命令执行契约、Git 安全、计划/追问、卡片最小形态）不受影响。
-### 9.7.4 边界（不因还原要求放宽）
-
-- 权限模式仍固定三档；参考仓 7 模式仅作安全底线语义来源（deny 规则、凭据保护），**不还原模式数量**。
-- 仍按 SP001 决定 3「读机制、不抄代码」：参考仓无 LICENSE、视为未开源，只参考行为与结构事实。
-- 参考副本约 17 个工具目录为生成 no-op stub（__stubMissing）；**工具只按行为事实立项**，stub 目录名不作为能力来源。
-- 还原度提高**不放宽** SP004 既有出口门槛，也不改变 §10 的风险项与 §9.3 的有意偏离。
+公开协议字段、惯用样板和已有自有公共模块可按片段说明依据。较长同构、相同非惯用分支和错误顺序必须解释独立来源，无法解释的片段从行为规格重新实现并复测。无未解决命中才通过来源审查。报告仅保留路径、范围、指标与处置，不保留参考源码片段，不以改名或无意义重排降低分值。
 
 ## 10. 风险与开放项
 
@@ -952,8 +794,8 @@ export type GitStatus = {
 | R-01 | 命令执行绕过权限底线 | 判定统一走 SP003 策略；`src/exec` 内保留最后一道凭据/数据根闸；负向回归覆盖完全权限 |
 | R-02 | Windows 进程树杀不干净（残留 node.exe/npm） | `taskkill /T /F` + `child.kill()` 双保险；真实进程证据核对残留（需人工确认任务管理器） |
 | R-03 | 输出上限被绕过 | 截断在写出层强制（stdout/stderr 分别截断）；工具结果带显式截断标记 |
-| R-04 | Git 误伤用户改动 | 改动归属唯一来源是 SP003 checkpoint；`src/git` 不实现 reset/stash/clean；提交只逐文件 `git add` |
-| R-05 | 计划模式被工具绕过 | 阻断在 Session 工具分派层（按 capability），任何新工具默认受同一闸门约束 |
+| R-04 | Git 误伤用户改动 | 改动归属唯一来源是 SP003 checkpoint；`src/git` 不实现 reset/stash/clean；按已审核快照在专用 worktree 提交，详见 §7.4 |
+| R-05 | 计划模式被工具绕过 | 由 Session 工具分派与审批状态联合校验（按 capability），任何新工具默认受同一闸门约束 |
 | R-06 | 「完成声明」被空转 | `canClaimDone` 要求至少一次测试类命令成功；无证据回注要求继续 |
 | R-07 | 追问挂起导致回合死锁 | 追问有超时与取消；取消后任务落到可恢复态，不无限等待 |
 | OPEN-01 | worktree 隔离目录位置 | 默认 `~/.budingx/worktrees/<repo-slug>/<name>`（与项目分离，避免污染仓库）；可参数覆盖 |
@@ -962,9 +804,9 @@ export type GitStatus = {
 | ~~OPEN-04~~ | ~~计划模式是否阻断命令执行~~ | **已关闭（2026-11-18 审计）**：改为**权限档位**（降级为需批准），对齐 F-11；硬阻断会造成计划阶段无法调研，体验下降 |
 | OPEN-05 | `PowerShell` 工具在 POSIX 平台 | 默认返回明确失败「本平台无 PowerShell」，不静默回退到 sh |
 | OPEN-06 | 完成证据最低门槛 | 默认：最近一次测试类命令成功；本轮不强制「全绿」 |
-| OPEN-07 | 网络域名策略是提示还是阻断 | 默认**仅提示**（域名提取易误判）；阻断留后续 |
+| OPEN-07 | 网络策略 | 后端强制执行，否则保持断网或拒绝所需联网能力（§4.7） |
 | OPEN-08 | 超大输出落盘阈值 | 默认 1 MB（参考 F-04 为 64 MB；新仓取更小以免占用磁盘） |
-| OPEN-09 | 沙箱能力声明层的网络策略是否本轮生效 | 默认生效但**仅提示**（同上）；OS 级隔离留 SP011 |
+| OPEN-09 | 隔离后端落地 | 按平台完成 T0 探测与 T20 真实进程验收，缺必要能力时拒绝 |
 | OPEN-10 | 参考仓其余工具是否存在未察觉的 stub | 本轮只读审计仅确认 `VerifyPlanExecutionTool` 为 stub；**实施时需逐个核实本轮要用到的工具** |
 
 ---
@@ -978,7 +820,7 @@ export type GitStatus = {
 | command-execution | CE-01…CE-20 | 20 | `src/exec` + `src/core/exec.ts` + 权限扩展 + 沙箱声明层 |
 | coding-task-loop | CT-01…CT-09 | 9 | `src/core/coding.ts` + Session 扩展 |
 | git-worktree-safety | GW-01…GW-09 | 9 | `src/git` + SP003 checkpoint 复用 |
-| task-planning | TP-01…TP-10 | 10 | `src/plan` + `src/core/plan.ts` + TUI 最小卡片 |
+| task-planning | TP-01…TP-10 | 10 | `src/plan` + `src/core/plan.ts` + TUI 四类视觉与交互场景 |
 | **合计** | — | **48** | — |
 
 **测试层映射（每条 AC 至少各有一例单元 + 一例功能）**
@@ -988,7 +830,7 @@ export type GitStatus = {
 | L0 纯逻辑 | 计划状态机、追问契约、代码目标状态机、权限请求组装、Git porcelain 解析、quoting 规则、只读命令族判定 |
 | L1 真实进程 | 命令执行真实 spawn：退出码、stdout/stderr、超时、输出上限、后台任务与取消、进程树终止、工作目录与 Unicode 路径 |
 | L1 真实 Git | 临时仓库 fixture：脏工作区识别、staged/unstaged/untracked、worktree 创建与失败回落、非 Git 仓库 |
-| L2 伪 TTY e2e | 命令卡片/计划卡片/追问卡片渲染、审批三档接线、计划模式阻断提示 |
+| L2 伪 TTY e2e | 命令卡片/计划卡片/追问卡片渲染、审批状态、原工具调用对应和按键回放 |
 | L3 真终端人工 | Windows Terminal/ConHost 真实观感与进程残留核对 — **UNVERIFIED**（恢复条件：人工清单） |
 | live Provider | 真实模型端到端编码闭环 — **UNVERIFIED**（无凭据时） |
 
@@ -1019,22 +861,9 @@ export type GitStatus = {
 
 ---
 
-## 13. 自审记录（Agent 自审对象）
+## 13. 自审记录
 
-> 本节在设计自审通过时填写：结论、依据、允许动作范围。
-
-- 自审结论：**通过（v1.0）**
-- 自审要点：
-  1. 与路线图 SP004 出口门槛逐项对齐：定位→修改→测试→修复（§5）、追问/转向（§5.3/§6.4）、Git 脏工作区（§7.1/§7.2）、Windows quoting（§4.2）、后台状态/取消/输出上限（§4.3/§4.4）、自身修改撤销（复用 SP003 checkpoint，§7.2）、无授权不发布（§7.4）。
-  2. 模块边界合规：命令执行与 Git 落在新模块 `src/exec`/`src/git`，`core` 只持端口与状态机（§3）。
-  3. 与 SP003 已交付能力不重复、不回归：权限策略、底线规则、checkpoint、文件工具全部复用（§1.4/§7.2）。
-  4. 参考对照完整且只读机制不抄代码（§8），差异均有理由；有意偏离（更严格/更保守）三处并登记（§9 OPEN-03/04、§4.5 只读豁免）。
-  5. 风险均有对应测试层与负向回归（§10）。
-  6. 边界诚实：真终端人工与 live Provider 明确标 UNVERIFIED（§10）。
-- 允许动作范围（2026-11-17 委托）：本设计的批准覆盖**同版计划、实施、测试、交付与各阶段本地提交**；**当前处于「仅文档」阶段，用户 2026-11-18 指示「先只完成文档，正式开发前等我通知再动手」→ 实施与提交暂缓，待用户通知**。交叉验证门禁 GREEN 后合入 master 与推送远端在委托内；npm 发布、打标签、远端设置、分支/worktree 删除不在授权内。
-- 批准来源：USER_CONFIRMED（2026-11-17 审查与集成委托，取消常规人工审查，设计文档为 Agent 自审对象）+ USER_CONFIRMED（2026-11-18「开始 SP004 的开发」「先只完成文档，正式开发前等我通知再动手」）。
-
----
+v1.3 按本次用户委托修订设计、计划、验收和状态。现行产品验收为 UNVERIFIED，设计与计划待用户确认。此次授权仅涵盖文档修订，确认前不进入 T0 或产品实施。历史版本的自审记录不构成本版实施授权。
 
 ## 14. 版本记录
 
@@ -1042,3 +871,4 @@ export type GitStatus = {
 | --- | --- | --- | --- |
 | v1.0 | 2026-11-18 | 首版设计：命令执行端口与解释器策略、后台任务模型、权限接线、编码任务状态机、计划/追问状态机、Git 状态与 worktree/提交门禁、参考对照与偏离、风险与 OPEN | MODEL_PROPOSED（技术方案），经 Agent 自审通过 |
 | v1.1 | 2026-11-18 | **对照参考仓只读审计后修订**：新增 §9 审计结果（19 项事实修正 F-01…F-19、21 项遗漏点、9 项设计修正 C-01…C-09、5 项保留偏离、审计边界）；据此修正后台输出落盘与自动转后台、计划持久化与审批通道、计划模式语义为权限档位、待办与计划分离、追问多题结构、结构化只读命令表、沙箱能力声明层、worktree 退出语义、`TurnOutcome` 对齐 | MODEL_PROPOSED（技术方案），经 Agent 自审通过 |
+| v1.3 | 2026-11-18 | 固定参考 revision，修订 TUI 场景、工具契约、权限和提交门禁，增加独立来源及 AST 复核 | 文档待用户确认 |
