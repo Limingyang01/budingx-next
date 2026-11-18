@@ -7,11 +7,21 @@ export type PorcelainBranch = {
   behind?: number
 }
 
+export type PorcelainEntry = {
+  path: string
+  /** 索引状态位（第一位）。 */
+  index: string
+  /** 工作区状态位（第二位）。 */
+  worktree: string
+}
+
 export type ParsedPorcelain = {
   staged: string[]
   unstaged: string[]
   untracked: string[]
   conflicted: string[]
+  /** 结构化条目（含两字符状态码），用于判定改动操作类型。 */
+  entries: PorcelainEntry[]
   branch?: PorcelainBranch
 }
 
@@ -41,7 +51,7 @@ function parseBranch(header: string): PorcelainBranch | undefined {
 }
 
 export function parsePorcelain(raw: string): ParsedPorcelain {
-  const result: ParsedPorcelain = { staged: [], unstaged: [], untracked: [], conflicted: [] }
+  const result: ParsedPorcelain = { staged: [], unstaged: [], untracked: [], conflicted: [], entries: [] }
   const records = raw.split('\0').filter((record) => record !== '')
   for (let index = 0; index < records.length; index += 1) {
     const record = records[index]
@@ -57,9 +67,11 @@ export function parsePorcelain(raw: string): ParsedPorcelain {
     const path = record.slice(3)
     if (x === '?' && y === '?') {
       result.untracked.push(path)
+      result.entries.push({ path, index: x, worktree: y })
       continue
     }
     if (x === '!' && y === '!') continue
+    result.entries.push({ path, index: x, worktree: y })
     const code = `${x}${y}`
     if (CONFLICT_CODES.has(code)) {
       result.conflicted.push(path)

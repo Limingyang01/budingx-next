@@ -185,7 +185,7 @@
   3. Agent 改动与用户改动同文件不同区域 → 该文件只出现一次且标注混合（GW-03）
 - **GREEN**：以基线、索引及 checkpoint 前像和后像确定补丁归属，混合修改或外部漂移标记冲突
 - **验证**：`npm run build && node --test src/git/test/attribution.test.mjs`
-- **完成事实**：待填
+- **完成事实**（2026-11-18）：RED 7 条（用户三类改动分离/不 reset 不 stash 不 clean/混合修改/冲突排除/无改动 untouched/add 与 delete 区分/checkpoint 转相对路径）先因模块缺失失败 → GREEN 7/7；全量 470/470 通过。实现 `src/git/attribution.ts`：`analyzeChanges({ status, ownPaths, userPaths? })` 按「Agent 自己记录 ∩ Git 状态」划分 `include`（含 add/modify/delete/rename 操作类型）、`userOwned`、`untouched`、`mixed`、`conflicted`；混合文件只出现一次且带 `mixed: true`（GW-03），冲突文件一律不进入可提交范围；`ownPathsFromCheckpoints(records, root)` 把 checkpoint 绝对路径转仓库相对路径并丢弃越界记录。配套：`porcelain.ts` 增加结构化 `entries`（两字符状态码），`GitStatus` 增加 `changes` 字段。Ruling：混合判定需要宿主提供基线证据（`userPaths?`），仅凭 ownPaths 与 Git 状态无法区分「同文件既有用户改动」。本模块不执行任何 Git 写命令（GW-02）。
 
 ### T8 · worktree 进出
 

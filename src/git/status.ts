@@ -1,7 +1,7 @@
 // SP004 T6 · Git 只读状态识别（design §7.1，AC GW-01 / GW-08）。
 // 只读取状态：不带 -c 改配置、不写索引；非 Git 目录与 git 不可用都明确报告，不伪造。
 import { execFile } from 'node:child_process'
-import { parsePorcelain, type ParsedPorcelain } from './porcelain.js'
+import { parsePorcelain, type ParsedPorcelain, type PorcelainEntry } from './porcelain.js'
 
 export type GitStatus = {
   isRepository: boolean
@@ -16,6 +16,8 @@ export type GitStatus = {
   unstaged: string[]
   untracked: string[]
   conflicted: string[]
+  /** 结构化条目（含索引/工作区状态码），用于判定操作类型（T7）。 */
+  changes?: PorcelainEntry[]
   /** 仓库内 worktree 数量（T23 接入）。 */
   worktreeCount?: number
   ahead?: number
@@ -98,7 +100,8 @@ export async function readGitStatus(cwd: string, options: ReadGitStatusOptions =
     staged: parsed.staged,
     unstaged: parsed.unstaged,
     untracked: parsed.untracked,
-    conflicted: parsed.conflicted
+    conflicted: parsed.conflicted,
+    changes: parsed.entries
   }
   if (parsed.branch !== undefined) {
     status.branch = parsed.branch.name
