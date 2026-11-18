@@ -22,6 +22,7 @@ function permissionContext(
 ): NonNullable<CommandContext['permission']> {
   return {
     policy: runtime.policy,
+    setMode: runtime.setPermissionMode,
     store: runtime.permissionStore,
     workspace: runtime.workspace,
     checkpointChanges: () => runtime.checkpoint.changes(),
@@ -181,7 +182,8 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
     cwd: process.cwd(),
     getConfig: () => current,
     approval: gateway,
-    configStore: stores.configStore
+    configStore: stores.configStore,
+    persistPermissionMode: true
   })
   for (const warning of runtime.warnings) {
     process.stderr.write(`Warning: ${warning}\n`)

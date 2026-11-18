@@ -44,6 +44,7 @@ export type CommandContext = {
   /** SP003: present once the workspace runtime is wired. */
   permission?: {
     policy: BudingPermissionPolicy
+    setMode?: (mode: PermissionMode) => boolean
     store: PermissionsStore
     workspace: Workspace
     checkpointChanges: () => ChangeRecord[]
@@ -246,14 +247,22 @@ function permissionCommand(
       )
     }
   }
-  const next = MODE_ALIASES[argument]
+  const next = Object.hasOwn(MODE_ALIASES, argument) ? MODE_ALIASES[argument] : undefined
   if (!next) {
     return {
       handled: true,
       error: pick('用法：/permission read|workspace|full', 'Usage: /permission read|workspace|full')
     }
   }
-  policy.setMode(next)
+  if (!changePermissionMode(permission, next)) {
+    return {
+      handled: true,
+      error: pick(
+        '此会话已切换权限模式，但无法保存启动模式',
+        'Permission mode changed for this session. Could not save the startup mode.'
+      )
+    }
+  }
   const note =
     next === 'full_access'
       ? pick('（不越过 deny 规则与凭据保护）', '(deny rules and credential protection still apply)')
@@ -264,6 +273,15 @@ function permissionCommand(
     handled: true,
     message: pick(`已切换到权限模式：${label(next)}${note}`, `Permission mode is now ${label(next)}${note}`)
   }
+}
+
+export function changePermissionMode(
+  permission: NonNullable<CommandContext['permission']>,
+  mode: PermissionMode
+): boolean {
+  if (permission.setMode) return permission.setMode(mode)
+  permission.policy.setMode(mode)
+  return true
 }
 
 function rulesCommand(
