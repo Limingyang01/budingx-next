@@ -1,6 +1,6 @@
 # 当前状态
 
-日期：2026-11-18。**SP003「工作区与安全修改」已合入 master，0.3.0 已准备**，等待维护者触发 npm 工作流。当前 npm latest 为 **0.2.0（SP002）**。
+日期：2026-11-18。**SP003「工作区与安全修改」已合入 master，0.3.0 已准备**，等待维护者触发 npm 工作流。当前 npm latest 为 **0.2.0（SP002）**。 **SP004「真实编码任务」已完成文档阶段（需求 48 条 AC + 设计 v1.1 + 计划 T1–T23），实施待用户放行**。
 
 ## 已有
 
@@ -13,6 +13,7 @@
 - 实际 Node/TypeScript 构建、测试、版本准备与发布编排，实际 tarball 隔离安装 smoke 已通过。
 - **SP002 新增**：`src/core`（事件契约、会话/回合状态机、工具回合、输入队列、消息规范化）、`src/provider`（OpenAI 兼容流解析、tool_calls 碎片、错误分类、有界重试、取消、连通探测）、`src/storage`（`~/.budingx` 配置与凭据仓库、模型档案 CRUD、三源合并）、`src/tui` 的 Ink 8 对话界面（渲染 reducer、多行编辑器、审批卡、双中断与排队）。
 - **SP003 新增（已合入 master `598fb89`）**：`src/workspace`（路径边界与忽略规则、Read/Write/Edit/Glob/Grep、行级 diff、检查点撤销、三模式策略与规则、`@` 上下文）、`src/core` 的权限端口与策略判定接线、`src/storage/permissions.ts`（`~/.budingx/permissions.json`）、TUI 侧审批三档与拒绝反馈、模式徽标与 Shift+Tab 轮播、diff 两级对话框与多源切换、`@`/`/` 统一补全。
+- **SP004 文档阶段产物（未实施）**：`SP/SP004/` 迭代汇总与四份需求（command-execution / coding-task-loop / git-worktree-safety / task-planning，共 48 条 AC）、[设计 v1.1](../SP/SP004/design/design.zh.md)（自审通过；v1.1 为参考仓只读审计后修订，含 §9 审计结果）与[计划 v1.1](../SP/SP004/design/plan.zh.md)（T1–T23 + 48 条 AC 全量映射）。拟新增模块 `src/exec`（命令执行/后台任务/沙箱声明层）、`src/git`（Git 状态/worktree/提交门禁）、`src/plan`（计划与审批）；`core` 只新增纯端口与状态机，不引入 IO。**代码实施、提交与分支创建均未执行，待用户放行。**
 
 ## 未实现
 
