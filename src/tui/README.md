@@ -57,9 +57,13 @@ In piped input, `/models` lists profiles and `/model NAME` selects one. Interact
 - Enter — submit; during a turn the input is queued and injected at the next safe boundary
 - Esc — deny the visible approval and continue; otherwise interrupt the turn, recycle idle queued input, or cancel key entry
 - Shift+Enter — insert a line break
+- Shift+Tab — cycle permission modes shown in the status bar
+- PageUp / PageDown — scroll the conversation in full-screen mode
 - Ctrl+C — interrupt while a turn runs; at the prompt, press twice to exit
 - ↑ / ↓ — recall earlier input, select completions, or scroll a diff
 - 1 / 2 / 3 — allow once, remember for this session, or deny a pending tool approval
+
+Supported interactive terminals use the full terminal height and pin the prompt at the bottom. The tab title starts as `budingx` and takes a short label from the first substantive prompt. A filled dot signals an active turn, including when an approval is pending. `/clear` resets the topic. The status bar works even when the terminal suppresses tab titles.
 
 A cancelled turn keeps the text that was already produced. A turn cancelled before any output returns the original request to the prompt. Failed turns leave the conversation unchanged.
 

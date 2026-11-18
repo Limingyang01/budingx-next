@@ -13,6 +13,7 @@ import { createAgentRuntime, workspacePromptOptions, type AgentRuntime } from '.
 import type { CommandContext } from './commands.js'
 import { InkApprovalGateway } from './approval.js'
 import { runCommand } from './commands.js'
+import { terminalStrategy } from './render/header.js'
 
 const MODE_ORDER: PermissionMode[] = ['read_only', 'workspace_edit', 'full_access']
 
@@ -187,6 +188,8 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
   }
   const session = runtime.session
 
+  const fullScreen = process.env.TERM !== 'dumb' &&
+    terminalStrategy(process.env, process.platform) === 'pixel'
   const instance = render(
     createElement(App, {
       session,
@@ -205,11 +208,12 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
       },
       version,
       cwd: process.cwd(),
+      fullScreen,
       onExit: () => {
         instance.unmount()
       }
     }),
-    { exitOnCtrlC: false }
+    { exitOnCtrlC: false, alternateScreen: fullScreen }
   )
   await instance.waitUntilExit()
   session.dispose()

@@ -9,6 +9,8 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import stringWidth from 'string-width'
 import { mountTty, frameWidths } from './helpers/mount-tty.mjs'
+import { agentFixture } from './helpers/agent-fixture.mjs'
+import { rmSync } from 'node:fs'
 import { createProfile } from '../dist/storage/profiles.js'
 
 const pause = (ms = 60) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -254,4 +256,74 @@ test('S12 完成后的长回答随宽度缩小和放大重排且不丢字', asyn
   assert.ok(!narrow.includes(text), 'narrow frame wraps answer')
   await ui.resize(100)
   await ui.waitFor((frame) => frame.includes(text))
+})
+
+test('full screen pins the prompt and mode hint through height and width resize', async (t) => {
+  const fixture = agentFixture()
+  t.after(() => rmSync(fixture.base, { recursive: true, force: true }))
+  const ui = await mountTty(t, {
+    fullScreen: true, rows: 24, columns: 60,
+    provider: { async *stream() { yield done } },
+    tools: fixture.tools,
+    permissionPolicy: fixture.policy,
+    commandOverrides: { permission: fixture.permission },
+    config: { model: 'screen-fixture' }
+  })
+  const assertPinned = (frame, rows, columns) => {
+    const lines = frame.split('\n')
+    const inputRow = lines.findIndex((line) => line.startsWith('>'))
+    assert.ok(inputRow >= rows - 5 && inputRow < rows, 'prompt should be near the bottom')
+    assert.ok(frameWidths(frame, stringWidth).every((wd) => wd <= columns))
+    assert.match(frame, /Shift\+Tab 切换模式/)
+  }
+  assertPinned(ui.last(), 24, 60)
+  assert.ok(ui.raw().includes('\x1b[?1049h'), 'enter alternate screen')
+  await ui.send('\x1b[Z')
+  await ui.waitFor((frame) => frame.includes('完全权限'))
+  await ui.resize(42, 18)
+  assertPinned(ui.last(), 18, 42)
+  assert.match(ui.last(), /完全权限/)
+  await ui.send('/exit')
+  await ui.send('\r')
+  await ui.waitFor(() => ui.raw().includes('\x1b[?1049l'))
+  assert.equal(ui.exitCalls.length, 1)
+})
+
+test('full-screen scrollback can read older output while leaving the prompt visible', async (t) => {
+  const ui = await mountTty(t, {
+    fullScreen: true, rows: 22, columns: 60,
+    config: { model: 'screen-fixture' },
+    provider: { async *stream() {
+      const rows = Array.from({ length: 50 }, (_, i) => 'Fixture transcript row ' + (i + 1))
+      yield { type: 'text_delta', text: rows.join('\n') }
+      yield done
+    } }
+  })
+  await ui.send('hello')
+  await ui.send('\r')
+  await ui.waitFor((frame) => frame.includes('Fixture transcript row 50') && !ui.session.isBusy)
+  assert.doesNotMatch(ui.last(), /Fixture transcript row 1\b/)
+  await ui.send('\x1b[5~')
+  await ui.waitFor((frame) => frame.includes('PageDown') && !frame.includes('Fixture transcript row 50'))
+  assert.match(ui.last(), /^>/m)
+  for (let i = 0; i < 5; i++) await ui.send('\x1b[6~')
+  await ui.waitFor((frame) => frame.includes('Fixture transcript row 50'))
+  assert.match(ui.last(), /^>/m)
+})
+
+test('session tab title describes the first substantive prompt and signals active work', async (t) => {
+  const { release, provider } = gatedStream(['@gate', { type: 'text_delta', text: 'finished' }, done])
+  const ui = await mountTty(t, { fullScreen: true, rows: 22, columns: 60, provider, config: { model: 'fixture' } })
+  assert.ok(ui.raw().includes('\x1b]0;budingx\x07'))
+  await ui.send('大模型能力对比')
+  await ui.send('\r')
+  await ui.waitFor((frame) => frame.includes('● 请求中'))
+  assert.ok(ui.raw().includes('\x1b]0;● 大模型能力对比 · budingx\x07'))
+  release()
+  await ui.waitFor((frame) => frame.includes('○ 就绪'))
+  assert.ok(ui.raw().includes('\x1b]0;大模型能力对比 · budingx\x07'))
+  await ui.send('/clear')
+  await ui.send('\r')
+  await ui.waitFor((frame) => frame.includes('会话已清空'))
+  assert.equal(ui.raw().match(/\x1b\]0;[^\x07]*\x07/g).at(-1), '\x1b]0;budingx\x07')
 })

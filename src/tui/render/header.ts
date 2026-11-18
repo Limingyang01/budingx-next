@@ -10,6 +10,7 @@
 // Wording: modern terminals get Chinese; the ASCII fallback keeps English
 // (legacy console code pages may not render CJK), matching the reference.
 
+import { stripVTControlCharacters } from 'node:util'
 import stringWidth from 'string-width'
 
 export type Span = {
@@ -153,6 +154,7 @@ export type HeaderInput = {
   cwd?: string
   columns: number
   strategy: TerminalStrategy
+  compact?: boolean
 }
 
 /**
@@ -314,5 +316,24 @@ function condensed(input: HeaderInput): Line[] {
 /** Full welcome box until configured; condensed banner afterwards. */
 export function renderHeader(input: HeaderInput): Line[] {
   const configured = !!input.model?.trim() && !!input.keyPresent
-  return configured ? condensed(input) : welcome(input)
+  return configured || input.compact ? condensed(input) : welcome(input)
+}
+
+/** A bounded local label for the tab. It is not sent to a model. */
+export function sessionTopic(text: string, knownSecret?: string): string | undefined {
+  const title = stripVTControlCharacters(text)
+    .replace(/[\p{Cc}\p{Cf}]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!title || /^(你好|您好|嗨|hi|hello|hey)[!！。.？?\s]*$/i.test(title)) return undefined
+  if ((knownSecret && title.includes(knownSecret)) ||
+    /api[ _-]?key|authorization|bearer|password|access[ _-]?token|密钥|密码|\bsk-[\w-]{8,}/i.test(title)) {
+    return '会话'
+  }
+  return w(title) > 42 ? cutToWidth(title, 41) + '…' : title
+}
+
+export function terminalTitle(topic: string | undefined, working: boolean): string {
+  const label = topic ? topic + ' · budingx' : 'budingx'
+  return '\x1b]0;' + (working ? '● ' : '') + label + '\x07'
 }

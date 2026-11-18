@@ -242,3 +242,7 @@ npm run merge:gate     # 见 §6
 - 模拟真实配置保存失败后验证恢复旧 Key。更换同域名的端点路径时共享 Key 不沿用，活动档案也刷新。CLI 子进程从独立临时 home 启动，切换同组模型后本地 HTTP fixture 验证 Authorization。
 - 伪 TTY 验证空格多选、筛选后保留已选模型、批量保存、A 添加同组沿用 Key，密钥不回显。专项命令与 CLI 25 项通过，模型面板 6 项通过。没有新增依赖和持久化格式版本，也未读取实际用户配置。
 - 原 0.3.2 候选仍为 prepared，最终提交重跑门禁与 dry-run。真实厂商回执和 Windows 真终端输入法仍待对应环境验证。
+
+### 0.3.2 全屏与会话标签回归
+
+`npm run build` 通过。使用 `node --test src/tui/test/screen-e2e.test.mjs src/tui/test/header.test.mjs` 验证 26 项，通过 26 项，覆盖备用屏幕进入与退出、窗口缩放、Shift+Tab、长会话翻页和会话标题状态转换。Windows Terminal 实际标签观感与中文输入法仍待真终端验证。
