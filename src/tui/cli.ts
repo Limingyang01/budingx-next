@@ -5,7 +5,7 @@ import { createElement } from 'react'
 import { render } from 'ink'
 import { ConfigStore } from '../storage/config-store.js'
 import { CredentialStore } from '../storage/credentials.js'
-import { mergeSources, profileHost, startupProfile, type ResolvedConfig } from '../storage/profiles.js'
+import { mergeSources, profileCredentialBinding, profileCredentialRef, startupProfile, type ResolvedConfig } from '../storage/profiles.js'
 import { MODES_EN, MODES_ZH } from '../workspace/policy.js'
 import type { PermissionMode } from '../core/permissions.js'
 import { App } from './app.js'
@@ -13,6 +13,7 @@ import { createAgentRuntime, workspacePromptOptions, type AgentRuntime } from '.
 import type { CommandContext } from './commands.js'
 import { InkApprovalGateway } from './approval.js'
 import { runCommand } from './commands.js'
+import { terminalStrategy } from './render/header.js'
 
 const MODE_ORDER: PermissionMode[] = ['read_only', 'workspace_edit', 'full_access']
 
@@ -21,6 +22,7 @@ function permissionContext(
 ): NonNullable<CommandContext['permission']> {
   return {
     policy: runtime.policy,
+    setMode: runtime.setPermissionMode,
     store: runtime.permissionStore,
     workspace: runtime.workspace,
     checkpointChanges: () => runtime.checkpoint.changes(),
@@ -56,7 +58,7 @@ Usage: budingx [--model NAME] [--base-url URL] [--timeout MS] [--prompt TEXT]
 Environment: BUDINGX_API_KEY, BUDINGX_MODEL, BUDINGX_BASE_URL
 Commands: /help /config /models /model NAME
   /permission [read|workspace|full] /rules [add|rm] /diff [path] /undo [path] /denials /clear /exit
-Keys: Esc interrupts, Shift+Tab cycles permission modes (read-only / workspace edit / full access),
+Keys: Esc interrupts, Shift+Tab switches Allow edits / Full auto in the TUI,
 Enter submits, Ctrl+C interrupts and exits. @path attaches a workspace file, Tab completes.
 File tools run under the permission modes; full access never overrides deny rules or credential protection.`
 
@@ -75,7 +77,7 @@ function loadStores(): Stores {
   const configStore = new ConfigStore()
   const credentialStore = new CredentialStore()
   const stored = configStore.load()
-  const orphanCount = credentialStore.orphanIds(stored.models.map((p) => p.id)).length
+  const orphanCount = credentialStore.orphanIds(stored.models.map(profileCredentialRef)).length
   if (orphanCount)
     process.stderr.write(
       `Orphan credentials: ${orphanCount}; use O in the interactive /models panel\n`
@@ -86,7 +88,7 @@ function loadStores(): Stores {
         profileId: profile.id,
         baseUrl: profile.baseUrl,
         model: profile.model,
-        apiKey: credentialStore.get(profile.id, profileHost(profile))
+        apiKey: credentialStore.get(profileCredentialRef(profile), profileCredentialBinding(profile))
       }
     : {}
   return { configStore, credentialStore, file }
@@ -180,13 +182,16 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
     cwd: process.cwd(),
     getConfig: () => current,
     approval: gateway,
-    configStore: stores.configStore
+    configStore: stores.configStore,
+    persistPermissionMode: true
   })
   for (const warning of runtime.warnings) {
     process.stderr.write(`Warning: ${warning}\n`)
   }
   const session = runtime.session
 
+  const fullScreen = process.env.TERM !== 'dumb' &&
+    terminalStrategy(process.env, process.platform) === 'pixel'
   const instance = render(
     createElement(App, {
       session,
@@ -205,11 +210,12 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
       },
       version,
       cwd: process.cwd(),
+      fullScreen,
       onExit: () => {
         instance.unmount()
       }
     }),
-    { exitOnCtrlC: false }
+    { exitOnCtrlC: false, alternateScreen: fullScreen }
   )
   await instance.waitUntilExit()
   session.dispose()

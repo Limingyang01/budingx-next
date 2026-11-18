@@ -91,7 +91,10 @@ test('W2 HTTP 鉴权失败可见、不污染历史，修正密钥后续聊', asy
   await addCustomModel(ui, { label: 'good', baseUrl: api.baseUrl, model: 'm', key: 'fixture-valid', use: true })
   await ui.send('recover\r')
   await ui.waitFor((frame) => frame.includes('wire-recovered') && !ui.session.isBusy)
-  assert.deepEqual(api.requests[1].body.messages, [{ role: 'user', content: 'recover' }])
+  const [identity, ...history] = api.requests[1].body.messages
+  assert.equal(identity.role, 'system')
+  assert.match(identity.content, /budingx/i)
+  assert.deepEqual(history, [{ role: 'user', content: 'recover' }])
   assert.equal(ui.raw().includes('fixture-invalid'), false)
   assert.equal(ui.raw().includes('fixture-valid'), false)
 })

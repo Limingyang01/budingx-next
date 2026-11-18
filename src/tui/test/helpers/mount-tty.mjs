@@ -41,6 +41,8 @@ export async function mountTty(t, options = {}) {
     commandOverrides = {},
     sessionFactory,
     columns = 100,
+    rows = 40,
+    fullScreen = false,
     strategy = 'pixel',
     onExit = () => {}
   } = options
@@ -100,7 +102,7 @@ export async function mountTty(t, options = {}) {
   stdin.unref = () => {}
   const stdout = new PassThrough()
   stdout.columns = columns
-  stdout.rows = 40
+  stdout.rows = rows
   stdout.isTTY = true
 
   let raw = ''
@@ -118,6 +120,7 @@ export async function mountTty(t, options = {}) {
       gateway,
       version: '0.1.1',
       cwd: 'D:\\fixture\\repo',
+      fullScreen,
       commandContext: {
         ...stores,
         getConfig: () => config,
@@ -137,6 +140,7 @@ export async function mountTty(t, options = {}) {
       stdout,
       stderr: stdout,
       interactive: true,
+      alternateScreen: fullScreen,
       exitOnCtrlC: false,
       patchConsole: false
     }
@@ -185,8 +189,9 @@ export async function mountTty(t, options = {}) {
       }
       throw new Error(`waitFor timed out; last frame:\n${last()}`)
     },
-    resize: async (nextColumns) => {
+    resize: async (nextColumns, nextRows = stdout.rows) => {
       stdout.columns = nextColumns
+      stdout.rows = nextRows
       stdout.emit('resize')
       await pause()
       await app.waitUntilRenderFlush()

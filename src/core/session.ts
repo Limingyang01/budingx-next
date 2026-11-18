@@ -93,10 +93,14 @@ function previewOf(text: string): string {
 export class Session {
   private state: SessionState = 'idle'
   private readonly messages: Message[] = []
+  private readonly reasoningSource = new WeakMap<Message, TurnSnapshot>()
   private readonly listeners = new Set<(event: SessionEvent) => void>()
+  private readonly toolPreviewListeners = new Set<(names: readonly string[]) => void>()
   private readonly tools: ToolHandler[]
   private readonly queue: QueuedInput[] = []
   private activeTurn?: ActiveTurn
+  private approvalForMemory?: { id: string; target: PermissionRequest }
+  private lastToolElapsed?: { turnId: string; callId: string; ms: number }
   private pendingApproval?: { requestId: string; resolve: (d: ApprovalDecision) => void }
   private queueTimer?: NodeJS.Timeout
   private queuePaused = false
@@ -118,6 +122,19 @@ export class Session {
     })
   }
 
+  /** UI-only query. No approval payload or session event shape changes. */
+  canRememberApproval(requestId: string): boolean {
+    const record = this.approvalForMemory
+    const policy = this.options.permissionPolicy
+    return !!record && record.id === requestId && !!policy &&
+      (policy.canRemember?.(record.target) ?? true)
+  }
+
+  toolElapsedMs(turnId: string, callId: string): number | undefined {
+    const elapsed = this.lastToolElapsed
+    return elapsed?.turnId === turnId && elapsed.callId === callId ? elapsed.ms : undefined
+  }
+
   get currentState(): SessionState {
     return this.state
   }
@@ -132,6 +149,12 @@ export class Session {
 
   get isBusy(): boolean {
     return this.state !== 'idle'
+  }
+
+  /** In-process display subscription. The public session event stream is unchanged. */
+  onToolPreview(handler: (names: readonly string[]) => void): () => void {
+    this.toolPreviewListeners.add(handler)
+    return () => { this.toolPreviewListeners.delete(handler) }
   }
 
   on(handler: (event: SessionEvent) => void): () => void {
@@ -203,6 +226,7 @@ export class Session {
     if (this.queueTimer) clearTimeout(this.queueTimer)
     if (this.activeTurn) this.activeTurn.controller.abort()
     this.listeners.clear()
+    this.toolPreviewListeners.clear()
   }
 
   private emit(event: SessionEvent): void {
@@ -244,11 +268,12 @@ export class Session {
         type: 'input_injected',
         turnId: turn.id,
         queueId: queued.id,
+        text: userText,
         boundary: 'inter_turn'
       })
     }
     const snapshot = this.options.resolveSnapshot()
-    this.emit({ type: 'turn_started', turnId: turn.id, snapshot })
+    this.emit({ type: 'turn_started', turnId: turn.id, snapshot, userText, startedAt: Date.now() })
     this.setState('requesting')
     const userMessage = this.userMessage(userText, options)
     turn.messageIds.push(userMessage.id)
@@ -259,9 +284,22 @@ export class Session {
   private buildRequest(snapshot: TurnSnapshot, turn: ActiveTurn): ChatRequest {
     const request: ChatRequest = {
       model: snapshot.model,
-      messages: normalizeForApi(this.messages),
+      messages: normalizeForApi(this.messages, turn.provider.preserveToolReasoning?.(snapshot.model)
+        ? (message) => {
+            const source = this.reasoningSource.get(message)
+            return source?.modelId === snapshot.modelId &&
+              source.model === snapshot.model &&
+              source.baseUrlHost === snapshot.baseUrlHost
+          }
+        : undefined),
       signal: turn.controller.signal
     }
+    request.messages.unshift({
+      role: 'system',
+      content: '你是 budingx，一款在终端运行的编程助手。用户询问你的身份时，介绍 budingx。' +
+        '用户询问底层模型时，按本次请求配置的模型 ID 回答：' + snapshot.model +
+        '。根据本轮实际提供的工具说明能力，使用用户的语言回答。'
+    })
     if (this.tools.length > 0 && snapshot.capabilities.tools) {
       request.tools = this.tools.map((tool) => ({
         name: tool.name,
@@ -293,6 +331,7 @@ export class Session {
         role: 'assistant',
         blocks: []
       }
+      if (turn.provider.preserveToolReasoning?.(snapshot.model)) this.reasoningSource.set(assistant, snapshot)
       turn.assistant = assistant
       const fragments: ToolFragment[] = []
       let finishReason: FinishReason = 'unknown'
@@ -330,6 +369,10 @@ export class Session {
                 nameDelta: event.nameDelta,
                 argsDelta: event.argsDelta
               })
+              if (this.toolPreviewListeners.size && (event.nameDelta || event.callId)) {
+                const names = assembleToolCalls(fragments, true).calls.map((call) => call.name)
+                for (const listener of this.toolPreviewListeners) listener(names)
+              }
               break
             case 'message_completed':
               finishReason = event.finishReason
@@ -357,6 +400,10 @@ export class Session {
             : ERROR_CODES.coreToolFailed,
           message: error instanceof Error ? error.message : 'Provider stream failed',
           retryable: false
+        }
+      } finally {
+        if (this.activeTurn === turn && fragments.length) {
+          for (const listener of this.toolPreviewListeners) listener([])
         }
       }
 
@@ -532,6 +579,7 @@ export class Session {
           summary: handler.describe(input),
           ...(prepared ? { preview: prepared.preview } : {})
         }
+        if (permissionRequest) this.approvalForMemory = { id: requestId, target: permissionRequest }
         this.emit({
           type: 'approval_requested',
           turnId: turn.id,
@@ -542,7 +590,8 @@ export class Session {
           ...(request.preview ? { preview: request.preview } : {})
         })
         const decision = await this.requestApproval(turn, request)
-        remember = decision.outcome === 'allow_session'
+        remember = decision.outcome === 'allow_session' && this.canRememberApproval(requestId)
+        if (this.approvalForMemory?.id === requestId) this.approvalForMemory = undefined
         this.emit({
           type: 'approval_resolved',
           turnId: turn.id,
@@ -584,6 +633,7 @@ export class Session {
       let content = ''
       let isError = false
       let errorCode: string | undefined
+      let startedAt: number | undefined
       try {
         const toolContext: ToolContext = {
           signal: turn.controller.signal,
@@ -594,6 +644,7 @@ export class Session {
           this.pushToolResult(turn, call.id, 'Permission changed before execution', true, ERROR_CODES.permissionDenied)
           continue
         }
+        startedAt = performance.now()
         content = await (prepared ? prepared.execute(toolContext) : handler.execute(input, toolContext))
         if (remember && permissionRequest) policy?.remember(permissionRequest)
       } catch (error) {
@@ -608,7 +659,14 @@ export class Session {
         content = content.slice(0, TOOL_OUTPUT_CAP)
         isError = true
       }
-      this.pushToolResult(turn, call.id, content, isError, errorCode)
+      if (startedAt !== undefined) {
+        this.lastToolElapsed = { turnId: turn.id, callId: call.id, ms: performance.now() - startedAt }
+      }
+      try {
+        this.pushToolResult(turn, call.id, content, isError, errorCode)
+      } finally {
+        this.lastToolElapsed = undefined
+      }
     }
     return {}
   }
@@ -694,6 +752,7 @@ export class Session {
         type: 'input_injected',
         turnId: turn.id,
         queueId: item.id,
+        text: item.text,
         boundary: 'intra_turn'
       })
     }
@@ -721,6 +780,8 @@ export class Session {
     }
     turn.finalized = true
     this.options.approval.cancelAll?.()
+    this.approvalForMemory = undefined
+    for (const listener of this.toolPreviewListeners) listener([])
     if (turn.cancelTimer) clearTimeout(turn.cancelTimer)
     if (this.pendingApproval) {
       this.pendingApproval.resolve({ outcome: 'cancelled', via: 'user' })
@@ -751,6 +812,7 @@ export class Session {
     this.setState('idle')
     this.emit({
       type: 'turn_finalized',
+      finishedAt: Date.now(),
       turnId: turn.id,
       outcome,
       ...(error ? { error } : {}),

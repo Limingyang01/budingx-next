@@ -1,7 +1,7 @@
-import { Box, Text, useInput, usePaste } from 'ink'
-import { useEffect, useRef, useState } from 'react'
+import { Box, Text, type Key } from 'ink'
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import type { ModelProfile } from '../storage/config-store.js'
-import { profileHost, startupProfile } from '../storage/profiles.js'
+import { profileCredentialBinding, profileCredentialRef, startupProfile } from '../storage/profiles.js'
 import type { CommandContext } from './commands.js'
 import {
   loadModelIds, providerTemplates, removeModel, saveModel, selectProfile, testProfile,
@@ -18,13 +18,20 @@ function textField(field: Field): field is TextField {
   return field === 'label' || field === 'baseUrl' || field === 'model' || field === 'apiKey'
 }
 
+export type ModelManagerInput = {
+  key: (text: string, key: Key) => void
+  paste: (text: string) => void
+}
+
 export function ModelManager({
   context,
   close,
+  input,
   readClipboard
 }: {
   context: CommandContext
   close: (notice?: string) => void
+  input: RefObject<ModelManagerInput | undefined>
   readClipboard: () => string | undefined
 }) {
   const [view, setView] = useState<View>('list')
@@ -33,6 +40,7 @@ export function ModelManager({
   const [caret, setCaret] = useState(0)
   const [draft, setDraft] = useState<ModelDraft | undefined>()
   const [modelIds, setModelIds] = useState<string[]>([])
+  const [marked, setMarked] = useState<string[]>([])
   const [filter, setFilter] = useState('')
   const [suggested, setSuggested] = useState(false)
   const [notice, setNotice] = useState('')
@@ -50,8 +58,17 @@ export function ModelManager({
   }
   const config = context.getConfig()
   const effectiveDefault = startupProfile(file)?.id
-  const profile = file.models[Math.min(index, file.models.length - 1)]
-  const editedProfile = file.models.find((item) => item.id === draft?.id)
+  const grouped = new Map<string, ModelProfile[]>()
+  for (const item of file.models) {
+    const ref = profileCredentialRef(item)
+    const group = grouped.get(ref)
+    if (group) group.push(item)
+    else grouped.set(ref, [item])
+  }
+  const profiles = Array.from(grouped.values()).flat()
+  const profile = profiles[Math.min(index, profiles.length - 1)]
+  const editedProfile = file.models.find((item) => item.id === (draft?.id ?? draft?.attachTo))
+  const sharedCount = editedProfile ? grouped.get(profileCredentialRef(editedProfile))?.length ?? 0 : 0
   const alternatives = file.models.filter((item) => item.id !== draft?.id)
   const filtered = modelIds.filter((id) => id.toLowerCase().includes(filter.toLowerCase()))
   const field = fields[fieldIndex]
@@ -68,7 +85,7 @@ export function ModelManager({
       if (controller.signal.aborted) return
       const status = /^HTTP \d+$/.test(error?.message ?? '') ? String(error.message) : ''
       setNotice(status === 'HTTP 401' || status === 'HTTP 403'
-        ? pick('鉴权失败，请检查 API Key 和端点', 'Authentication failed; check API key and endpoint')
+        ? pick('鉴权失败，请检查 API Key、端点和套餐', 'Authentication failed; check API key, endpoint and plan')
         : pick('请求失败，可重试或手动输入模型 ID', 'Request failed; retry or enter the model ID manually')
           + (status ? ' (' + status + ')' : ''))
     }).finally(() => {
@@ -130,6 +147,7 @@ export function ModelManager({
       return
     }
     if (view !== 'form' || !draft || !textField(field)) return
+    if (draft.attachTo && (field === 'baseUrl' || field === 'apiKey')) return
     const chars = Array.from(draft[field])
     const added = Array.from(text).slice(0, Math.max(0, 4096 - chars.length))
     chars.splice(caret, 0, ...added)
@@ -148,6 +166,7 @@ export function ModelManager({
         return
       }
       setModelIds(models)
+      setMarked((value.modelIds ?? []).filter((model) => models.includes(model)))
       setSuggested(result.suggested)
       setFilter('')
       setIndex(0)
@@ -161,8 +180,12 @@ export function ModelManager({
       const result = await testProfile(context, value, signal)
       if (signal.aborted) return
       if (result.errorClass === 'auth') {
-        setNotice(pick('鉴权失败，请检查 API Key 和端点', 'Authentication failed; check API key and endpoint'))
+        setNotice(pick('鉴权失败，请检查 API Key、端点和套餐', 'Authentication failed; check API key, endpoint and plan'))
         if (view === 'form') setFocus(3)
+      } else if (result.reasoningOnly) {
+        setNotice(pick('已连接，探测仅返回思考内容。可保存后试聊。', 'Connected; probe returned reasoning only. Save and try a chat.'))
+      } else if (result.errorClass === 'tool_unsupported' && result.supportsTools === false) {
+        setNotice(pick('聊天已连接，工具调用未通过', 'Chat connected; tool calls did not pass'))
       } else if (result.ok) {
         const toolsMissing = value.tools && result.supportsTools === false
         setNotice(toolsMissing
@@ -189,8 +212,7 @@ export function ModelManager({
     }
   }
 
-  usePaste(insert)
-  useInput((text, key) => {
+  function handleKey(text: string, key: Key) {
     if (key.escape || key.ctrl && text === 'c') {
       if (action.current) { cancelRequest(); return }
       if (view === 'models') {
@@ -216,9 +238,13 @@ export function ModelManager({
       } else if (key.return && view === 'templates') {
         const template = providerTemplates[index]
         form(profileDraft(undefined, template.baseUrl), template.baseUrl ? 3 : 0, Boolean(template.baseUrl))
-      } else if (key.return && view === 'models' && draft && filtered[index]) {
-        const model = filtered[index]
-        setDraft({ ...draft, model })
+      } else if (view === 'models' && text === ' ' && filtered[index] && !key.ctrl && !key.meta) {
+        const id = filtered[index]
+        setMarked((previous) => previous.includes(id) ? previous.filter((item) => item !== id) : [...previous, id])
+      } else if (key.return && view === 'models' && draft && (marked.length || filtered[index])) {
+        const picks = marked.length ? marked : [filtered[index]]
+        const model = draft.id && marked.length && draft.model ? draft.model : picks[0]
+        setDraft({ ...draft, model, modelIds: picks.filter((item) => item !== model) })
         setView('form')
         setField(fields.indexOf('use'))
       } else if (key.return && view === 'delete' && draft?.id) {
@@ -240,7 +266,7 @@ export function ModelManager({
     if (view === 'orphans') {
       if (key.return) {
         try {
-          for (const id of context.credentialStore.orphanIds(context.configStore.load().models.map((item) => item.id))) {
+          for (const id of context.credentialStore.orphanIds(context.configStore.load().models.map(profileCredentialRef))) {
             context.credentialStore.remove(id)
           }
           list()
@@ -265,7 +291,7 @@ export function ModelManager({
         setView('templates')
       } else if (command === 'o') {
         try {
-          setOrphanCount(context.credentialStore.orphanIds(file.models.map((item) => item.id)).length)
+          setOrphanCount(context.credentialStore.orphanIds(file.models.map(profileCredentialRef)).length)
           setView('orphans')
         } catch { setNotice(pick('无法读取凭据', 'Could not read credentials')) }
       } else if (profile) {
@@ -276,7 +302,12 @@ export function ModelManager({
             close(pick('已切换模型', 'Model selected'))
           } catch { setNotice(pick('无法读取档案凭据', 'Could not read profile credentials')) }
         } else if (command === 'e') form(profileDraft(profile), 1)
-        else if (command === 't') test(profileDraft(profile))
+        else if (command === 'a') {
+          const next = { ...profileDraft(), attachTo: profile.id, updatedAt: profile.updatedAt,
+            baseUrl: profile.baseUrl, startupDefault: false, tools: profile.capabilities.tools }
+          form(next, 1)
+          loadModels(next)
+        } else if (command === 't') test(profileDraft(profile))
         else if (command === 's') {
           try {
             const saved = context.configStore.load()
@@ -311,7 +342,7 @@ export function ModelManager({
       if (text === ' ') setDraft({ ...draft, [field]: !draft[field] })
       return
     }
-    if (!textField(field)) return
+    if (!textField(field) || draft.attachTo && (field === 'baseUrl' || field === 'apiKey')) return
     const chars = Array.from(draft[field])
     if (key.leftArrow || key.rightArrow || key.home || key.end) {
       setCaret(key.home ? 0 : key.end ? chars.length : Math.max(0,
@@ -327,6 +358,13 @@ export function ModelManager({
         setCaret(start)
       }
     } else if (!key.ctrl && !key.meta) insert(text)
+  }
+
+  // The app retains its terminal subscriptions. Register this modal's
+  // handlers during layout, before a rendered panel can receive input.
+  useLayoutEffect(() => {
+    input.current = { key: handleKey, paste: insert }
+    return () => { input.current = undefined }
   })
 
   const label: Record<Field, string> = {
@@ -342,8 +380,10 @@ export function ModelManager({
     if (fieldName === 'apiKey') {
       if (draft.apiKey) return pick('已输入（隐藏）', 'Entered (hidden)')
       try {
-        const host = new URL(draft.baseUrl).host
-        return draft.id && context.credentialStore.get(draft.id, host)
+        const configured = editedProfile && context.credentialStore.get(
+          profileCredentialRef(editedProfile), profileCredentialBinding(editedProfile, draft.baseUrl)
+        )
+        return configured
           ? pick('已设置', 'Configured')
           : pick('粘贴密钥', 'Paste key')
       } catch { return pick('粘贴密钥', 'Paste key') }
@@ -368,18 +408,22 @@ export function ModelManager({
       <Text bold>{pick('模型管理', 'Model management')}</Text>
       {view === 'list' && <>
         {file.models.length === 0 && <Text dimColor>{pick('暂无模型档案', 'No profiles yet')}</Text>}
-        {choices(file.models.map((model) =>
-          model.label + ' · ' + model.model
-          + (config.profileId === model.id ? pick(' [当前]', ' [current]') : '')
-          + (effectiveDefault === model.id ? pick(' [默认]', ' [default]') : '')
-        ))}
+        {choices(profiles.map((model) => {
+          const members = grouped.get(profileCredentialRef(model)) ?? []
+          const shared = members.length > 1
+            ? pick(' [共享 · ', ' [shared · ') + members[0].label + ']'
+            : ''
+          return model.label + ' · ' + model.model + shared
+            + (config.profileId === model.id ? pick(' [当前]', ' [current]') : '')
+            + (effectiveDefault === model.id ? pick(' [默认]', ' [default]') : '')
+        }))}
         <Text wrap="wrap" dimColor>{pick(
           '↑↓ 选择  Enter 使用  N 新建  E 编辑  D 删除',
           '↑↓ Select  Enter Use  N New  E Edit  D Delete'
         )}</Text>
         <Text wrap="wrap" dimColor>{pick(
-          'T 测试  S 设为默认  O 孤儿凭据  Esc 返回',
-          'T Test  S Set default  O Orphan keys  Esc Back'
+          'A 添加同组模型  T 测试  S 设为默认  O 孤儿凭据  Esc 返回',
+          'A Add to provider  T Test  S Set default  O Orphan keys  Esc Back'
         )}</Text>
       </>}
       {view === 'templates' && <>
@@ -388,25 +432,35 @@ export function ModelManager({
         <Text dimColor>{pick('↑↓ 选择  Enter 确认  Esc 返回', '↑↓ Select  Enter Confirm  Esc Back')}</Text>
       </>}
       {view === 'form' && draft && <>
-        <Text>{draft.id ? pick('编辑模型', 'Edit model') : pick('新增模型', 'Add model')}</Text>
+        <Text>{draft.attachTo ? pick('添加同组模型（沿用已存端点与密钥）', 'Add to provider (uses saved endpoint and key)')
+          : draft.id ? pick('编辑模型', 'Edit model') : pick('新增模型', 'Add model')}</Text>
+        {draft.id && sharedCount > 1 && (
+          <Text dimColor>{pick('端点和密钥供同组模型共享', 'Endpoint and key are shared by this group')}: {sharedCount}
+          </Text>
+        )}
+        {Boolean(draft.modelIds?.length) && (
+          <Text wrap="truncate-end">{pick('同时添加', 'Also add')}: {draft.modelIds?.join(', ')}</Text>
+        )}
         {fields.map((fieldName, i) => (
           <Text key={fieldName} wrap="truncate-end" inverse={fieldIndex === i}>
             {fieldIndex === i ? '> ' : '  '}{label[fieldName]}{formValue(fieldName) && '  ' + formValue(fieldName)}
           </Text>
         ))}
         {editedProfile && draft.baseUrl && (() => {
-          try { return new URL(draft.baseUrl).host !== profileHost(editedProfile) } catch { return false }
+          try { return profileCredentialBinding(editedProfile, new URL(draft.baseUrl).toString().replace(/\/+$/, '')) !== profileCredentialBinding(editedProfile) } catch { return false }
         })() && <Text>{pick('端点主机已变化，请录入新密钥', 'Endpoint host changed; enter the new key')}</Text>}
         <Text wrap="wrap" dimColor>{pick('Tab / ↑↓ 移动  Enter 确认  Esc 返回', 'Tab / ↑↓ Move  Enter Confirm  Esc Back')}</Text>
       </>}
       {view === 'models' && <>
         {suggested && <Text dimColor>{pick('该端点未提供模型列表，以下为建议 ID', 'This endpoint does not list models; these are suggested IDs')}</Text>}
         <Text wrap="truncate-end">{pick('筛选', 'Filter')} ({filtered.length}/{modelIds.length}): {filter}</Text>
-        {choices(filtered)}
-        <Text dimColor>{pick('输入筛选  ↑↓ 选择  Enter 使用 ID  Esc 手填', 'Type to filter  ↑↓ Select  Enter Use ID  Esc Manual')}</Text>
+        {choices(filtered.map((id) => (marked.includes(id) ? '[x] ' : '[ ] ') + id))}
+        <Text dimColor>{pick('输入筛选  空格多选  Enter 确认  Esc 手填', 'Type to filter  Space marks  Enter Confirm  Esc Manual')} ({marked.length})</Text>
       </>}
       {view === 'delete' && draft && <>
-        <Text wrap="truncate-end">{pick('删除档案和密钥', 'Delete profile and key')}: {draft.label}</Text>
+        <Text wrap="truncate-end">{sharedCount > 1
+          ? pick('删除模型，共享密钥继续供其他模型使用', 'Delete model; the shared key remains')
+          : pick('删除档案和密钥', 'Delete profile and key')}: {draft.label}</Text>
         {(config.profileId === draft.id || effectiveDefault === draft.id)
           ? choices([pick('不使用替代', 'No replacement'), ...alternatives.map((item) => item.label)])
           : choices([pick('确认删除', 'Confirm deletion')])}

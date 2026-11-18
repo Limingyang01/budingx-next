@@ -70,6 +70,27 @@ npm run merge:gate    # 见 §6
 
 见 `artifacts/merge-gate/` 下对应报告。门禁检查项：`npm test`、`npm run spec:check`、`npm run skills:check`、`node scripts/release/pack-smoke.mjs`，四项退出码均为 0。
 
+## 6.1 master 前进后的合并与复验（2026-11-18 晚间）
+
+master 在本轮文档完成后推进至 `e808679`（0.3.5 已发布、0.3.6 候选，30 个提交），本分支已合并 master 并复验。合并内容与影响：
+
+| 项 | 结果 |
+| --- | --- |
+| 合并冲突 | 2 处（`PRODUCT.md` 与 `docs/current-status.md` 的版本/状态抬头），均取 master 的较新版本元数据并叠加还原度内容，**无内容丢失** |
+| 自动合并 | `docs/iteration-plan.md`、`docs/index.md` 无冲突自动合并，master 的 SP003 更新与本轮还原度节并存 |
+| 新增运行时依赖 | master 引入 `marked@18.2.1`、`lowlight@3.3.0`；合并后 `npm install` 已同步（8 added / 7 changed / 0 vulnerabilities） |
+| 构建 | `npm run build` 通过（tsc 0 error） |
+| 产品单元 | **359 项全部通过**（合并前 332；master 新增 27 项会话排版/模型管理用例） |
+| spec 门禁 | OK（能力清单 91 项：必交 49 / 建议 26 / 可选 9 / 范围外 7；任务清单自洽） |
+| skills 门禁 | 通过（Skill entries are current） |
+| 交叉验证门禁 | **GATE GREEN**（npm test / spec:check / skills:check / pack-smoke 四项退出码均为 0） |
+
+**对 SP004 的实质影响**（已写入设计 §9.7.5）：
+
+- `src/workspace/policy.ts` 的 `nextMode` 改为仅 `workspace_edit ↔ full_access` 两档轮播；**三档模式本身不变**，变的是交互轮播路径 → 本轮 §4.5 权限接线须按新语义核对。
+- 新增 `autoAcceptWorkspaceEdits` 快路径与敏感目标判定 → 本轮 `src/exec` 的命令写入判定须复用，不得自行放行。
+- `src/core` 的 session/normalize/events/permissions 均有改动 → T1 新增 core 端口须按新基线核对合并点。
+- TUI 新增折叠汇总、虚拟列表、转录、Markdown、diff 着色、鼠标滚轮 → T15 卡片应复用，不另起一套；还原度 P0 缺口相应收窄（基线 §3.6）。
 ## 7. 结论与下一轮输入
 
 - **本轮结论**：规划与文档对齐完成，自动化门禁全绿；**产品实现未开始**，SP004 的 48 条 AC 全部待实施后验证。

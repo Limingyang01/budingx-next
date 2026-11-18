@@ -130,6 +130,17 @@ export function profileHost(profile: ModelProfile): string {
   return new URL(profile.baseUrl).host
 }
 
+/** Legacy profiles used the profile ID. Only explicit, generated group refs share credentials. */
+export function profileCredentialRef(profile: ModelProfile): string {
+  return /^group:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(profile.apiKeyRef)
+    ? profile.apiKeyRef
+    : profile.id
+}
+
+export function profileCredentialBinding(profile: ModelProfile, baseUrl = profile.baseUrl): string {
+  return profileCredentialRef(profile) === profile.id ? new URL(baseUrl).host : baseUrl
+}
+
 export function maskKey(key: string | undefined): string {
   if (!key) return '(not set)'
   if (key.length <= 4) return '***'

@@ -9,7 +9,7 @@
 - 兼容破坏增加 major（在 0.x 开发阶段也可按 minor 体现，必须显式记录迁移）；1.0.0 仅可在 SP016 完整替代验收达标时准备，仍须有实际验收证据。
 - prepare 只准备版本、台账和发行说明，不提交、不打 tag、不上传。发布命令不自行 bump，版本重复拒绝，预发布用明确 tag。
 - 同一 SP 可多次发布，SP 状态、产品版本、发布状态分开记录；发布失败不把已占用版本重新使用。
-- src/tui/package.json 的 version 是产品版本源；release-ledger.json 记录迭代及 prepared/published 状态；release-notes/v<version>.md 记录用户变化、限制和验收。根维护包版本不是产品版本。
+- src/tui/package.json 的 version 是产品版本源；release-ledger.json 记录迭代及发布状态（prepared、published、superseded）；release-notes/v<version>.md 记录用户变化、限制和验收。根维护包版本不是产品版本。
 
 未来暂缓各端（Desktop/VSIX 等，r6）恢复加入时，从已准备 release manifest 同步公共兼容版本；各端制品/发布通道和是否交付分别记录，不因 TUI 发包宣称 Desktop/VSIX 已发布。协议/存储 schema 版本独立演进并提供迁移，不能用 npm 版本代替数据版本。
 
@@ -17,7 +17,7 @@
 
 规范依据：[npm SemVer 说明](https://docs.npmjs.com/about-semantic-versioning/)。
 
-准备工具入口为 `npm run version:prepare -- kind --iteration SPnnn`，替换为已确定的类型/迭代；当前 0.3.0（SP003）为 prepared，上一版 0.2.0 已 published。待 0.3.0 发布并核实回执后，同轮修复使用 patch，新 SP 首次交付使用 minor。要求当前版本有 published 回执且无未处理 prepared 版本；保留台账未知字段。命令不修改根维护包版本或执行 Git 写操作。
+准备工具入口为 `npm run version:prepare -- kind --iteration SPnnn`，替换为已确定的类型/迭代；SP003 的 0.3.5 已发布并核对回执。同轮修复使用 patch，新 SP 首次交付使用 minor。要求当前版本有 published 回执且无未处理 prepared 版本；保留台账未知字段。命令不修改根维护包版本或执行 Git 写操作。
 
 ## Actions 发布回执
 

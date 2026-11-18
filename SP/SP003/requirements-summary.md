@@ -61,3 +61,37 @@ SP003 验收修复 `9e3984c` 已由 `598fb89` 合入 master。合并后干净工
 ## 模型管理面板修复
 
 用户确认以 `/models` 替代旧模型维护命令，支持档案新增、编辑、删除、切换和连接测试，另要求国产供应商模板、自动发现和 Custom。使用说明按迭代重整，编写规范沉淀到项目文档。实施分支 `fix/SP003/model-management`，目标发布 0.3.1，版本准备另行执行。详见 [设计增补](design/design.zh.md#模型管理面板修复目标-031)、[实施计划](design/plan.zh.md#031-模型面板修复任务)和 [验证报告](test-report.md)。
+
+模型管理修复已由 `8556ba4` 合入 master。合并后全量测试 375 项通过；0.3.0 已核实为已发布，0.3.1 已由 GitHub Actions 发布，官方源安装、运行和来源核验通过，npm latest 已指向 0.3.1。见 [0.3.1 发行说明](../../release-notes/v0.3.1.md)。
+
+## 0.3.2 厂商兼容修复
+
+独立分支 `fix/SP003/minimax-032`。MiniMax 探测与中国站模板，以及百炼 Token Plan 地址区分，范围与验证见[发行说明](../../release-notes/v0.3.2.md)。
+
+用户要求纳入同一 0.3.2：供应商端点和 Key 配置一次，支持多选保存或 A 添加同组模型。独立账号和套餐保持隔离，旧档案可继续使用。
+
+### 0.3.2 全屏会话
+
+首屏占满交互终端，顶部显示版本和模型，底部固定输入框并提示 Shift+Tab。支持应用标题更新的终端标签应显示会话主题和工作状态。详见[产品说明书](../../PRODUCT.md#534-全屏会话与终端标签032)。
+
+0.3.2 已从 master 发布，npm latest、官方包安装与运行及 provenance 已核对。见 [0.3.2 发行说明](../../release-notes/v0.3.2.md)和[GitHub Actions #12](https://github.com/Limingyang01/budingx-next/actions/runs/44248899298)。
+
+SP003 权限模式与会话体验已发布为 [0.3.4](../../release-notes/v0.3.4.md)，npm latest、官方安装与 provenance 已核对。会话修复来自原 0.3.3 候选。[GitHub Actions #13](https://github.com/Limingyang01/budingx-next/actions/runs/44257392923)
+
+权限模式持久化与配色纳入 SP003。进展见 [permission-controls 状态](permission-controls/STATUS.md#权限模式持久化与配色)。
+
+## 会话排版与状态栏精修
+
+在 SP003 验收中补齐以下细节。已合入 master 并随 [0.3.5](../../release-notes/v0.3.5.md) 发布，npm latest 和官方安装已核对。[GitHub Actions #14](https://github.com/Limingyang01/budingx-next/actions/runs/44262744543)
+
+- 用户提问有独立的底色和前导符号，去掉「你」字样。支持多行、窄屏折行和队列注入。
+- 助手回答按 Markdown 展示标题、强调、列表、链接、表格和代码。代码内的特殊字符原样呈现。
+- 完成、用时和时刻降为辅助信息。底部在空闲时只保留模式及快捷键，模式采用短标签且全自动有红色文字提醒。
+
+## REPL 交互对齐
+
+用户要求对齐旧 TUI 的对话显示与操作。本轮补齐滚轮回看、固定输入区、主题色进度、工具状态和两档权限，并保留现有 Provider 协议和发布入口。详见 [验证报告](test-report.md#repl-交互对齐)。
+
+阶段状态和逐项验收见 [SP002 与 SP003 旧 TUI 差异清单](repl-alignment-gap-checklist.md)。
+
+本轮 REPL 修复已合入 master，纳入 [0.3.6 发布候选](../../release-notes/v0.3.6.md)。

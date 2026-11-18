@@ -104,6 +104,7 @@ export type TurnFinalizedEvent = {
   type: 'turn_finalized'
   turnId: string
   outcome: TurnOutcome
+  finishedAt: number
   error?: ErrorInfo
   usage?: Usage
   restoreText?: string
@@ -111,7 +112,7 @@ export type TurnFinalizedEvent = {
 
 export type SessionEvent =
   | { type: 'conversation_cleared' }
-  | { type: 'turn_started'; turnId: string; snapshot: TurnSnapshot }
+  | { type: 'turn_started'; turnId: string; snapshot: TurnSnapshot; userText: string; startedAt: number }
   | { type: 'text_delta'; turnId: string; messageId: string; text: string }
   | { type: 'thinking_delta'; turnId: string; messageId: string; text: string }
   | {
@@ -158,6 +159,7 @@ export type SessionEvent =
       type: 'input_injected'
       turnId: string
       queueId: string
+      text: string
       boundary: 'intra_turn' | 'inter_turn'
     }
   | { type: 'status'; state: SessionState; note?: string }

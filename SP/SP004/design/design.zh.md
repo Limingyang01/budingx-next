@@ -925,6 +925,19 @@ export type GitStatus = {
 - 不改四区骨架的布局结构；本轮只增加卡片**内容**，不改现有行的排布机制。
 - 不做 Vim 模式、鼠标选区、备用屏（R-A 可选项，非 P0/P1 门槛）。
 
+### 9.7.5 master 前进对本轮的影响（2026-11-18 晚间同步）
+
+本轮设计初稿基于 master `8556ba4`。master 已推进至 `e808679`（0.3.5 已发布、0.3.6 候选，30 个提交），以下变化**直接影响本轮实现**，实施时以新基线为准：
+
+| 变化 | master 现状 | 对 SP004 的影响 |
+| --- | --- | --- |
+| **权限模式轮播** | `src/workspace/policy.ts` 的 `nextMode` 改为仅 `workspace_edit ↔ full_access` 两档循环（`read_only` 不再进入 Shift+Tab 轮播）；三档模式枚举与 `MODES_ZH`/`MODES_EN` 标签仍在 | 本轮 §4.5 权限接线与 §6.2 计划模式闸门须按新轮播语义核对；**三档模式本身不变**（用户固定的仅可查看/工作区内修改/完全权限），变的是交互轮播路径 |
+| **交互式写入快路径** | 新增 `autoAcceptWorkspaceEdits` 选项：交互态下工作区普通写入可免审批，但**敏感目标**（`.git`/`.vscode`/`.idea`/`.claude`/`.codex`/`.agents`/`.github/workflows`/`.gitconfig`/`.mcp.json` 等）仍单独判定 | 本轮 `src/exec` 的命令写入判定须复用该快路径与敏感目标判定，**不得自行放行**；底线规则优先级不变 |
+| **`src/core` 契约扩展** | `session.ts`（+70 行）、`normalize.ts`、`events.ts`、`permissions.ts` 均有改动 | 本轮 T1 新增的 `core/exec.ts`、`core/plan.ts`、`core/coding.ts` 与既有 session/permissions 契约的合并点须按新基线核对，避免覆盖 master 的新增字段 |
+| **TUI 渲染能力** | 新增 `render/history-window.tsx`（折叠汇总 + 虚拟列表）、`render/transcript.tsx`（Markdown + 转录）、`editor/mouse.ts`（滚轮）；diff-view 引入 `lowlight` | 本轮 T15 卡片渲染应**复用**这些既有能力，不另起一套；还原度 P0 缺口相应收窄（见[还原度基线](../../../docs/tui-fidelity-gap-baseline.md)§3.6） |
+| **新增运行时依赖** | `marked@18.2.1`、`lowlight@3.3.0`（master 引入，已登记第三方声明） | 本轮**不新增**运行时依赖；若卡片需要 Markdown/着色，复用既有依赖 |
+
+**实施前置**：SP004 开跑前须在 `master`/`e808679` 基线上重新核对 §4.5、§6.2 的权限接线与 T1 的 core 端口合并点；本文其余设计（命令执行契约、Git 安全、计划/追问、卡片最小形态）不受影响。
 ### 9.7.4 边界（不因还原要求放宽）
 
 - 权限模式仍固定三档；参考仓 7 模式仅作安全底线语义来源（deny 规则、凭据保护），**不还原模式数量**。

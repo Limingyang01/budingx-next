@@ -53,8 +53,9 @@ export type ApiToolCall = {
 }
 
 export type ApiMessage =
+  | { role: 'system'; content: string }
   | { role: 'user'; content: string }
-  | { role: 'assistant'; content: string | null; tool_calls?: ApiToolCall[] }
+  | { role: 'assistant'; content: string | null; tool_calls?: ApiToolCall[]; reasoning_content?: string }
   | { role: 'tool'; tool_call_id: string; content: string }
 
 export type ChatRequest = {
@@ -88,5 +89,6 @@ export type ProviderEvent =
   | { type: 'failed'; error: ProviderError }
 
 export interface ModelProvider {
+  preserveToolReasoning?(model: string): boolean
   stream(request: ChatRequest): AsyncGenerator<ProviderEvent>
 }

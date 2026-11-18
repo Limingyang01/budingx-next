@@ -756,3 +756,31 @@ test('live 回归：工具 schema 从 handler 传到实际 Provider 请求', asy
   await end
   assert.deepEqual(calls[0].tools[0].parameters, parameters)
 })
+
+test('same-profile tool continuations carry opt-in reasoning and a switched profile does not', async (t) => {
+  let snapshot = { ...SNAPSHOT }
+  const { provider, calls } = scriptProvider([
+    [
+      { type: 'thinking_delta', text: 'vendor negotiation' },
+      { type: 'tool_call_delta', index: 0, callId: 'remember', nameDelta: 'echo', argsDelta: '{}' },
+      { type: 'message_completed', finishReason: 'tool_calls' }
+    ],
+    [{ type: 'text_delta', text: 'done' }, { type: 'message_completed', finishReason: 'stop' }]
+  ])
+  const session = new Session({
+    provider: { ...provider, preserveToolReasoning: () => true },
+    tools: [{ name: 'echo', describe: () => 'echo', execute: async () => 'result' }],
+    approval: approvalGateway({ outcome: 'allow', via: 'user' }).gateway,
+    resolveSnapshot: () => snapshot
+  })
+  t.after(() => session.dispose())
+  let finished = waitFor(session, (event) => event.type === 'turn_finalized')
+  session.submit('use the tool')
+  await finished
+  assert.equal(calls[1].messages.find((item) => item.tool_calls)?.reasoning_content, 'vendor negotiation')
+  snapshot = { ...snapshot, modelId: 'm2' }
+  finished = waitFor(session, (event) => event.type === 'turn_finalized')
+  session.submit('new profile')
+  await finished
+  assert.ok(calls[2].messages.every((item) => !('reasoning_content' in item)))
+})

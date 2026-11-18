@@ -208,3 +208,117 @@ npm run merge:gate     # 见 §6
 | 真实账号和终端 | UNVERIFIED | 恢复条件是用各模板的授权测试 Key 验证实际模型可用性，并用 Windows Terminal 与 ConHost 手动验证输入法、剪贴板和窄屏。 |
 
 专项回归 54 项通过，随后命令专项为 14 项通过（新增文档覆盖、发现路由和默认选择断言）。交叉验证对提交后精确内容执行并生成 `artifacts/merge-gate/` 回执。实现独立编写；未复制旧仓源码、未新增依赖或读取实际用户凭据。回退以该 fix 提交为界；无自动配置迁移和 npm 上传。
+
+## 0.3.1 合并与发布准备
+
+- `fix/SP003/model-management` 的 `8902b24` 门禁 GREEN，合并提交为 `8556ba4489c59278c5f833b3ef0955c70bea71b0`。检出精确合并提交后以 `CI=true npm test` 重跑，375 项通过、0 失败、0 跳过，模块边界检查通过。
+- 0.3.0 的 Windows、Linux 和 OIDC 发布见 [GitHub Actions #9](https://github.com/Limingyang01/budingx-next/actions/runs/44218571836)。官方隔离安装及 HTTP 冒烟通过，核验 46 个 registry signatures、5 个 attestations；provenance 的源码、工作流、运行和 SHA-512 与已发布包一致。原 CI artifact 下载需认证（HTTP 401），台账以公开来源及实际安装证据回填。
+- 同轮修复使用 `npm run version:prepare -- patch --iteration SP003` 准备 0.3.1。发布预演对精确准备提交执行，回执保存在忽略目录 `artifacts/release/`；实际发布由维护者在 GitHub 手动触发。更新了产品使用说明的发布版本提示，按迭代归类及文档编写规范继续保留。
+- 首次 0.3.1 发布预演检出了伪终端模型输入测试的时序问题，写入档案前测试读取了结果。辅助流程改为逐步等待面板、字段焦点和保存回显，原有密钥持久化及隐藏断言保留。最终候选重新执行发布预演。
+
+## 0.3.1 公开发布回执
+
+- [GitHub Actions #11](https://github.com/Limingyang01/budingx-next/actions/runs/44229230445) 从 `314fedf0a84b74b40a1b077de5dfcbeaeaa97a78` 完成 Windows、Linux 阶段和 OIDC 发布。公共 npm 发布于 `2026-11-18T03:20:51.605Z`，dist-tag `latest` 核对为 `0.3.1`。
+- 官方源隔离安装通过，绝对路径 npm shim 输出 `0.3.1`，管道 `/models` 与本地 HTTP 流式请求通过。npm 验证 46 个 registry signatures 和 5 个 attestations。SHA-512 与候选预演、npm 安装锁和 provenance 的 subject 一致，provenance 工作流、源码和运行 URL 核对通过。
+- CI 原始 artifact 下载返回 HTTP 401。发布台账保留该证据边界，并记录公开 provenance 和独立安装，不代替真实 Provider 或终端输入法验证。
+
+## 0.3.2 厂商模板与连接兼容修复
+
+分支 `fix/SP003/minimax-032`，基线 `af6b6d3`。用户确认 Qwen 已改用 Token Plan 地址后可调用。0.3.2 在独立分支准备，当前 npm latest 仍为 0.3.1。
+
+| 项 | 结论 | 证据 |
+| --- | --- | --- |
+| MiniMax 探测 | PASS | 低预算以及仅有思考内容的两条 fixture 在旧代码上复现失败。新实现采用有界 completion 预算和低思考档，覆盖正文、仅思考及真实工具回填判断。 |
+| 档案模板与列表 | PASS | 伪 TTY 验证 MiniMax 中国站和 Qwen Token Plan 从模板、隐藏粘贴 Key 到选择并应用。命令回归覆盖百炼工作空间 URL、Token Plan 专用 URL、列表缺失建议和 401 不降级。 |
+| 工具续跑 | PASS | 同档案、主机和模型的工具回合携带 opt-in 思考；切换档案后省略。非 MiniMax 请求形状保持。 |
+| 外部 Provider | UNVERIFIED | 恢复条件是用对应地域与套餐的授权 Key，在 MiniMax 中国站与百炼 Token Plan 验证实际连接和真实工具往返。此轮没有读取用户 Key。 |
+
+专项 55 项与模型面板 5 项均通过。交叉验证和真实制品 dry-run 在该修复分支的确切提交上运行，回执位于忽略的 `artifacts/`。产品说明与模板迁移见 [0.3.2 发行说明](../../release-notes/v0.3.2.md)。
+- 首次全量门禁复现模型面板刚显示时首个快捷键丢失（Ink 子视图的输入事件通过被动 effect 注册）。改为主应用维持输入监听，模型面板在布局阶段接管处理；回归保留原输入与持久化断言。
+
+### 0.3.2 模型共享回归
+
+- 红绿验证覆盖批量建档只保存一份 Key、同组切换与删到最后一个才移除密钥，以及已有单模型档案显式添加同组、同端点的独立账号互不共享。
+- 模拟真实配置保存失败后验证恢复旧 Key。更换同域名的端点路径时共享 Key 不沿用，活动档案也刷新。CLI 子进程从独立临时 home 启动，切换同组模型后本地 HTTP fixture 验证 Authorization。
+- 伪 TTY 验证空格多选、筛选后保留已选模型、批量保存、A 添加同组沿用 Key，密钥不回显。专项命令与 CLI 25 项通过，模型面板 6 项通过。没有新增依赖和持久化格式版本，也未读取实际用户配置。
+- 原 0.3.2 候选仍为 prepared，最终提交重跑门禁与 dry-run。真实厂商回执和 Windows 真终端输入法仍待对应环境验证。
+
+### 0.3.2 全屏与会话标签回归
+
+`npm run build` 通过。使用 `node --test src/tui/test/screen-e2e.test.mjs src/tui/test/header.test.mjs` 验证 26 项，通过 26 项，覆盖备用屏幕进入与退出、窗口缩放、Shift+Tab、长会话翻页和会话标题状态转换。Windows Terminal 实际标签观感与中文输入法仍待真终端验证。
+
+### 0.3.2 主线集成
+
+源提交 `edd6a4e` 的交叉验证门禁 GREEN，覆盖 5 个提交和 34 个文件。合并预演无冲突，已在独立工作树合入 master（合并提交 `35bb2a1`），确认合并结果与预演树一致。发布预演以最终 master 提交为准，回执留存在本地 `artifacts/release/`；正式发布由维护者在 GitHub Actions 手动触发。
+
+### 0.3.2 公开发布回执
+
+- [GitHub Actions #12](https://github.com/Limingyang01/budingx-next/actions/runs/44248899298) 使用源码 `027e0195bd7d188e2bd28fc658682c2fe6bb2547`，Windows、Linux 与 OIDC 发布作业均成功。npm 发布于 `2026-11-18T06:11:51.994Z`，`latest` 指向 `0.3.2`。
+- 官方源隔离安装通过。npm 命令入口返回 `0.3.2`，本地 HTTP 流式冒烟通过。已验证 46 个 registry signatures 和 5 个 attestations。SHA-512 与候选预演、安装锁和 provenance 的 subject 一致。provenance 的源码、工作流路径和运行地址与本次任务一致。
+- Actions 原始回执下载需登录（HTTP 401）。台账依据公开 provenance 和独立安装证据更新。本次发布验证沿用真实 Provider 和终端输入法的既有未验证范围。
+
+### 0.3.3 会话体验
+
+以 0.3.2 为基线，伪 TTY 的用户消息、计时和 Tab 续问用例及 HTTP 请求身份用例先失败。编译后运行 TUI、HTTP 与 CLI 三组专项用例，共 27 项通过。
+
+| 验收项 | 结果 | 证据 |
+| --- | --- | --- |
+| 提问、阶段和计时 | PASS | 伪 TTY 检查提问与回答顺序、思考阶段秒数递增、结束耗时及本地时刻。 |
+| 回答后可编辑续问 | PASS | 伪 TTY 检查 Tab 填入、填入后隐藏提示、会话发送次数仍为一次。 |
+| Budingx 身份和模型对话历史 | PASS | 本地 HTTP 检查 system 消息、模型切换、普通请求与故障恢复历史。 |
+| 真实模型与终端 | UNVERIFIED | 用实际供应商发起身份提问，并在 Windows Terminal 检查屏幕与输入法。 |
+
+自审确认变更集中于运行时事件、请求身份、TUI 与 0.3.3 发行文档。供模型调用的思考片段仍由已有会话逻辑管理，TUI 仅展示思考阶段。Tab 续问由本地规则生成。
+
+### 权限模式持久化与配色
+
+针对 PC-02 和 PC-11，先用伪 TTY 验证缺少配色和免审批提示，并在隔离用户目录复现重建运行时丢失模式。实现后，存储、运行时、审批和屏幕专项 54 项通过。
+
+- 交互运行时分别恢复只读、工作区内修改和完全权限。测试覆盖 `/permission` 切换、规则修改后保留偏好、管道启动不继承全自动、无效偏好和损坏规则回退、写入失败返回可供 TUI 提示的状态。
+- 伪 TTY 核对三种徽标的 ANSI 颜色、全自动文字、Shift+Tab 切换和 42 列缩放。完全权限仍通过已有凭据拒绝、审批边界和规则优先级回归。
+- 自审确认偏好与规则分文件写入，原子写入使用独立临时文件。PRODUCT.md、随包 README 和 PC-02/PC-11 已同步。Windows Terminal 实际配色观感为 UNVERIFIED，恢复条件为在真终端启动并切换三种模式。
+
+### 0.3.4 集成与发布准备
+
+权限模式分支 `1e35b36` 门禁 GREEN。合并预演与实际合并树一致，合并提交 `490166d` 中 391 项全量测试通过。用户确认 0.3.4 同时包含会话体验和权限模式，原 0.3.3 候选登记为 superseded。正式发布由维护者手动触发，最终候选的本地预演回执保存在 `artifacts/release/`。
+
+### 0.3.4 公开发布回执
+
+- [GitHub Actions #13](https://github.com/Limingyang01/budingx-next/actions/runs/44257392923) 从 `a68e6a179df6288f47d6dcca60bfcdd91c22d048` 完成 Windows、Linux 验证与 OIDC 发布。npm 发布时间为 `2026-11-18T07:19:20.042Z`，`latest` 指向 `0.3.4`。
+- 官方包隔离安装通过，命令入口返回 `0.3.4`，本地 HTTP 流式请求通过。在隔离用户目录保存完全权限后，管道启动仍显示只读。已验证 46 个 registry signatures 和 5 个 attestations。SHA-512 与候选预演、安装锁和 provenance 的 subject 一致。provenance 的源码、工作流和运行地址与本次发布一致。
+- Actions 原始回执下载需登录（HTTP 401）。发布台账依据公开 provenance 和官方包独立安装证据登记。真实供应商回答措辞和 Windows Terminal 实际显示仍待对应环境验证。
+
+### 会话排版与状态栏精修
+
+对照旧仓的独立用户消息组件、Markdown tokenizer 和辅助信息样式，沿用行为机制并用 BudingX 色彩独立实现。Markdown 解析使用公开的 Marked 18.2.1，未迁入旧仓产品代码。原用例在旧渲染上复现原始 Markdown、消息前缀和底部空闲状态。
+
+专项 36 项通过。伪 TTY 断言提问底色、去掉角色前缀、强调与代码呈现、完成行低亮度和只读短标签，并在 32 列检查折行。已回归模式颜色、全自动提示、权限切换、输入补全和历史滚动。Windows Terminal 实机显示为 UNVERIFIED，恢复条件为在真实终端比较常规与窄屏下的消息层级和配色。
+
+### 0.3.5 集成与发布准备
+
+源提交 `aad9a5b` 的交叉验证门禁为 GREEN，覆盖 3 个提交和 17 个文件。合并预演与实际合并树一致，合并提交为 `7f6c488`。发行说明记录 Markdown 排版、提问样式及状态栏调整，发布预演以最终准备提交为准。正式发布由维护者在 GitHub Actions 手动触发。
+
+### 0.3.5 公开发布回执
+
+- [GitHub Actions #14](https://github.com/Limingyang01/budingx-next/actions/runs/44262744543) 使用源码 `f2682cdce765339daf0bbb2a551f7f09751c5446`，Windows、Linux 与 OIDC 发布均成功。npm 发布时间为 `2026-11-18T08:01:03.067Z`，`latest` 指向 `0.3.5`。
+- 官方包隔离安装通过，命令入口返回 `0.3.5`，本地 HTTP 流式冒烟通过。已验证 47 个 registry signatures 和 6 个 attestations。SHA-512 与候选预演、安装锁和 provenance 的 subject 一致。provenance 的源码、工作流和运行地址均与本次发布一致。
+- Actions 原始回执下载需登录（HTTP 401）。台账根据已核验的公开 provenance 和官方包独立安装结果登记。Windows Terminal 的实际观感仍待实机确认。
+
+### REPL 交互对齐
+
+旧形态首先复现了滚轮未启用 SGR、进度位于输入下方和交互默认只读。伪终端回归覆盖分段滚轮数据、上下滚动、欢迎区随历史滚动、草稿保留、Ctrl+End 和退出禁用鼠标追踪。真实临时工作区回归覆盖普通写入直通、敏感目标请求审批及拒绝后磁盘保持不变。工具行回归检查运行脉动、成功绿色、失败红色以及隐藏请求 ID。
+
+自审确认改动位于 TUI、交互权限策略和文档，现有 Provider 事件与发布工作流未改。Windows Terminal 实际滚轮、配色和图标观感为 UNVERIFIED，恢复条件为在实机启动包含长历史的会话并分别触发成功和失败工具。
+
+同步回归 SP002，补齐输入下方排队预览、行首尾按键和输入分隔线。参见 [SP002 对照复验](../SP002/test-report.md#20-旧-tui-对照复验2026-11-18)。
+
+### REPL 差异清单复验
+
+- PC-06。普通许可的「本会话记住」会在写入成功后生效。强制审批只展示允许一次和拒绝。伪 TTY 验证在敏感请求按 2 时继续等待，目标仍未写入。
+- TC-02/03/04。虚拟窗口、未读计数、输入历史和转录搜索已通过 TUI 回归。工具接收参数、用时、状态与展开均通过现有会话的本地 fixture 验证。
+- FC-01/02。目录内前缀及模糊候选并存，候选继续受已有工作区限制。CP-08 窄屏详情按显示宽度折行，保证长行内容可读。常见代码按文件语言显示语法色，原文和纯文本 diff 形态保持不变。
+- 验收和剩余差异见 [SP002 与 SP003 清单](repl-alignment-gap-checklist.md)。真实终端滚动手感及颜色为 UNVERIFIED。
+
+### 0.3.6 集成与发布准备
+
+源提交 `6132db9` 的交叉验证门禁为 GREEN，覆盖 4 个提交和 41 个文件。合并预演和实际合并树一致，合并提交为 `d0939a9`。发布候选覆盖 SP002 与 SP003 的终端交互修复。版本台账归 SP003，最终准备提交通过手动发布工作流交接。

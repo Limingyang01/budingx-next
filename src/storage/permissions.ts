@@ -4,8 +4,9 @@
 // the store reports the corruption, the caller warns, and an empty rule
 // set is used for this run.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import type { PermissionMode } from '../core/permissions.js'
 import { writeJsonAtomic } from './atomic.js'
-import { backupPath, permissionsPath } from './paths.js'
+import { backupPath, permissionModePath, permissionsPath } from './paths.js'
 
 export const PERMISSIONS_VERSION = 1
 
@@ -96,7 +97,14 @@ export class PermissionsStore {
         corruptReason: `permissions.json schema ${version} is newer than supported ${PERMISSIONS_VERSION}`
       }
     }
-    if (!Array.isArray(config.rules)) config.rules = []
+    if (!Array.isArray(config.rules)) {
+      this.backup()
+      return {
+        file: emptyPermissions(),
+        corrupt: true,
+        corruptReason: 'permissions.json rules must be an array; a backup was kept and no rules are active'
+      }
+    }
     try {
       config.rules = config.rules.map(validateRule)
     } catch (error) {
@@ -127,4 +135,18 @@ export class PermissionsStore {
       // A failing backup must not destroy the original file.
     }
   }
+}
+
+export function readPermissionMode(home?: string): PermissionMode {
+  try {
+    const { mode } = JSON.parse(readFileSync(permissionModePath(home), 'utf8'))
+    if (mode === 'workspace_edit' || mode === 'full_access') return mode
+  } catch {
+    // Missing or damaged preferences use the interactive edit default.
+  }
+  return 'workspace_edit'
+}
+
+export function savePermissionMode(mode: PermissionMode, home?: string): void {
+  writeJsonAtomic(permissionModePath(home), { mode })
 }

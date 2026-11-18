@@ -63,10 +63,10 @@ SP010 继续交付宿主契约与共享边界。SP011 只规划 TUI/npm 交付�
 | --- | --- | --- | --- |
 | SP001 | 能力盘点、基线和核心边界：capability-baseline、evaluation-suite、core-boundaries、release-scope | 无 | 固定原产品版本、核心/完整对齐范围、任务集/盲测/预算、公开契约、数据共享/凭据边界和来源台账；npm 包名/平台/运行条件列出待决项。按 r8 当前能力矩阵固定必交范围；逐项登记实际行为、目标平台及对照场景。发现其他基线能力差距补计划，不缩减完整替代目标。 |
 | SP002 | 模型与会话闭环：provider-streaming、model-management、session-lifecycle、tui-conversation | SP001 | 真实模型配置与流式交互、工具回合、取消和错误有证据；会话配置快照、事件/终态契约、首个构建和 Node bin/资源边界明确；TUI 不成为其他端运行前置。 |
-| SP003 | 工作区与安全修改：workspace-tools、change-preview、permission-controls、file-context | SP002 | 跨目录搜索、编码/CRLF/大文件/忽略规则、补丁冲突、目录穿越/junction 越界有回归；拒绝写入磁盘不变，diff 与实际修改一致，用户无关改动保留。**三权限模式（仅可查看/工作区内修改/完全权限，用户固定）切换与边界有回归**。（SP003 修复已合入 master，0.3.0 候选已准备） |
+| SP003 | 工作区与安全修改：workspace-tools、change-preview、permission-controls、file-context | SP002 | 跨目录搜索、编码/CRLF/大文件/忽略规则、补丁冲突、目录穿越/junction 越界有回归；拒绝写入磁盘不变，diff 与实际修改一致，用户无关改动保留。**交互终端支持允许编辑与全自动，非交互默认只读，普通写入与敏感目标分开判定**。补充验收覆盖会话 Markdown 排版、用户提问高亮、辅助信息层级、固定输入区、鼠标历史滚动、忙碌提示与工具调用状态。（已发布至 0.3.5，界面精修见 [SP003 验证报告](../SP/SP003/test-report.md#会话排版与状态栏精修)） |
 | SP004 | 真实编码任务：command-execution、coding-task-loop、git-worktree-safety、task-planning | SP003 | 隔离项目完成定位→修改→运行测试→修复；用户追问/转向、Git 脏工作区、Windows quoting、后台状态/取消/输出上限和自身修改撤销有实测；没有提交或推送授权不执行 Git 发布。 |
 | SP005 | 长会话与数据可靠性：context-budget、session-recovery、failure-recovery、project-memory | SP004 | 压缩保留约束/计划/工具状态；跨进程恢复不盲重放副作用；项目记忆/会话隔离、原子持久化、升级/备份和共享写入约束有 fixture 与真实进程证据；明确长任务失败原因。 |
-| SP006 | 日常开发与 TUI 候选：project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging | SP005 | 项目指令、技能/MCP、受控 hooks、联网来源、追问/计划可用；TUI 中文/多行/快捷键/终端 resize 和无头事件/退出码可验证；实际 tarball 在仓库外隔离安装并完成核心任务，形成 npm dry-run 骨架而不上传。**TUI 还原度 P0 达标**：首屏/消息区/输入区/页脚四区骨架、消息折叠汇总、长转录虚拟列表与冻结缓存、上下文键位系统（含 chord 与保留键校验）按[还原度基线](tui-fidelity-gap-baseline.md)§5 判定；P0 未过不得进入 P1 批次。 |
+| SP006 | 日常开发与 TUI 候选：project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging | SP005 | 项目指令、技能/MCP、受控 hooks、联网来源、追问/计划可用；TUI 中文/多行/快捷键/终端 resize 和无头事件/退出码可验证；实际 tarball 在仓库外隔离安装并完成核心任务，形成 npm dry-run 骨架而不上传。**TUI 还原度 P0 达标**：按[还原度基线](tui-fidelity-gap-baseline.md)§3.6 修订后的剩余项判定——四区骨架收口（首屏/输入区/页脚）、消息区冻结缓存、帧缓冲差分、上下文键位系统（含 chord 与保留键校验）、状态栏可执行契约；**折叠汇总、长转录虚拟列表、Ctrl+O 转录、Markdown 渲染、diff 着色与鼠标滚轮已由 master 交付，不计入本轮缺口**；P0 未过不得进入 P1 批次。 |
 | SP007 | Agent 质量与扩展：evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | SP006 | 至少两类目标公开协议/实际模型通过能力矩阵；子代理权限/预算/取消/冲突有真实链路；图片和复杂工具参数按能力处理；联网/hooks/MCP 失败不越权；产物符合性、诊断/性能/隐私回归及稳定宿主契约通过。团队/Computer Use 的权限、预算与工具事件边界供 SP011–SP013 复用，不在本轮假称已交付。 |
 | SP008 | 多端架构入口与共享边界：shared-models-and-history、session-ownership、transport-boundaries | SP005、SP007 | 宿主契约（进程内/stdio/WS）与传输边界以**轻量测试客户端**验证：并发共享配置/历史、活动会话归属、凭据作用域和崩溃恢复实测；同机共享不冒充跨设备同步；固定通用身份、事件与权限接口，供 TUI/headless 和调度使用。 |
 | SP009 | TUI 独立交付和 npm 发布工程：tui-distribution、upgrade-compatibility、npm-publish-pipeline | SP008；SP006–007 的 npm 制品/校验基础 | TUI 干净 Windows 安装/升级/卸载；通过一条 npm run publish 完成门禁、同一 tarball 的安装测试、上传与回执；dry-run、next/latest、同版本/权限失败/不确定上传恢复有测试；来源许可及包名权限满足才可实际上传，当前无发布授权。 |
@@ -109,7 +109,7 @@ SP008 自 SP001/005 承接共享数据约束，以契约和轻量测试客户端
 
 ## 后续 Agent 的执行入口
 
-当前状态：SP001 规格已验收，SP002 已发布 0.2.0，SP003 已合入 master 并准备 0.3.0。后续轮次以[当前状态](current-status.md)与对应 STATUS 为准。[能力清单 v1.3](../SP/SP001/capability-baseline/capability-manifest.md) 保留 85 个基线条目，当前必交 47。效果口径为 SP001 决议 O5=B 的自有能力测量与覆盖度。
+当前状态：SP001 规格已验收，SP002 已发布 0.2.0，SP003 已发布至 0.3.5。后续轮次以[当前状态](current-status.md)与对应 STATUS 为准。[能力清单 v1.3](../SP/SP001/capability-baseline/capability-manifest.md) 保留 85 个基线条目，当前必交 47。效果口径为 SP001 决议 O5=B 的自有能力测量与覆盖度。
 
 1. 用户授权启动时，从 SP001 开始，不跳过基线直接搭三端 UI；若用户改变顺序，记录影响并保留新决定。
 2. 在 SP/SP001/requirements-summary.md 列具体功能/优化目录，不创建需求 ID；按模板补来源、AC、依赖和状态。
@@ -157,6 +157,7 @@ SP008 自 SP001/005 承接共享数据约束，以契约和轻量测试客户端
   - 还原度提高不等于放宽既有出口门槛；SP004–SP006 各自门槛全部保留并叠加。
   - 参考副本为 local recovery build，约 17 个工具目录是生成 no-op stub（`__stubMissing`），**工具只按行为事实立项**，stub 目录名不作为能力来源。
 - **Vim / 鼠标选区 / 备用屏**：属「受控扩展预算（R-A）」的可选项，**不作为 P0/P1 门槛**，明确标为可选。
+- **master 前进同步（2026-11-18 晚间）**：master 已推进至 `e808679`（0.3.5 已发布、0.3.6 候选，30 个提交），其中**折叠汇总、长转录虚拟列表、Ctrl+O 转录、Markdown 渲染、diff 着色与鼠标滚轮已交付**，不再计入 P0 缺口；P0 剩余项与基线修订见[还原度基线](tui-fidelity-gap-baseline.md)§3.6。master 同时引入 `marked` 与 `lowlight` 两个运行时依赖，合并后同步登记。
 
 本节不单独授权开发；实施随对应轮次开轮时按 SDD 流程写入需求/设计/计划。
 

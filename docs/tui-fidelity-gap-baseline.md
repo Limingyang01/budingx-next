@@ -55,6 +55,29 @@
 - **工具**：参考 34 族真实工具 + 50 个工具目录。本仓 `src/workspace` 提供 5 个文件工具，**零** Agent 工具（Task/Agent/Todo/Plan/AskUserQuestion 等）。
 - **Agent 主循环**：参考有 plan 模式、工具回合、子代理、后台任务六件套、todo 状态机。本仓 `src/core` 有基本回合，无计划模式、无 todo、无子代理。
 
+## 3.6 master 前进后的基线修订（2026-11-18 晚间）
+
+本文件初稿基于 master `8556ba4`。此后 master 已推进到 `e808679`（0.3.5 已发布、0.3.6 候选），新增 **30 个提交**，其中多项直接落在我原列的 P0 缺口上。**基线按当前 master 事实修订如下**，避免拿过时差距做计划。
+
+| 原基线所列缺口 | master 现状（`e808679`） | 修订后结论 |
+| --- | --- | --- |
+| 消息区：折叠汇总 | `src/tui/render/history-window.tsx` 有 `collapseReadSearch`（≥2 次 read/search 折叠为汇总行，提示 Ctrl+O 展开） | **已完成** |
+| 消息区：虚拟列表 | `history-window.tsx` 有 `visibleHistoryRange` + `virtualThreshold = 64`（fullScreen 且条目 ≥64 时按视口切片） | **已完成**（冻结缓存仍缺） |
+| 折叠/转录：Ctrl+O 转录 | `src/tui/render/transcript.tsx` 独立转录视图，`app.tsx` 有 `transcriptMode` | **已完成** |
+| 工具卡片：diff 着色 | `src/tui/render/diff-view.ts` 引入 `lowlight`（新增运行时依赖） | **已完成** |
+| 输入区：Markdown 渲染 | `transcript.tsx` 引入 `marked`（gfm） | **已完成** |
+| 输入区：鼠标滚轮 | `src/tui/editor/mouse.ts` 有 `useWheel`（SGR 1000/1006 协议） | **已完成**（属原 R-A 可选项，已提前交付） |
+| 消息区：冻结缓存（OffscreenFreeze 等价） | 全仓无 `offscreen` / `freeze` 缓存实现 | **仍缺** |
+| 帧缓冲差分（只重绘变化行） | 无独立帧缓冲层；依赖 Ink 输出 | **仍缺** |
+| 键位：上下文分发 + chord + 保留键校验 | `src/tui/editor/keys.ts` 仍为单表映射，无 context/chord/保留键概念 | **仍缺** |
+| 状态栏：可执行 command + 13 字段 JSON 契约 | 无 statusline 实现 | **仍缺** |
+| 命令面：三型注册表 | `src/tui/commands.ts` 仍为内联 if-else + `CommandOutcome` | **仍缺** |
+| 工具族：34 族 Agent 工具 | `src/workspace` 仍为 5 个文件工具；`src/core` 有基本回合 | **仍缺**（属 SP004/SP007） |
+| 面板类命令（/config /permissions /theme /model 等） | `model-manager.tsx` 有模型面板，但无统一模态槽与设置面板骨架 | **部分** |
+
+**修订后的 P0 剩余项**（SP006 出口仍以此为准）：① 消息区冻结缓存；② 帧缓冲差分；③ 上下文键位系统（含 chord 与保留键校验）；④ 状态栏可执行契约；⑤ 四区骨架收口（首屏/输入区/页脚仍需与参考对齐）。已完成的折叠汇总、虚拟列表、转录、Markdown、diff 着色、鼠标滚轮**从 P0 缺口清单移出，转入「已有能力」基线**。
+
+**新增依赖登记**：master 为会话 Markdown 与 diff 着色引入 `marked@18.2.1`、`lowlight@3.3.0`（运行时依赖，非开发依赖），已在 master 的 `THIRD-PARTY-NOTICES.md` 与 `src/tui/package.json` 登记。本分支合并 master 后同步这两项依赖；**本轮还原度工作不新增任何运行时依赖**。
 ## 4. 落地机制：四条周旋路径
 
 按 [独立实现边界](independent-development.md) 与排查文档 §6 总则，对参考仓依赖自研/私有组件处换方式达同效：

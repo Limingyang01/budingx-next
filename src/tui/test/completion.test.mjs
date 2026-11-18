@@ -119,7 +119,7 @@ test('/ 与 @ 共用 overlay：候选命令 Tab 补全后 Enter 执行（FC-03�
     await ui.waitFor((frame) => frame.includes('> /permission'))
     await ui.send('\r')
     await ui.waitFor((frame) => frame.includes('当前权限模式'))
-    assert.match(ui.last(), /工作区内修改/)
+    assert.match(ui.last(), /允许编辑/)
   } finally {
     rmSync(fixture.base, { recursive: true, force: true })
   }
@@ -140,4 +140,11 @@ test('Esc 关闭 overlay，再次输入重新打开', async (t) => {
   } finally {
     rmSync(fixture.base, { recursive: true, force: true })
   }
+})
+
+
+test('fuzzy candidates fill remaining slots within their directory', () => {
+  const files = ['src/input-buffer.ts', 'src/ib.ts', 'other/input-buffer.ts']
+  assert.deepEqual(fileCandidates('src/ib', files).map((candidate) => candidate.value),
+    ['src/ib.ts', 'src/input-buffer.ts'])
 })

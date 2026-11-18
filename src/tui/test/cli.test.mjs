@@ -7,6 +7,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { ConfigStore } from '../dist/storage/config-store.js'
+import { CredentialStore } from '../dist/storage/credentials.js'
+import { saveModel } from '../dist/tui/model-management.js'
 
 const cli = fileURLToPath(new URL('../dist/tui/cli.js', import.meta.url))
 
@@ -88,8 +91,9 @@ test('管道输入按行发送且输出无 ANSI 污染', async (t) => {
   assert.match(result.out, /你好/)
   assert.doesNotMatch(result.out, /\u001b\[/)
   assert.equal(calls.length, 2)
+  assert.equal(calls[1][0].role, 'system')
   assert.deepEqual(
-    calls[1].map((message) => message.content),
+    calls[1].slice(1).map((message) => message.content),
     ['first', '你好', 'second']
   )
 })
@@ -126,8 +130,9 @@ test('失败的回合不会污染历史，后续回合继续', async (t) => {
   assert.match(result.err, /500/)
   // The failing turn is retried up to the bounded retry limit (5 attempts).
   assert.equal(calls.length, 7)
+  assert.equal(calls.at(-1)[0].role, 'system')
   assert.deepEqual(
-    calls.at(-1).map((message) => message.content),
+    calls.at(-1).slice(1).map((message) => message.content),
     ['first', '你好', 'second']
   )
   assert.doesNotMatch(result.out + result.err, /secret error/)
@@ -201,4 +206,36 @@ test('file references reach the HTTP provider from --prompt and piped input', as
     assert.match(messages.at(-1).content, /requested second line/)
     assert.doesNotMatch(messages.at(-1).content, /hidden first line/)
   }
+})
+
+test('a fresh CLI process can select a grouped model and authenticates with the shared key', async (t) => {
+  const home = mkdtempSync(join(tmpdir(), 'budingx-cli-provider-group-'))
+  const configStore = new ConfigStore(join(home, '.budingx', 'config.json'))
+  const credentialStore = new CredentialStore(join(home, '.budingx', 'credentials.json'))
+  const requests = []
+  const server = createServer(async (req, res) => {
+    let body = ''
+    for await (const chunk of req) body += chunk
+    requests.push({ model: JSON.parse(body).model, auth: req.headers.authorization })
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    res.end('data: {"choices":[{"delta":{"content":"shared-ok"}}]}\n\ndata: [DONE]\n\n')
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  t.after(() => { server.closeAllConnections(); server.close(); rmSync(home, { recursive: true, force: true }) })
+  saveModel({ configStore, credentialStore, getConfig: () => ({}) }, {
+    baseUrl: 'http://127.0.0.1:' + server.address().port + '/v1',
+    model: 'primary',
+    modelIds: ['secondary'],
+    label: '',
+    apiKey: 'fixture-shared-key',
+    tools: false,
+    startupDefault: true
+  }, false)
+  const { code, out, err } = await run([], '/model secondary\nconfirm group\n',
+    { USERPROFILE: home, HOME: home }, home)
+  assert.equal(code, 0, err)
+  assert.match(out, /shared-ok/)
+  assert.deepEqual(requests, [{ model: 'secondary', auth: 'Bearer fixture-shared-key' }])
+  assert.doesNotMatch(out + err, /fixture-shared-key|Orphan credentials/)
 })

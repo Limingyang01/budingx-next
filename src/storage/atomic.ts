@@ -8,12 +8,13 @@ import {
   rmSync,
   writeFileSync
 } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { dirname } from 'node:path'
 import { temporaryPath } from './paths.js'
 
 export function writeJsonAtomic(file: string, value: unknown): void {
   mkdirSync(dirname(file), { recursive: true })
-  const temporary = temporaryPath(file)
+  const temporary = temporaryPath(`${file}.${randomUUID()}`)
   const payload = JSON.stringify(value, null, 2) + '\n'
   try {
     const handle = openSync(temporary, 'w')
