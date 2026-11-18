@@ -297,3 +297,9 @@ npm run merge:gate     # 见 §6
 ### 0.3.5 集成与发布准备
 
 源提交 `aad9a5b` 的交叉验证门禁为 GREEN，覆盖 3 个提交和 17 个文件。合并预演与实际合并树一致，合并提交为 `7f6c488`。发行说明记录 Markdown 排版、提问样式及状态栏调整，发布预演以最终准备提交为准。正式发布由维护者在 GitHub Actions 手动触发。
+
+### 0.3.5 公开发布回执
+
+- [GitHub Actions #14](https://github.com/Limingyang01/budingx-next/actions/runs/44262744543) 使用源码 `f2682cdce765339daf0bbb2a551f7f09751c5446`，Windows、Linux 与 OIDC 发布均成功。npm 发布时间为 `2026-11-18T08:01:03.067Z`，`latest` 指向 `0.3.5`。
+- 官方包隔离安装通过，命令入口返回 `0.3.5`，本地 HTTP 流式冒烟通过。已验证 47 个 registry signatures 和 6 个 attestations。SHA-512 与候选预演、安装锁和 provenance 的 subject 一致。provenance 的源码、工作流和运行地址均与本次发布一致。
+- Actions 原始回执下载需登录（HTTP 401）。台账根据已核验的公开 provenance 和官方包独立安装结果登记。Windows Terminal 的实际观感仍待实机确认。

@@ -82,7 +82,7 @@ SP003 权限模式与会话体验已发布为 [0.3.4](../../release-notes/v0.3.4
 
 ## 会话排版与状态栏精修
 
-在 SP003 验收中补齐以下细节。已合入 master 并纳入 [0.3.5 发布候选](../../release-notes/v0.3.5.md)，公开版本以台账为准。
+在 SP003 验收中补齐以下细节。已合入 master 并随 [0.3.5](../../release-notes/v0.3.5.md) 发布，npm latest 和官方安装已核对。[GitHub Actions #14](https://github.com/Limingyang01/budingx-next/actions/runs/44262744543)
 
 - 用户提问有独立的底色和前导符号，去掉「你」字样。支持多行、窄屏折行和队列注入。
 - 助手回答按 Markdown 展示标题、强调、列表、链接、表格和代码。代码内的特殊字符原样呈现。
