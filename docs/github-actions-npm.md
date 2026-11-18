@@ -35,7 +35,7 @@ SP002 的 **0.2.0 已发布**，当时 npm latest=0.2.0，台账为 published。
 
 ## 从构建到发布：每轮操作清单
 
-本节适用于新版本交付，不需要重复配置已建立的账号信任。Agent 使用 [buding-npm-release](../skills/buding-npm-release/SKILL.md)，版本规则见 [版本规范](versioning.md)。执行目录是本仓根目录；通用准备命令以已确认迭代为准；0.3.6 回执已入台账，后续按实际修复或新 SP 准备下一版。
+本节适用于新版本交付，不需要重复配置已建立的账号信任。Agent 使用 [buding-npm-release](../skills/buding-npm-release/SKILL.md)，版本规则见 [版本规范](versioning.md)。执行目录是本仓根目录；通用准备命令以已确认迭代为准；0.3.6 回执已入台账，0.4.0（SP004）已准备待发布，后续按实际修复或新 SP 准备下一版。
 
 ### 1. 准备版本与发行说明
 

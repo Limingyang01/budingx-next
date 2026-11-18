@@ -1,6 +1,6 @@
 # budingx
 
-An independent **MIT** terminal agent for OpenAI-compatible APIs. Version 0.3.2 adds MiniMax China and Qwen Token Plan templates and fixes MiniMax connection testing. Version 0.3.1 introduced the model manager. It includes the workspace file tools, file references, approval previews and session undo introduced in 0.3.0.
+An independent **MIT** terminal agent for OpenAI-compatible APIs. Source version 0.4.0 (SP004) adds real coding tasks: Bash/PowerShell command cards with background tasks, plan mode with approval, todo and question cards, and controlled Git commits on dedicated worktrees. It keeps the workspace file tools, approval previews and session undo from 0.3.0, the model manager from 0.3.1, and the fixes released through 0.3.6.
 
 ## Install
 

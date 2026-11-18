@@ -1,6 +1,6 @@
 # SP004 验收与验证报告 · 真实编码任务
 
-状态：**实施完成，全量门禁通过，待合入 master 与人工验收**。分支 `feature/SP004/command-execution`，文档起点 `363d1eb`，实施基线 `e808679`，参考 TUI revision `b5c9be8`。本报告与[设计](design/design.zh.md)及[实施计划](design/plan.zh.md)配套。
+状态：**实施完成，全量门禁 GREEN，已合入 master（`fdfdae8`），源码版本 0.4.0 已准备待发布**。分支 `feature/SP004/real-coding-task`，文档起点 `363d1eb`，实施基线 `e808679`，参考 TUI revision `b5c9be8`。本报告与[设计](design/design.zh.md)及[实施计划](design/plan.zh.md)配套。
 
 ## 0. 本轮执行证据
 
@@ -16,7 +16,10 @@
 | 发布脚本 | `npm run test:release` | 17/17 通过 |
 | 合入门禁脚本 | `npm run merge:test` | 5/5 通过 |
 | 全量 | `npm test` | **607 通过 / 0 失败**（skills 10 + spec 11 + unit 564 + release 17 + merge 5） |
-| 交叉验证门禁 | `npm run merge:gate` | 见 `artifacts/merge-gate/`（本地审计，未提交） |
+| 交叉验证门禁 | `npm run merge:gate` | **GREEN**（`artifacts/merge-gate/feature-SP004-real-coding-task-2026-11-18T16-16-59-047Z.md`：分支/merge-base `e808679`/HEAD `868eae6`、outgoing 31 提交 91 文件、禁带路径违规 0、FAIL 行 0、UNVERIFIED 9 行且恢复条件节存在；`npm test`/`spec:check`/`skills:check`/`pack-smoke` 退出码均 0） |
+| 合入与合入后复验 | `git merge --no-ff feature/SP004/real-coding-task` → `git merge-base --is-ancestor 868eae6 HEAD` → `npm test` | 合并提交 `fdfdae8`；ancestry 通过；合入后 `npm test` 仍 0 失败。合并时 `PRODUCT.md` 与 `docs/current-status.md` 因 master 已发布 0.3.6 产生文本冲突，按「保留已发布事实 + SP004 现状」人工解决，无代码冲突 |
+| CI 模式全量 | `CI=true npm test` | 0 失败（skills/spec/unit/checks/release/merge 全部通过，复现工作流环境） |
+| 发布预演（0.4.0） | `npm run publish -- --dry-run --expected-version 0.4.0 --tag latest` | **Dry run passed**（`artifacts/release/0.4.0-1795018901701/report.json`）：`state=verified-local`、`integrity=sha512-0mVZSAE8BNhjPpU4aO/BMclFaQymf43AmmVSRF5snezTTEbv6213iKlMwIM8sJXwgj2eaCfces2LIlLOum7h8g==`、tarball 84 文件含 `dist/exec`、`dist/git`、`dist/plan`、CLI 版本 0.4.0 与本地 fixture HTTP smoke（1 次请求）通过；`externalProvider=UNVERIFIED`、未上传 npm |
 | 来源 AST 复核 | `node scripts/review/sp004-ast.mjs --reference <参考仓> --reference-revision b5c9be8 --base master` | 改动 39/39 映射，函数对 18901 组，命中 0，自检 3/3 PASS → **PASS**（详见 [ast-review.md](ast-review.md)） |
 
 ## 1. 视觉与交互验收
