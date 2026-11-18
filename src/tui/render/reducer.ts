@@ -215,7 +215,12 @@ export function reduceFrame(
           cancelled: '已中断',
           length_capped: '达到输出上限',
           max_turns: '达到回合上限',
-          unknown: '已结束'
+          unknown: '已结束',
+          blocking_limit: '达到阻塞上限',
+          prompt_too_long: '提示词过长',
+          image_error: '图片处理失败',
+          stop_hook_blocking: '停止钩子阻断',
+          stop_hook_prevented: '停止钩子拦截'
         }
         const label = options.english ? event.outcome : labels[event.outcome]
         next.transcript = [...next.transcript, {

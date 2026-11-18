@@ -1,6 +1,8 @@
-// Core event contract (SP002 design §3.2, SP003 design §4.2 v2).
+// Core event contract (SP002 design §3.2, SP003 design §4.2 v2, SP004 design §4.4/§6).
 // Host agnostic: no UI types, JSON serializable.
 import type { PermissionMode } from './permissions.js'
+import type { CommandOutcome } from './exec.js'
+import type { Plan, PendingQuestion, QuestionAnswers, QuestionAnnotations } from './plan.js'
 
 export type SessionState =
   | 'idle'
@@ -17,6 +19,12 @@ export type TurnOutcome =
   | 'length_capped'
   | 'max_turns'
   | 'unknown'
+  // SP004 对齐参考终止原因（设计 C-09/F-16；本轮仅契约，产生属后续接线）。
+  | 'blocking_limit'
+  | 'prompt_too_long'
+  | 'image_error'
+  | 'stop_hook_blocking'
+  | 'stop_hook_prevented'
 
 export type NoticeCode =
   | 'api_retry'
@@ -163,6 +171,47 @@ export type SessionEvent =
       boundary: 'intra_turn' | 'inter_turn'
     }
   | { type: 'status'; state: SessionState; note?: string }
+  | {
+      type: 'command_started'
+      turnId: string
+      callId: string
+      command: string
+      interpreter: string
+      cwd: string
+      taskId?: string
+      startedAt: number
+    }
+  | {
+      type: 'command_finished'
+      taskId: string
+      callId?: string
+      turnId?: string
+      outcome: CommandOutcome
+      exitCode?: number
+      outputPath?: string
+      finishedAt: number
+    }
+  | { type: 'plan_updated'; plan: Plan }
+  | {
+      type: 'question_requested'
+      turnId: string
+      callId: string
+      question: PendingQuestion
+    }
+  | {
+      type: 'question_answered'
+      turnId: string
+      callId: string
+      questionId: string
+      answers: QuestionAnswers
+      annotations?: QuestionAnnotations
+    }
+  | {
+      type: 'question_cancelled'
+      turnId: string
+      callId: string
+      questionId: string
+    }
   | {
       type: 'notice'
       level: 'info' | 'warning' | 'error'

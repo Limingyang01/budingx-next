@@ -84,6 +84,8 @@
 - **RED**：`exec.test.mjs` 断言 `CommandResult` 的 outcome 枚举与必填字段形状、`CommandRunner` 接口的四个方法签名存在（编译期契约由 TS 检查，测试断言常量与错误码值）；`plan.test.mjs` 断言计划步骤状态枚举与 `PlanStore` 方法名；`coding.test.mjs` 断言 `canClaimDone` 的判定表（无命令 → 不通过；最近命令失败 → 不通过；最近命令成功但非测试类 → 不通过；测试类成功 → 通过）
 - **GREEN**：只写类型、常量与纯逻辑（`canClaimDone` 判定表为纯函数）
 - **验证**：`npm run build && node --test src/core/test/exec.test.mjs src/core/test/plan.test.mjs src/core/test/coding.test.mjs`
+
+**完成事实（2026-11-18）**：RED 三文件因模块缺失失败 → GREEN 18/18 通过，全量 377/377（基线 359 + 新增 18）。`CommandSpec` 按设计 §4.1 五字段（计划旧文 args/interactive 不入模型规格）；追问端口按设计 §6.4 多题形状。Ruling：`observeCommand(command, result)` 携带命令文本、`CodingTaskState.testEvidence` 记录最近成功测试证据（设计判定表「至少一次测试成功」行的落实）；`BUDINGX_EXEC_001…007` 命名 MODEL_PROPOSED；TurnOutcome 补五值并同步 `src/tui/render/reducer.ts` 标签映射（新值本轮不产生）。
 - **完成事实**：待填
 
 ### T2 · 命令解释器选择与只读命令族判定
