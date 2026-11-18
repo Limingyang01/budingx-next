@@ -812,7 +812,7 @@ export function App({
       )
     }
     const hunks = entry?.hunks ?? []
-    const lines = diffViewLines(hunks, Math.max(1, width - 2), true)
+    const lines = diffViewLines(hunks, Math.max(1, width - 2), true, entry?.path)
     const first = Math.min(detailScroll, Math.max(0, lines.length - diffDetailPageSize))
     const visible = lines.slice(first, first + diffDetailPageSize)
     return (
@@ -826,13 +826,13 @@ export function App({
               <Text
                 key={j}
                 color={
-                  span.kind === 'add'
+                  span.color ?? (span.kind === 'add'
                     ? 'green'
                     : span.kind === 'remove'
                       ? 'red'
                       : span.kind === 'header'
                         ? 'cyan'
-                        : undefined
+                        : undefined)
                 }
                 dimColor={span.kind === 'gutter' || span.kind === 'context'}
               >

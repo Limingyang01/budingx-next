@@ -10,6 +10,7 @@ const manifest = JSON.parse(
 test('产品清单声明的运行时依赖恰为渲染白名单', () => {
   assert.deepEqual(Object.keys(manifest.dependencies).sort(), [
     'ink',
+    'lowlight',
     'marked',
     'react',
     'string-width'

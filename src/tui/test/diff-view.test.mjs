@@ -153,7 +153,16 @@ test('interactive diff wraps long CJK lines without losing the end', () => {
   const lines = diffViewLines(diffLines(before + '\n', after + '\n'), 28, true)
   const added = lines.filter((line) => line.kind === 'add')
   assert.ok(added.length > 1)
-  assert.equal(added.map((line) => line.spans[1].text.slice(1)).join(''), after)
+  assert.equal(added.flatMap((line) => line.spans.slice(2).map((span) => span.text)).join(''), after)
   assert.equal(added[0].spans[0].text.trim(), '1')
   assert.equal(added.at(-1).spans[0].text.trim(), '')
+})
+
+
+test('interactive code diff adds syntax colours without replacing text', () => {
+  const lines = diffViewLines(diffLines('const x = 1\n', 'const x = "测试"\n'), 30, true, 'fixture.ts')
+  const after = lines.find((line) => line.kind === 'add')
+  assert.equal(after.spans.map((span) => span.text).join(''), '1+const x = "测试"')
+  assert.ok(after.spans.some((span) => span.text === 'const' && span.color))
+  assert.ok(after.spans.some((span) => span.text === '"测试"' && span.color))
 })
