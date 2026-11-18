@@ -52,7 +52,7 @@ In piped input, `/models` lists profiles and `/model NAME` selects one. Interact
 - /clear — clear the in-memory conversation and its visible transcript (input history and pending prompts remain)
 - /exit or /quit — exit
 
-Version 0.3.3 displays user turns, elapsed time and completion time. After a successful reply, press Tab at an empty prompt to fill the suggested follow-up, then edit and press Enter.
+Version 0.3.4 displays user turns, elapsed time and completion time. After a successful reply, press Tab at an empty prompt to fill the suggested follow-up, then edit and press Enter.
 
 ## Keys
 

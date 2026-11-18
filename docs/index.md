@@ -30,4 +30,4 @@
 
 构建与发布手册：[GitHub Actions + npm Trusted Publishing](github-actions-npm.md)；Agent 执行入口：[buding-npm-release](../skills/buding-npm-release/SKILL.md)。
 
-SP003 会话体验修复已准备为 [0.3.3](../release-notes/v0.3.3.md)，当前公开版本为 0.3.2。
+SP003 权限模式与会话体验已准备为 [0.3.4](../release-notes/v0.3.4.md)。原 0.3.3 候选的修复包含在 0.3.4 中，当前公开版本为 0.3.2。

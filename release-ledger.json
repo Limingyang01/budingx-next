@@ -96,6 +96,12 @@
     {
       "version": "0.3.3",
       "iteration": "SP003",
+      "status": "superseded",
+      "supersededBy": "0.3.4"
+    },
+    {
+      "version": "0.3.4",
+      "iteration": "SP003",
       "status": "prepared"
     }
   ]

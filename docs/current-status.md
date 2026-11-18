@@ -70,4 +70,4 @@ SP002 的制品布局已变更（bin 由 `dist/cli.js` 改为 `dist/tui/cli.js`�
 
 维护者触发运行 #7，Windows/Linux 验证及 npm OIDC 发布成功；publishedAt=2026-11-17T09:29:30.139Z，latest=0.2.0，source=6ed77d8a93335f8b261493e1fa4f0994ce4bc7bd。官方安装、shim 版本和 HTTP smoke 通过；46 registry signatures、5 attestations 核验通过；来源匹配本次 run/源码。原始 CI artifact 下载要求认证，未取得，使用公开 provenance 与独立安装证据；ledger 已 published。早前 prepared 状态为历史快照，真终端人工未验证保持不变。
 
-SP003 会话体验修复已准备为 [0.3.3](../release-notes/v0.3.3.md)，当前公开版本为 0.3.2。
+SP003 权限模式与会话体验已准备为 [0.3.4](../release-notes/v0.3.4.md)。原 0.3.3 候选的修复包含在 0.3.4 中，当前公开版本为 0.3.2。

@@ -26,4 +26,4 @@
 
 npm 已发布 [0.3.2](https://www.npmjs.com/package/budingx/v/0.3.2)，可用 `npm install -g budingx@latest` 安装，使用与升级说明见 [0.3.2 发行说明](release-notes/v0.3.2.md)。
 
-SP003 会话体验修复已准备为 [0.3.3](release-notes/v0.3.3.md)，当前公开版本为 0.3.2。
+SP003 权限模式与会话体验已准备为 [0.3.4](release-notes/v0.3.4.md)。原 0.3.3 候选的修复包含在 0.3.4 中，当前公开版本为 0.3.2。

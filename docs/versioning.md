@@ -9,7 +9,7 @@
 - 兼容破坏增加 major（在 0.x 开发阶段也可按 minor 体现，必须显式记录迁移）；1.0.0 仅可在 SP016 完整替代验收达标时准备，仍须有实际验收证据。
 - prepare 只准备版本、台账和发行说明，不提交、不打 tag、不上传。发布命令不自行 bump，版本重复拒绝，预发布用明确 tag。
 - 同一 SP 可多次发布，SP 状态、产品版本、发布状态分开记录；发布失败不把已占用版本重新使用。
-- src/tui/package.json 的 version 是产品版本源；release-ledger.json 记录迭代及 prepared/published 状态；release-notes/v<version>.md 记录用户变化、限制和验收。根维护包版本不是产品版本。
+- src/tui/package.json 的 version 是产品版本源；release-ledger.json 记录迭代及发布状态（prepared、published、superseded）；release-notes/v<version>.md 记录用户变化、限制和验收。根维护包版本不是产品版本。
 
 未来暂缓各端（Desktop/VSIX 等，r6）恢复加入时，从已准备 release manifest 同步公共兼容版本；各端制品/发布通道和是否交付分别记录，不因 TUI 发包宣称 Desktop/VSIX 已发布。协议/存储 schema 版本独立演进并提供迁移，不能用 npm 版本代替数据版本。
 
@@ -25,4 +25,4 @@
 
 bootstrap 阶段的维护修复使用 `npm run version:prepare -- patch --iteration bootstrap`，例如 0.1.0 → 0.1.1；这不代表新 SP 已开始。正式迭代仍使用已确认的 SP 编号，新 SP 不允许只增加 patch。
 
-SP003 会话体验修复已准备为 [0.3.3](../release-notes/v0.3.3.md)，当前公开版本为 0.3.2。
+SP003 权限模式与会话体验已准备为 [0.3.4](../release-notes/v0.3.4.md)。原 0.3.3 候选的修复包含在 0.3.4 中，当前公开版本为 0.3.2。
