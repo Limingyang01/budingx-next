@@ -1,6 +1,6 @@
 # 当前状态
 
-日期：2026-11-18。**SP003 模型管理修复 0.3.1 已通过 OIDC 发布，npm latest 已核对。** Windows 和 Linux 的 CI 验证、官方源隔离安装及本地 HTTP 冒烟均通过。
+日期：2026-11-18。**SP003 0.3.2 已通过 OIDC 发布，npm latest 已核对。** Windows 和 Linux 的 CI 验证、官方源隔离安装及本地 HTTP 冒烟均通过。
 
 ## 已有
 
@@ -9,7 +9,7 @@
 - 6 个适配本仓的项目流程技能（含版本准备），以及 MIT 许可的 15 个 Superpowers 开发技能；第三方开发技能单独登记。
 - 面向 `.agents`、`.claude`、`.budingx` 的发现入口和维护脚本。
 - 用于维护的私有 package.json；其 `0.0.0` 不是产品发布版本。
-- master 的 TUI 发布候选为 0.3.2，台账为 prepared。本版支持供应商配置共享、MiniMax 中国站与百炼 Token Plan 模板，以及全屏会话和终端标签状态。公开版本为 0.3.1，发布候选详见 [0.3.2 发行说明](../release-notes/v0.3.2.md)。
+- TUI 0.3.2 台账为 published。本版支持供应商配置共享、MiniMax 中国站与百炼 Token Plan 模板，以及全屏会话和终端标签状态。详见 [0.3.2 发行说明](../release-notes/v0.3.2.md)。
 - 实际 Node/TypeScript 构建、测试、版本准备与发布编排，实际 tarball 隔离安装 smoke 已通过。
 - **SP002 新增**：`src/core`（事件契约、会话/回合状态机、工具回合、输入队列、消息规范化）、`src/provider`（OpenAI 兼容流解析、tool_calls 碎片、错误分类、有界重试、取消、连通探测）、`src/storage`（`~/.budingx` 配置与凭据仓库、模型档案 CRUD、三源合并）、`src/tui` 的 Ink 8 对话界面（渲染 reducer、多行编辑器、审批卡、双中断与排队）。
 - **SP003 新增（已合入 master `598fb89`）**：`src/workspace`（路径边界与忽略规则、Read/Write/Edit/Glob/Grep、行级 diff、检查点撤销、三模式策略与规则、`@` 上下文）、`src/core` 的权限端口与策略判定接线、`src/storage/permissions.ts`（`~/.budingx/permissions.json`）、TUI 侧审批三档与拒绝反馈、模式徽标与 Shift+Tab 轮播、diff 两级对话框与多源切换、`@`/`/` 统一补全。
@@ -22,7 +22,7 @@
 
 用户 2026-11-16 确认参考实现定位：本仓设计与主要核心逻辑必须严格参考本地 `budingWorkerSpace` 参考项目（文档不写死绝对路径，位置以用户环境为准），重点参考其 TUI 命令设计、Agent 主循环与核心工具；设计文档、计划文档和真实开发全程对照该参考，不允许脱离参考开发，允许优化但核心逻辑不得背离、使用体验不得下降；按「读机制、不抄代码」独立编写实现并对齐效果。该参考仓无 LICENSE 声明，本仓制品保持自有 MIT 独立可发布、不嵌入参考代码；细则见 [独立实现与复用边界](independent-development.md)。
 
-用户已授权简易 TUI 验证后发布 npm，并确认 MIT；0.1.0、0.1.1 是历史已发布版本；0.2.0 和 0.3.0 为历史已发布版本，0.3.1 为当前 latest，发布状态及 integrity 见 release-ledger.json。没有读取旧用户配置或凭据。用户数据统一通过当前用户 home 解析为 ~/.budingx，禁止使用 ~/.claude。
+用户已授权简易 TUI 验证后发布 npm，并确认 MIT；0.1.0、0.1.1 是历史已发布版本；0.2.0、0.3.0 和 0.3.1 为历史已发布版本，0.3.2 为当前 latest，发布状态及 integrity 见 release-ledger.json。没有读取旧用户配置或凭据。用户数据统一通过当前用户 home 解析为 ~/.budingx，禁止使用 ~/.claude。
 
 ## SP002 交付现状（等待验收）
 
@@ -34,7 +34,7 @@
 - 2026-11-17 交付后复验修正一处真实缺陷：队列自动起新回合的定时器曾被 `unref()`，导致排队输入在空闲时不自动起新回合（SL-05）。已修复并复测，详见 [SP002 验证报告 §7](../SP/SP002/test-report.md)。
 - 面向使用者的产品事实入口为根目录 [产品说明书](../PRODUCT.md)：产品版本号、按迭代归类的功能表、使用说明、已知限制与版本历史；产品变更须同步更新它。
 - **验证边界**：PS-08 已在一个用户授权服务验证五项；其他型号/服务未测。Windows Terminal/ConHost 的真实 IME、鼠标及观感仍为 UNVERIFIED，恢复条件为执行报告 §5 的人工清单。
-- 产品版本 **0.2.0 已发布**，npm latest=0.2.0。维护者触发运行 #7 后完成 Windows/Linux 验证和 OIDC 上传；公开 provenance 与官方安装/签名均核验通过，见 [发行说明](../release-notes/v0.2.0.md)。
+- 产品版本 **0.2.0 已发布**，当时 npm latest=0.2.0。维护者触发运行 #7 后完成 Windows/Linux 验证和 OIDC 上传；公开 provenance 与官方安装/签名均核验通过，见 [发行说明](../release-notes/v0.2.0.md)。
 
 ## 验证范围
 

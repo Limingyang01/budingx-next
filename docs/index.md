@@ -24,7 +24,7 @@
 
 首发使用与交付：[TUI README](../src/tui/README.md)、[版本管理](versioning.md)、[首发状态](requirements/tui-bootstrap/STATUS.md)。
 
-当前发布：[0.3.1 · SP003 模型管理修复](../release-notes/v0.3.1.md)（npm latest）。发布候选：[0.3.2](../release-notes/v0.3.2.md)。
+当前发布：[0.3.2 · SP003 模型兼容与终端体验修复](../release-notes/v0.3.2.md)（npm latest）。
 
 源码模块组织见 [仓库布局](repository-layout.md)。
 

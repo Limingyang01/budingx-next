@@ -73,3 +73,5 @@ SP003 验收修复 `9e3984c` 已由 `598fb89` 合入 master。合并后干净工
 ### 0.3.2 全屏会话
 
 首屏占满交互终端，顶部显示版本和模型，底部固定输入框并提示 Shift+Tab。支持应用标题更新的终端标签应显示会话主题和工作状态。详见[产品说明书](../../PRODUCT.md#534-全屏会话与终端标签032)。
+
+0.3.2 已从 master 发布，npm latest、官方包安装与运行及 provenance 已核对。见 [0.3.2 发行说明](../../release-notes/v0.3.2.md)和[GitHub Actions #12](https://github.com/Limingyang01/budingx-next/actions/runs/44248899298)。

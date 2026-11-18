@@ -250,3 +250,9 @@ npm run merge:gate     # 见 §6
 ### 0.3.2 主线集成
 
 源提交 `edd6a4e` 的交叉验证门禁 GREEN，覆盖 5 个提交和 34 个文件。合并预演无冲突，已在独立工作树合入 master（合并提交 `35bb2a1`），确认合并结果与预演树一致。发布预演以最终 master 提交为准，回执留存在本地 `artifacts/release/`；正式发布由维护者在 GitHub Actions 手动触发。
+
+### 0.3.2 公开发布回执
+
+- [GitHub Actions #12](https://github.com/Limingyang01/budingx-next/actions/runs/44248899298) 使用源码 `027e0195bd7d188e2bd28fc658682c2fe6bb2547`，Windows、Linux 与 OIDC 发布作业均成功。npm 发布于 `2026-11-18T06:11:51.994Z`，`latest` 指向 `0.3.2`。
+- 官方源隔离安装通过。npm 命令入口返回 `0.3.2`，本地 HTTP 流式冒烟通过。已验证 46 个 registry signatures 和 5 个 attestations。SHA-512 与候选预演、安装锁和 provenance 的 subject 一致。provenance 的源码、工作流路径和运行地址与本次任务一致。
+- Actions 原始回执下载需登录（HTTP 401）。台账依据公开 provenance 和独立安装证据更新。本次发布验证沿用真实 Provider 和终端输入法的既有未验证范围。
