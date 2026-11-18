@@ -281,3 +281,9 @@ npm run merge:gate     # 见 §6
 ### 0.3.4 集成与发布准备
 
 权限模式分支 `1e35b36` 门禁 GREEN。合并预演与实际合并树一致，合并提交 `490166d` 中 391 项全量测试通过。用户确认 0.3.4 同时包含会话体验和权限模式，原 0.3.3 候选登记为 superseded。正式发布由维护者手动触发，最终候选的本地预演回执保存在 `artifacts/release/`。
+
+### 0.3.4 公开发布回执
+
+- [GitHub Actions #13](https://github.com/Limingyang01/budingx-next/actions/runs/44257392923) 从 `a68e6a179df6288f47d6dcca60bfcdd91c22d048` 完成 Windows、Linux 验证与 OIDC 发布。npm 发布时间为 `2026-11-18T07:19:20.042Z`，`latest` 指向 `0.3.4`。
+- 官方包隔离安装通过，命令入口返回 `0.3.4`，本地 HTTP 流式请求通过。在隔离用户目录保存完全权限后，管道启动仍显示只读。已验证 46 个 registry signatures 和 5 个 attestations。SHA-512 与候选预演、安装锁和 provenance 的 subject 一致。provenance 的源码、工作流和运行地址与本次发布一致。
+- Actions 原始回执下载需登录（HTTP 401）。发布台账依据公开 provenance 和官方包独立安装证据登记。真实供应商回答措辞和 Windows Terminal 实际显示仍待对应环境验证。

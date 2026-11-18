@@ -40,7 +40,7 @@ src/
 
 ## 打包与隔离安装验证
 
-`node scripts/release/pack-smoke.mjs` 在仓库外临时目录真实打包、安装 tarball 并对本地 fixture 发起一次真实 HTTP 流式请求（不上传、不发布）。`npm run publish -- --dry-run` 是完整发布演练，需要台账中存在 prepared 版本条目；0.3.2 已发布，预演与官方安装回执见 [0.3.2 发行说明](../release-notes/v0.3.2.md)。
+`node scripts/release/pack-smoke.mjs` 在仓库外临时目录真实打包、安装 tarball 并对本地 fixture 发起一次真实 HTTP 流式请求（不上传、不发布）。`npm run publish -- --dry-run` 是完整发布演练，需要台账中存在 prepared 版本条目；0.3.4 已发布，预演与官方安装回执见 [0.3.4 发行说明](../release-notes/v0.3.4.md)。
 
 ## 验证边界
 
@@ -57,5 +57,3 @@ CI 发布成功后下载 report.json，执行 `npm run release:sync -- --receipt
 用户授权测试费用后，运行 node scripts/testing/live-provider.mjs。脚本执行流式 UI、工具审批回合（支持 tools 时）、用户取消入口及无效 Key 错误；只使用临时存储及自有 echo 测试桩，不读取旧客户端数据。请求计数和脱敏回执保存在忽略的 artifacts/SP002-e2e/。
 
 失败后可用 --resume --only-tools 只续测工具项并累计既有请求数；只有取得用户新授权，才用 --request-cap NUMBER 覆盖原请求上限。预算字段记录用户授权，不代替供应商计费限额；实际费用需用户核对账单。该脚本不证明系统终端 IME 或鼠标体验。
-
-SP003 权限模式与会话体验已准备为 [0.3.4](../release-notes/v0.3.4.md)。原 0.3.3 候选的修复包含在 0.3.4 中，当前公开版本为 0.3.2。

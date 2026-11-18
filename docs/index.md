@@ -24,10 +24,8 @@
 
 首发使用与交付：[TUI README](../src/tui/README.md)、[版本管理](versioning.md)、[首发状态](requirements/tui-bootstrap/STATUS.md)。
 
-当前发布：[0.3.2 · SP003 模型兼容与终端体验修复](../release-notes/v0.3.2.md)（npm latest）。
+当前发布：[0.3.4 · SP003 权限模式与会话体验](../release-notes/v0.3.4.md)（npm latest）。
 
 源码模块组织见 [仓库布局](repository-layout.md)。
 
 构建与发布手册：[GitHub Actions + npm Trusted Publishing](github-actions-npm.md)；Agent 执行入口：[buding-npm-release](../skills/buding-npm-release/SKILL.md)。
-
-SP003 权限模式与会话体验已准备为 [0.3.4](../release-notes/v0.3.4.md)。原 0.3.3 候选的修复包含在 0.3.4 中，当前公开版本为 0.3.2。

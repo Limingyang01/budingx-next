@@ -17,12 +17,10 @@
 
 规范依据：[npm SemVer 说明](https://docs.npmjs.com/about-semantic-versioning/)。
 
-准备工具入口为 `npm run version:prepare -- kind --iteration SPnnn`，替换为已确定的类型/迭代；SP003 的 0.3.2 已发布并核对回执。同轮修复使用 patch，新 SP 首次交付使用 minor。要求当前版本有 published 回执且无未处理 prepared 版本；保留台账未知字段。命令不修改根维护包版本或执行 Git 写操作。
+准备工具入口为 `npm run version:prepare -- kind --iteration SPnnn`，替换为已确定的类型/迭代；SP003 的 0.3.4 已发布并核对回执。同轮修复使用 patch，新 SP 首次交付使用 minor。要求当前版本有 published 回执且无未处理 prepared 版本；保留台账未知字段。命令不修改根维护包版本或执行 Git 写操作。
 
 ## Actions 发布回执
 
 推荐的远端发布入口及首次授信见 [Actions 指南](github-actions-npm.md)。CI 只有 GitHub 内容只读权限，更新的台账作为 artifact 交付。下载正确运行的 report.json，用 `npm run release:sync -- --receipt <path>` 核对公共 npm 版本/integrity 后导入；审阅提交后才能 version:prepare。CI 不为 publish 自动 bump、提交或创建 tag。导入信任维护者选择的 artifact，不是独立 GitHub attestation 验证。
 
 bootstrap 阶段的维护修复使用 `npm run version:prepare -- patch --iteration bootstrap`，例如 0.1.0 → 0.1.1；这不代表新 SP 已开始。正式迭代仍使用已确认的 SP 编号，新 SP 不允许只增加 patch。
-
-SP003 权限模式与会话体验已准备为 [0.3.4](../release-notes/v0.3.4.md)。原 0.3.3 候选的修复包含在 0.3.4 中，当前公开版本为 0.3.2。

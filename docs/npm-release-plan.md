@@ -10,7 +10,7 @@
 
 首发 bootstrap 或明确授权的本机交互发布入口是在仓库根目录执行 **`npm run publish`**，由跨平台 Node 发布入口完成检查、构建、打包、实际安装测试和 registry 发布，再核对回执。无参数的稳定发布使用已准备且经审阅的版本，默认发布到 https://registry.npmjs.org；不静默自增版本、不顺带提交/推送/tag。
 
-当前 npm latest 为 0.3.2（SP003）。准备下一版本后，按下面命令读取候选版本并预演。
+当前 npm latest 为 0.3.4（SP003）。准备下一版本后，按下面命令读取候选版本并预演。
 
 ```powershell
 $releaseVersion = (Get-Content src/tui/package.json -Raw | ConvertFrom-Json).version
@@ -76,5 +76,3 @@ bootstrap 的 0.1.0/0.1.1 已发布，0.1.1 的 Windows/Linux Actions 验证及�
 0.1.0 已发布到官方 npm，latest=0.1.0；integrity、发布时间和实际安装回执见 release-ledger.json 与首发 STATUS。npm trust 配置已通过账号查询核实，首次真实 OIDC 上传仍待下个有实际变更的新版本，不能重复上传 0.1.0。publish:otp 已移除；当前账号通过 Passkey 认证，本机交互发布和 CI/OIDC 分别保留。
 
 首发实测出现“上传成功但元数据延迟可见”：发布脚本现只对版本尚不可见及已知临时网络错误做有限查询（默认最多 31 次、间隔 10 秒，单次查询 10 秒超时），不重复上传，不重试认证错误或错误 JSON，最终 integrity/tag/安装校验保持必需。超过窗口保留 uploaded-awaiting-receipt 状态并要求核对原版本，不能自动 bump 重发。
-
-SP003 权限模式与会话体验已准备为 [0.3.4](../release-notes/v0.3.4.md)。原 0.3.3 候选的修复包含在 0.3.4 中，当前公开版本为 0.3.2。
