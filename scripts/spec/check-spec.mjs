@@ -1,11 +1,13 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { FINAL_ITERATION, isPlannedIteration } from '../roadmap-scope.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 export const ROOT = path.resolve(here, '../..')
 
 export const MANIFEST = 'SP/SP001/capability-baseline/capability-manifest.md'
+export const ROADMAP = 'docs/iteration-plan.md'
 export const INVENTORY = 'SP/SP001/evaluation-suite/task-inventory.md'
 
 const NECESSITY = ['必交', '建议', '可选', '范围外']
@@ -13,7 +15,6 @@ const ACCEPTANCE = ['逻辑', '协议fixture', '真实进程', 'UI', 'live Provi
 const ASSERTIONS = ['T', 'D', 'X', 'A', 'E']
 const SIZES = ['S', 'M', 'L']
 const DASH = '—'
-const RETIRED_SP = new Set(['SP008', 'SP009', 'SP016', 'SP017', 'SP018'])
 
 const rows = (text, idPattern) =>
   text
@@ -55,7 +56,9 @@ export function checkManifest(text) {
       failures.push(`归属 SP 非法 "${sp}" @ ${id}`)
     }
     for (const iteration of (sp ?? '').split('/')) {
-      if (RETIRED_SP.has(iteration)) failures.push(`已移出路线图的 SP：${iteration} @ ${id}`)
+      if (iteration !== DASH && !isPlannedIteration(iteration)) {
+        failures.push(`当前路线图未规划 SP：${iteration} @ ${id}`)
+      }
     }
     if (necessity === '范围外' && (sp !== DASH || acceptance !== DASH)) {
       failures.push(`范围外能力不得安排 SP 或验收 @ ${id}`)
@@ -212,18 +215,41 @@ export function checkForbiddenClaims(files) {
   return failures
 }
 
+export function checkRoadmap(text) {
+  const current = text.split(/^## 迭代总表\s*$/m)[1]?.split(/^## /m)[0] ?? ''
+  const iterations = rows(current, /^SP\d{3}$/)
+  const expected = Array.from(
+    { length: Number(FINAL_ITERATION.slice(2)) },
+    (_, i) => `SP${String(i + 1).padStart(3, '0')}`
+  )
+  const failures = []
+  if (iterations.map(([id]) => id).join(',') !== expected.join(',')) {
+    failures.push(`迭代总表必须按 SP001–${FINAL_ITERATION} 连续列出`)
+  }
+
+  for (const [id, , dependencies = ''] of iterations) {
+    for (const [dependency] of dependencies.matchAll(/\bSP\d{3}\b/g)) {
+      if (!isPlannedIteration(dependency)) {
+        failures.push(`${id} 引用了计划外依赖：${dependency}`)
+      }
+    }
+  }
+  return failures
+}
+
 export function checkSpec(root = ROOT) {
   const manifest = readFileSync(path.join(root, MANIFEST), 'utf8')
   const inventory = readFileSync(path.join(root, INVENTORY), 'utf8')
   const m = checkManifest(manifest)
   const i = checkInventory(inventory)
+  const roadmapFailures = checkRoadmap(readFileSync(path.join(root, ROADMAP), 'utf8'))
   const claims = checkForbiddenClaims([
     { file: MANIFEST, text: manifest },
     { file: INVENTORY, text: inventory },
     ...specDocs(root).map((file) => ({ file, text: readFileSync(path.join(root, file), 'utf8') }))
   ])
   return {
-    failures: [...m.failures, ...i.failures, ...claims],
+    failures: [...m.failures, ...i.failures, ...roadmapFailures, ...claims],
     manifest: m.stats,
     inventory: i.stats
   }
@@ -259,6 +285,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     for (const failure of result.failures) console.error('  ' + failure)
     process.exitCode = 1
   } else {
-    console.log('\nOK: 能力清单与任务清单自洽')
+    console.log('\nOK: 路线图、能力清单与任务清单自洽')
   }
 }

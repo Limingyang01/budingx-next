@@ -1,5 +1,7 @@
 # SP002 验证报告 · 模型与会话闭环
 
+> 本历史记录沿用当时的 SP 编号，现行排期及新旧编号见[路线图 r8](../../docs/iteration-plan.md)。
+
 日期：2026-11-17｜迭代：SP002｜设计：[design.zh.md v0.3 approved](design/design.zh.md)｜计划：[plan.zh.md](design/plan.zh.md)｜分支：`feature/SP002/model-session-loop`
 
 本报告只记录**实际执行**的检查。未执行为 `UNVERIFIED`，失败为 `FAIL`，真正不适用才写 `NOT_APPLICABLE`。不使用 mock 冒充 live，不用旧仓成绩充数。

@@ -7,6 +7,7 @@ import {
 } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { FINAL_ITERATION, isPlannedIteration } from '../roadmap-scope.mjs'
 
 export function bumpVersion(version, kind) {
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version))
@@ -42,8 +43,8 @@ export function validateRelease(pkg, ledger, tag) {
   return entries[0]
 }
 export function prepareVersion(root, kind, iteration) {
-  if (!/^(?:SP\d{3}|bootstrap)$/.test(iteration))
-    throw new Error('Specify iteration as bootstrap or SP001, SP002, ...')
+  if (iteration !== 'bootstrap' && !isPlannedIteration(iteration))
+    throw new Error(`Specify iteration as bootstrap or SP001–${FINAL_ITERATION}`)
   const pkgPath = path.join(root, 'src/tui/package.json')
   const ledgerPath = path.join(root, 'release-ledger.json')
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
@@ -67,7 +68,7 @@ export function prepareVersion(root, kind, iteration) {
   if (!sameIteration && kind === 'patch')
     throw new Error('A new iteration requires at least a minor version')
   const version = bumpVersion(pkg.version, kind)
-  if (version === '1.0.0' && iteration !== 'SP021')
+  if (version === '1.0.0' && iteration !== FINAL_ITERATION)
     throw new Error(
       '1.0.0 requires the complete replacement milestone; review versioning.md'
     )

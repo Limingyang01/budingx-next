@@ -6,7 +6,7 @@
 
 - 目标：按[路线图](../../docs/iteration-plan.md)交付「模型与会话闭环」——真实模型配置与流式交互、工具回合、取消和错误有证据；会话配置快照、事件/终态契约、首个构建和 Node bin/资源边界明确；TUI 不成为其他端运行前置。
 - 功能目录（沿用路线图命名）：[provider-streaming](provider-streaming/requirements.md)、[model-management](model-management/requirements.md)、[session-lifecycle](session-lifecycle/requirements.md)、[tui-conversation](tui-conversation/requirements.md)；需求 v0.1 已批准，[设计稿 v0.1 draft](design/design.zh.md)（四需求共用一份，SP001 先例）已提交待批。内部侦察材料 [旧仓机制盘点](attachments/old-repo-mechanism-inventory.md)（仅设计参考，禁止入制品）。
-- 不包含：工作区文件工具与权限控制（SP003）、命令执行与编码任务循环（SP004）、长会话压缩与恢复（SP005）、Desktop/VS Code 宿主（SP008/SP009）、跨端共享存储（SP010）、发布链路扩展（SP011）。工具回合在本轮只打通「会话→Provider→事件」契约面，落地哪些工具由 SP003/SP004 决定。
+- 不包含：工作区文件工具与权限控制（SP003）、命令执行与编码任务循环（SP004）、长会话压缩与恢复（SP005）、Desktop/VS Code 宿主（现行范围外）、跨端共享存储（SP008）、发布链路扩展（SP009）。工具回合在本轮只打通「会话→Provider→事件」契约面，落地哪些工具由 SP003/SP004 决定。
 - 输入基线：master HEAD `3c166cb`；SP001 已 ACCEPTED（规格轮，2026-11-16 用户验收，O1=A / O2=A / O5=B 已拍板）；bootstrap 产品 `budingx@0.1.1` 已 npm 公开发布（OIDC + provenance，见 [release-ledger.json](../../release-ledger.json)）；现行 [src/tui](../../src/tui) 为独立编写的聊天 TUI，provider 调用直接写在 CLI 内，按 SP001 core-boundaries 风险条目在本轮做明确迁移拆分。
 - 依赖与启动条件：
   - USER_CONFIRMED：用户 2026-11-16 会话授权「继续 SP002 迭代的开发工作」。

@@ -1,8 +1,8 @@
-# 剩余 SP 参考复刻全面排查（SP003–SP021）
+# 剩余 SP 参考复刻全面排查（SP003–SP016）
 
 状态：AGENT_REVIEWED / 已采纳（2026-11-17 委托自审；manifest v2 提议仍待各轮开轮拍板）｜版本：r1｜更新：2026-11-17｜配套：[路线图](iteration-plan.md)、[能力矩阵](agent-capability-matrix.md)、[SP001 能力清单 v1](../SP/SP001/capability-baseline/capability-manifest.md)
 
-**r7 范围批注（2026-11-18）**：TUI 单端交付。Desktop、VS Code、远程/H5 与 IM 已移出当前 SP；历史参考点见附录。三权限模式仍为仅可查看、工作区内修改和完全权限，参考的七模式属于历史事实。
+**r8 范围批注（2026-11-18）**：TUI 单端交付。Desktop、VS Code、远程/H5 与 IM 已移出当前 SP；历史参考点见附录。三权限模式仍为仅可查看、工作区内修改和完全权限，参考的七模式属于历史事实。
 
 ## 1. 目的与边界
 
@@ -85,7 +85,7 @@
 
 **Stub（本副本无实现）**：WebBrowser、Monitor、TerminalCapture、REPL、Workflow、PushNotification、SendUserFile、SubscribePR、SuggestBackgroundPR、ReviewArtifact、VerifyPlanExecution、CtxInspect、ListPeers、Sleep、Snip、OverflowTest、tungsten（显式 deny）、DiscoverSkills（仅 prompt stub）。**无 computer-use 工具目录**。
 
-**注记**：① Edit＝old_string 字面且唯一；多匹配报错提示加上下文或 replace_all；有容错回退；空 old_string 仅创建语义合法；old==new 拒绝。② Bash＝timeout 上限 + run_in_background；阻塞超预算自动转后台；用户 Ctrl+B 手动转后台；后台输出写任务文件 + 完成通知；sleep 类阻塞命令被拦截并引导后台。③ 子代理 UI 与后台任务六件套是两套表面。④ browser/CU 在本副本为 stub/缺失 → SP014/SP015 无本地实现可参考（见 §5.2）。⑤ ToolSearch＝关键词或 `select:<名>` 取回完整 schema；延迟工具仅暴露名字、取回前不可调用；MCP 工具默认全部延迟（alwaysLoad 例外）。
+**注记**：① Edit＝old_string 字面且唯一；多匹配报错提示加上下文或 replace_all；有容错回退；空 old_string 仅创建语义合法；old==new 拒绝。② Bash＝timeout 上限 + run_in_background；阻塞超预算自动转后台；用户 Ctrl+B 手动转后台；后台输出写任务文件 + 完成通知；sleep 类阻塞命令被拦截并引导后台。③ 子代理 UI 与后台任务六件套是两套表面。④ browser/CU 在本副本为 stub/缺失 → SP012/SP013 无本地实现可参考（见 §5.2）。⑤ ToolSearch＝关键词或 `select:<名>` 取回完整 schema；延迟工具仅暴露名字、取回前不可调用；MCP 工具默认全部延迟（alwaysLoad 例外）。
 
 ### 3.4 会话·持久化·无头面（已回填，来源：audit-session5）
 
@@ -113,7 +113,7 @@
 
 **Custom agents**：.md frontmatter＝name/description(whenToUse 10–5000 校验)/tools(省略=全部)/model/effort/color/memory(scope)；正文=systemPrompt；位置 user/project/managed/local；/agents wizard 生成+校验。
 
-**Teams**：TeamCreate(team_name,description)→members(agentId/name/color)；SendMessage recipient=成员名或 `*` 广播（线性成本警告）+ shutdown request/response(request_id,feedback)；swarm 自动投递无 inbox；tmux/iTerm2 外部成员与 in-process teammate 并存；会话级 EnterWorktree/ExitWorktree（可配 hooks、chdir、状态持久化）；teammate spinner tree/pills/swarm banner。**注：teammate 级自动 worktree 隔离在参考未证实（仅会话级）→ 我们 SP013 的 worktree-isolation 要求更强，保持用户确认门槛**。
+**Teams**：TeamCreate(team_name,description)→members(agentId/name/color)；SendMessage recipient=成员名或 `*` 广播（线性成本警告）+ shutdown request/response(request_id,feedback)；swarm 自动投递无 inbox；tmux/iTerm2 外部成员与 in-process teammate 并存；会话级 EnterWorktree/ExitWorktree（可配 hooks、chdir、状态持久化）；teammate spinner tree/pills/swarm banner。**注：teammate 级自动 worktree 隔离在参考未证实（仅会话级）→ 我们 SP011 的 worktree-isolation 要求更强，保持用户确认门槛**。
 
 **IDE**：openDiff/close_tab RPC 回传 diff；selection_changed 订阅注入；at_mentioned→附件；getDiagnostics 工具。
 
@@ -125,7 +125,7 @@
 
 ## 4. 逐 SP 排查
 
-r7 当前实施范围按 [迭代路线图](iteration-plan.md) 的 16 个 SP 执行。已移出范围的参考点见文末历史附录。
+r8 当前实施范围按 [迭代路线图](iteration-plan.md) 的 16 个 SP 执行。已移出范围的参考点见文末历史附录。
 
 列含义：**现定义**＝路线图 r4 功能目录；**清单对应**＝CAP ID；**参考事实/补充任务**＝盘点回填；**周旋点**＝独立实现策略。
 
@@ -161,49 +161,49 @@ r7 当前实施范围按 [迭代路线图](iteration-plan.md) 的 16 个 SP 执�
 - 参考事实/补充任务（已回填）：子代理卡片（进度≤3 行 + ctrl+o 全文 + 专属配色 + 耗时/token）与后台任务六件套分离；ToolSearch 延迟加载（名字暴露→取回 schema→可调用；MCP 默认延迟）；LSP 只读卡片；doctor 诊断 screen（警告带 Fix）；/status 面板、/stats、/insights、/heapdump（可选）；/cost TUI 面板字段参考未证实 → 自有设计；effortLevel 参数面；/btw 旁支子代理；/security-review 子任务兜底（可选）；第二供应商公开协议适配。
 - 周旋点：子代理＝自有运行时（独立上下文/权限≤父/取消传播/预算），不搬参考 mailbox 实现；doctor 自写本地诊断（不上传）；第二供应商按公开协议适配。
 
-### SP010 多端架构入口与共享边界（r6 改名，原「跨端共享与接入」）
+### SP008 多端架构入口与共享边界（r6 改名，原「跨端共享与接入」）
 - 现定义：shared-models-and-history、session-ownership、transport-boundaries；r6 起以轻量测试客户端验证契约，不交付真实其他端。
 - 清单对应：CAP-L4-08/09/10/18/19。
 - 参考事实/补充任务（已回填）：参考本地服务行为面＝会话编排 + 存储事务锁（withFileTransaction）+ 迁移门控 + rename 竞态 guard + remotePermissionBridge + SessionsWebSocket 事件恢复；28 组接口不搬，按行为事实自定最小契约 + 符合性测试。
 - 周旋点：参考本地服务约 6.3 万行 28 组接口不可搬；按行为事实自定最小 WS/stdio 契约 + 符合性测试；单写者所有权自写。
 
-### SP011 独立交付和 npm 发布工程（r6 收窄 TUI）
+### SP009 独立交付和 npm 发布工程（r6 收窄 TUI）
 - 现定义：tui-distribution、upgrade-compatibility、npm-publish-pipeline。
 - 清单对应：CAP-L4-20。
 - 参考事实/补充任务：待回填（参考打包/升级行为面）。
 - 周旋点：沿用 bootstrap 已验证的 OIDC 发布链扩展；不搬参考打包脚本。
 
-### SP012 中期编码效果检查
+### SP010 中期编码效果检查
 - 现定义：coding-parity-checkpoint、core-reliability。
 - 清单对应：矩阵「基线与任务集」「诊断与性能」行；无新增 CAP。
 - 参考事实/补充任务：以 SP001 评测集自有测量为准（O5=B），不对照参考运行。
 - 周旋点：无（检查轮）。
 
-### SP013 多代理团队
+### SP011 多代理团队
 - 现定义：team-lifecycle、task-coordination、team-messaging、worktree-isolation。
 - 清单对应：CAP-L2-11、L4-17。
-- 参考事实/补充任务（已回填）：TeamCreate/TeamDelete + SendMessage（recipient/`*` 广播线性成本警告/shutdown request_id+feedback）；swarm 自动投递无 inbox；tmux/iTerm2 外部成员 + in-process teammate；teammate spinner tree/pills/swarm banner；团队记忆同步；TeammateIdle/TaskCreated/TaskCompleted hook 事件；**teammate 级自动 worktree 隔离参考未证实 → 保持我们更强的 SP013 门槛**。
+- 参考事实/补充任务（已回填）：TeamCreate/TeamDelete + SendMessage（recipient/`*` 广播线性成本警告/shutdown request_id+feedback）；swarm 自动投递无 inbox；tmux/iTerm2 外部成员 + in-process teammate；teammate spinner tree/pills/swarm banner；团队记忆同步；TeammateIdle/TaskCreated/TaskCompleted hook 事件；**teammate 级自动 worktree 隔离参考未证实 → 保持我们更强的 SP011 门槛**。
 - 周旋点：协调器/租约/去重自写；worktree 用 Git 公开命令；UI 自绘。
 
-### SP014 浏览器操作
+### SP012 浏览器操作
 - 现定义：browser-session、page-actions、browser-artifacts。
 - 清单对应：CAP-L2-15。
-- 参考事实/补充任务（已回填，**证据修正**）：参考副本 WebBrowserTool 为生成 stub，无导航/点击/截图实现 → 本轮**无本地实现可参考**；行为规格改以公开描述 + 用户实际使用记忆为准，实现全自写（Playwright/CDP 公开来源）。验收门槛不降（高级能力计划 SP014 表）。
+- 参考事实/补充任务（已回填，**证据修正**）：参考副本 WebBrowserTool 为生成 stub，无导航/点击/截图实现 → 本轮**无本地实现可参考**；行为规格改以公开描述 + 用户实际使用记忆为准，实现全自写（Playwright/CDP 公开来源）。验收门槛不降（高级能力计划 SP012 表）。
 - 周旋点：用公开可重现来源（Playwright/CDP，MIT/Apache 登记台账），不搬参考原生宿主代码。
 
-### SP015 Computer Use
+### SP013 Computer Use
 - 现定义：computer-permissions、screen-actions、desktop-control-recovery。
 - 清单对应：CAP-L2-16。
 - 参考事实/补充任务（已回填，**证据修正**）：参考副本**无 computer-use 工具目录** → 无本地实现可参考；授权门/急停/多屏 DPI 行为规格以公开描述 + 高级能力计划为准，Windows 公开 API 自写辅助进程。验收门槛不降。
 - 周旋点：Windows 公开 API（UIAutomation/ SendInput 类）自写辅助进程；急停 SLO 自测。
 
-### SP019 定时任务
+### SP014 定时任务
 - 现定义：schedule-management、durable-scheduler、scheduled-agent-run。
 - 清单对应：CAP-L2-17、L4-16。
 - 参考事实/补充任务（已回填）：CronCreate/Update/Delete/List 四工具共用卡片；`cron` 字段 + `durable:false` 会话级 vs 持久 JSON 双档；cronScheduler+jitter；任务类型族（LocalAgent/RemoteAgent/LocalWorkflow/MonitorMcp/Dream）+ pillLabel；jobs classifier 存在（细节未读）→ 自有分类设计。
 - 周旋点：cron 解析用 MIT 库或自写；租约/错过触发策略自写；管理入口为 TUI/headless，通用宿主契约保留。
 
-### SP020–SP021 组合、交付与最终验收（r6 当前范围）
+### SP015–SP016 组合、交付与最终验收（r8 当前范围）
 - 现定义：tui-capability-integration、advanced-distribution、full-upgrade；full-agent-parity、long-running-reliability、final-release-evidence。
 - 清单对应：CAP-L4-20 及全清单当前必交项（47）收口，范围外基线见清单 v1.2。
 - 参考事实/补充任务：组合实战清单沿用高级能力计划；参考面仅用于补漏检查。
@@ -239,8 +239,8 @@ r7 当前实施范围按 [迭代路线图](iteration-plan.md) 的 16 个 SP 执�
 
 | v1 行 | 修正 | 影响 |
 | --- | --- | --- |
-| CAP-L2-15 浏览器操作 | 基线证据改为「公开描述 + stub 目录名（WebBrowserTool 为 no-op）」 | SP014 无本地实现可参考；全自写 + 公开来源；门槛不降 |
-| CAP-L2-16 Computer Use | 基线证据改为「公开描述；本副本无工具目录」 | SP015 同上 |
+| CAP-L2-15 浏览器操作 | 基线证据改为「公开描述 + stub 目录名（WebBrowserTool 为 no-op）」 | SP012 无本地实现可参考；全自写 + 公开来源；门槛不降 |
+| CAP-L2-16 Computer Use | 基线证据改为「公开描述；本副本无工具目录」 | SP013 同上 |
 | CAP-L2-06 长任务/后台监控 | 证据修正为 Bash run_in_background + TaskOutput/TaskStop（真实）；Monitor/TerminalCapture 为 stub | SP004 以真实表面为准 |
 | CAP-L2-22 PR 集成 / CAP-L2-23 系统集成 | SubscribePR/SuggestBackgroundPR/PushNotification/SendUserFile 均为 stub → 证据降为「公开描述」 | 维持可选；开轮如升格需重新取证 |
 | CAP-L3-11 Hook 体系 | 「28 事件」修正为 27 可持久化事件 + 1 不可持久化 function hook | 事件清单以 §3.3 为准 |

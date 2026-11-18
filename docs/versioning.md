@@ -5,8 +5,8 @@
 复用入口：[buding-version-prepare](../skills/buding-version-prepare/SKILL.md)，用于版本升级、文档同步、预演及维护者手动发布交接，不自动触发 npm 发布。
 
 - 首个启动版本为 0.1.0（bootstrap），只含 OpenAI 兼容流式聊天 TUI，不表示任何 SP 已验收。
-- 每个新 SP 完成并交付时至少增加 minor，本仓 SP002 首次产品交付为已发布的 0.2.0；同一 SP 的修复增加 patch。实际版本以发布台账为准，不将 SP021 硬编码为某个版本。
-- 兼容破坏增加 major（在 0.x 开发阶段也可按 minor 体现，必须显式记录迁移）；1.0.0 必须满足完整替代验收，不能因 SP 编号自然到达。
+- 每个新 SP 完成并交付时至少增加 minor，本仓 SP002 首次产品交付为已发布的 0.2.0；同一 SP 的修复增加 patch。实际版本以发布台账为准，SP 编号与 SemVer 独立。
+- 兼容破坏增加 major（在 0.x 开发阶段也可按 minor 体现，必须显式记录迁移）；1.0.0 仅可在 SP016 完整替代验收达标时准备，仍须有实际验收证据。
 - prepare 只准备版本、台账和发行说明，不提交、不打 tag、不上传。发布命令不自行 bump，版本重复拒绝，预发布用明确 tag。
 - 同一 SP 可多次发布，SP 状态、产品版本、发布状态分开记录；发布失败不把已占用版本重新使用。
 - src/tui/package.json 的 version 是产品版本源；release-ledger.json 记录迭代及 prepared/published 状态；release-notes/v<version>.md 记录用户变化、限制和验收。根维护包版本不是产品版本。

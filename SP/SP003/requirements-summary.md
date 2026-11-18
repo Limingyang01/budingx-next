@@ -6,7 +6,7 @@
 
 - 目标：交付「工作区与安全修改」——Agent 可在受控工作区内读取、搜索、编辑文件，改动可预览、可撤销、可追溯；权限按用户固定三模式（仅可查看 / 工作区内修改 / 完全权限）判定，越界与被拒绝时磁盘不变。出口以路线图 SP003 行为准：跨目录搜索、编码/CRLF/大文件/忽略规则、补丁冲突、目录穿越/junction 越界有回归；拒绝写入磁盘不变，diff 与实际修改一致，用户无关改动保留；三权限模式切换与边界有回归。
 - 功能目录（沿用路线图命名）：[workspace-tools](workspace-tools/requirements.md) v0.2、[change-preview](change-preview/requirements.md) v0.2、[permission-controls](permission-controls/requirements.md) v0.2、[file-context](file-context/requirements.md) v0.2。
-- 不包含：命令执行与编码任务循环、Git worktree 安全、计划与追问（SP004）；长会话压缩与恢复、项目记忆（SP005）；hooks / skills / MCP / 无头 CLI / TUI 体验主战场（SP006）；子代理与多模态（SP007）；桌面/VS Code/远程/IM 多端（SP008/SP009/SP016–SP018 已按 r6 暂缓）；多端架构入口契约（SP010）。本轮**不引入新的运行时第三方依赖**：diff、gitignore 语义、路径边界、权限规则全部自实现（见设计「周旋点」）。
+- 不包含：命令执行与编码任务循环、Git worktree 安全、计划与追问（SP004）；长会话压缩与恢复、项目记忆（SP005）；hooks / skills / MCP / 无头 CLI / TUI 体验主战场（SP006）；子代理与多模态（SP007）；桌面/VS Code/远程/IM（现行范围外）；多端架构入口契约（SP008）。本轮**不引入新的运行时第三方依赖**：diff、gitignore 语义、路径边界、权限规则全部自实现（见设计「周旋点」）。
 - 输入基线：master HEAD `b0ffc9e`（路线图 r6 收口提交）；SP001 已 ACCEPTED（规格轮）；SP002 已实现并发布 0.2.0（npm latest=0.2.0），本轮在其 `src/core` / `src/provider` / `src/storage` / `src/tui` 四模块之上扩展；当前仓库**尚无任何文件工具实现**，`Session` 已具备工具回合、审批挂起与事件契约，本轮在其上接入真实工具。
 - 依赖与启动条件：
   - USER_CONFIRMED（2026-11-17 用户会话）：「开启 SP003 的迭代任务」→ 授权启动本轮。

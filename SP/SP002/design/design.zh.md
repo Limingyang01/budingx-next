@@ -1,5 +1,7 @@
 # SP002 设计 · 模型与会话闭环
 
+> 本历史记录沿用当时的 SP 编号，现行排期及新旧编号见[路线图 r8](../../../docs/iteration-plan.md)。
+
 版本：**v0.3 approved**——v0.2 draft 经独立 builder 复核（9 问 + 勘误），处理见 §10；**用户 2026-11-16 会话批准「继续SP002,我批准了设计」**，正文自 v0.2 起无实质变更，本版仅登记批准身份｜更新：2026-11-16｜覆盖需求：provider-streaming / model-management / session-lifecycle / tui-conversation（四份 v0.1 需求均已获用户批准 2026-11-16）
 基线：master `3c166cb` + 未提交的 SP002 记录文件；本轮设计/计划为**中文单份**（按新版 SP 规范）。
 原始材料：[迭代汇总](../requirements-summary.md)、[旧仓机制盘点](../attachments/old-repo-mechanism-inventory.md)（内部参考，禁入制品）、[O8 调研·Ink](../attachments/o8-research-ink.md)、[O8 调研·替代路线](../attachments/o8-research-alternatives.md)、[能力清单](../../SP001/capability-baseline/capability-manifest.md)、[仓库布局](../../../docs/repository-layout.md)、[npm 发布方案](../../../docs/npm-release-plan.md)。

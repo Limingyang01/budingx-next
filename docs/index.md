@@ -9,7 +9,7 @@
 4. [架构方向草案](architecture.md)：稳定责任边界，尚不是已批准实施规格。
 5. [开发指南](development.md)：当前可运行的维护命令和未来测试选择。
 6. [文档约定](documentation.md)：需求、设计、计划、证据和历史材料的身份。
-7. [迭代路线图](iteration-plan.md)：r7 当前 16 个 SP 的目标、依赖与验收门槛，TUI 单端交付及通用宿主契约。
+7. [迭代路线图](iteration-plan.md)：r8 当前 SP001–SP016 的目标、依赖与验收门槛，TUI 单端交付及通用宿主契约。
 8. [SP 管理与模板](../SP/README.md)：统一按迭代及功能/优化记录。
 9. [SP001 迭代汇总](../SP/SP001/requirements-summary.md)：能力基线、核心边界与发布范围（规格轮，已验收，未启动实现）。
 10. [迁移记录](migration/README.md)：本次取舍、来源和检查结果。

@@ -6,7 +6,7 @@
 
 ## 编号与目录
 
-当前计划按[路线图 r7](../docs/iteration-plan.md)执行，共 16 轮：SP001–SP007、SP010–SP015、SP019–SP021。原 SP008、SP009、SP016–SP018 退出规划，编号留空供历史追溯。目录、分支和文档统一使用三位编号。新范围须另行确认。
+当前计划按[路线图 r8](../docs/iteration-plan.md)执行，连续使用 SP001–SP016。现有 SP001–SP007 保持编号，后续轮次的新旧对照见路线图。r7 及更早记录中的 SP 号按当时路线图解释，现行文件、分支与交付引用使用新编号。
 
 ```text
 SP/
@@ -35,7 +35,7 @@ SP/
 
 ## 状态和完成标准
 
-- 生命周期：PLANNED → ACTIVE → VERIFYING → ACCEPTED → CLOSED；BLOCKED/CANCELLED 记录原因、恢复条件及日期；已移出路线图的编号只留历史记录，无当前目录、依赖或验收。ACCEPTED 必须有实际验收依据，CLOSED 不能掩盖未完成项。
+- 生命周期：PLANNED → ACTIVE → VERIFYING → ACCEPTED → CLOSED；BLOCKED/CANCELLED 记录原因、恢复条件及日期；已移出路线图的功能无当前目录、依赖或验收。ACCEPTED 必须有实际验收依据，CLOSED 不能掩盖未完成项。
 - 批准：正式 SDD 以设计文档为唯一常规人工审阅点，其批准覆盖计划、实现、测试、交付与各阶段本地提交（提交说明中文）；用户验收、合并、推送、发布仍独立授权并分别记录。需求不单设批准门，阻塞性 OPEN 先行确认，其余随设计审阅。技术提议使用 MODEL_PROPOSED，用户确认使用 USER_CONFIRMED，未决定使用 OPEN。
 - 验证：PASS / FAIL / UNVERIFIED / NOT_APPLICABLE；零测试、全 skip、未执行不能记 PASS。保留命令/cwd/revision/环境和实际计数，不引用旧仓成绩充当通过证明。
 - 日志、coverage、临时截图放忽略的 artifacts/quality-runs/<SP>/<slug>/<run>/；仓库保留脱敏摘要。没有 Git 提交时写“无提交”，不得虚构 SHA。

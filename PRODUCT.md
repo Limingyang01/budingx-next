@@ -14,7 +14,7 @@
 
 ## 1. 这是什么
 
-budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终端里完成定位问题、修改代码、运行测试、提交前审查的完整编码闭环。**当前路线专注 TUI 单端（r7）**。Desktop、VS Code、远程/H5 与 IM 已移出当前 SP 范围，SP010 保留通用宿主契约。
+budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终端里完成定位问题、修改代码、运行测试、提交前审查的完整编码闭环。**当前路线专注 TUI 单端（r8）**。Desktop、VS Code、远程/H5 与 IM 已移出当前 SP 范围，SP008 保留通用宿主契约。
 
 当前已发布 **0.2.0（SP002）**，支持 OpenAI 兼容配置和流式对话。SP002 在此基础上补齐了模型档案、会话状态机、工具回合契约、双中断与排队等核心机制，并已完成本轮发布。**SP003 已在仓库实现工作区文件工具与三档权限模式**（读取/搜索/编辑文件、改动预览与撤销、`@` 引用文件、权限规则），随 0.3.0 发布。命令执行与完整编码任务循环属 SP004。
 
@@ -33,7 +33,7 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | SP002       | 0.2.0         | provider-streaming、model-management、session-lifecycle、tui-conversation | OpenAI 兼容流解析与 tool_calls 装配、错误分类/有界重试/取消/限额、模型档案与凭据仓库、会话状态机与终态契约、工具回合、双中断与排队、Ink 8 多行对话界面 | **已发布**，真实终端人工验证边界见 §7 |
 | SP003       | 0.3.0         | workspace-tools、change-preview、permission-controls、file-context         | 工作区文件工具（读取/写入/精确编辑/文件匹配/内容检索，含越界防护与读后编辑门）、结构化 diff 预览与本会话改动撤销、三档权限模式与审批三档、权限规则与拒绝记录、`@` 引用与统一补全 | **已准备发布** |
 
-### 2.2 后续交付规划（[路线图 r7](docs/iteration-plan.md)）
+### 2.2 后续交付规划（[路线图 r8](docs/iteration-plan.md)）
 
 | 迭代  | 目标                    | 主要功能目录                                                                                               | 状态 |
 | ----- | ----------------------- | ---------------------------------------------------------------------------------------------------------- | ---- |
@@ -41,17 +41,17 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | SP005 | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         | 规划中 |
 | SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 规划中 |
 | SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | 规划中 |
-| SP010 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | 规划中（契约轮，轻量测试客户端验证） |
-| SP011 | TUI 独立交付与 npm 发布工程 | tui-distribution、upgrade-compatibility、npm-publish-pipeline                                              | 规划中 |
-| SP012 | 中期编码效果检查        | coding-parity-checkpoint、core-reliability                                                                 | 规划中 |
-| SP013 | 多代理团队              | team-lifecycle、task-coordination、team-messaging、worktree-isolation                                      | 规划中 |
-| SP014 | 浏览器操作              | browser-session、page-actions、browser-artifacts                                                           | 规划中 |
-| SP015 | Computer Use            | computer-permissions、screen-actions、desktop-control-recovery                                             | 规划中 |
-| SP019 | 定时任务                | schedule-management、durable-scheduler、scheduled-agent-run                                                | 规划中 |
-| SP020 | 当前范围全能力集成与交付 | tui-capability-integration、advanced-distribution、full-upgrade                                            | 规划中 |
-| SP021 | 当前范围完整替代验收    | full-agent-parity、long-running-reliability、final-release-evidence                                        | 规划中 |
+| SP008 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | 规划中（契约轮，轻量测试客户端验证） |
+| SP009 | TUI 独立交付与 npm 发布工程 | tui-distribution、upgrade-compatibility、npm-publish-pipeline                                              | 规划中 |
+| SP010 | 中期编码效果检查        | coding-parity-checkpoint、core-reliability                                                                 | 规划中 |
+| SP011 | 多代理团队              | team-lifecycle、task-coordination、team-messaging、worktree-isolation                                      | 规划中 |
+| SP012 | 浏览器操作              | browser-session、page-actions、browser-artifacts                                                           | 规划中 |
+| SP013 | Computer Use            | computer-permissions、screen-actions、desktop-control-recovery                                             | 规划中 |
+| SP014 | 定时任务                | schedule-management、durable-scheduler、scheduled-agent-run                                                | 规划中 |
+| SP015 | 当前范围全能力集成与交付 | tui-capability-integration、advanced-distribution、full-upgrade                                            | 规划中 |
+| SP016 | 当前范围完整替代验收    | full-agent-parity、long-running-reliability、final-release-evidence                                        | 规划中 |
 
-> 路线图 r7 保留 16 个 SP。已移出的原编号 SP008、SP009、SP016–SP018 仅用于历史追溯。后续轮次的具体需求和设计在启动时细化。
+> 路线图 r8 现行编号为 SP001–SP016，九个后续轮次的旧编号见[映射表](docs/iteration-plan.md)。
 
 ---
 
@@ -207,7 +207,7 @@ budingx
 | Desktop / VS Code / 移动端 / 远程/H5 / IM | 当前 SP 范围外，保留通用宿主接口 | 后续如需纳入，另行决定范围和排期 |
 | 真实服务 live 证据             | 已验证一个用户提供的服务：流式、工具审批回合、取消、鉴权错误；见 SP002 报告 §16 | 其他型号/服务仍未测   |
 | 真终端 CJK/IME 与 resize 体验  | 未验证（需 Windows Terminal + ConHost 人工 smoke）                              | 验收时补              |
-| macOS / Linux                  | 仅声明 Windows 已验证                                                           | SP011 后逐个平台验证  |
+| macOS / Linux                  | 仅声明 Windows 已验证                                                           | SP009 后逐个平台验证  |
 
 ---
 
@@ -221,6 +221,7 @@ budingx
 | 0.3.0 | 2026-11-18 | SP003 工作区与安全修改；升级说明见 release-notes/v0.3.0.md | 已准备发布 |
 | —（规划调整，无产品行为变化） | 2026-11-17 | 路线图 r6：TUI 单端优先；SP008/SP009/SP016–SP018 暂缓、多端架构入口保留；TUI 三权限模式固定；能力清单分母 53→47；说明书 v1.3 | 规划文档调整 |
 | —（规划调整） | 2026-11-18 | 路线图 r7：移出五个原暂缓 SP，保留通用宿主契约，必交能力仍为 47 | 规划文档调整 |
+| —（规划调整） | 2026-11-18 | 路线图 r8：现行 SP001–SP016 连续编号，能力与产品版本不变 | 规划文档调整 |
 
 发布台账以 [release-ledger.json](release-ledger.json) 为准，发行说明见 `release-notes/`。
 

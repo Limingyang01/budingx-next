@@ -1,5 +1,7 @@
 # SP001 Capability Baseline, Core Boundaries and Release Scope — Formal Design
 
+> Historical SP numbers in this record follow its original plan. See the [current roadmap and ID mapping](../../../docs/iteration-plan.md).
+
 | Item | Value |
 | --- | --- |
 | Requirements | SP001 (4: capability-baseline / evaluation-suite / core-boundaries / release-scope) |

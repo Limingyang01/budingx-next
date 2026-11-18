@@ -84,6 +84,23 @@ test('iteration preparation requires minor bump and preserves unknown ledger fie
   assert.throws(() => prepareVersion(root, 'minor', 'SP002'), /prepared/)
 })
 
+test('1.0.0 preparation is reserved for the renumbered final SP016', (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'budingx-final-version-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  mkdirSync(path.join(root, 'src/tui'), { recursive: true })
+  writeFileSync(path.join(root, 'src/tui/package.json'), JSON.stringify({
+    name: 'budingx', version: '0.3.0'
+  }))
+  writeFileSync(path.join(root, 'release-ledger.json'), JSON.stringify({
+    schemaVersion: 1,
+    releases: [{ version: '0.3.0', iteration: 'SP003', status: 'published' }]
+  }))
+
+  assert.throws(() => prepareVersion(root, 'minor', 'SP021'), /iteration/)
+  assert.throws(() => prepareVersion(root, 'major', 'SP015'), /complete replacement/)
+  assert.equal(prepareVersion(root, 'major', 'SP016'), '1.0.0')
+})
+
 test('a published bootstrap release can prepare its next maintenance patch without inventing an SP', (t) => {
   const root = mkdtempSync(path.join(tmpdir(), 'budingx-bootstrap-version-'))
   t.after(() => rmSync(root, { recursive: true, force: true }))

@@ -1,5 +1,7 @@
 # SP001 能力基线、核心边界与发布范围 · 正式设计
 
+> 本历史记录沿用当时的 SP 编号，现行排期及新旧编号见[路线图 r8](../../../docs/iteration-plan.md)。
+
 | 项 | 值 |
 | --- | --- |
 | 需求 | SP001（4 项：capability-baseline / evaluation-suite / core-boundaries / release-scope） |
