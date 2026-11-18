@@ -203,7 +203,7 @@
   5. 非法名称（`../evil`、`a/b`、超长）→ 拒绝（路径穿越防护）
 - **GREEN**：`git worktree add` / `git worktree list`，名称正则 `^[a-z0-9][a-z0-9-_]{0,40}$`，路径在 root 下解析并做越界检查
 - **验证**：`npm run build && node --test src/git/test/worktree.test.mjs`
-- **完成事实**：待填
+- **完成事实**（2026-11-18）：RED 6 条真实 Git 用例（临时仓库 fixture）→ GREEN 6/6。实现：`isValidWorktreeName`（`^[a-z0-9][a-z0-9-_]{0,40}$`）、`repoSlug`（basename 小写、非法字符→`-`、≤64）、`enterWorktree({cwd,name,root?,home?})`（名称校验→`readGitStatus` 前置校验 git 可用/仓库身份/非分离 HEAD→root 缺省 `~/.budingx/worktrees`→目标路径越界检查→已存在时 `git worktree list --porcelain` 核对路径与分支一致才复用→分支 `<base>-budingx/<flattened>`（`/`→`+`）冲突即拒绝→`git worktree add <path> -b <branch>`，失败只清理本轮创建目录）、`exitWorktree(current)`（默认 keep，返回原 cwd）。Ruling：路径比较统一 `comparablePath`（分隔符归一 + win32 小写）以匹配 git 输出；非法名称与路径穿越在 spawn 前拒绝。
 
 ### T9 · Git 提交授权与专用 worktree
 

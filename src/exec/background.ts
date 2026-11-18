@@ -22,7 +22,13 @@ interface BackgroundRecord {
   finishedAt?: number
   forced?: { outcome: 'timeout' | 'cancelled'; reason: string }
   reason?: string
+  /** 终止重试计时器（T4 稳定性：首次终止未生效时重发，进程退出即清理）。 */
+  killRetry?: NodeJS.Timeout
 }
+
+/** 终止重发间隔与总时限：Windows 高并发下 taskkill 可能未命中，需重试直到进程退出。 */
+const KILL_RETRY_INTERVAL_MS = 1000
+const KILL_RETRY_MAX_MS = 10000
 
 export interface BackgroundTableOptions {
   /** 终止整棵进程树（runner 注入，Windows taskkill /T /F + 兜底）。 */
@@ -88,6 +94,18 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
     if (record.settled || record.forced) return
     record.forced = { outcome, reason }
     options.kill(record.child)
+    // 首次终止可能未命中（Windows 高并发下 taskkill 偶发失败）：周期性重发，
+    // 直到进程退出触发 finalize 或到达总时限；不改变已确定的终态语义。
+    const deadline = Date.now() + KILL_RETRY_MAX_MS
+    record.killRetry = setInterval(() => {
+      if (record.settled || Date.now() > deadline) {
+        clearInterval(record.killRetry)
+        record.killRetry = undefined
+        return
+      }
+      options.kill(record.child)
+    }, KILL_RETRY_INTERVAL_MS)
+    record.killRetry.unref()
   }
 
   async function finalize(record: BackgroundRecord, exitCode: number | undefined, errorReason?: string): Promise<void> {
@@ -95,6 +113,10 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
     record.settled = true
     const finishedAt = Date.now()
     clearTimeout(record.timer)
+    if (record.killRetry !== undefined) {
+      clearInterval(record.killRetry)
+      record.killRetry = undefined
+    }
     record.signal.removeEventListener('abort', record.onAbort)
     const stdoutSnap = record.stdout.snapshot(EXEC_OUTPUT_CAP)
     const stderrSnap = record.stderr.snapshot(EXEC_OUTPUT_CAP)

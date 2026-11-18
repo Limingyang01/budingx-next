@@ -135,3 +135,41 @@ test('CE-14 AbortSignal 触发后台任务转 cancelled', async () => {
   })
   assert.ok(final, 'abort 后 5s 内状态必须为 cancelled')
 })
+test('CE-07/R-03 取消重试：首次终止未生效时自动重发，直到进程退出', async () => {
+  const { createBackgroundTable } = await import('../../tui/dist/exec/background.js')
+  const { OutputCollector } = await import('../../tui/dist/exec/output.js')
+  const { EventEmitter } = await import('node:events')
+  const child = new EventEmitter()
+  child.pid = 4242
+  let kills = 0
+  const table = createBackgroundTable({
+    kill: () => {
+      kills += 1
+      // 模拟 Windows 高并发下首次 taskkill 未生效：只有第二次终止才让进程退出。
+      if (kills >= 2) child.emit('close', null)
+    }
+  })
+  const taskId = table.register(
+    {
+      command: 'node -e "setTimeout(()=>{},60000)"',
+      interpreter: 'Bash',
+      cwd: process.cwd(),
+      timeoutMs: 60000,
+      autoBackgrounded: false,
+      backgroundedByUser: true
+    },
+    child,
+    new OutputCollector(1024, true),
+    new OutputCollector(1024, true),
+    new AbortController().signal
+  )
+  assert.equal(table.cancel(taskId), true)
+  assert.equal(kills, 1)
+  const final = await waitFor(() => {
+    const snapshot = table.status(taskId)
+    return snapshot && snapshot.outcome === 'cancelled' ? snapshot : undefined
+  }, 5000)
+  assert.ok(final, '重试终止后必须到达 cancelled')
+  assert.ok(kills >= 2, '必须自动重发终止')
+  table.dispose()
+})
