@@ -1,6 +1,6 @@
 # budingx
 
-An independent **MIT** terminal coding agent for OpenAI-compatible APIs. Version `0.2.0` (SP002) is published on npm as `latest`, adding model profiles, the Ink conversation interface and the session core. GitHub Actions verified Windows/Linux, published through OIDC, and the official package passed an independent Windows install and HTTP smoke. Coding tools, file and terminal access land in later releases.
+An independent **MIT** terminal agent for OpenAI-compatible APIs. Version 0.3.0 adds workspace file tools, file references, approval previews, and session undo.
 
 ## Install
 
@@ -75,14 +75,22 @@ Each profile owns its own key, bound to the profile id **and** the base URL host
 - Esc — deny the visible approval and continue; otherwise interrupt the turn, recycle idle queued input, or cancel key entry
 - Shift+Enter — insert a line break
 - Ctrl+C — interrupt while a turn runs; at the prompt, press twice to exit
-- ↑ / ↓ — recall earlier input
-- y / n — allow or deny a pending tool approval
+- ↑ / ↓ — recall earlier input, select completions, or scroll a diff
+- 1 / 2 / 3 — allow once, remember for this session, or deny a pending tool approval
 
 A cancelled turn keeps the text that was already produced. A turn cancelled before any output returns the original request to the prompt. Failed turns leave the conversation unchanged.
 
+## Workspace tools
+
+A tool-enabled model can use `Read`, `Glob`, `Grep`, `Write`, and `Edit` in your working directory. Use `@path#L10-20` for a line range or `@"folder/file name.txt"` for a path with spaces. Tab completes paths.
+
+Start in read-only mode. Use `/permission read|workspace|full` or Shift+Tab to change modes. In workspace mode, review the proposed diff with Up/Down, then press 1 to allow once, 2 to remember the target for the session, or 3 to deny. Use `/rules` to manage permission rules and `/denials` to inspect refusals.
+
+Use `/diff` to browse session changes, individual turns, and Git working tree changes when Git is available. Use `/undo` to revert the latest change group or `/undo PATH` to revert the most recent change to one file. Undo stops on a file that changed externally.
+
 ## Scope
 
-The session, event contract, provider adapter and model profiles exist. Real workspace tools, file and terminal access, permission rules (three planned modes: read-only / workspace-write / full-access), transcript persistence, teams, Computer Use and scheduling are **not** implemented yet. Desktop, VS Code, remote/H5 access and IM adapters are **deferred** (roadmap r6, 2026-11-17); multi-surface architecture entry points are retained for future revival.
+Workspace text tools and session-local undo are available. Command execution, transcript persistence, teams, Computer Use and scheduling are planned. Desktop, VS Code, remote/H5 access and IM adapters remain deferred under roadmap r6.
 
 User data is stored under `~/.budingx` only. The session itself stays in memory and is lost when you exit.
 

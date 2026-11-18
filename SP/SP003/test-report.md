@@ -187,3 +187,10 @@ npm run merge:gate     # 见 §6
 - 初始 15 项回归在基线上复现 14 项断言失败。另对 Git 差异源及缺失父目录判定分别确认 RED。最终 `sp003-review-regressions.test.mjs` 扩充至 23 项，连同 CLI、workspace、core 权限、审批、补全、diff 和 wire 回归，专项共 **162 项通过、0 失败、0 跳过**。在 fix 工作树运行 `npm run build`，然后用 `node --test` 运行上述用例。
 - 独立的全量 `npm test` 在最终新增审批复测前执行，365 项通过，模块边界检查通过。提交后再次执行 `npm run merge:gate`，其全量测试和隔离制品验证结果保存到 `artifacts/merge-gate/`。
 - 自审核对了提交范围、审批计划与写盘契约、工作区边界、终端与 CLI 请求入口。Git 差异通过固定的只读 Git 子命令获取，保留会话基线差异。搜索和 Git 快照超限会提示不完整。没有新增依赖或存储迁移，参考仓用于行为比对，由本仓独立实现。产品说明书 §5.1、§5.2、§5.4 已同步。回退范围是本 fix 分支的提交。
+
+## 9. master 集成与发布准备
+
+- fix 提交 `9e3984c` 的交叉验证门禁为 GREEN。以 `76edf2c` 为目标预演无冲突，合并提交 `598fb891a44882743e94cdf0beca4fb6b8243bf2`；Git ancestry 核对通过。
+- 在干净工作树检出该合并提交执行 `npm test`，共 366 项通过、0 失败、0 跳过，模块边界检查通过。
+- 使用 `npm run version:prepare -- minor --iteration SP003` 准备首次公开交付 0.3.0。发布预演使用 `CI=true` 和显式发布参数 `--dry-run --expected-version 0.3.0 --tag latest`，报告保存在被忽略的 `artifacts/release/`。公开状态与完整性在实际手动发布后写回台账。
+- 产品说明书、TUI README、文档入口、版本规范及发布指引均已同步。Git 提交和制品范围为 SP003 与候选版本资料，主工作树中 SP004 本地文档继续保留。

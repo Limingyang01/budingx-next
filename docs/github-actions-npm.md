@@ -2,7 +2,9 @@
 
 本项目的推荐发布入口是 [Publish TUI to npm](https://github.com/Limingyang01/budingx-next/actions/workflows/publish-tui.yml)。配置文件见 [.github/workflows/publish-tui.yml](../.github/workflows/publish-tui.yml)。本指南说明仓库已实现的流程，以及账号端必须由维护者完成的设置；写入工作流不等于 npm 信任关系已建立或真实发布已验证。
 
-## 当前发布状态（2026-11-17）
+## 当前发布状态（2026-11-18）
+
+SP003 的 **0.3.0 已准备**。在 [Publish TUI to npm](https://github.com/Limingyang01/budingx-next/actions/workflows/publish-tui.yml) 选择 `master`，输入 `0.3.0`，选择 `latest`，取消勾选 `dry_run` 后运行。详见 [v0.3.0](../release-notes/v0.3.0.md)。
 
 SP002 的 **0.2.0 已发布**，npm latest=0.2.0，台账为 published。维护者执行的 [运行 #7](https://github.com/Limingyang01/budingx-next/actions/runs/44055301185) 基于 6ed77d8，Windows/Linux 验证和 OIDC 发布均成功。公开安装、签名和 provenance 已核验，见 [v0.2.0](../release-notes/v0.2.0.md)。原始 CI artifact 下载要求登录，尚未取得；台账使用公开来源和独立安装证据，不伪造 CI report。不得重发 0.2.0。
 
@@ -25,7 +27,7 @@ SP002 的 **0.2.0 已发布**，npm latest=0.2.0，台账为 published。维护�
 
 ## 从构建到发布：每轮操作清单
 
-本节适用于新版本交付，不需要重复配置已建立的账号信任。Agent 使用 [buding-npm-release](../skills/buding-npm-release/SKILL.md)，版本规则见 [版本规范](versioning.md)。执行目录是本仓根目录；通用准备命令以已确认迭代为准；本轮 SP002 已发布完成，不要重复执行。
+本节适用于新版本交付，不需要重复配置已建立的账号信任。Agent 使用 [buding-npm-release](../skills/buding-npm-release/SKILL.md)，版本规则见 [版本规范](versioning.md)。执行目录是本仓根目录；通用准备命令以已确认迭代为准；0.3.0 已准备，直接从预演或手动触发步骤开始。
 
 ### 1. 准备版本与发行说明
 
@@ -37,7 +39,7 @@ Get-Content src/tui/package.json
 Get-Content release-ledger.json
 # 新 SP 首次产品交付：先将 SPnnn 替换为已确认编号
 npm run version:prepare -- minor --iteration SPnnn
-# SP002 后续修复使用 patch，且只在实际修复交付后准备
+# 已发布 SP 的后续修复使用 patch，且只在实际修复交付后准备
 # bootstrap 维护修复的替代命令（只选择符合本次交付的一条）：
 # npm run version:prepare -- patch --iteration bootstrap
 ```
@@ -54,7 +56,7 @@ npm run publish -- --dry-run --expected-version $releaseVersion --tag latest
 
 逐条确认命令退出码为 0 后再继续；预演失败时不要提交发布准备或触发正式上传。它调用 npm test（技能、TUI 编译/回归、发布工具测试），然后 pack 并隔离安装真实 tarball，检查 npm 命令入口与本地 HTTP 流式 smoke。只需编译时用 `npm run build`；编译不能替代完整发布预演。预演报告位于忽略目录 `artifacts/release/<version>-<timestamp>/report.json`，不会上传 npm。
 
-SP002 制品仅含 package.json、README.md、LICENSE 和 dist/{core,provider,storage,tui} 下编译 JS；bin 为 dist/tui/cli.js，实际文件数以本次 dry-run 为准，不包含源码仓、开发依赖或用户配置。发布预演用当前 Node；Windows Node 22、Linux Node 24 的托管门禁仍由 Actions 分别执行。
+SP003 制品含 package.json、README.md、LICENSE 和 dist/{core,provider,storage,tui,workspace} 下编译 JS；bin 为 dist/tui/cli.js，实际文件数以本次 dry-run 为准，不包含源码仓、开发依赖或用户配置。发布预演用当前 Node；Windows Node 22、Linux Node 24 的托管门禁仍由 Actions 分别执行。
 
 ### 3. 提交准备、正式运行与公开核实
 
@@ -155,7 +157,7 @@ npx --yes npm@11.21.2 trust github budingx --repo Limingyang01/budingx-next --fi
 npm run release:sync -- --receipt C:/path/to/downloaded/report.json
 ```
 
-该命令核对当前包版本、成功状态和 GitHub run 地址格式，并向固定公共 npm registry 查询 immutable version/integrity 后，更新 release-ledger.json，保留原有未知字段。它信任维护者从正确 Actions artifact 下载的 JSON，不独立验签 artifact 或验证 GitHub run 结论；不要导入来源不明的报告。随后审阅并提交回执，才能准备下一轮：同一 SP 修复使用 patch，已确认的新 SP 首次产品交付使用 minor。本轮 0.2.0 已 published 并完成回执收尾，不要重发本版或在没有新交付时提前创建下一版本。
+该命令核对当前包版本、成功状态和 GitHub run 地址格式，并向固定公共 npm registry 查询 immutable version/integrity 后，更新 release-ledger.json，保留原有未知字段。它信任维护者从正确 Actions artifact 下载的 JSON，不独立验签 artifact 或验证 GitHub run 结论；不要导入来源不明的报告。随后审阅并提交回执，才能准备下一轮：同一 SP 修复使用 patch，已确认的新 SP 首次产品交付使用 minor。0.3.0 发布后先保存本轮回执，再准备下一版。0.2.0 的回执保留为历史证据。
 
 本机核对公开 npm 元数据和导入回执不需要发布 token。首次手工首发的 session 回执由当时的脚本直接更新台账，本命令专用于 CI/OIDC 报告。
 
