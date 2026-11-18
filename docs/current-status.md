@@ -86,6 +86,10 @@ SP002 的制品布局已变更（bin 由 `dist/cli.js` 改为 `dist/tui/cli.js`�
 
 集成回执：merge:gate 两次 GREEN 后合入 master（合并提交 99b50ee，ancestry 证明通过）；推送前两次网络波动失败、第 3 次成功，ls-remote 核对一致；合入后 master 复跑 npm test 206 项 0 失败＋spec:check＋skills:check＋pack-smoke PASS。回执收口提交见验证报告 §4 追加行。
 
+## SP004 合入回执（2026-11-19）
+
+源/目标固定：`feature/SP004/real-coding-task`（HEAD `868eae6`）→ `master`（原 `5b0e7cc`），merge-base `e808679`，`--no-ff` 合并提交 `fdfdae8`，ancestry 证明通过。前置门禁 `npm run merge:gate` GREEN（`artifacts/merge-gate/feature-SP004-real-coding-task-2026-11-18T16-16-59-047Z.md`：outgoing 31 提交 91 文件、禁带路径违规 0、FAIL 行 0、UNVERIFIED 9 行且恢复条件节存在；`npm test`/`spec:check`/`skills:check`/`pack-smoke` 退出码 0）。合并时 `PRODUCT.md` 与 `docs/current-status.md` 因 master 已发布 0.3.6 出现文本冲突，按「保留已发布事实 + SP004 现状」人工解决，无代码冲突。合入后复验：`npm test` 0 失败、`CI=true npm test` 0 失败、`spec:check`/`skills:check`/`release` 17 项通过。推送：`origin/master` `5b0e7cc..1460fa3`、`origin/feature/SP004/real-coding-task` `da5bed1..868eae6`，`git ls-remote` 核对与本地一致（master `1460fa325dfc03f3088b6c209879b9a2965eeaee`）。未执行：打 tag、npm 发布、分支删除。
+
 ## 0.2.0 正式发布完成（2026-11-17）
 
 维护者触发运行 #7，Windows/Linux 验证及 npm OIDC 发布成功；publishedAt=2026-11-17T09:29:30.139Z，latest=0.2.0，source=6ed77d8a93335f8b261493e1fa4f0994ce4bc7bd。官方安装、shim 版本和 HTTP smoke 通过；46 registry signatures、5 attestations 核验通过；来源匹配本次 run/源码。原始 CI artifact 下载要求认证，未取得，使用公开 provenance 与独立安装证据；ledger 已 published。早前 prepared 状态为历史快照，真终端人工未验证保持不变。
