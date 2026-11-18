@@ -169,7 +169,7 @@
   5. `git` 不可用（PATH 置空）→ `gitAvailable=false`，不抛未捕获异常（GW-08）
 - **GREEN**：`git status --porcelain=v1 -z --branch` 调用与解析；**只读**，不改配置不写索引
 - **验证**：`npm run build && node --test src/git/test/status.test.mjs`
-- **完成事实**：待填
+- **完成事实**（2026-11-18）：RED 7 条（空仓库/三类改动/空格中文路径/非 Git/git 不可用/纯解析/分离 HEAD）先因模块缺失失败 → GREEN 7/7；全量 463/463 通过。实现 `src/git/porcelain.ts`：纯解析 `-z` 输出（NUL 分段、两字符状态码、冲突组合 DD/AU/UD/UA/DU/AA/UU、重命名/复制吞掉紧随的源路径段、忽略 `!!`），并从 `## ` 头解析分支与 ahead/behind（含空仓库 `No commits yet` 与 detached `HEAD (no branch)`）。实现 `src/git/status.ts`：`readGitStatus(cwd, { env?, gitCommand? })` 调 `git --no-optional-locks status --porcelain=v1 -z --branch`（只读，不带 `-c`、不写索引），HEAD 用 `rev-parse HEAD` 单独补齐；`git` 不可用（ENOENT）→ `gitAvailable=false`，非 Git 目录 → `isRepository=false`，两者都以字段报告、不抛异常。Ruling：`readGitStatus` 增加可选注入参数（env/gitCommand）以便在 Windows 上验证「git 不可用」分支，不影响 design §7.1 的调用形态。
 
 ### T7 · 改动归属与提交范围分析
 
