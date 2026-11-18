@@ -1,14 +1,15 @@
 // ToolHandler assembly for the five file tools (SP003 design §3.5/§3.1,
 // plan T16). The tool names follow the model ecosystem convention; every
 // implementation here is this repository's own code.
+import { isUtf8 } from 'node:buffer'
 import { readFileSync } from 'node:fs'
 import { ERROR_CODES } from '../core/constants.js'
 import type { ChangeRecordSummary } from '../core/events.js'
 import type { ToolCapability } from '../core/permissions.js'
-import type { ToolContext, ToolHandler } from '../core/tools.js'
+import type { PreparedTool, ToolContext, ToolHandler } from '../core/tools.js'
 import { createCheckpointStore, type CheckpointStore } from './checkpoint.js'
 import { diffLines, diffSummary } from './diff.js'
-import { editWorkspaceFile } from './edit.js'
+import { planWorkspaceEdit } from './edit.js'
 import { WorkspaceError, type Workspace } from './paths.js'
 import { globWorkspace, grepWorkspace } from './search.js'
 import { readWorkspaceFile } from './read.js'
@@ -86,34 +87,32 @@ function reportChange(
   context.changes?.([summary])
 }
 
-/**
- * Read-before-write gate (SP003 T18a, aligned with the reference):
- * existing files must be read in this session before Write/Edit, and
- * writes are refused when the file changed after that read.
- */
-function gateExistingFile(
-  readState: Map<string, string>,
-  workspace: Workspace,
-  path: string,
-  toolName: string
-): void {
-  const resolved = workspace.resolve(path)
-  if (!resolved.existed || resolved.isDirectory) return
-  const key = resolved.real.toLowerCase()
-  const seen = readState.get(key)
-  if (seen === undefined) {
-    throw new WorkspaceError(
-      ERROR_CODES.workspaceNotReadYet,
-      `File has not been read yet. Read it first before writing to it: ${resolved.relative}`
-    )
+function textField(input: unknown, name: string): string {
+  const value = asObject(input)[name]
+  if (typeof value !== 'string') {
+    throw new WorkspaceError(ERROR_CODES.coreToolFailed, `${name} must be a string`)
   }
-  const onDisk = contentFingerprint(readFileSync(resolved.real))
-  if (seen !== onDisk) {
-    throw new WorkspaceError(
-      ERROR_CODES.workspaceStaleRead,
-      `File has been modified since read, either by the user or by a linter. Read it again before attempting to write it: ${resolved.relative}`
-    )
+  return value
+}
+
+function previewFor(
+  diff: ReturnType<typeof diffLines>,
+  before: string | undefined,
+  after: string
+): string[] {
+  if (diff.length === 0) {
+    if (before === undefined) return ['Create empty file']
+    return [before === after ? 'No content changes' : 'Only line endings or final newline changed']
   }
+  const lines: string[] = []
+  for (const hunk of diff) {
+    lines.push(`@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`)
+    for (const line of hunk.lines) {
+      const mark = line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '
+      lines.push(mark + line.text)
+    }
+  }
+  return lines
 }
 
 export function createWorkspaceTools(
@@ -122,8 +121,72 @@ export function createWorkspaceTools(
 ): WorkspaceTools {
   const checkpoint = createCheckpointStore()
   const readState = new Map<string, string>()
-  const rememberRead = (path: string, fingerprint: string): void => {
-    readState.set(workspace.resolve(path).real.toLowerCase(), fingerprint)
+  const pathKey = (path: string) => process.platform === 'win32' ? path.toLowerCase() : path
+
+  function prepareWrite(input: unknown, operation: 'Write' | 'Edit'): PreparedTool {
+    const path = stringField(input, 'path')
+    const target = workspace.resolve(path)
+    if (target.isDirectory) {
+      throw new WorkspaceError(ERROR_CODES.workspaceNotAFile, `Path is a directory: ${target.relative}`)
+    }
+    const key = pathKey(target.real)
+    const seen = readState.get(key)
+    if (target.existed && seen === undefined) {
+      throw new WorkspaceError(
+        ERROR_CODES.workspaceNotReadYet,
+        `File has not been read yet. Read it first before writing to it: ${target.relative}`
+      )
+    }
+    const bytes = target.existed ? readFileSync(target.real) : undefined
+    const fingerprint = bytes ? contentFingerprint(bytes) : null
+    if (bytes && seen !== fingerprint) {
+      throw new WorkspaceError(
+        ERROR_CODES.workspaceStaleRead,
+        `File has been modified since read, either by the user or by a linter. Read it again before attempting to write it: ${target.relative}`
+      )
+    }
+    if (bytes && (!isUtf8(bytes) || bytes.includes(0))) {
+      throw new WorkspaceError(ERROR_CODES.workspaceEncodingUnsupported, `File is not UTF-8 text: ${target.relative}`)
+    }
+    const before = bytes?.toString('utf8')
+    const plan = operation === 'Write'
+      ? { content: textField(input, 'content').replace(/\r\n/g, '\n'), replacements: 0 }
+      : planWorkspaceEdit(before, target.relative, {
+          path,
+          oldString: textField(input, 'old_string'),
+          newString: textField(input, 'new_string'),
+          replaceAll: optionalBoolean(input, 'replace_all')
+        })
+    const diff = diffLines(before ?? '', plan.content)
+    return {
+      get preview() {
+        return previewFor(diff, before, plan.content)
+      },
+      async execute(context) {
+        if (context.signal?.aborted) throw new WorkspaceError(ERROR_CODES.coreToolFailed, 'Write cancelled')
+        const written = writeWorkspaceFile(workspace, {
+          path,
+          content: plan.content,
+          expectedFingerprint: fingerprint,
+          expectedPath: target.real,
+          normalizeLineEndings: false
+        })
+        readState.set(key, written.fingerprint)
+        const entry = checkpoint.record({
+          path: written.path,
+          operation: written.created ? 'create' : 'update',
+          ...(before === undefined ? {} : { before }),
+          after: plan.content,
+          diff,
+          fingerprintAfter: written.fingerprint,
+          ...(context.turnId ? { turnId: context.turnId } : {})
+        })
+        reportChange(context, entry)
+        if (operation === 'Edit') return `Edited ${written.path}: ${plan.replacements} replacement(s)`
+        const { additions, removals } = diffSummary(diff)
+        return `Wrote ${written.bytes} bytes to ${written.path}${written.created ? ' (new file)' : ''} +${additions}/-${removals}`
+      }
+    }
   }
 
   const read: ToolHandler = {
@@ -148,7 +211,9 @@ export function createWorkspaceTools(
         offset: optionalNumber(input, 'offset'),
         limit: optionalNumber(input, 'limit')
       })
-      rememberRead(path, contentFingerprint(readFileSync(workspace.resolve(path).real)))
+      if (result.fingerprint) {
+        readState.set(pathKey(workspace.resolve(path).real), result.fingerprint)
+      }
       if (result.kind === 'image') {
         const image = result.image
         const size =
@@ -174,36 +239,9 @@ export function createWorkspaceTools(
     requiresApproval: () => true,
     capability: (): ToolCapability => 'write',
     target: (input) => ({ path: stringField(input, 'path'), kind: 'file' }),
+    prepareApproval: (input) => prepareWrite(input, 'Write'),
     async execute(input, context) {
-      const path = stringField(input, 'path')
-      const content = (() => {
-        const value = asObject(input).content
-        if (typeof value !== 'string') {
-          throw new WorkspaceError(ERROR_CODES.coreToolFailed, 'content must be a string')
-        }
-        return value
-      })()
-      gateExistingFile(readState, workspace, path, 'Write')
-      const resolved = workspace.resolve(path)
-      const before =
-        resolved.existed && !resolved.isDirectory
-          ? readFileSync(resolved.real, 'utf8')
-          : undefined
-      const written = writeWorkspaceFile(workspace, { path, content })
-      rememberRead(path, written.fingerprint)
-      const diff = diffLines(before ?? '', content)
-      const entry = checkpoint.record({
-        path: written.path,
-        operation: written.created ? 'create' : 'update',
-        ...(before === undefined ? {} : { before }),
-        after: content,
-        diff,
-        fingerprintAfter: written.fingerprint,
-        ...(context.turnId ? { turnId: context.turnId } : {})
-      })
-      reportChange(context, entry)
-      const { additions, removals } = diffSummary(diff)
-      return `Wrote ${written.bytes} bytes to ${written.path}${written.created ? ' (new file)' : ''} +${additions}/-${removals}`
+      return prepareWrite(input, 'Write').execute(context)
     }
   }
 
@@ -225,52 +263,9 @@ export function createWorkspaceTools(
     requiresApproval: () => true,
     capability: (): ToolCapability => 'write',
     target: (input) => ({ path: stringField(input, 'path'), kind: 'file' }),
+    prepareApproval: (input) => prepareWrite(input, 'Edit'),
     async execute(input, context) {
-      const path = stringField(input, 'path')
-      gateExistingFile(readState, workspace, path, 'Edit')
-      const resolved = workspace.resolve(path)
-      const before =
-        resolved.existed && !resolved.isDirectory
-          ? readFileSync(resolved.real, 'utf8')
-          : undefined
-      const result = editWorkspaceFile(workspace, {
-        path,
-        oldString: (() => {
-          const value = asObject(input).old_string
-          if (typeof value !== 'string') {
-            throw new WorkspaceError(
-              ERROR_CODES.coreToolFailed,
-              'old_string must be a string'
-            )
-          }
-          return value
-        })(),
-        newString: (() => {
-          const value = asObject(input).new_string
-          if (typeof value !== 'string') {
-            throw new WorkspaceError(
-              ERROR_CODES.coreToolFailed,
-              'new_string must be a string'
-            )
-          }
-          return value
-        })(),
-        replaceAll: optionalBoolean(input, 'replace_all')
-      })
-      const after = readFileSync(workspace.resolve(path).real, 'utf8')
-      rememberRead(path, contentFingerprint(after))
-      const diff = diffLines(before ?? '', after)
-      const entry = checkpoint.record({
-        path: result.path,
-        operation: result.created ? 'create' : 'update',
-        ...(before === undefined ? {} : { before }),
-        after,
-        diff,
-        fingerprintAfter: result.fingerprint,
-        ...(context.turnId ? { turnId: context.turnId } : {})
-      })
-      reportChange(context, entry)
-      return `Edited ${result.path}: ${result.replacements} replacement(s)`
+      return prepareWrite(input, 'Edit').execute(context)
     }
   }
 
@@ -315,7 +310,7 @@ export function createWorkspaceTools(
       type: 'object',
       properties: {
         pattern: { type: 'string', description: 'JavaScript regular expression' },
-        path: { type: 'string', description: 'Subdirectory to search (workspace-relative)' },
+        path: { type: 'string', description: 'File or directory to search (workspace-relative)' },
         glob: { type: 'string', description: 'Only search files matching this glob' },
         type: { type: 'string', description: 'File type filter, e.g. ts, py, json' },
         output_mode: {
@@ -324,6 +319,8 @@ export function createWorkspaceTools(
           description: 'What to return (default content)'
         },
         case_insensitive: { type: 'boolean', description: 'Ignore case when matching' },
+        '-i': { type: 'boolean', description: 'Alias for case_insensitive' },
+        '-n': { type: 'boolean', description: 'Show line numbers in content mode (default true)' },
         multiline: { type: 'boolean', description: 'Let . match newlines too' },
         '-B': { type: 'integer', description: 'Context lines before each match' },
         '-A': { type: 'integer', description: 'Context lines after each match' },
@@ -349,7 +346,8 @@ export function createWorkspaceTools(
         pattern: stringField(input, 'pattern'),
         path: typeof obj.path === 'string' ? obj.path : undefined,
         glob: typeof obj.glob === 'string' ? obj.glob : undefined,
-        caseInsensitive: optionalBoolean(input, 'case_insensitive'),
+        caseInsensitive: optionalBoolean(input, 'case_insensitive') ?? optionalBoolean(input, '-i'),
+        lineNumbers: optionalBoolean(input, '-n'),
         signal: context.signal,
         ...(options.readDenied ? { exclude: options.readDenied } : {}),
         ...(typeof obj.output_mode === 'string'

@@ -3,7 +3,8 @@
 // and oversized files are reported explicitly instead of being silently
 // mangled. CRLF is normalised for display only; the file on disk is never
 // rewritten by a read.
-import { closeSync, openSync, readFileSync, readSync, statSync } from 'node:fs'
+import { closeSync, openSync, readSync, statSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { ERROR_CODES } from '../core/constants.js'
 import { MAX_FILE_BYTES, MAX_READ_RANGE_BYTES, MAX_READ_LINES } from './constants.js'
 import { WorkspaceError, type Workspace } from './paths.js'
@@ -25,6 +26,7 @@ export type ReadResult = {
   truncated: boolean
   truncatedReason?: 'size' | 'lines'
   bytes: number
+  fingerprint?: string
   image?: ImageInfo
 }
 
@@ -143,23 +145,6 @@ export function readWorkspaceFile(
     : (options.maxBytes ?? MAX_READ_RANGE_BYTES)
   const extension = resolved.relative.slice(resolved.relative.lastIndexOf('.')).toLowerCase()
 
-  // The reference enforces size with an error, not a silent truncation:
-  // half-read files teach the model to edit against an incomplete picture.
-  if (stats.size > limitBytes) {
-    if (!IMAGE_TYPES[extension]) {
-      throw new WorkspaceError(
-        ERROR_CODES.workspaceTooLarge,
-        wholeFile
-          ? `File content (${stats.size} bytes) exceeds the maximum read size (${limitBytes} bytes). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.`
-          : `File content (${stats.size} bytes) exceeds the maximum range read size (${limitBytes} bytes).`
-      )
-    }
-  }
-  const buffer = IMAGE_TYPES[extension]
-    ? readHeader(resolved.real)
-    : readFileSync(resolved.real)
-  const bytes = stats.size
-
   if (IMAGE_TYPES[extension]) {
     return {
       kind: 'image',
@@ -167,64 +152,112 @@ export function readWorkspaceFile(
       totalLines: 0,
       returnedLines: 0,
       truncated: false,
-      bytes,
-      image: imageInfo(extension, buffer)
+      bytes: stats.size,
+      image: imageInfo(extension, readHeader(resolved.real))
     }
   }
 
-  if (detectUtf16(buffer)) {
+  if (wholeFile && stats.size > limitBytes) {
     throw new WorkspaceError(
-      ERROR_CODES.workspaceEncodingUnsupported,
-      `Unsupported encoding (UTF-16): ${resolved.relative}`
+      ERROR_CODES.workspaceTooLarge,
+      `File content (${stats.size} bytes) exceeds the maximum read size (${limitBytes} bytes). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.`
     )
   }
-  if (looksBinary(buffer)) {
-    throw new WorkspaceError(
-      ERROR_CODES.workspaceEncodingUnsupported,
-      `Binary file cannot be read as text: ${resolved.relative}`
-    )
-  }
-
-  const decoded = buffer.toString('utf8')
-  if (decoded.includes('�')) {
-    throw new WorkspaceError(
-      ERROR_CODES.workspaceEncodingUnsupported,
-      `Unsupported encoding (invalid UTF-8): ${resolved.relative}`
-    )
-  }
-
-  const normalized = decoded.replace(/\r\n/g, '\n')
-  const allLines = normalized.split('\n')
-  const totalLines = allLines.length
 
   const offset = Math.max(1, options.offset ?? 1)
-  if (offset > totalLines && totalLines > 0) {
+  const limit = Math.max(1, options.limit ?? MAX_READ_LINES)
+  const selected: string[] = []
+  const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+  const hash = createHash('sha256')
+  const buffer = Buffer.alloc(64 * 1024)
+  let totalLines = 1
+  let bytes = 0
+  let selectedBytes = 0
+  let pendingLine = ''
+  const isSelected = () => totalLines >= offset && totalLines - offset < limit
+  const consume = (chunk: string): void => {
+    const parts = chunk.split('\n')
+    for (let index = 0; index < parts.length; index++) {
+      const ended = index < parts.length - 1
+      if (isSelected()) {
+        selectedBytes += Buffer.byteLength(parts[index], 'utf8') + Number(ended)
+        if (selectedBytes > limitBytes) {
+          throw new WorkspaceError(
+            ERROR_CODES.workspaceTooLarge,
+            `Selected content exceeds the maximum read size (${limitBytes} bytes). Use a smaller range: ${resolved.relative}`
+          )
+        }
+        pendingLine += parts[index]
+        if (ended) {
+          selected.push(pendingLine.replace(/\r$/, ''))
+          pendingLine = ''
+        }
+      }
+      if (ended) totalLines++
+    }
+  }
+  const decode = (data: Uint8Array, stream: boolean): string => {
+    try {
+      return decoder.decode(data, { stream })
+    } catch {
+      throw new WorkspaceError(
+        ERROR_CODES.workspaceEncodingUnsupported,
+        `Unsupported encoding (invalid UTF-8): ${resolved.relative}`
+      )
+    }
+  }
+
+  const file = openSync(resolved.real, 'r')
+  try {
+    let length: number
+    while ((length = readSync(file, buffer, 0, buffer.length, null)) > 0) {
+      const data = buffer.subarray(0, length)
+      if (bytes === 0 && detectUtf16(data)) {
+        throw new WorkspaceError(
+          ERROR_CODES.workspaceEncodingUnsupported,
+          `Unsupported encoding (UTF-16): ${resolved.relative}`
+        )
+      }
+      if (bytes === 0 && looksBinary(data)) {
+        throw new WorkspaceError(
+          ERROR_CODES.workspaceEncodingUnsupported,
+          `Binary file cannot be read as text: ${resolved.relative}`
+        )
+      }
+      bytes += length
+      if (wholeFile && bytes > limitBytes) {
+        throw new WorkspaceError(ERROR_CODES.workspaceTooLarge, 'File grew beyond the read limit; use offset and limit')
+      }
+      hash.update(data)
+      consume(decode(data, true))
+    }
+    consume(decode(buffer.subarray(0, 0), false))
+  } finally {
+    closeSync(file)
+  }
+
+  if (offset > totalLines) {
     throw new WorkspaceError(
       ERROR_CODES.workspaceNotFound,
       `Line range out of bounds: offset ${offset} exceeds ${totalLines} lines`
     )
   }
-  const limit = Math.max(1, options.limit ?? MAX_READ_LINES)
+  if (isSelected()) selected.push(pendingLine)
   const end = Math.min(totalLines, offset - 1 + limit)
-  const selected = allLines.slice(offset - 1, end)
   const truncated = end < totalLines
-  const truncatedReason: 'size' | 'lines' | undefined = truncated ? 'lines' : undefined
-
   const width = String(end).length
   const numbered = selected.map(
     (line, index) => `${String(offset + index).padStart(width, ' ')}→${line}`
   )
-  const notice = truncated
-    ? `\n[truncated: showing lines ${offset}-${end} of ${totalLines}]`
-    : ''
-
+  const notice = truncated ? `\n[truncated: showing lines ${offset}-${end} of ${totalLines}]` : ''
   return {
     kind: 'text',
     text: numbered.join('\n') + notice,
     totalLines,
     returnedLines: selected.length,
     truncated,
-    ...(truncatedReason ? { truncatedReason } : {}),
-    bytes
+    ...(truncated ? { truncatedReason: 'lines' } : {}),
+    bytes,
+    fingerprint: hash.digest('hex')
   }
 }

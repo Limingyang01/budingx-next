@@ -5,6 +5,7 @@
 // concession is a line-ending fallback (the tolerance path from the
 // reference behaviour inventory): a CRLF file can still be edited with an
 // LF old_string, and the dominant line ending is preserved.
+import { isUtf8 } from 'node:buffer'
 import { readFileSync } from 'node:fs'
 import { ERROR_CODES } from '../core/constants.js'
 import { contentFingerprint, writeWorkspaceFile } from './write.js'
@@ -56,17 +57,11 @@ function hintFor(oldString: string): string {
   return `no exact match for ${JSON.stringify(firstLine)}; verify the exact text and whitespace`
 }
 
-export function editWorkspaceFile(
-  workspace: Workspace,
+export function planWorkspaceEdit(
+  original: string | undefined,
+  path: string,
   options: EditOptions
-): EditResult {
-  const resolved = workspace.resolve(options.path)
-  if (resolved.existed && resolved.isDirectory) {
-    throw new WorkspaceError(
-      ERROR_CODES.workspaceNotAFile,
-      `Path is a directory: ${resolved.relative}`
-    )
-  }
+): { content: string; replacements: number } {
   const { oldString, newString } = options
 
   if (oldString === newString) {
@@ -78,35 +73,26 @@ export function editWorkspaceFile(
 
   // Empty old_string creates a file; it never overwrites one.
   if (oldString === '') {
-    if (resolved.existed) {
+    if (original !== undefined) {
       throw new WorkspaceError(
         ERROR_CODES.workspaceEditAmbiguous,
-        `old_string is empty but the file already exists: ${resolved.relative}`
+        `old_string is empty but the file already exists: ${path}`
       )
     }
-    const written = writeWorkspaceFile(workspace, {
-      path: options.path,
-      content: newString
-    })
-    return {
-      path: written.path,
-      replacements: 1,
-      created: true,
-      fingerprint: written.fingerprint
-    }
+    return { content: newString.replace(/\r\n/g, '\n'), replacements: 1 }
   }
 
-  if (!resolved.existed) {
+  if (original === undefined) {
     throw new WorkspaceError(
       ERROR_CODES.workspaceNotFound,
-      `File not found: ${resolved.relative}`
+      `File not found: ${path}`
     )
   }
 
-  const originalBytes = readFileSync(resolved.real)
-  const original = originalBytes.toString('utf8')
-  const baseline = contentFingerprint(originalBytes)
-
+  const crlfCount = original.match(/\r\n/g)?.length ?? 0
+  const newlineCount = original.match(/\n/g)?.length ?? 0
+  const lineEnding = crlfCount > 0 && crlfCount * 2 >= newlineCount ? '\r\n' : '\n'
+  const replacement = newString.replace(/\r?\n/g, lineEnding)
   let count = countOccurrences(original, oldString)
   let nextContent: string
   let replacements: number
@@ -117,8 +103,11 @@ export function editWorkspaceFile(
     // folding is length preserving, so match offsets found in the folded
     // space map straight back onto the text we splice. Only the matched
     // region is replaced; the rest of the file keeps its quote style.
-    const dominant = original.includes('\r\n') ? '\r\n' : '\n'
-    const normalized = original.replace(/\r\n/g, '\n')
+    const offsets: number[] = []
+    const normalized = original.replace(/\r\n/g, (_, offset: number) => {
+      offsets.push(offset - offsets.length)
+      return '\n'
+    })
     const folded = foldSmartQuotes(normalized)
     const foldedOld = foldSmartQuotes(oldString.replace(/\r\n/g, '\n'))
     const positions: number[] = []
@@ -131,44 +120,68 @@ export function editWorkspaceFile(
     if (count === 0) {
       throw new WorkspaceError(
         ERROR_CODES.workspaceEditNoMatch,
-        `Edit refused (${resolved.relative}): ${hintFor(oldString)}`
+        `Edit refused (${path}): ${hintFor(oldString)}`
       )
     }
     if (count > 1 && !options.replaceAll) {
       throw new WorkspaceError(
         ERROR_CODES.workspaceEditAmbiguous,
-        `Found ${count} matches of old_string in ${resolved.relative}; pass replace_all or a longer unique string`
+        `Found ${count} matches of old_string in ${path}; pass replace_all or a longer unique string`
       )
     }
     replacements = options.replaceAll ? count : 1
-    const inserted = newString.replace(/\r\n/g, '\n')
-    let out = normalized
-    for (const position of options.replaceAll ? [...positions].reverse() : [positions[0]]) {
-      out = out.slice(0, position) + inserted + out.slice(position + foldedOld.length)
+    const originalOffset = (offset: number): number => {
+      let low = 0
+      let high = offsets.length
+      while (low < high) {
+        const middle = (low + high) >>> 1
+        if (offsets[middle] < offset) low = middle + 1
+        else high = middle
+      }
+      return offset + low
     }
-    nextContent = out.replace(/\n/g, dominant)
+    let out = original
+    for (const position of options.replaceAll ? [...positions].reverse() : [positions[0]]) {
+      const start = originalOffset(position)
+      const end = originalOffset(position + foldedOld.length)
+      out = out.slice(0, start) + replacement + out.slice(end)
+    }
+    nextContent = out
   } else {
     if (count > 1 && !options.replaceAll) {
       throw new WorkspaceError(
         ERROR_CODES.workspaceEditAmbiguous,
-        `Found ${count} matches of old_string in ${resolved.relative}; pass replace_all or a longer unique string`
+        `Found ${count} matches of old_string in ${path}; pass replace_all or a longer unique string`
       )
     }
     replacements = options.replaceAll ? count : 1
-    nextContent = replaceOccurrences(original, oldString, newString, Boolean(options.replaceAll))
+    nextContent = replaceOccurrences(original, oldString, replacement, Boolean(options.replaceAll))
   }
 
+  return { content: nextContent, replacements }
+}
+
+export function editWorkspaceFile(workspace: Workspace, options: EditOptions): EditResult {
+  const resolved = workspace.resolve(options.path)
+  if (resolved.isDirectory) {
+    throw new WorkspaceError(ERROR_CODES.workspaceNotAFile, `Path is a directory: ${resolved.relative}`)
+  }
+  const original = resolved.existed ? readFileSync(resolved.real) : undefined
+  if (original && (!isUtf8(original) || original.includes(0))) {
+    throw new WorkspaceError(ERROR_CODES.workspaceEncodingUnsupported, `File is not UTF-8 text: ${resolved.relative}`)
+  }
+  const edit = planWorkspaceEdit(original?.toString('utf8'), resolved.relative, options)
   const written = writeWorkspaceFile(workspace, {
     path: options.path,
-    content: nextContent,
-    expectedFingerprint: baseline,
-    // Edit preserves the file's dominant line ending; no forced LF here.
+    content: edit.content,
+    expectedFingerprint: original ? contentFingerprint(original) : null,
+    expectedPath: resolved.real,
     normalizeLineEndings: false
   })
   return {
     path: written.path,
-    replacements,
-    created: false,
+    replacements: edit.replacements,
+    created: written.created,
     fingerprint: written.fingerprint
   }
 }

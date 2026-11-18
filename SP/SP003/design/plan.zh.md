@@ -366,3 +366,10 @@ npm run merge:gate  # 交叉验证门禁（含 pack-smoke 与 test-report 审计
 | T18i | 搜索结果遵守 Read deny 规则 | WT-09/WT-10 扩展 | `workspace/tools.ts` + runtime 装配（并入 T18d 用例） | ✅ `10518f7` |
 
 T18 之后的收口任务：T17（交付记录、test-report、说明书与文档同步）→ 交叉验证门禁 → 合入 master。
+
+## 验收修复任务
+
+- F1（FC-01…09）回归覆盖提交、排队、范围、引号和补全，接通 Session、workspace 与 TUI。
+- F2（CP-01…09、PC-06、WT-15/16）回归覆盖审批前 diff、批准冲突、回合统计与撤销，修复变更计划和检查点。
+- F3（WT-01…03、WT-07、WT-09…12、WT-19）回归覆盖检索、范围读取、匹配和编码边界，保留现有工作区约束。
+- F4 更新说明书和证据记录，执行聚焦 test、npm test 与 npm run merge:gate。修复留在 fix 分支。

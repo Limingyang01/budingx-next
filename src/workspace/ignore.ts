@@ -7,7 +7,7 @@
 // `**` across segments. Rules of a deeper directory override the rules of a
 // shallower one, and within one file the last matching rule wins.
 import { existsSync, readFileSync, statSync } from 'node:fs'
-import { join, relative, resolve, sep } from 'node:path'
+import { join, posix, relative, resolve, sep } from 'node:path'
 
 type Rule = {
   negate: boolean
@@ -35,10 +35,10 @@ export function isDefaultIgnoredDirectory(name: string): boolean {
   return DEFAULT_IGNORED_DIRECTORIES.includes(name)
 }
 
-function parseRuleFile(content: string, base: string): Rule[] {
+function parseRuleFile(content: string): Rule[] {
   const rules: Rule[] = []
   for (const rawLine of content.split(/\r?\n/)) {
-    let line = rawLine.replace(/\s+$/, '')
+    let line = rawLine.replace(/(?<!\\) +$/, '')
     if (!line || line.startsWith('#')) continue
     let negate = false
     if (line.startsWith('!')) {
@@ -46,6 +46,7 @@ function parseRuleFile(content: string, base: string): Rule[] {
       line = line.slice(1)
     }
     if (!line) continue
+    if (/^\\[!#]/.test(line)) line = line.slice(1)
     let directoryOnly = false
     if (line.endsWith('/')) {
       directoryOnly = true
@@ -94,7 +95,11 @@ export function matchSegment(pattern: string, value: string): boolean {
 }
 
 /** Match the whole relative path against the rule segments (`**` aware). */
-export function matchSegments(segments: string[], pathSegments: string[]): boolean {
+export function matchSegments(
+  segments: string[],
+  pathSegments: string[],
+  matchPart = matchSegment
+): boolean {
   function walk(patternIndex: number, pathIndex: number): boolean {
     if (patternIndex === segments.length) return pathIndex === pathSegments.length
     const segment = segments[patternIndex]
@@ -105,20 +110,29 @@ export function matchSegments(segments: string[], pathSegments: string[]): boole
       return false
     }
     if (pathIndex >= pathSegments.length) return false
-    if (!matchSegment(segment, pathSegments[pathIndex])) return false
+    if (!matchPart(segment, pathSegments[pathIndex])) return false
     return walk(patternIndex + 1, pathIndex + 1)
   }
   return walk(0, 0)
 }
 
+function matchIgnoreSegment(pattern: string, value: string): boolean {
+  const normalized = pattern.replace(/\\ /g, ' ').replace(/\[!/g, '[^')
+  if (normalized.includes('[')) {
+    // Prefix both values so wildcard classes also apply to dotfiles.
+    return posix.matchesGlob('_' + value, '_' + normalized)
+  }
+  return matchSegment(normalized, value)
+}
+
 function ruleMatches(rule: Rule, pathSegments: string[], isDirectory: boolean): boolean {
   if (rule.directoryOnly && !isDirectory) return false
-  if (rule.anchored) return matchSegments(rule.segments, pathSegments)
+  if (rule.anchored) return matchSegments(rule.segments, pathSegments, matchIgnoreSegment)
   // A pattern without a slash matches the name at any depth.
   const last = pathSegments.at(-1)
   if (!last) return false
   if (rule.segments.length !== 1) return false
-  return matchSegment(rule.segments[0], last)
+  return matchIgnoreSegment(rule.segments[0], last)
 }
 
 export function createIgnoreMatcher(root: string): IgnoreMatcher {
@@ -134,7 +148,7 @@ export function createIgnoreMatcher(root: string): IgnoreMatcher {
       if (!existsSync(file)) continue
       try {
         const content = readFileSync(file, 'utf8')
-        rules.push({ base: directory, rules: parseRuleFile(content, directory) })
+        rules.push({ base: directory, rules: parseRuleFile(content) })
       } catch {
         // A rule file that cannot be read must not break the traversal.
       }
@@ -163,7 +177,7 @@ export function createIgnoreMatcher(root: string): IgnoreMatcher {
     let ignored = false
     for (const file of applicableRules(absolutePath)) {
       const relativePath = relative(file.base, absolutePath)
-      if (relativePath.startsWith('..')) continue
+      if (relativePath === '..' || relativePath.startsWith('..' + sep)) continue
       const pathSegments = relativePath.split(sep).filter(Boolean)
       for (const rule of file.rules) {
         if (!ruleMatches(rule, pathSegments, isDirectory)) continue

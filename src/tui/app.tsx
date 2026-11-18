@@ -11,7 +11,6 @@ import {
 } from 'ink'
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 import stringWidth from 'string-width'
-import { existsSync, readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import type { SessionEvent } from '../core/events.js'
 import type { Session } from '../core/session.js'
@@ -22,7 +21,7 @@ import { applyKey } from './editor/keys.js'
 import { reduceFrame, renderTextLines } from './render/reducer.js'
 import { renderHeader, setupHint, terminalStrategy } from './render/header.js'
 import { initialFrame } from './render/types.js'
-import { diffViewLines } from './render/diff-view.js'
+import { diffStats, diffViewLines } from './render/diff-view.js'
 import {
   activeToken,
   applyCompletion,
@@ -30,12 +29,11 @@ import {
   fileCandidates,
   longestCommonPrefix
 } from './render/completion.js'
-import { saveProfileKey } from './runtime.js'
-import { diffLines, type DiffHunk } from '../workspace/diff.js'
+import { saveProfileKey, workspacePromptOptions } from './runtime.js'
 import { MODES_EN, MODES_ZH, nextMode } from '../workspace/policy.js'
 import { walkWorkspaceFiles } from '../workspace/search.js'
-import type { ChangeRecord } from '../workspace/checkpoint.js'
-import { diffStats } from './render/diff-view.js'
+import { changeDiffs } from '../workspace/checkpoint.js'
+import { gitWorkspaceChanges, hasGitWorkspace } from '../workspace/git-diff.js'
 
 export type AppProps = {
   session: Session
@@ -104,7 +102,10 @@ export function App({
   const [input, setInput] = useState('')
   const [hint, setHint] = useState('')
   const [dialog, setDialog] = useState<DiffDialog | null>(null)
+  const [gitAvailable, setGitAvailable] = useState(false)
   const [detailScroll, setDetailScroll] = useState(0)
+  const [approvalScroll, setApprovalScroll] = useState(0)
+  useEffect(() => setApprovalScroll(0), [frame.approval?.requestId])
   const [overlayDismissed, setOverlayDismissed] = useState(false)
   const [completionIndex, setCompletionIndex] = useState(0)
   const fileCache = useRef<string[] | null>(null)
@@ -222,52 +223,30 @@ export function App({
     }
     return ids
   }, [frame.changes.length, permissionHandles])
-  const sourceList = useMemo(() => ['current', ...turnIds], [turnIds])
+  const sourceList = ['current', ...(gitAvailable ? ['git'] : []), ...turnIds]
   const sourceLabel = (source: string) =>
     source === 'current'
       ? pick('当前差异', 'Current')
-      : pick(`第 ${sourceList.indexOf(source)} 回合差异`, `turn ${sourceList.indexOf(source)} diff`)
+      : source === 'git'
+        ? pick('Git 工作区差异', 'Git working tree')
+        : pick(`第 ${turnIds.indexOf(source) + 1} 回合差异`, `turn ${turnIds.indexOf(source) + 1} diff`)
   const cycleSource = (current: string, delta: number): string => {
     const list = sourceList.length > 0 ? sourceList : ['current']
     const index = Math.max(0, list.indexOf(current))
     return list[(index + delta + list.length) % list.length]
   }
-  const dialogEntries = useMemo(() => {
-    const changes = permissionHandles?.checkpointChanges() ?? []
-    const baselineFor = new Map<string, ChangeRecord>()
-    for (const record of changes) {
-      if (!baselineFor.has(record.path)) baselineFor.set(record.path, record)
-    }
-    const active =
-      dialog && dialog.source !== 'current'
-        ? changes.filter((record) => record.turnId === dialog.source)
-        : changes
-    const byPath = new Map<string, { record: ChangeRecord; baseline: ChangeRecord }>()
-    for (const record of active) {
-      const existing = byPath.get(record.path)
-      if (existing) existing.record = record
-      else byPath.set(record.path, { record, baseline: baselineFor.get(record.path) as ChangeRecord })
-    }
-    return [...byPath.values()]
-  }, [dialog, permissionHandles, frame.changes.length])
-  const detailHunks = (
-    entry: { record: ChangeRecord; baseline: ChangeRecord } | undefined,
-    source: string
-  ): DiffHunk[] => {
-    if (!entry) return []
-    if (source !== 'current') return entry.record.diff
-    if (!permissionHandles) return []
-    try {
-      const resolved = permissionHandles.workspace.resolve(entry.record.path)
-      const current =
-        resolved.existed && !resolved.isDirectory
-          ? readFileSync(resolved.real, 'utf8')
-          : ''
-      return diffLines(entry.baseline.before ?? '', current)
-    } catch {
-      return []
-    }
-  }
+  const gitDiff = useMemo(() => dialog?.source === 'git' && permissionHandles
+    ? gitWorkspaceChanges(permissionHandles.workspace, (path) =>
+        permissionHandles.policy.decide({ tool: 'Read', capability: 'read', path }).action !== 'allow'
+      )
+    : undefined, [dialog?.source, permissionHandles, frame.changes.length])
+  const dialogEntries = gitDiff?.files ?? (dialog && permissionHandles
+    ? changeDiffs(
+        permissionHandles.workspace,
+        permissionHandles.checkpointChanges(),
+        dialog.source === 'current' ? undefined : dialog.source
+      )
+    : [])
   const completion = useMemo(() => {
     if (dialog || frame.approval || overlayDismissed || enteringKey) return null
     const lineText = editor.lines[editor.cursor.line] ?? ''
@@ -281,7 +260,8 @@ export function App({
     if (!fileCache.current) {
       fileCache.current = walkWorkspaceFiles(
         permissionHandles.workspace,
-        permissionHandles.workspace.root
+        permissionHandles.workspace.root,
+        { exclude: (path) => permissionHandles.policy.decide({ tool: 'Read', capability: 'read', path }).action !== 'allow' }
       ).relative
     }
     const candidates = fileCandidates(token.token, fileCache.current)
@@ -304,12 +284,16 @@ export function App({
   useEffect(() => {
     setCompletionIndex(0)
   }, [completion?.token.token, completion?.token.kind])
+  const approvalPageSize = Math.max(1, Math.min(10, (terminal.rows || 24) - 12))
   const submitPrompt = (text: string) => {
     if (!context.getConfig().model.trim()) {
       setHint(pick('请先配置并选择模型', 'Configure and select a model first'))
       return
     }
-    session.submit(text)
+    const permission = commandContext.permission
+    session.submit(text, permission
+      ? workspacePromptOptions(text, permission.workspace, permission.policy)
+      : undefined)
   }
   useEffect(
     () =>
@@ -521,6 +505,14 @@ export function App({
       return
     }
     const approval = frame.approval
+    const previewLength = approval?.preview?.length ?? 0
+    if (previewLength > 0 && !typing && (key.upArrow || key.downArrow)) {
+      setApprovalScroll((offset) => Math.max(0, Math.min(
+        Math.max(0, previewLength - approvalPageSize),
+        offset + (key.upArrow ? -1 : 1)
+      )))
+      return
+    }
     if (completion && !approval) {
       // @ / overlay keys (SP003 AC FC-01…03).
       if (key.upArrow) {
@@ -553,10 +545,11 @@ export function App({
           editor.lines[editor.cursor.line] = applyCompletion(
             lineText,
             completion.token,
-            chosen
+            chosen,
+            usePrefix
           )
-          editor.cursor.col =
-            completion.token.start + 1 + Array.from(chosen.value).length
+          editor.cursor.col = Array.from(editor.lines[editor.cursor.line]).length -
+            (Array.from(lineText).length - completion.token.start - completion.token.length)
           setInput(editor.text)
           bumpEditor()
         }
@@ -634,10 +627,16 @@ export function App({
         if (permissionHandles && /^\/diff(\s|$)/.test(submitted)) {
           const arg = submitted.slice(5).trim()
           let index = 0
+          let source = turnIds.at(-1) ?? 'current'
           if (arg) {
-            const found = dialogEntries.findIndex(
-              (entry) => entry.record.path === arg
-            )
+            const changes = permissionHandles.checkpointChanges()
+            const matching = changes.findLastIndex((entry) => entry.path === arg)
+            source = changes[matching]?.turnId ?? 'current'
+            const found = changeDiffs(
+              permissionHandles.workspace,
+              changes,
+              source === 'current' ? undefined : source
+            ).findIndex((entry) => entry.path === arg)
             if (found < 0) {
               // Unknown path: fall back to the text command error.
               if (!session.isBusy) execute(submitted)
@@ -650,10 +649,11 @@ export function App({
             index = found
           }
           // Open on the newest turn diff, fall back to Current.
+          setGitAvailable(hasGitWorkspace(permissionHandles.workspace))
           setDialog({
             view: arg ? 'detail' : 'list',
             index,
-            source: turnIds.at(-1) ?? 'current'
+            source
           })
           setDetailScroll(0)
           fileCache.current = null
@@ -696,15 +696,22 @@ export function App({
           <Text bold>
             {pick('本会话改动', 'Session changes')} · {sourceLabel(dialog.source)}
           </Text>
+          {gitDiff && (gitDiff.incomplete || gitDiff.skipped > 0) && (
+            <Text dimColor>
+              {pick('Git 差异未完整显示，跳过文件数', 'Git diff is incomplete, files skipped')}: {gitDiff.skipped}
+            </Text>
+          )}
           {dialogEntries.length === 0 && (
             <Text dimColor>{pick('无改动', 'no changes')}</Text>
           )}
           {dialogEntries.map((item, index) => {
-            const stat = diffStats(item.record.diff)
+            const stat = diffStats(item.hunks)
             return (
-              <Text key={item.record.path} inverse={index === dialog.index}>
+              <Text key={item.path} inverse={index === dialog.index}>
                 {' '}
-                {item.record.path} {`+${stat.additions}/-${stat.removals}`}
+                {item.path} {`+${stat.additions}/-${stat.removals}`}{' '}
+                {item.operation === 'create' ? pick('新建', 'new')
+                  : item.operation === 'delete' ? pick('删除', 'deleted') : pick('修改', 'edited')}
               </Text>
             )
           })}
@@ -717,13 +724,13 @@ export function App({
         </Box>
       )
     }
-    const hunks = detailHunks(entry, dialog.source)
+    const hunks = entry?.hunks ?? []
     const lines = diffViewLines(hunks, width)
     const visible = lines.slice(detailScroll, detailScroll + 24)
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="gray">
         <Text bold>
-          ── {entry?.record.path ?? ''} · {sourceLabel(dialog.source)} ──
+          ── {entry?.path ?? ''} · {sourceLabel(dialog.source)} ──
         </Text>
         {visible.map((line, index) => (
           <Text key={detailScroll + index}>
@@ -829,6 +836,20 @@ export function App({
             {pick('需要审批', 'Approval needed')}: {frame.approval.name}
           </Text>
           <Text>{frame.approval.summary}</Text>
+          {frame.approval.preview?.slice(approvalScroll, approvalScroll + approvalPageSize).map((line, index) => (
+            <Text
+              key={approvalScroll + index}
+              color={line.startsWith('+') ? 'green' : line.startsWith('-') ? 'red' : undefined}
+              wrap="truncate-end"
+            >
+              {line.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '')}
+            </Text>
+          ))}
+          {(frame.approval.preview?.length ?? 0) > approvalPageSize && (
+            <Text dimColor>
+              {pick('↑↓ 滚动差异', '↑↓ scroll diff')} · {approvalScroll + 1}–{approvalScroll + approvalPageSize}/{frame.approval.preview?.length}
+            </Text>
+          )}
           <Text>
             {permissionHandles
               ? pick(

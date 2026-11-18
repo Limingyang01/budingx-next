@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { test } from 'node:test'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,9 +15,10 @@ const cli = fileURLToPath(new URL('../dist/tui/cli.js', import.meta.url))
 // (and could hit a real endpoint). Pin HOME/USERPROFILE to a fresh temp dir.
 const isolatedHome = mkdtempSync(join(tmpdir(), 'budingx-cli-test-'))
 
-function run(args = [], input = '', env = {}) {
+function run(args = [], input = '', env = {}, cwd = process.cwd()) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [cli, ...args], {
+      cwd,
       env: {
         ...process.env,
         BUDINGX_API_KEY: '',
@@ -165,4 +166,39 @@ test('交互模式在非 TTY 下不挂起', async () => {
     BUDINGX_MODEL: 'fixture'
   })
   assert.equal(result.code, 0, result.err)
+})
+
+test('file references reach the HTTP provider from --prompt and piped input', async (t) => {
+  const workspace = mkdtempSync(join(tmpdir(), 'budingx-cli-context-'))
+  writeFileSync(join(workspace, 'notes.txt'), 'hidden first line\nrequested second line\n')
+  const calls = []
+  const server = createServer(async (req, res) => {
+    let body = ''
+    for await (const chunk of req) body += chunk
+    calls.push(JSON.parse(body).messages)
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    res.end('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n')
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  t.after(() => {
+    server.closeAllConnections()
+    server.close()
+    rmSync(workspace, { recursive: true, force: true })
+  })
+  const env = {
+    BUDINGX_MODEL: 'fixture',
+    BUDINGX_BASE_URL: 'http://127.0.0.1:' + server.address().port + '/v1'
+  }
+  const direct = await run(['--prompt', 'inspect @notes.txt#L2'], '', env, workspace)
+  const piped = await run([], 'inspect @notes.txt#L2\n', env, workspace)
+  for (const result of [direct, piped]) {
+    assert.equal(result.code, 0, result.err)
+    assert.match(result.err, /@notes\.txt attached/)
+  }
+  assert.equal(calls.length, 2)
+  for (const messages of calls) {
+    assert.match(messages.at(-1).content, /requested second line/)
+    assert.doesNotMatch(messages.at(-1).content, /hidden first line/)
+  }
 })

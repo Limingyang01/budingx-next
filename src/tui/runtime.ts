@@ -1,5 +1,5 @@
-import { Session } from '../core/session.js'
-import type { ApprovalGateway, ToolHandler } from '../core/tools.js'
+import { Session, type SubmitOptions } from '../core/session.js'
+import type { ApprovalGateway } from '../core/tools.js'
 import type { DenialRecord } from '../core/events.js'
 import type { PermissionMode } from '../core/permissions.js'
 import { createOpenAiProvider } from '../provider/openai.js'
@@ -13,8 +13,33 @@ import {
   type BudingPermissionPolicy,
   type PermissionRule
 } from '../workspace/policy.js'
-import { createWorkspaceTools, type CheckpointStore } from '../workspace/index.js'
+import { createWorkspaceTools, resolveFileReferences, type CheckpointStore } from '../workspace/index.js'
 import { createWorkspace, type Workspace } from '../workspace/paths.js'
+
+export function workspacePromptOptions(
+  text: string,
+  workspace: Workspace,
+  policy: BudingPermissionPolicy
+): SubmitOptions {
+  return {
+    resolveContext: () => {
+      const { blocks, errors } = resolveFileReferences(workspace, text, (path) => {
+        const decision = policy.decide({ tool: 'Read', capability: 'read', path })
+        return decision.action === 'allow' ? undefined : decision.reason
+      })
+      return {
+        context: blocks.map(({ source, content, notice }) => ({
+          source,
+          content: [content, notice].filter(Boolean).join('\n')
+        })),
+        notices: [
+          ...blocks.map(({ source, notice }) => notice ? `@${source}: ${notice}` : `@${source} attached`),
+          ...errors.map(({ raw, message }) => `@${raw}: ${message}`)
+        ]
+      }
+    }
+  }
+}
 
 export type AgentRuntime = {
   session: Session

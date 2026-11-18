@@ -12,6 +12,7 @@ export type ApprovalCard = {
   requestId: string
   name: string
   summary: string
+  preview?: readonly string[]
 }
 
 export type NoticeItem = {

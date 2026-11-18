@@ -20,6 +20,7 @@ export type ActiveToken = {
   start: number
   /** Length of the whole token including the sigil. */
   length: number
+  quoted?: boolean
 }
 
 const MAX_CANDIDATES = 5
@@ -34,7 +35,9 @@ export function activeToken(
   cursorColumn: number,
   commands: string[]
 ): ActiveToken | null {
-  const before = Array.from(line).slice(0, cursorColumn).join('')
+  const characters = Array.from(line)
+  const before = characters.slice(0, cursorColumn).join('')
+  const after = characters.slice(cursorColumn).join('')
   const commandMatch = /^\/([^\s]*)$/.exec(before)
   if (commandMatch && commands.length > 0) {
     const token = commandMatch[1]
@@ -42,11 +45,26 @@ export function activeToken(
       return { kind: 'command', token, start: 0, length: token.length + 1 }
     }
   }
+  const quoted = /(?:^|[\s('=])@"([^"]*)$/.exec(before)
+  if (quoted) {
+    const token = quoted[1]
+    const typedLength = Array.from(token).length + 2
+    const suffix = /^[^"]*"/.exec(after)?.[0] ?? ''
+    return {
+      kind: 'file',
+      token,
+      start: cursorColumn - typedLength,
+      length: typedLength + Array.from(suffix).length,
+      quoted: true
+    }
+  }
   const fileMatch = /(?:^|[\s("'=])@([^\s"'(),;]*)$/.exec(before)
   if (fileMatch) {
     const token = fileMatch[1] ?? ''
-    const start = cursorColumn - token.length - 1
-    return { kind: 'file', token, start, length: token.length + 1 }
+    const typedLength = Array.from(token).length + 1
+    const start = cursorColumn - typedLength
+    const suffix = /^[^\s"'(),;#]*/.exec(after)?.[0] ?? ''
+    return { kind: 'file', token, start, length: typedLength + Array.from(suffix).length }
   }
   return null
 }
@@ -93,7 +111,24 @@ export function fileCandidates(token: string, files: string[]): CompletionCandid
     }
     if (seen.size >= MAX_CANDIDATES * 4) break
   }
-  return [...seen.values()].slice(0, MAX_CANDIDATES)
+  if (seen.size > 0 || !lowerStem || base) return [...seen.values()].slice(0, MAX_CANDIDATES)
+
+  return files
+    .flatMap((value) => {
+      const name = value.split('/').at(-1)?.toLowerCase() ?? ''
+      let position = -1
+      let first = -1
+      for (const character of lowerStem) {
+        position = name.indexOf(character, position + 1)
+        if (position < 0) return []
+        if (first < 0) first = position
+      }
+      const score = first + (position - first - lowerStem.length + 1) * 2
+      return [{ value, score }]
+    })
+    .sort((a, b) => a.score - b.score)
+    .slice(0, MAX_CANDIDATES)
+    .map(({ value }) => ({ value, kind: 'file', directory: false }))
 }
 
 /**
@@ -119,10 +154,15 @@ export function longestCommonPrefix(values: string[]): string {
 export function applyCompletion(
   line: string,
   token: ActiveToken,
-  candidate: CompletionCandidate
+  candidate: CompletionCandidate,
+  partial = false
 ): string {
   const characters = Array.from(line)
-  const inserted = (token.kind === 'command' ? '/' : '@') + candidate.value
+  const quotes = token.kind === 'file' && (token.quoted || /[\s,;:()#@]/.test(candidate.value))
+  const inserted = token.kind === 'command'
+    ? '/' + candidate.value
+    : '@' + (quotes ? '"' : '') + candidate.value +
+      (quotes && !candidate.directory && !partial ? '"' : '')
   const before = characters.slice(0, token.start)
   const after = characters.slice(token.start + token.length)
   return before.join('') + inserted + after.join('')

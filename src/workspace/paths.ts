@@ -102,11 +102,16 @@ export function createWorkspace(root: string): Workspace {
           isDirectory = false
         }
       } else {
-        // A file that does not exist yet is checked through its parent, so a
-        // new file inside a linked directory is still caught.
-        const parent = dirname(absolute)
-        const parentReal = realPathOf(parent) ?? parent
-        real = join(parentReal, basename(absolute))
+        // Walk past missing parents before resolving the physical ancestor.
+        let parent = dirname(absolute)
+        const missing = [basename(absolute)]
+        let parentReal = realPathOf(parent)
+        while (!parentReal && parent !== dirname(parent)) {
+          missing.unshift(basename(parent))
+          parent = dirname(parent)
+          parentReal = realPathOf(parent)
+        }
+        real = join(parentReal ?? parent, ...missing)
       }
       if (!workspace.isInside(real)) {
         throw new WorkspaceError(

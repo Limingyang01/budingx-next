@@ -4,8 +4,9 @@
 // workspace, read with the same caps as the Read tool, and reported back
 // with readable errors instead of being silently dropped.
 import { MAX_CONTEXT_BYTES, MAX_CONTEXT_LINES, MAX_TOTAL_CONTEXT_BYTES } from './constants.js'
+import { createIgnoreMatcher } from './ignore.js'
 import { readWorkspaceFile } from './read.js'
-import { WorkspaceError, type Workspace } from './paths.js'
+import type { Workspace } from './paths.js'
 
 export type FileReference = {
   raw: string
@@ -41,7 +42,10 @@ export function extractFileReferences(text: string): FileReference[] {
   while ((match = pattern.exec(text)) !== null) {
     const raw = (match[1] ?? match[2] ?? '').trim()
     if (!raw) continue
-    const key = raw.toLowerCase() + (match[3] ? '#' + match[3] : '')
+    const before = text[match.index - 1]
+    if (before && /[\p{L}\p{N}_.+-]/u.test(before)) continue
+    const pathKey = process.platform === 'win32' ? raw.toLowerCase() : raw
+    const key = JSON.stringify([pathKey, match[3], match[4] ?? match[3]])
     if (seen.has(key)) continue
     seen.add(key)
     const entry: FileReference = { raw, path: raw }
@@ -57,11 +61,13 @@ export function extractFileReferences(text: string): FileReference[] {
 
 export function buildContextBlocks(
   workspace: Workspace,
-  references: FileReference[]
+  references: FileReference[],
+  denialReason?: (path: string) => string | undefined
 ): ContextBuild {
   const blocks: ContextBlock[] = []
   const errors: ContextBuild['errors'] = []
   let totalBytes = 0
+  const ignore = createIgnoreMatcher(workspace.root)
 
   for (const reference of references) {
     if (totalBytes >= MAX_TOTAL_CONTEXT_BYTES) {
@@ -73,6 +79,13 @@ export function buildContextBlocks(
     }
     let result
     try {
+      const target = workspace.resolve(reference.path)
+      const reason = denialReason?.(reference.path) ??
+        (target.relative !== reference.path ? denialReason?.(target.relative) : undefined)
+      if (reason) throw new Error(reason)
+      if (ignore.isIgnored(target.absolute) || ignore.isIgnored(target.real)) {
+        throw new Error('File is ignored by workspace ignore rules')
+      }
       // Attachments read through the ranged path: the 2000-line cap
       // truncates instead of erroring, matching the reference's
       // @mention behaviour (and #L ranges select exactly).
@@ -80,13 +93,13 @@ export function buildContextBlocks(
         path: reference.path,
         offset: reference.range?.start ?? 1,
         limit: reference.range
-          ? reference.range.end - reference.range.start + 1
+          ? Math.min(MAX_CONTEXT_LINES, reference.range.end - reference.range.start + 1)
           : MAX_CONTEXT_LINES
       })
     } catch (error) {
       errors.push({
         raw: reference.raw,
-        message: error instanceof WorkspaceError ? error.message : String(error)
+        message: error instanceof Error ? error.message : String(error)
       })
       continue
     }
@@ -106,9 +119,10 @@ export function buildContextBlocks(
     let content = result.text
     let notice: string | undefined
     if (result.truncated) {
-      notice = reference.range
-        ? undefined
-        : `truncated to the first ${MAX_CONTEXT_LINES} lines`
+      const rangeLength = reference.range ? reference.range.end - reference.range.start + 1 : undefined
+      if (rangeLength === undefined || rangeLength > MAX_CONTEXT_LINES) {
+        notice = `truncated to ${rangeLength === undefined ? 'the first ' : ''}${MAX_CONTEXT_LINES} lines`
+      }
     }
     if (Buffer.byteLength(content, 'utf8') > MAX_CONTEXT_BYTES) {
       const buffer = Buffer.from(content, 'utf8').subarray(0, MAX_CONTEXT_BYTES)
@@ -136,7 +150,8 @@ export function buildContextBlocks(
 /** Convenience: parse and build in one step (TUI submit path). */
 export function resolveFileReferences(
   workspace: Workspace,
-  text: string
+  text: string,
+  denialReason?: (path: string) => string | undefined
 ): ContextBuild {
-  return buildContextBlocks(workspace, extractFileReferences(text))
+  return buildContextBlocks(workspace, extractFileReferences(text), denialReason)
 }

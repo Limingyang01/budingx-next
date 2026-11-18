@@ -154,7 +154,8 @@ export function reduceFrame(
       next.approval = {
         requestId: event.requestId,
         name: event.name,
-        summary: event.summary
+        summary: event.summary,
+        ...(event.preview ? { preview: event.preview } : {})
       }
       return next
     }
