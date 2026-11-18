@@ -2,7 +2,7 @@
 // Pure function: the renderer never talks to the session directly.
 import stringWidth from 'string-width'
 import type { SessionEvent } from '../../core/events.js'
-import type { Frame } from './types.js'
+import type { Frame, PlanCard, TodoCard } from './types.js'
 import { initialFrame } from './types.js'
 
 export type RenderOptions = {
@@ -132,6 +132,23 @@ export function reduceFrame(
       return next
     }
     case 'tool_result': {
+      if (next.command !== undefined && next.command.callId === event.callId) {
+        const content = event.content
+        const taskId = /^background_task_id: (\S+)$/m.exec(content)?.[1]
+        const exitCode = /^exit_code: (-?\d+)$/m.exec(content)?.[1]
+        const running = /^exit_code: <pending>$/m.test(content)
+        next.command = {
+          ...next.command,
+          result: content,
+          state: taskId !== undefined || running
+            ? 'background'
+            : event.isError
+              ? 'failed'
+              : 'completed',
+          ...(taskId !== undefined ? { taskId } : {}),
+          ...(exitCode !== undefined ? { exitCode: Number.parseInt(exitCode, 10) } : {})
+        }
+      }
       const index = next.transcript.findLastIndex((entry) =>
         entry.kind === 'tool' && entry.turnId === event.turnId &&
         entry.callId === event.callId && entry.status === 'pending'
@@ -167,12 +184,127 @@ export function reduceFrame(
       next.queue = next.queue.filter((item) => item.id !== event.queueId)
       return next
     }
+    case 'command_started': {
+      next.command = {
+        callId: event.callId,
+        command: event.command,
+        interpreter: event.interpreter,
+        cwd: event.cwd,
+        state: event.taskId !== undefined ? 'background' : 'running',
+        startedAt: event.startedAt,
+        ...(event.taskId !== undefined ? { taskId: event.taskId } : {})
+      }
+      return next
+    }
+    case 'command_finished': {
+      const card = next.command
+      if (card === undefined) return next
+      if (event.taskId !== card.taskId && event.callId !== card.callId) return next
+      next.command = {
+        ...card,
+        state:
+          event.outcome === 'completed'
+            ? 'completed'
+            : event.outcome === 'cancelled'
+              ? 'cancelled'
+              : 'failed',
+        finishedAt: event.finishedAt,
+        ...(event.exitCode !== undefined ? { exitCode: event.exitCode } : {}),
+        ...(event.outputPath !== undefined ? { outputPath: event.outputPath } : {})
+      }
+      return next
+    }
+    case 'plan_updated': {
+      const plan = event.plan
+      const previous = next.plan
+      next.plan = {
+        planId: plan.id,
+        goal: plan.goal,
+        steps: plan.steps.map((step) => ({
+          id: step.id,
+          title: step.title,
+          status: step.status,
+          ...(step.blockedBy !== undefined ? { blockedBy: step.blockedBy } : {}),
+          ...(step.note !== undefined ? { note: step.note } : {})
+        })),
+        approval: plan.approval,
+        mode:
+          plan.approval === 'approved'
+            ? 'approved'
+            : plan.approval === 'pending'
+              ? 'pending'
+              : previous?.mode === 'research'
+                ? 'research'
+                : 'idle',
+        updatedAt: plan.updatedAt
+      }
+      next.todos = todosFromPlan(next.plan, frame.todos)
+      return next
+    }
+    case 'plan_mode_changed': {
+      const plan = next.plan
+      if (plan === undefined) {
+        next.notices = [
+          ...next.notices,
+          {
+            level: 'info' as const,
+            code: 'plan_mode' as const,
+            text: event.active
+              ? '已进入计划模式（调研阶段）'
+              : '已退出计划模式'
+          }
+        ].slice(-5)
+        return next
+      }
+      next.plan = {
+        ...plan,
+        mode: event.active
+          ? event.phase === 'pending'
+            ? 'pending'
+            : 'research'
+          : plan.approval === 'approved'
+            ? 'approved'
+            : 'idle'
+      }
+      return next
+    }
+    case 'question_requested': {
+      next.question = {
+        questionId: event.question.questionId,
+        callId: event.question.callId || event.callId,
+        turnId: event.turnId,
+        questions: event.question.questions,
+        allowFreeText: event.question.allowFreeText,
+        state: 'pending',
+        createdAt: event.question.createdAt
+      }
+      return next
+    }
+    case 'question_answered': {
+      const card = next.question
+      if (card === undefined || card.questionId !== event.questionId) return next
+      next.question = {
+        ...card,
+        state: 'answered',
+        answers: event.answers,
+        ...(event.annotations !== undefined ? { annotations: event.annotations } : {})
+      }
+      return next
+    }
+    case 'question_cancelled': {
+      const card = next.question
+      if (card === undefined || card.questionId !== event.questionId) return next
+      next.question = { ...card, state: 'cancelled' }
+      return next
+    }
     case 'approval_requested': {
       next.approval = {
         requestId: event.requestId,
         name: event.name,
         summary: event.summary,
-        ...(event.preview ? { preview: event.preview } : {})
+        ...(event.preview ? { preview: event.preview } : {}),
+        ...(event.planId !== undefined ? { planId: event.planId } : {}),
+        ...(event.planVersion !== undefined ? { planVersion: event.planVersion } : {})
       }
       return next
     }
@@ -241,6 +373,26 @@ export function reduceFrame(
     }
     default:
       return next
+  }
+}
+
+/** 计划步骤 → 待办卡片；保留每条完成时间以便 TTL 隐藏（VIS-03）。 */
+function todosFromPlan(plan: PlanCard, previous: TodoCard | undefined): TodoCard {
+  const completedAt: Record<string, number> = {}
+  for (const step of plan.steps) {
+    if (step.status === 'completed') {
+      completedAt[step.id] = previous?.completedAt[step.id] ?? plan.updatedAt
+    }
+  }
+  return {
+    items: plan.steps.map((step) => ({
+      id: step.id,
+      content: step.title,
+      status: step.status,
+      ...(step.blockedBy !== undefined ? { blockedBy: step.blockedBy } : {})
+    })),
+    updatedAt: plan.updatedAt,
+    completedAt
   }
 }
 

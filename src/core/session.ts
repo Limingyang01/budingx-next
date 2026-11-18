@@ -59,6 +59,11 @@ export type SessionOptions = {
   approval: ApprovalGateway
   resolveSnapshot: () => TurnSnapshot
   tools?: ToolHandler[]
+  /**
+   * SP004 §4.4/§6.1：会话标识，用于后台输出目录与会话计划文件的隔离。
+   * 宿主未提供时自动生成，保证同一进程内不同会话不互相覆盖。
+   */
+  id?: string
   /** SP003: when present, tool calls are decided by the policy. */
   permissionPolicy?: PermissionPolicy
   /** SP004 §6.2: host integration for plan mode (research/pending/approve). */
@@ -137,6 +142,8 @@ function formatQuestionResult(
 }
 
 export class Session {
+  /** 会话标识（SP004 §4.4 后台输出与 §6.1 计划文件的隔离键）。 */
+  readonly id: string
   private state: SessionState = 'idle'
   private readonly messages: Message[] = []
   private readonly reasoningSource = new WeakMap<Message, TurnSnapshot>()
@@ -180,6 +187,7 @@ export class Session {
   }
 
   constructor(private readonly options: SessionOptions) {
+    this.id = options.id ?? randomUUID()
     this.tools = options.tools ?? []
     this.options.permissionPolicy?.onModeChanged?.((mode: PermissionMode) => {
       this.emit({ type: 'permission_changed', mode })
@@ -318,7 +326,9 @@ export class Session {
       callId,
       name: request.name,
       summary: request.summary,
-      ...(request.preview ? { preview: request.preview } : {})
+      ...(request.preview ? { preview: request.preview } : {}),
+      ...(request.planId !== undefined ? { planId: request.planId } : {}),
+      ...(request.planVersion !== undefined ? { planVersion: request.planVersion } : {})
     })
     if (inTurn) this.setState('awaiting_approval')
     const decision = await this.awaitPlanDecision(inTurn ? turn : undefined, request)
@@ -1074,7 +1084,9 @@ export class Session {
           callId: call.id,
           name: call.name,
           summary: request.summary,
-          ...(request.preview ? { preview: request.preview } : {})
+          ...(request.preview ? { preview: request.preview } : {}),
+          ...(request.planId !== undefined ? { planId: request.planId } : {}),
+          ...(request.planVersion !== undefined ? { planVersion: request.planVersion } : {})
         })
         const decision = await this.requestApproval(turn, request)
         remember =

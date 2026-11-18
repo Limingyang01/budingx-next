@@ -148,6 +148,9 @@ export type SessionEvent =
       name: string
       summary: string
       preview?: readonly string[]
+      /** SP004 T11/T15：计划审批的计划身份，TUI 用它渲染计划卡片与编辑正文。 */
+      planId?: string
+      planVersion?: number
     }
   | {
       type: 'approval_resolved'
