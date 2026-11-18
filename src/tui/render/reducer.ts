@@ -7,6 +7,7 @@ import { initialFrame } from './types.js'
 
 export type RenderOptions = {
   width: number
+  english?: boolean
 }
 
 /** Split text into width aware lines without cutting wide characters. */
@@ -38,15 +39,7 @@ export function renderTextLines(text: string, width: number): string[] {
 }
 
 function liveLinesOf(frame: Frame, width: number): string[] {
-  if (!frame.liveText && !frame.liveThinking) return []
-  const lines: string[] = []
-  if (frame.liveThinking) {
-    for (const line of renderTextLines(frame.liveThinking, width)) {
-      lines.push(line ? `· ${line}` : '·')
-    }
-  }
-  lines.push(...renderTextLines(frame.liveText, width))
-  return lines
+  return frame.liveText ? renderTextLines(frame.liveText, width) : []
 }
 
 export function reduceFrame(
@@ -81,35 +74,37 @@ export function reduceFrame(
       next.denials = [...next.denials, event.denial].slice(-10)
       return next
     case 'turn_started': {
+      next.startedAt = event.startedAt
+      next.lastQuestion = event.userText
+      next.lastAnswer = undefined
+      next.suggestFollowUp = false
+      if (event.userText) {
+        next.transcript = [...next.transcript, (options.english ? 'You > ' : '你 › ') + event.userText]
+      }
       next.liveText = ''
-      next.liveThinking = ''
+      next.thinking = false
       next.liveLines = []
       next.error = undefined
       return next
     }
     case 'text_delta': {
+      next.thinking = false
       next.liveText += event.text
       next.liveLines = liveLinesOf(next, options.width)
       return next
     }
     case 'thinking_delta': {
-      next.liveThinking += event.text
-      next.liveLines = liveLinesOf(next, options.width)
+      next.thinking = true
       return next
     }
     case 'message_completed': {
+      next.lastAnswer = next.liveText
+      next.thinking = false
       next.liveLines = liveLinesOf(next, options.width)
       if (next.liveLines.length > 0) {
-        next.transcript = [
-          ...next.transcript,
-          ...[next.liveThinking ? '· ' + next.liveThinking : '', next.liveText].filter(
-            Boolean
-          ),
-          ''
-        ]
+        next.transcript = [...next.transcript, next.liveText, '']
         next.staticLines = [...next.staticLines, ...next.liveLines, '']
         next.liveText = ''
-        next.liveThinking = ''
         next.liveLines = []
       }
       return next
@@ -147,6 +142,10 @@ export function reduceFrame(
       return next
     }
     case 'input_injected': {
+      if (event.boundary === 'intra_turn' && event.text) {
+        next.transcript = [...next.transcript, (options.english ? 'You > ' : '你 › ') + event.text]
+        next.lastQuestion = event.text
+      }
       next.queue = next.queue.filter((item) => item.id !== event.queueId)
       return next
     }
@@ -178,18 +177,30 @@ export function reduceFrame(
     case 'turn_finalized': {
       next.liveLines = liveLinesOf(next, options.width)
       if (next.liveLines.length > 0) {
-        next.transcript = [
-          ...next.transcript,
-          ...[next.liveThinking ? '· ' + next.liveThinking : '', next.liveText].filter(
-            Boolean
-          ),
-          ''
-        ]
+        next.transcript = [...next.transcript, next.liveText, '']
         next.staticLines = [...next.staticLines, ...next.liveLines, '']
         next.liveText = ''
-        next.liveThinking = ''
         next.liveLines = []
       }
+      next.thinking = false
+      if (next.startedAt !== undefined && event.finishedAt !== undefined) {
+        const elapsed = Math.max(0, Math.floor((event.finishedAt - next.startedAt) / 1000))
+        const time = new Date(event.finishedAt).toTimeString().slice(0, 5)
+        const labels = {
+          completed: '已完成',
+          error: '失败',
+          cancelled: '已中断',
+          length_capped: '达到输出上限',
+          max_turns: '达到回合上限',
+          unknown: '已结束'
+        }
+        const label = options.english ? event.outcome : labels[event.outcome]
+        next.transcript = [...next.transcript, options.english
+          ? `${label} · ${elapsed}s · ${time}`
+          : `${label} · 用时 ${elapsed} 秒 · ${time}`]
+      }
+      next.startedAt = undefined
+      next.suggestFollowUp = event.outcome === 'completed' && !!next.lastAnswer
       if (event.outcome === 'error' && event.error) {
         next.error = event.error.message
       }

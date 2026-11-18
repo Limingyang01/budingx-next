@@ -99,9 +99,11 @@ export function App({
       stdout.off('resize', resize)
     }
   }, [stdout])
+  const strategy = useMemo(() => terminalStrategy(process.env, process.platform), [])
+  const zh = strategy === 'pixel'
   const [frame, dispatch] = useReducer(
     (state: ReturnType<typeof initialFrame>, event: SessionEvent) =>
-      reduceFrame(state, event, { width }),
+      reduceFrame(state, event, { width, english: !zh }),
     commandContext.permission?.policy.getMode(),
     (mode) => initialFrame(mode ?? 'read_only')
   )
@@ -116,9 +118,17 @@ export function App({
   const offset = Math.min(scrollTop ?? maxScroll, maxScroll)
   const scrolled = fullScreen && offset < maxScroll
   const working = frame.status.state !== 'idle'
+  const thinking = frame.thinking &&
+    (frame.status.state === 'requesting' || frame.status.state === 'streaming')
   useEffect(() => {
     if (fullScreen) stdout.write(terminalTitle(topic, working))
   }, [stdout, fullScreen, topic, working])
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    if (frame.startedAt === undefined) return
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [frame.startedAt])
   const [hint, setHint] = useState('')
   const [dialog, setDialog] = useState<DiffDialog | null>(null)
   const [gitAvailable, setGitAvailable] = useState(false)
@@ -134,9 +144,10 @@ export function App({
   const editor = useMemo(() => new EditorBuffer(), [])
   const [, bumpEditor] = useReducer((n: number) => n + 1, 0)
   const ctrlC = useRef(0)
-  const strategy = useMemo(() => terminalStrategy(process.env, process.platform), [])
-  const zh = strategy === 'pixel'
   const pick = (a: string, b: string) => (zh ? a : b)
+  const suggestion = !working && !input && frame.suggestFollowUp
+    ? followUp(frame.lastQuestion ?? '', frame.lastAnswer ?? '', zh)
+    : ''
   const inputBox = useRef<DOMElement>(null)
   const { setCursorPosition } = useCursor()
   const [cursorPosition, setPosition] = useState<{ x: number; y: number } | undefined>(
@@ -546,6 +557,12 @@ export function App({
       )
       return
     }
+    if (suggestion && !session.isBusy && editor.isEmpty && key.tab && !key.shift && !approval) {
+      editor.insert(suggestion)
+      setInput(editor.text)
+      bumpEditor()
+      return
+    }
     const action = applyKey(editor, text, key, { busy: session.isBusy })
     if (!action.handled) return
     bumpEditor()
@@ -640,9 +657,7 @@ export function App({
     () => frame.transcript.flatMap((line) => renderTextLines(line, width)),
     [frame.transcript, width]
   )
-  const liveText = [frame.liveThinking ? '· ' + frame.liveThinking : '', frame.liveText]
-    .filter(Boolean)
-    .join('\n')
+  const liveText = frame.liveText
   if (modelManagerOpen) {
     return <ModelManager context={{ ...context, session }} input={managerInput} readClipboard={readClipboard} close={(notice) => {
       const done = managerDone.current
@@ -877,12 +892,21 @@ export function App({
           />
         )}
         <Box ref={inputBox}>
-          <Text>{fullScreen ? draftLines.slice(draftStart, draftStart + composerRows).join('\n') : `> ${input}`}</Text>
+          {suggestion ? (
+            <Text wrap="truncate-end">
+              {'> '}<Text dimColor>{pick('Tab 填入', 'Tab to fill')} · {suggestion}</Text>
+            </Text>
+          ) : (
+            <Text>{fullScreen ? draftLines.slice(draftStart, draftStart + composerRows).join('\n') : `> ${input}`}</Text>
+          )}
         </Box>
         {!fullScreen && completionMenu}
         <Text dimColor wrap={fullScreen ? 'truncate-end' : 'wrap'}>
           {fullScreen && <Text color={working ? ACCENT : undefined}>{working ? '● ' : '○ '}</Text>}
-          {zh ? STATUS_ZH[frame.status.state] : frame.status.state}
+          {thinking
+            ? pick('思考中', 'thinking')
+            : zh ? STATUS_ZH[frame.status.state] : frame.status.state}
+          {frame.startedAt !== undefined && ` ${Math.max(0, Math.floor((now - frame.startedAt) / 1000))}${pick(' 秒', 's')}`}
           {permissionHandles
             ? ` · ${pick(
                 MODES_ZH[frame.permissionMode],
@@ -902,4 +926,14 @@ export function App({
       </Box>
     </Box>
   )
+}
+
+function followUp(question: string, answer: string, zh: boolean): string {
+  if (/你好|你是谁|who are you|^hello/i.test(question)) {
+    return zh ? '介绍这个项目的主要功能' : 'Describe the main features of this project'
+  }
+  if (/修复|错误|报错|error|fix|bug/i.test(question + answer)) {
+    return zh ? '如何验证这个修复？' : 'How can I verify this fix?'
+  }
+  return zh ? '结合项目给我一个具体示例' : 'Show me a concrete example from this project'
 }

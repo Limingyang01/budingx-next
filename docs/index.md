@@ -29,3 +29,5 @@
 源码模块组织见 [仓库布局](repository-layout.md)。
 
 构建与发布手册：[GitHub Actions + npm Trusted Publishing](github-actions-npm.md)；Agent 执行入口：[buding-npm-release](../skills/buding-npm-release/SKILL.md)。
+
+SP003 会话体验修复已准备为 [0.3.3](../release-notes/v0.3.3.md)，当前公开版本为 0.3.2。

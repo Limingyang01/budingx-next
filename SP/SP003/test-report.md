@@ -256,3 +256,16 @@ npm run merge:gate     # 见 §6
 - [GitHub Actions #12](https://github.com/Limingyang01/budingx-next/actions/runs/44248899298) 使用源码 `027e0195bd7d188e2bd28fc658682c2fe6bb2547`，Windows、Linux 与 OIDC 发布作业均成功。npm 发布于 `2026-11-18T06:11:51.994Z`，`latest` 指向 `0.3.2`。
 - 官方源隔离安装通过。npm 命令入口返回 `0.3.2`，本地 HTTP 流式冒烟通过。已验证 46 个 registry signatures 和 5 个 attestations。SHA-512 与候选预演、安装锁和 provenance 的 subject 一致。provenance 的源码、工作流路径和运行地址与本次任务一致。
 - Actions 原始回执下载需登录（HTTP 401）。台账依据公开 provenance 和独立安装证据更新。本次发布验证沿用真实 Provider 和终端输入法的既有未验证范围。
+
+### 0.3.3 会话体验
+
+以 0.3.2 为基线，伪 TTY 的用户消息、计时和 Tab 续问用例及 HTTP 请求身份用例先失败。编译后运行 TUI、HTTP 与 CLI 三组专项用例，共 27 项通过。
+
+| 验收项 | 结果 | 证据 |
+| --- | --- | --- |
+| 提问、阶段和计时 | PASS | 伪 TTY 检查提问与回答顺序、思考阶段秒数递增、结束耗时及本地时刻。 |
+| 回答后可编辑续问 | PASS | 伪 TTY 检查 Tab 填入、填入后隐藏提示、会话发送次数仍为一次。 |
+| Budingx 身份和模型对话历史 | PASS | 本地 HTTP 检查 system 消息、模型切换、普通请求与故障恢复历史。 |
+| 真实模型与终端 | UNVERIFIED | 用实际供应商发起身份提问，并在 Windows Terminal 检查屏幕与输入法。 |
+
+自审确认变更集中于运行时事件、请求身份、TUI 与 0.3.3 发行文档。供模型调用的思考片段仍由已有会话逻辑管理，TUI 仅展示思考阶段。Tab 续问由本地规则生成。

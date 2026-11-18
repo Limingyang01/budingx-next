@@ -53,6 +53,7 @@ export type ApiToolCall = {
 }
 
 export type ApiMessage =
+  | { role: 'system'; content: string }
   | { role: 'user'; content: string }
   | { role: 'assistant'; content: string | null; tool_calls?: ApiToolCall[]; reasoning_content?: string }
   | { role: 'tool'; tool_call_id: string; content: string }
