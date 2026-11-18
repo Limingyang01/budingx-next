@@ -434,7 +434,7 @@
   8. 计划与待办为**两个对象**：待办项无 `blockedBy`、状态仅 3 个（TP-02）
 - **GREEN**：持久化与解析、权限档位语义、审批通道复用、多题追问
 - **验证**：`npm run build && node --test src/plan/test/persist.test.mjs src/core/test/plan-mode.test.mjs src/core/test/question.test.mjs`
-- **完成事实**：待填
+- **完成事实**：2026-11-18 完成。新增 `src/plan/serialize.ts`：`planFilePath(sessionId, planId, home?)` → `~/.budingx/plans/<sessionId>/<planId>.md`（复用 `storage/paths` 的 `dataRoot`，不写用户项目目录）；`serializePlan(plan)` 输出 Markdown 正文 + YAML frontmatter（标量统一用 JSON 编码以保持可解析、不引入 YAML 依赖；frontmatter 承载 `id`/`goal`/`approval`/`createdAt`/`updatedAt`/`fingerprint`/`approvedText`/`steps`，正文为 `# 目标` + 编号步骤，供用户阅读与编辑）；`parsePlan(text)` 严格校验 frontmatter、`goal`、`approval` 与步骤 `id`/`title`/`status`/`blockedBy`/`note`，损坏或缺字段直接报错（不静默清空计划）；`savePlanFile`/`loadPlanFile`（`ENOENT` → `undefined`，其余错误上抛）。`src/plan/store.ts` 增可选 `filePath`：构造时读回既有计划（会话恢复读取，TP-10），`create`/`update`/`requestApproval`/`approve`/`reject` 后落盘；未提供 `filePath` 时保持原纯内存语义（T10 用例不受影响）。新增 `src/plan/test/persist.test.mjs` 8 条（序列化往返、路径会话隔离、创建即落盘、批准携带用户编辑正文且指纹按当前版本重算、拒绝反馈落盘并可重载回灌、同路径重开读回且缺失文件不凭空创建、损坏文件明确报错、追问 1–4 题/每题 2–4 选项边界）。RED：`node --test src/plan/test/persist.test.mjs` 报 `ERR_MODULE_NOT_FOUND ... dist/plan/serialize.js`，0 通过 1 失败；实现后 8/8 通过，相关既有套件 36/36 通过。全量 `npm run test:unit` **540/540** 通过（`.superpowers/sdd/plan.zh/t22-full-unit.log`，exit=0），`npm run test:checks` 模块边界通过。Ruling：T22 计划要点中的会话语义项（计划模式为权限档位、调研期非只读降级为需批准、批准可携带编辑正文并重算指纹、拒绝反馈回灌、追问多题 1–4/2–4）已由 T11/T12 交付并被 `plan-mode.test.mjs`/`question.test.mjs` 覆盖，本轮不再重复修改 `src/core/session.ts`，只补持久化与本轮缺口的验收用例；`TodoWrite` 工具不在本轮任务清单内（T10 已交付 `TodoStore` 契约，四类卡片由 T15 读取）。
 
 ### T23 · Git 状态增强与 worktree 退出语义
 

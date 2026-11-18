@@ -1,5 +1,5 @@
-// SP004 T10 计划状态机与待办存储（设计 §6.1）。
-// Core 持有类型；这里提供可注入的纯逻辑实现：无 IO、无进程、无持久化。
+// SP004 T10 计划状态机与待办存储（设计 §6.1）；T22 增加可选文件持久化。
+// Core 持有类型；这里提供可注入的实现：状态机本身纯逻辑，持久化只在提供 filePath 时发生。
 import { randomUUID } from 'node:crypto'
 import {
   PLAN_MAX_STEPS,
@@ -13,6 +13,7 @@ import {
   type TodoItem,
   type TodoStore
 } from '../core/plan.js'
+import { loadPlanFile, savePlanFile } from './serialize.js'
 
 /** 工作区快照：指纹只绑定这些可观测事实（设计 §6.3）。 */
 export type PlanSnapshot = {
@@ -54,6 +55,8 @@ export type PlanStoreOptions = {
   snapshot?: () => PlanSnapshot
   now?: () => number
   id?: () => string
+  /** 提供时计划持久化为该 `.md` 文件：创建即落盘，重开同一路径可读回（TP-10）。 */
+  filePath?: string
 }
 
 function emptyProgress(): ReturnType<typeof planProgress> {
@@ -65,7 +68,12 @@ export function createPlanStore(options: PlanStoreOptions = {}): PlanStore {
   const now = options.now ?? (() => Date.now())
   const newId = options.id ?? (() => `plan-${randomUUID()}`)
   const snapshot = options.snapshot ?? (() => ({ root: '', files: {} }))
-  let plan: Plan | undefined
+  let plan: Plan | undefined = options.filePath ? loadPlanFile(options.filePath) : undefined
+
+  /** 有 filePath 时把当前计划写回磁盘；状态机不因持久化失败而静默丢弃计划。 */
+  function persist(): void {
+    if (options.filePath && plan) savePlanFile(options.filePath, plan)
+  }
 
   function requirePlan(): Plan {
     if (!plan) throw new Error('当前没有计划，请先创建计划')
@@ -105,6 +113,7 @@ export function createPlanStore(options: PlanStoreOptions = {}): PlanStore {
         createdAt: timestamp,
         updatedAt: timestamp
       }
+      persist()
       return plan
     },
 
@@ -144,6 +153,7 @@ export function createPlanStore(options: PlanStoreOptions = {}): PlanStore {
       }
       current.steps[index] = next
       current.updatedAt = now()
+      persist()
       return current
     },
 
@@ -157,6 +167,7 @@ export function createPlanStore(options: PlanStoreOptions = {}): PlanStore {
       }
       current.approval = 'pending'
       current.updatedAt = now()
+      persist()
       return current
     },
 
@@ -173,6 +184,7 @@ export function createPlanStore(options: PlanStoreOptions = {}): PlanStore {
         if (typeof approvedText !== 'string') throw new Error('approvedText 必须是字符串')
         current.approvedText = approvedText
       }
+      persist()
       return current
     },
 
@@ -188,6 +200,7 @@ export function createPlanStore(options: PlanStoreOptions = {}): PlanStore {
         if (typeof reason !== 'string') throw new Error('拒绝原因必须是字符串')
         current.approvedText = `拒绝原因：${reason}`
       }
+      persist()
       return current
     },
 
