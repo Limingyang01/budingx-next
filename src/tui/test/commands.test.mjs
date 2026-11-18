@@ -184,11 +184,11 @@ test('the product guide covers every advertised command in its usage section', (
 test('discovery uses the verified model-list route and explicit unsupported fallback', async () => {
   const { context: ctx } = context()
   const signal = new AbortController().signal
-  const qwen = { ...draft, baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1' }
+  const qwen = { ...draft, baseUrl: 'https://fixture.cn-beijing.maas.aliyuncs.com/compatible-mode/v1' }
   const result = await loadModelIds({
     ...ctx,
     discoverModels: async (url, key) => {
-      assert.equal(url, 'https://dashscope.aliyuncs.com/api/v1/models?capabilities=TG&page_size=100')
+      assert.equal(url, 'https://fixture.cn-beijing.maas.aliyuncs.com/api/v1/models?capabilities=TG&page_size=100')
       assert.equal(key, draft.apiKey)
       return ['qwen-fixture']
     }
@@ -205,4 +205,18 @@ test('explicitly empty startup default does not select a remaining legacy profil
   const file = { version: 1, models: [model] }
   assert.equal(startupProfile(file), model)
   assert.equal(startupProfile({ ...file, defaultModelId: null }), undefined)
+})
+
+test('Token Plan stays on its own compatible URL and does not mask authentication failures', async () => {
+  const { context: ctx } = context()
+  const signal = new AbortController().signal
+  const plan = { ...draft, baseUrl: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1' }
+  const unsupported = { ...ctx, discoverModels: async (url, key) => {
+    assert.equal(url, plan.baseUrl + '/models')
+    assert.equal(key, draft.apiKey)
+    throw new Error('HTTP 404')
+  } }
+  assert.deepEqual(await loadModelIds(unsupported, plan, signal), { models: ['auto'], suggested: true })
+  const denied = { ...ctx, discoverModels: async () => { throw new Error('HTTP 401') } }
+  await assert.rejects(loadModelIds(denied, plan, signal), /401/)
 })

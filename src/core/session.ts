@@ -93,6 +93,7 @@ function previewOf(text: string): string {
 export class Session {
   private state: SessionState = 'idle'
   private readonly messages: Message[] = []
+  private readonly reasoningSource = new WeakMap<Message, TurnSnapshot>()
   private readonly listeners = new Set<(event: SessionEvent) => void>()
   private readonly tools: ToolHandler[]
   private readonly queue: QueuedInput[] = []
@@ -259,7 +260,14 @@ export class Session {
   private buildRequest(snapshot: TurnSnapshot, turn: ActiveTurn): ChatRequest {
     const request: ChatRequest = {
       model: snapshot.model,
-      messages: normalizeForApi(this.messages),
+      messages: normalizeForApi(this.messages, turn.provider.preserveToolReasoning?.(snapshot.model)
+        ? (message) => {
+            const source = this.reasoningSource.get(message)
+            return source?.modelId === snapshot.modelId &&
+              source.model === snapshot.model &&
+              source.baseUrlHost === snapshot.baseUrlHost
+          }
+        : undefined),
       signal: turn.controller.signal
     }
     if (this.tools.length > 0 && snapshot.capabilities.tools) {
@@ -293,6 +301,7 @@ export class Session {
         role: 'assistant',
         blocks: []
       }
+      if (turn.provider.preserveToolReasoning?.(snapshot.model)) this.reasoningSource.set(assistant, snapshot)
       turn.assistant = assistant
       const fragments: ToolFragment[] = []
       let finishReason: FinishReason = 'unknown'

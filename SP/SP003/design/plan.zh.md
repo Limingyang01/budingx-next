@@ -384,3 +384,9 @@ T18 之后的收口任务：T17（交付记录、test-report、说明书与文�
 | MM-F4 | 用户文档 | `PRODUCT.md` 按交付迭代组织命令，随包 README 同步，写作约定归档到 `docs/documentation.md` |
 
 实施在 `fix/SP003/model-management`；0.3.1 留待发布准备阶段。
+
+## 0.3.2 厂商兼容任务
+
+1. MiniMax 探测红绿与同档案工具续跑。
+2. MiniMax 中国站及百炼 Token Plan 模板、工作空间列表路由和鉴权反馈。
+3. 本地模板回归、全量门禁、0.3.2 patch 准备与发布预演。

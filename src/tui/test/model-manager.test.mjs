@@ -108,3 +108,41 @@ test('unsupported discovery leaves manual model entry usable in Custom', async (
   await ui.send('\r')
   assert.equal(ui.config().model, 'manual-id')
 })
+
+test('MiniMax China and Qwen Token Plan presets prefill their own endpoint and use only the entered key', async (t) => {
+  const discovery = []
+  const ui = await mountTty(t, {
+    commandOverrides: {
+      async discoverModels(url, key) {
+        discovery.push({ url, key })
+        if (url.includes('token-plan')) throw new Error('HTTP 404')
+        return ['MiniMax-M3.1-Flash']
+      }
+    }
+  })
+
+  for (const [name, steps, model, key] of [
+    ['MiniMax（中国站）', 7, 'MiniMax-M3.1-Flash', 'fixture-minimax-key'],
+    ['Qwen / 百炼 Token Plan', 2, 'auto', 'fixture-token-plan-key']
+  ]) {
+    await openModels(ui)
+    await ui.send('n')
+    for (let i = 0; i < steps; i++) await ui.send('\x1b[B')
+    await ui.waitFor((frame) => frame.includes('> ' + name))
+    await ui.send('\r')
+    await ui.send(key)
+    await ui.send('\r')
+    await ui.waitFor((frame) => frame.includes('筛选') && frame.includes(model))
+    await ui.send('\r')
+    await ui.waitFor((frame) => frame.includes('保存并使用') && frame.includes(model))
+    await ui.send('\r')
+    await ui.waitFor((frame) => frame.includes('已保存并切换模型'))
+    assert.equal(ui.config().model, model)
+    assert.equal(ui.raw().includes(key), false)
+  }
+
+  assert.deepEqual(discovery, [
+    { url: 'https://api.minimax.cn/v1/models', key: 'fixture-minimax-key' },
+    { url: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/models', key: 'fixture-token-plan-key' }
+  ])
+})

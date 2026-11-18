@@ -68,7 +68,7 @@ export function ModelManager({
       if (controller.signal.aborted) return
       const status = /^HTTP \d+$/.test(error?.message ?? '') ? String(error.message) : ''
       setNotice(status === 'HTTP 401' || status === 'HTTP 403'
-        ? pick('鉴权失败，请检查 API Key 和端点', 'Authentication failed; check API key and endpoint')
+        ? pick('鉴权失败，请检查 API Key、端点和套餐', 'Authentication failed; check API key, endpoint and plan')
         : pick('请求失败，可重试或手动输入模型 ID', 'Request failed; retry or enter the model ID manually')
           + (status ? ' (' + status + ')' : ''))
     }).finally(() => {
@@ -161,8 +161,12 @@ export function ModelManager({
       const result = await testProfile(context, value, signal)
       if (signal.aborted) return
       if (result.errorClass === 'auth') {
-        setNotice(pick('鉴权失败，请检查 API Key 和端点', 'Authentication failed; check API key and endpoint'))
+        setNotice(pick('鉴权失败，请检查 API Key、端点和套餐', 'Authentication failed; check API key, endpoint and plan'))
         if (view === 'form') setFocus(3)
+      } else if (result.reasoningOnly) {
+        setNotice(pick('已连接，探测仅返回思考内容。可保存后试聊。', 'Connected; probe returned reasoning only. Save and try a chat.'))
+      } else if (result.errorClass === 'tool_unsupported' && result.supportsTools === false) {
+        setNotice(pick('聊天已连接，工具调用未通过', 'Chat connected; tool calls did not pass'))
       } else if (result.ok) {
         const toolsMissing = value.tools && result.supportsTools === false
         setNotice(toolsMissing

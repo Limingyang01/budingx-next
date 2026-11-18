@@ -5,13 +5,18 @@ import type { CommandContext } from './commands.js'
 
 type Stores = Pick<CommandContext, 'configStore' | 'credentialStore' | 'getConfig' | 'setConfig'>
 
+const QWEN_PAY_AS_YOU_GO = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+const QWEN_TOKEN_PLAN = 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1'
+
 export const providerTemplates: { name: string; baseUrl: string; suggested?: string[] }[] = [
   { name: 'DeepSeek', baseUrl: 'https://api.deepseek.com' },
-  { name: 'Qwen / 阿里云百炼', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', suggested: ['qwen-plus'] },
+  { name: 'Qwen / 百炼按量付费', baseUrl: QWEN_PAY_AS_YOU_GO, suggested: ['qwen-plus', 'qwen-flash'] },
+  { name: 'Qwen / 百炼 Token Plan', baseUrl: QWEN_TOKEN_PLAN, suggested: ['auto'] },
   { name: 'Kimi / 月之暗面', baseUrl: 'https://api.moonshot.cn/v1' },
   { name: 'GLM / 智谱', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', suggested: ['glm-5.3'] },
   { name: '火山方舟 / 豆包', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3' },
   { name: '硅基流动 / SiliconFlow', baseUrl: 'https://api.siliconflow.cn/v1' },
+  { name: 'MiniMax（中国站）', baseUrl: 'https://api.minimax.cn/v1', suggested: ['MiniMax-M3.1-Flash', 'MiniMax-M3'] },
   { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
   { name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1' },
   { name: 'Custom', baseUrl: '' }
@@ -60,20 +65,27 @@ export function draftConnection(stores: Stores, draft: ModelDraft) {
 
 export async function loadModelIds(ctx: CommandContext, draft: ModelDraft, signal: AbortSignal) {
   const { baseUrl, apiKey } = draftConnection(ctx, draft)
-  const endpoint = baseUrl.endsWith('/compatible-mode/v1') &&
-    /(?:^|\.)((?:dashscope[^.]*\.aliyuncs\.com)|maas\.aliyuncs\.com)$/.test(new URL(baseUrl).hostname)
+  const host = new URL(baseUrl).hostname
+  const isQwenCompatible = baseUrl.endsWith('/compatible-mode/v1') &&
+    (host.endsWith('.maas.aliyuncs.com') || /^(?:cn-hongkong\.)?dashscope(?:-[a-z]+)?\.aliyuncs\.com$/.test(host))
+  const isTokenPlan = host === new URL(QWEN_TOKEN_PLAN).hostname
+  const nativeQwenList = isQwenCompatible && !isTokenPlan &&
+    (host.endsWith('.maas.aliyuncs.com') || host === 'dashscope-us.aliyuncs.com')
+  const url = new URL(nativeQwenList
     ? baseUrl.replace(/\/compatible-mode\/v1$/, '/api/v1') + '/models?capabilities=TG&page_size=100'
-    : baseUrl + '/models'
-  const url = new URL(endpoint)
-  if (url.hostname === 'api.siliconflow.cn') url.searchParams.set('sub_type', 'chat')
+    : baseUrl + '/models')
+  if (host === 'api.siliconflow.cn') url.searchParams.set('sub_type', 'chat')
   const request = ctx.discoverModels ?? discoverModels
   try {
     return { models: await request(url.toString(), apiKey, { signal }), suggested: false }
   } catch (error) {
-    if (signal.aborted || !/^HTTP (404|405|501)$/.test(error instanceof Error ? error.message : '')) throw error
-    const suggested = providerTemplates.find((template) => template.baseUrl === baseUrl)?.suggested
-    if (!suggested) throw error
-    return { models: suggested, suggested: true }
+    const message = error instanceof Error ? error.message : ''
+    if (signal.aborted || !/^HTTP (404|405|501)$/.test(message)) throw error
+    const suggestions = providerTemplates.find((template) => template.baseUrl ===
+      (isQwenCompatible && !isTokenPlan ? QWEN_PAY_AS_YOU_GO : baseUrl)
+    )?.suggested
+    if (!suggestions) throw error
+    return { models: suggestions, suggested: true }
   }
 }
 
