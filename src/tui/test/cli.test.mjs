@@ -91,8 +91,9 @@ test('管道输入按行发送且输出无 ANSI 污染', async (t) => {
   assert.match(result.out, /你好/)
   assert.doesNotMatch(result.out, /\u001b\[/)
   assert.equal(calls.length, 2)
+  assert.equal(calls[1][0].role, 'system')
   assert.deepEqual(
-    calls[1].map((message) => message.content),
+    calls[1].slice(1).map((message) => message.content),
     ['first', '你好', 'second']
   )
 })
@@ -129,8 +130,9 @@ test('失败的回合不会污染历史，后续回合继续', async (t) => {
   assert.match(result.err, /500/)
   // The failing turn is retried up to the bounded retry limit (5 attempts).
   assert.equal(calls.length, 7)
+  assert.equal(calls.at(-1)[0].role, 'system')
   assert.deepEqual(
-    calls.at(-1).map((message) => message.content),
+    calls.at(-1).slice(1).map((message) => message.content),
     ['first', '你好', 'second']
   )
   assert.doesNotMatch(result.out + result.err, /secret error/)

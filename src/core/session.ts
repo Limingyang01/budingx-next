@@ -245,11 +245,12 @@ export class Session {
         type: 'input_injected',
         turnId: turn.id,
         queueId: queued.id,
+        text: userText,
         boundary: 'inter_turn'
       })
     }
     const snapshot = this.options.resolveSnapshot()
-    this.emit({ type: 'turn_started', turnId: turn.id, snapshot })
+    this.emit({ type: 'turn_started', turnId: turn.id, snapshot, userText, startedAt: Date.now() })
     this.setState('requesting')
     const userMessage = this.userMessage(userText, options)
     turn.messageIds.push(userMessage.id)
@@ -270,6 +271,12 @@ export class Session {
         : undefined),
       signal: turn.controller.signal
     }
+    request.messages.unshift({
+      role: 'system',
+      content: '你是 budingx，一款在终端运行的编程助手。用户询问你的身份时，介绍 budingx。' +
+        '用户询问底层模型时，按本次请求配置的模型 ID 回答：' + snapshot.model +
+        '。根据本轮实际提供的工具说明能力，使用用户的语言回答。'
+    })
     if (this.tools.length > 0 && snapshot.capabilities.tools) {
       request.tools = this.tools.map((tool) => ({
         name: tool.name,
@@ -703,6 +710,7 @@ export class Session {
         type: 'input_injected',
         turnId: turn.id,
         queueId: item.id,
+        text: item.text,
         boundary: 'intra_turn'
       })
     }
@@ -760,6 +768,7 @@ export class Session {
     this.setState('idle')
     this.emit({
       type: 'turn_finalized',
+      finishedAt: Date.now(),
       turnId: turn.id,
       outcome,
       ...(error ? { error } : {}),

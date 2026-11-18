@@ -174,3 +174,5 @@ npm run release:sync -- --receipt C:/path/to/downloaded/report.json
 ## 当前证据边界
 
 GitHub-hosted Windows/Linux 验证、0.1.1 OIDC 公开发布、官方源安装及 registry signature/attestation 已实测，证据见本页顶部、发布台账与首发 STATUS。本次未下载原始 CI artifact；台账依据公开运行结果、npm provenance 和本机独立安装验证更新，未伪造或导入 CI report.json。原始报告仍在运行 #6 的 tui-publication-receipt artifact。外部真实模型、macOS 和完整 Agent 能力不在本次验证范围。
+
+SP003 会话体验修复已准备为 [0.3.3](../release-notes/v0.3.3.md)，当前公开版本为 0.3.2。
