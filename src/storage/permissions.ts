@@ -142,9 +142,9 @@ export function readPermissionMode(home?: string): PermissionMode {
     const { mode } = JSON.parse(readFileSync(permissionModePath(home), 'utf8'))
     if (mode === 'workspace_edit' || mode === 'full_access') return mode
   } catch {
-    // Missing or damaged preference files use the conservative default.
+    // Missing or damaged preferences use the interactive edit default.
   }
-  return 'read_only'
+  return 'workspace_edit'
 }
 
 export function savePermissionMode(mode: PermissionMode, home?: string): void {

@@ -57,20 +57,29 @@ export type CommandContext = {
 const MODE_ALIASES: Record<string, PermissionMode> = {
   read: 'read_only',
   read_only: 'read_only',
+  edit: 'workspace_edit',
   workspace: 'workspace_edit',
   workspace_edit: 'workspace_edit',
   full: 'full_access',
   full_access: 'full_access'
 }
 
-export function commandHelp(lang: 'zh' | 'en' = 'en'): string {
+export function interactiveModeLabel(mode: PermissionMode, lang: 'zh' | 'en'): string {
+  return (lang === 'zh'
+    ? { read_only: '写入锁定', workspace_edit: '允许编辑', full_access: '全自动' }
+    : { read_only: 'Writes locked', workspace_edit: 'Allow edits', full_access: 'Full auto' }
+  )[mode]
+}
+
+export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): string {
+  const modes = interactive ? 'edit|full' : 'read|workspace|full'
   return lang === 'zh'
     ? `命令：
   /help                 显示本帮助
   /config               显示端点、模型与密钥状态
   /models               打开模型管理（管道模式列出档案）
   /model [id]           切换模型（下一回合生效）
-  /permission           查看权限模式；/permission read|workspace|full 切换
+  /permission           查看权限模式；/permission ${modes} 切换
   /rules                列出权限规则（含遮蔽标注）
   /rules add <allow|deny> <tool|*> [path-glob]  新增规则
   /rules rm <id>        删除规则
@@ -84,7 +93,7 @@ export function commandHelp(lang: 'zh' | 'en' = 'en'): string {
   /config               show the active endpoint, model and key state
   /models               open model management (list profiles in pipes)
   /model [id]           switch the model (takes effect from the next turn)
-  /permission           show the permission mode; /permission read|workspace|full to switch
+  /permission           show the permission mode; /permission ${modes} to switch
   /rules                list permission rules (with shadow annotations)
   /rules add <allow|deny> <tool|*> [path-glob]  add a rule
   /rules rm <id>        remove a rule
@@ -125,7 +134,7 @@ async function executeCommand(
 
   switch (command) {
     case 'help':
-      return { handled: true, message: commandHelp(lang) }
+      return { handled: true, message: commandHelp(lang, context.interactive) }
     case 'exit':
     case 'quit':
       context.exit()
@@ -235,10 +244,11 @@ function permissionCommand(
   }
   const { policy, modes } = permission
   const label = (mode: PermissionMode) =>
-    pick(modes.zh[mode] ?? mode, modes.en[mode] ?? mode)
+    context.interactive ? interactiveModeLabel(mode, context.lang ?? 'en') : pick(modes.zh[mode] ?? mode, modes.en[mode] ?? mode)
   const current = policy.getMode()
   if (!argument) {
-    const lines = modes.order.map((mode) => `${mode === current ? '*' : ' '} ${label(mode)}`)
+    const available = context.interactive ? modes.order.filter((mode) => mode !== 'read_only') : modes.order
+    const lines = available.map((mode) => `${mode === current ? '*' : ' '} ${label(mode)}`)
     return {
       handled: true,
       message: pick(
@@ -248,10 +258,11 @@ function permissionCommand(
     }
   }
   const next = Object.hasOwn(MODE_ALIASES, argument) ? MODE_ALIASES[argument] : undefined
-  if (!next) {
+  if (!next || (context.interactive && next === 'read_only')) {
+    const usage = context.interactive ? 'edit|full' : 'read|workspace|full'
     return {
       handled: true,
-      error: pick('用法：/permission read|workspace|full', 'Usage: /permission read|workspace|full')
+      error: pick(`用法：/permission ${usage}`, `Usage: /permission ${usage}`)
     }
   }
   if (!changePermissionMode(permission, next)) {
@@ -268,7 +279,9 @@ function permissionCommand(
       ? pick('（不越过 deny 规则与凭据保护）', '(deny rules and credential protection still apply)')
       : next === 'read_only'
         ? pick('（只读；写操作将被拒绝）', '(read-only; writes are refused)')
-        : pick('（写入工作区内文件前逐个确认）', '(asks before writing files inside the workspace)')
+        : context.interactive
+          ? pick('（普通写入直接执行，敏感目标需审批）', '(ordinary writes proceed; sensitive targets require approval)')
+          : pick('（写入工作区内文件前逐个确认）', '(asks before writing files inside the workspace)')
   return {
     handled: true,
     message: pick(`已切换到权限模式：${label(next)}${note}`, `Permission mode is now ${label(next)}${note}`)

@@ -303,3 +303,9 @@ npm run merge:gate     # 见 §6
 - [GitHub Actions #14](https://github.com/Limingyang01/budingx-next/actions/runs/44262744543) 使用源码 `f2682cdce765339daf0bbb2a551f7f09751c5446`，Windows、Linux 与 OIDC 发布均成功。npm 发布时间为 `2026-11-18T08:01:03.067Z`，`latest` 指向 `0.3.5`。
 - 官方包隔离安装通过，命令入口返回 `0.3.5`，本地 HTTP 流式冒烟通过。已验证 47 个 registry signatures 和 6 个 attestations。SHA-512 与候选预演、安装锁和 provenance 的 subject 一致。provenance 的源码、工作流和运行地址均与本次发布一致。
 - Actions 原始回执下载需登录（HTTP 401）。台账根据已核验的公开 provenance 和官方包独立安装结果登记。Windows Terminal 的实际观感仍待实机确认。
+
+### REPL 交互对齐
+
+旧形态首先复现了滚轮未启用 SGR、进度位于输入下方和交互默认只读。伪终端回归覆盖分段滚轮数据、上下滚动、欢迎区随历史滚动、草稿保留、Ctrl+End 和退出禁用鼠标追踪。真实临时工作区回归覆盖普通写入直通、敏感目标请求审批及拒绝后磁盘保持不变。工具行回归检查运行脉动、成功绿色、失败红色以及隐藏请求 ID。
+
+自审确认改动位于 TUI、交互权限策略和文档，现有 Provider 事件与发布工作流未改。Windows Terminal 实际滚轮、配色和图标观感为 UNVERIFIED，恢复条件为在实机启动包含长历史的会话并分别触发成功和失败工具。

@@ -59,6 +59,7 @@ export function agentFixture(options = {}) {
     workspace,
     dataRootOverride: userRoot,
     mode: options.mode ?? 'workspace_edit',
+    autoAcceptWorkspaceEdits: options.autoAcceptWorkspaceEdits,
     ...(options.rules ? { rules: options.rules } : {})
   })
   const store = new PermissionsStore(join(base, 'permissions.json'))

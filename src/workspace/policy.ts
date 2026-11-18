@@ -1,11 +1,9 @@
 // Permission policy: three fixed modes, user rules and non-overridable
 // floor rules (SP003 design §3.3, AC PC-01 … PC-09).
-// The mode semantics are USER_CONFIRMED (r6): read_only never writes,
-// workspace_edit asks before writing inside the workspace, full_access
-// auto-executes but NEVER bypasses the floor rules. The rule matcher is
-// written from scratch against the behaviour inventory; no third-party
-// rule engine and no reference implementation code are used.
-import { basename } from 'node:path'
+// The interactive edit fast path allows ordinary workspace writes. Legacy
+// non-interactive modes retain their original defaults. All callers apply the
+// same floor rules and deny-rule priority.
+import { basename, relative } from 'node:path'
 import type {
   PermissionMode,
   PermissionPolicy,
@@ -33,6 +31,8 @@ export type PermissionPolicyOptions = {
   workspace: Workspace
   rules?: PermissionRule[]
   mode?: PermissionMode
+  /** Interactive accept-edits mode fast path for ordinary workspace writes. */
+  autoAcceptWorkspaceEdits?: boolean
   /** Only for tests: replaces the home-derived user data root. */
   dataRootOverride?: string
 }
@@ -65,12 +65,9 @@ export const MODES_EN: Record<PermissionMode, string> = {
   full_access: 'full access'
 }
 
-const MODE_ORDER: PermissionMode[] = ['read_only', 'workspace_edit', 'full_access']
-
 /** Cycle used by Shift+Tab (SP003 design §3.8). */
 export function nextMode(mode: PermissionMode): PermissionMode {
-  const index = MODE_ORDER.indexOf(mode)
-  return MODE_ORDER[(index + 1) % MODE_ORDER.length]
+  return mode === 'workspace_edit' ? 'full_access' : 'workspace_edit'
 }
 
 function memoryKey(request: PermissionRequest): string {
@@ -79,6 +76,16 @@ function memoryKey(request: PermissionRequest): string {
     '|' +
     (request.path === undefined ? '' : normalizeSlashes(request.path).toLowerCase())
   )
+}
+
+function isSensitiveWriteTarget(path: string): boolean {
+  const parts = normalizeSlashes(path).toLowerCase().split('/')
+    .map((part) => part.replace(/[ .]+$/, ''))
+  const file = parts.at(-1) ?? ''
+  return parts.some((part) => ['.git', '.vscode', '.idea', '.claude', '.codex', '.agents'].includes(part)) ||
+    parts.some((part, index) => part === '.github' && parts[index + 1] === 'workflows') ||
+    ['.gitconfig', '.gitmodules', '.bashrc', '.bash_profile', '.zshrc',
+      '.zprofile', '.profile', '.ripgreprc', '.mcp.json', '.claude.json'].includes(file)
 }
 
 function normalizeSlashes(path: string): string {
@@ -115,8 +122,8 @@ export function createPermissionPolicy(
   const listeners: ((mode: PermissionMode) => void)[] = []
   const memory = new Set<string>()
 
-  function floorVerdict(request: PermissionRequest): PermissionVerdict | undefined {
-    if (!request.path) return undefined
+  function resolveTarget(request: PermissionRequest): { real?: string; denied?: PermissionVerdict } {
+    if (!request.path) return {}
     let real: string
     try {
       real = workspace.resolve(request.path).real
@@ -124,22 +131,27 @@ export function createPermissionPolicy(
       // B-3/B-4/B-5: outside the workspace (including through links).
       if (error instanceof WorkspaceError && error.code === ERROR_CODES.workspacePathOutside) {
         return {
-          action: 'deny',
-          reason:
-            request.capability === 'read'
+          denied: {
+            action: 'deny',
+            reason: request.capability === 'read'
               ? 'Reading outside the workspace is not allowed'
               : 'Writing outside the workspace is not allowed',
-          ruleId: 'floor:outside'
+            ruleId: 'floor:outside'
+          }
         }
       }
-      return undefined
+      return {}
     }
+    return { real }
+  }
+
+  function floorVerdict(request: PermissionRequest, real: string): PermissionVerdict | undefined {
     // B-1: the product user data root is never a tool target.
     if (isInsideRoot(userRoot, real)) {
       return { action: 'deny', reason: 'The budingx user data directory is off-limits', ruleId: 'floor:data' }
     }
     // B-2: credential-shaped file names.
-    if (isCredentialLike(basename(request.path)) || isCredentialLike(basename(real))) {
+    if (isCredentialLike(basename(request.path ?? '')) || isCredentialLike(basename(real))) {
       return { action: 'deny', reason: 'Credential files are off-limits', ruleId: 'floor:credential' }
     }
     return undefined
@@ -148,7 +160,9 @@ export function createPermissionPolicy(
   return {
     decide(request: PermissionRequest): PermissionVerdict {
       // 1. Floor rules: never overridable, in every mode (AC PC-08).
-      const floor = floorVerdict(request)
+      const { real, denied } = resolveTarget(request)
+      if (denied) return denied
+      const floor = real && floorVerdict(request, real)
       if (floor) return floor
       // 2. Deny rules.
       for (const rule of rules) {
@@ -163,12 +177,16 @@ export function createPermissionPolicy(
       // 2.5 Version-control metadata is protected even in full access:
       // forced ask ahead of memory and allow rules (SP003 T18g, aligned
       // with the reference's mandatory safety check before allow rules).
-      if (
-        request.capability === 'write' &&
-        request.path &&
-        /(^|[\\/])\.git([\\/]|$)/.test(request.path)
-      ) {
-        return { action: 'ask', reason: `Writing inside .git needs confirmation: ${request.path}` }
+      if (request.capability === 'write' && request.path) {
+        const targets = [request.path, ...(real ? [relative(workspace.root, real)] : [])]
+        const isGitMetadata = targets.some((path) => /(^|[\\/])\.git([\\/]|$)/i.test(path))
+        if (isGitMetadata) {
+          return { action: 'ask', reason: `Writing inside .git needs confirmation: ${request.path}` }
+        }
+        if (options.autoAcceptWorkspaceEdits &&
+            mode === 'workspace_edit' && targets.some(isSensitiveWriteTarget)) {
+          return { action: 'ask', reason: `Sensitive file needs confirmation: ${request.path}` }
+        }
       }
       // 3. Allow rules: they relax the mode default but not the floor.
       for (const rule of rules) {
@@ -184,6 +202,9 @@ export function createPermissionPolicy(
         return { action: 'deny', reason: 'The read-only mode does not allow modifying files' }
       }
       if (mode === 'workspace_edit') {
+        if (options.autoAcceptWorkspaceEdits && real) {
+          return { action: 'allow', reason: 'Ordinary workspace edit' }
+        }
         // Session memory from "allow for this session" (AC PC-06) only
         // short-circuits the ask path; it never lifts read_only.
         if (memory.has(memoryKey(request))) {

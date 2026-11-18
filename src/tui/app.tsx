@@ -15,8 +15,9 @@ import stringWidth from 'string-width'
 import type { SessionEvent } from '../core/events.js'
 import type { Session } from '../core/session.js'
 import type { InkApprovalGateway } from './approval.js'
-import { changePermissionMode, runCommand, type CommandContext } from './commands.js'
+import { changePermissionMode, interactiveModeLabel, runCommand, type CommandContext } from './commands.js'
 import { EditorBuffer } from './editor/buffer.js'
+import { useWheel } from './editor/mouse.js'
 import { applyKey } from './editor/keys.js'
 import { reduceFrame, renderTextLines } from './render/reducer.js'
 import { ACCENT, renderHeader, sessionTopic, setupHint, terminalStrategy, terminalTitle } from './render/header.js'
@@ -33,7 +34,7 @@ import { TranscriptMessage } from './render/transcript.js'
 import { workspacePromptOptions } from './runtime.js'
 import { ModelManager, type ModelManagerInput } from './model-manager.js'
 import { readClipboard } from './editor/clipboard.js'
-import { MODES_EN, MODES_ZH, nextMode } from '../workspace/policy.js'
+import { nextMode } from '../workspace/policy.js'
 import { walkWorkspaceFiles } from '../workspace/search.js'
 import { changeDiffs } from '../workspace/checkpoint.js'
 import { gitWorkspaceChanges, hasGitWorkspace } from '../workspace/git-diff.js'
@@ -117,11 +118,15 @@ export function App({
   const maxScroll = Math.max(0, contentMetrics.height - viewport.clientHeight)
   const offset = Math.min(scrollTop ?? maxScroll, maxScroll)
   const scrolled = fullScreen && offset < maxScroll
+  function scrollHistory(lines: number) {
+    setScrollTop((previous) => {
+      const current = Math.min(previous ?? maxScroll, maxScroll)
+      const next = Math.max(0, Math.min(maxScroll, current + lines))
+      return next === maxScroll ? undefined : next
+    })
+  }
   const working = frame.status.state !== 'idle'
-  const modeLabel = (zh
-    ? { read_only: '只读', workspace_edit: '编辑', full_access: '全自动' }
-    : { read_only: 'Read-only', workspace_edit: 'Edit', full_access: 'Full auto' }
-  )[frame.permissionMode]
+  const modeLabel = interactiveModeLabel(frame.permissionMode, zh ? 'zh' : 'en')
   const modeColor = {
     read_only: '#56b6c2',
     workspace_edit: '#e5c07b',
@@ -474,10 +479,13 @@ export function App({
       }
       return
     }
+    if (fullScreen && key.ctrl && key.end) {
+      setScrollTop(undefined)
+      return
+    }
     if (fullScreen && (key.pageUp || key.pageDown)) {
       const page = Math.max(1, viewport.clientHeight - 1)
-      const next = Math.max(0, Math.min(maxScroll, offset + (key.pageUp ? -page : page)))
-      setScrollTop(next === maxScroll ? undefined : next)
+      scrollHistory(key.pageUp ? -page : page)
       return
     }
     const approval = frame.approval
@@ -568,7 +576,7 @@ export function App({
         return
       }
       setHint(
-        pick(`权限模式：${MODES_ZH[next]}`, `Permission mode: ${MODES_EN[next]}`)
+        pick(`权限模式：${interactiveModeLabel(next, 'zh')}`, `Permission mode: ${interactiveModeLabel(next, 'en')}`)
       )
       return
     }
@@ -666,6 +674,9 @@ export function App({
     setInput(editor.text)
     if (overlayDismissed && (text || key.backspace)) setOverlayDismissed(false)
     if (text || key.backspace || key.delete) markTyping()
+  })
+  useWheel(fullScreen, (lines) => {
+    if (!modelManagerOpen && !dialog) scrollHistory(lines)
   })
   const config = commandContext.getConfig()
   const history = useMemo(
@@ -781,32 +792,6 @@ export function App({
   )
   return (
     <Box flexDirection="column" height={fullScreen ? rows : undefined}>
-      <Box flexDirection="column" flexShrink={0}>
-        {renderHeader({
-          version,
-          model: config.model,
-          baseUrl: config.baseUrl,
-          keyPresent: !!config.apiKey.trim(),
-          cwd,
-          columns: width,
-          strategy,
-          compact: fullScreen
-        }).slice(0, fullScreen && rows < 18 ? 1 : undefined).map((line, i) => (
-          <Text key={i} wrap={fullScreen ? 'truncate-end' : 'wrap'}>
-            {line.map((span, j) => (
-              <Text
-                key={j}
-                color={span.color}
-                dimColor={span.dim}
-                bold={span.bold}
-                italic={span.italic}
-              >
-                {span.text}
-              </Text>
-            ))}
-          </Text>
-        ))}
-      </Box>
       <Box
         ref={transcriptBox}
         flexDirection="column"
@@ -816,6 +801,32 @@ export function App({
         contentOffsetY={fullScreen ? offset : undefined}
       >
         <Box ref={transcriptContent} flexDirection="column" flexShrink={0}>
+          <Box flexDirection="column" flexShrink={0}>
+            {renderHeader({
+              version,
+              model: config.model,
+              baseUrl: config.baseUrl,
+              keyPresent: !!config.apiKey.trim(),
+              cwd,
+              columns: width,
+              strategy,
+              compact: fullScreen
+            }).slice(0, fullScreen && rows < 18 ? 1 : undefined).map((line, i) => (
+              <Text key={i} wrap={fullScreen ? 'truncate-end' : 'wrap'}>
+                {line.map((span, j) => (
+                  <Text
+                    key={j}
+                    color={span.color}
+                    dimColor={span.dim}
+                    bold={span.bold}
+                    italic={span.italic}
+                  >
+                    {span.text}
+                  </Text>
+                ))}
+              </Text>
+            ))}
+          </Box>
           {history}
           {frame.liveText && (
             <TranscriptMessage entry={{ kind: 'assistant', text: frame.liveText }} ascii={!zh} />
@@ -893,6 +904,22 @@ export function App({
       )}
       {!fullScreen && frame.error && <Text color="red">{frame.error}</Text>}
       <Box flexDirection="column" flexShrink={0}>
+        {working && (
+          <Text color={ACCENT} wrap="truncate-end">
+            {zh ? '● ' : '* '}
+            {thinking ? pick('思考中', 'Thinking') : zh ? STATUS_ZH[frame.status.state] : frame.status.state}
+            {frame.startedAt !== undefined && (
+              <Text dimColor>
+                {' · '}{Math.max(0, Math.floor((now - frame.startedAt) / 1000))}{pick(' 秒', 's')}
+              </Text>
+            )}
+          </Text>
+        )}
+        {scrolled && (
+          <Box justifyContent="flex-end">
+            <Text color={ACCENT} wrap="truncate-end">{pick('回到最新 · Ctrl+End', 'Jump to bottom · Ctrl+End')}</Text>
+          </Box>
+        )}
         {fullScreen && completionMenu}
         {fullScreen && (
           <Box
@@ -914,16 +941,10 @@ export function App({
           )}
         </Box>
         {!fullScreen && completionMenu}
-        {(working || permissionHandles || (!fullScreen && hint)) && (
+        {(permissionHandles || (!fullScreen && hint)) && (
           <Text wrap={fullScreen ? 'truncate-end' : 'wrap'}>
-            {fullScreen && working && <Text color={ACCENT}>{'● '}</Text>}
-            {working && (thinking
-              ? pick('思考中', 'thinking')
-              : zh ? STATUS_ZH[frame.status.state] : frame.status.state)}
-            {frame.startedAt !== undefined && ` ${Math.max(0, Math.floor((now - frame.startedAt) / 1000))}${pick(' 秒', 's')}`}
             {permissionHandles && (
               <>
-                {working && ' · '}
                 <Text color={modeColor}>{modeLabel}</Text>
                 <Text dimColor>{' · Shift+Tab '}{pick('切换模式', 'cycle mode')}</Text>
               </>
@@ -934,11 +955,6 @@ export function App({
         {permissionHandles && frame.permissionMode === 'full_access' && (
           <Text color={modeColor}>
             {pick('! 可获准的写入免审批', '! Eligible writes skip approval')}
-          </Text>
-        )}
-        {scrolled && (
-          <Text dimColor wrap="truncate-end">
-            {pick('浏览历史 · PageDown 向下', 'History · PageDown to scroll down')}
           </Text>
         )}
         {setupHint(config, strategy) && (

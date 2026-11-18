@@ -112,7 +112,13 @@ export function reduceFrame(
     case 'tool_call_completed': {
       next.transcript = [
         ...next.transcript,
-        { kind: 'plain', text: `⚙ ${event.name}(${summarizeInput(event.input)})` }
+        {
+          kind: 'tool',
+          text: `${event.name}(${toolArgument(event.input)})`,
+          turnId: event.turnId,
+          callId: event.callId,
+          status: 'pending'
+        }
       ]
       next.staticLines = [
         ...next.staticLines,
@@ -125,10 +131,21 @@ export function reduceFrame(
       return next
     }
     case 'tool_result': {
-      next.transcript = [
-        ...next.transcript,
-        { kind: 'plain', text: `${event.isError ? '✗' : '✓'} ${event.callId}: ${event.content}` }
-      ]
+      const index = next.transcript.findLastIndex((entry) =>
+        entry.kind === 'tool' && entry.turnId === event.turnId &&
+        entry.callId === event.callId && entry.status === 'pending'
+      )
+      const status = event.isError ? 'error' : 'success'
+      const result = event.content
+      const entry = next.transcript[index]
+      if (entry?.kind === 'tool') {
+        next.transcript = [...next.transcript]
+        next.transcript[index] = { ...entry, status, result }
+      } else {
+        next.transcript = [...next.transcript, {
+          kind: 'tool', text: 'Tool', turnId: event.turnId, callId: event.callId, status, result
+        }]
+      }
       const lines = renderTextLines(
         `${event.isError ? '✗' : '✓'} ${event.callId}: ${event.content}`,
         options.width
@@ -175,6 +192,11 @@ export function reduceFrame(
       return next
     }
     case 'turn_finalized': {
+      next.transcript = next.transcript.map((entry) =>
+        entry.kind === 'tool' && entry.turnId === event.turnId && entry.status === 'pending'
+          ? { ...entry, status: 'interrupted' }
+          : entry
+      )
       next.liveLines = liveLinesOf(next, options.width)
       if (next.liveLines.length > 0) {
         next.transcript = [...next.transcript, { kind: 'assistant', text: next.liveText }]
@@ -214,6 +236,17 @@ export function reduceFrame(
     default:
       return next
   }
+}
+
+function toolArgument(input: unknown): string {
+  if (input && typeof input === 'object') {
+    const values = input as Record<string, unknown>
+    const target = [values.path, values.pattern, values.query, values.url].find(
+      (value): value is string => typeof value === 'string' && value.length > 0
+    )
+    return summarizeInput(target ?? (Object.keys(values).length ? input : undefined))
+  }
+  return summarizeInput(input)
 }
 
 function summarizeInput(input: unknown): string {

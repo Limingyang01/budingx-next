@@ -285,7 +285,7 @@ test('full screen pins the prompt and mode hint through height and width resize'
   assert.match(ui.last(), /全自动/)
   await ui.send('/exit')
   await ui.send('\r')
-  await ui.waitFor(() => ui.raw().includes('\x1b[?1049l'))
+  await ui.waitFor(() => ui.raw().includes('\x1b[?1049l') && ui.raw().includes('\x1b[?1006l'))
   assert.deepEqual(ui.exitCalls, ['command', 'app'])
 })
 
@@ -303,8 +303,19 @@ test('full-screen scrollback can read older output while leaving the prompt visi
   await ui.send('\r')
   await ui.waitFor((frame) => frame.includes('Fixture transcript row 50') && !ui.session.isBusy)
   assert.doesNotMatch(ui.last(), /Fixture transcript row 1\b/)
+  assert.ok(ui.raw().includes('\x1b[?1006h'))
+  await ui.send('draft')
+  ui.stdin.write('\x1b[<64;5;')
+  await pause(5)
+  ui.stdin.write('8M'.concat('\x1b[<64;5;8M'.repeat(20)))
+  await ui.waitFor((frame) => frame.includes('Fixture transcript row 1') && frame.includes('> draft'))
+  assert.match(ui.last(), /budingx v/)
+  ui.stdin.write('\x1b[<65;5;8M'.repeat(4))
+  await ui.waitFor((frame) => !frame.includes('budingx v') && frame.includes('> draft'))
+  await ui.send('\x1b[1;5F')
+  await ui.waitFor((frame) => frame.includes('Fixture transcript row 50') && frame.includes('> draft'))
   await ui.send('\x1b[5~')
-  await ui.waitFor((frame) => frame.includes('PageDown') && !frame.includes('Fixture transcript row 50'))
+  await ui.waitFor((frame) => frame.includes('Ctrl+End') && !frame.includes('Fixture transcript row 50'))
   assert.match(ui.last(), /^>/m)
   for (let i = 0; i < 5; i++) await ui.send('\x1b[6~')
   await ui.waitFor((frame) => frame.includes('Fixture transcript row 50'))
@@ -317,7 +328,8 @@ test('session tab title describes the first substantive prompt and signals activ
   assert.ok(ui.raw().includes('\x1b]0;budingx\x07'))
   await ui.send('大模型能力对比')
   await ui.send('\r')
-  await ui.waitFor((frame) => frame.includes('● 请求中'))
+  const activeFrame = await ui.waitFor((frame) => frame.includes('● 请求中'))
+  assert.ok(activeFrame.indexOf('● 请求中') < activeFrame.indexOf('\n>'))
   assert.ok(ui.raw().includes('\x1b]0;● 大模型能力对比 · budingx\x07'))
   release()
   await ui.waitFor(() => ui.raw().includes('\x1b]0;大模型能力对比 · budingx\x07'))
@@ -337,7 +349,7 @@ test('conversation shows question, elapsed time, completion and editable follow-
   ])
   const ui = await mountTty(t, { fullScreen: true, provider, config: { model: 'fixture' } })
   await ui.send('你是谁\r')
-  await ui.waitFor((frame) => frame.includes('› 你是谁') && /思考中 [1-9]\d* 秒/.test(frame))
+  await ui.waitFor((frame) => frame.includes('› 你是谁') && /思考中 · [1-9]\d* 秒/.test(frame))
   assert.doesNotMatch(ui.raw(), /hidden-fixture/)
   release()
   await ui.waitFor((frame) =>
@@ -373,8 +385,39 @@ test('assistant Markdown and user prompts have distinct transcript styles', asyn
   await ui.resize(32, 24)
   assert.ok(frameWidths(ui.last(), stringWidth).every((w) => w <= 32))
   assert.match(ui.last(), /› 你是谁/)
-  assert.match(ui.last(), /只读 · Shift\+Tab/)
+  assert.match(ui.last(), /写入锁定 · Shift\+Tab/)
   assert.doesNotMatch(ui.last(), /就绪/)
   assert.match(ui.raw(), /\x1b\[[^m]*48;2;[^m]+m[^\r\n]*你是谁/)
   assert.match(ui.raw(), /\x1b\[2m(?:\x1b\[[0-9;]+m)*已完成/)
+})
+
+
+test('tool rows pulse, then show success and failure beside readable tool names', async (t) => {
+  let finish
+  const gate = new Promise((resolve) => { finish = resolve })
+  t.after(() => finish())
+  let turns = 0
+  const ui = await mountTty(t, {
+    fullScreen: true,
+    config: { model: 'fixture' },
+    tools: [
+      { name: 'Read', describe: () => 'read', execute: () => gate },
+      { name: 'Find', describe: () => 'find', execute: async () => { throw new Error('Fixture failed') } }
+    ],
+    provider: { async *stream() {
+      if (turns++ > 0) { yield done; return }
+      yield { type: 'tool_call_delta', index: 0, callId: 'private-id-1', nameDelta: 'Read', argsDelta: '{"path":"notes.txt"}' }
+      yield { type: 'tool_call_delta', index: 1, callId: 'private-id-2', nameDelta: 'Find', argsDelta: '{"pattern":"needle"}' }
+      yield { type: 'message_completed', finishReason: 'tool_calls' }
+    } }
+  })
+  await ui.send('run tools\r')
+  await ui.waitFor((frame) => frame.includes('Read(notes.txt)'))
+  await ui.waitFor(() => /\x1b\[38;2;129;96;189m●/.test(ui.raw()))
+  finish('Read 3 lines')
+  const final = await ui.waitFor((frame) => frame.includes('Fixture failed') && !ui.session.isBusy)
+  assert.match(final, /Find\(needle\)/)
+  assert.doesNotMatch(final, /private-id-[12]/)
+  assert.match(ui.raw(), /\x1b\[38;2;98;201;129m●/)
+  assert.match(ui.raw(), /\x1b\[38;2;255;107;107m●/)
 })

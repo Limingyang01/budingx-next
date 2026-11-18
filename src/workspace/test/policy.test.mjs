@@ -156,7 +156,7 @@ test('模式切换事件与轮播顺序', () => {
   assert.deepEqual(seen, ['workspace_edit'])
   assert.equal(nextMode('read_only'), 'workspace_edit')
   assert.equal(nextMode('workspace_edit'), 'full_access')
-  assert.equal(nextMode('full_access'), 'read_only')
+  assert.equal(nextMode('full_access'), 'workspace_edit')
   rmSync(env.base, { recursive: true, force: true })
 })
 

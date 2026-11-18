@@ -21,10 +21,18 @@ export type NoticeItem = {
   text: string
 }
 
-export type TranscriptEntry = {
-  kind: 'user' | 'assistant' | 'meta' | 'plain'
+export type ToolTranscriptEntry = {
+  kind: 'tool'
   text: string
+  turnId: string
+  callId: string
+  status: 'pending' | 'success' | 'error' | 'interrupted'
+  result?: string
 }
+
+export type TranscriptEntry =
+  | { kind: 'user' | 'assistant' | 'meta' | 'plain'; text: string }
+  | ToolTranscriptEntry
 
 export type Frame = {
   /** Logical transcript entries, retained for both narrower and wider resize. */

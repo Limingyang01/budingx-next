@@ -90,6 +90,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   const policy = createPermissionPolicy({
     workspace,
     rules: load.file.rules as PermissionRule[],
+    autoAcceptWorkspaceEdits: options.persistPermissionMode,
     mode: options.mode ?? (options.persistPermissionMode && !load.corrupt
       ? readPermissionMode(options.home)
       : 'read_only'),
