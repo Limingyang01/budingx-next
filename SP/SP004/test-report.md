@@ -9,17 +9,18 @@
 | 检查 | 命令 | 结果 |
 | --- | --- | --- |
 | 构建 | `npm run build` | 通过（tsc，无错误） |
-| 单元/功能 | `npm run test:unit` | **564/564 通过**（`node --test src/*/test/*.test.mjs`） |
+| 单元/功能 | `npm run test:unit` | **572/572 通过**（`node --test src/*/test/*.test.mjs`；含 T25 补记 8 项） |
 | 模块边界 | `npm run test:checks` | 「模块边界检查通过」 |
 | 规格自洽 | `npm run spec:check` | 「OK: 路线图、能力清单与任务清单自洽」（能力 91 项） |
 | 技能入口 | `npm run skills:check` | 「Skill entries are current」 |
 | 发布脚本 | `npm run test:release` | 17/17 通过 |
 | 合入门禁脚本 | `npm run merge:test` | 5/5 通过 |
-| 全量 | `npm test` | **607 通过 / 0 失败**（skills 10 + spec 11 + unit 564 + release 17 + merge 5） |
+| 全量 | `npm test` | **615 通过 / 0 失败**（skills 10 + spec 11 + unit 572 + release 17 + merge 5） |
 | 交叉验证门禁 | `npm run merge:gate` | **GREEN**（`artifacts/merge-gate/feature-SP004-real-coding-task-2026-11-18T16-16-59-047Z.md`：分支/merge-base `e808679`/HEAD `868eae6`、outgoing 31 提交 91 文件、禁带路径违规 0、FAIL 行 0、UNVERIFIED 9 行且恢复条件节存在；`npm test`/`spec:check`/`skills:check`/`pack-smoke` 退出码均 0） |
 | 合入与合入后复验 | `git merge --no-ff feature/SP004/real-coding-task` → `git merge-base --is-ancestor 868eae6 HEAD` → `npm test` | 合并提交 `fdfdae8`；ancestry 通过；合入后 `npm test` 仍 0 失败。合并时 `PRODUCT.md` 与 `docs/current-status.md` 因 master 已发布 0.3.6 产生文本冲突，按「保留已发布事实 + SP004 现状」人工解决，无代码冲突 |
 | CI 模式全量 | `CI=true npm test` | 0 失败（skills/spec/unit/checks/release/merge 全部通过，复现工作流环境） |
 | 发布预演（0.4.0） | `npm run publish -- --dry-run --expected-version 0.4.0 --tag latest` | **Dry run passed**（`artifacts/release/0.4.0-1795018901701/report.json`）：`state=verified-local`、`integrity=sha512-0mVZSAE8BNhjPpU4aO/BMclFaQymf43AmmVSRF5snezTTEbv6213iKlMwIM8sJXwgj2eaCfces2LIlLOum7h8g==`、tarball 84 文件含 `dist/exec`、`dist/git`、`dist/plan`、CLI 版本 0.4.0 与本地 fixture HTTP smoke（1 次请求）通过；`externalProvider=UNVERIFIED`、未上传 npm |
+| T25 补记（worktree 工具表面） | `rm src/git/tools.ts` 后重建 → 单文件 RED；恢复并 `npm run build && node --test src/git/test/tools.test.mjs` | RED 0/1（模块缺失）、GREEN **8/8**；另以移除 `mandatoryApproval` 分支的中间态证明仅 T25-8 失败；全量 `npm test` 615 通过 0 失败 |
 | 来源 AST 复核 | `node scripts/review/sp004-ast.mjs --reference <参考仓> --reference-revision b5c9be8 --base master` | 改动 39/39 映射，函数对 18901 组，命中 0，自检 3/3 PASS → **PASS**（详见 [ast-review.md](ast-review.md)） |
 
 ## 1. 视觉与交互验收
@@ -55,6 +56,7 @@
 | GIT-01 | 临时仓原 checkout 含 staged/unstaged/untracked；成功提交只在专用分支产生核准树，原索引、文件与 HEAD 不变。用例：`git/test/commit.test.mjs`（11） | T7–T9 | PASS |
 | GIT-02 | 拒绝未授权、审批后漂移、混合改动、并发 ref 变化、重复授权与意外钩子；普通命令入口不获得 Git 写权限；失败可安全重试。用例：`git/test/commit.test.mjs`、`exec/test/tools.test.mjs`（T5-5） | T5、T7、T9、T20 | PASS |
 | SRC-01 | 来源记录含参考 SHA、行为来源、自有模块与第三方条款；制品不含参考源码/内部类型/资产/提示词/bundle。见 `ast-review.md`、`THIRD-PARTY-NOTICES.md` | T24、T17 | PASS（来源记录），发布包核验见 §5 |
+| GIT-03 | `EnterWorktree {name?}` / `ExitWorktree {action, discard_changes?}` 协议：参数校验、会话级状态、默认 keep、remove 在完全权限下仍强制宿主审批（`mandatoryApproval` + `ToolContext.approved`）、残留拒绝并列出计数、删除回执含 `discardedFiles`/`discardedCommits`。用例：`git/test/tools.test.mjs`（8） | T25 | PASS（协议层）；生产 runtime 接线见 §5 |
 | SRC-02 | 归一化 AST 对比出具范围、长度、分值与处置；合成正负例；未解决项不得通过。见 `ast-review.md` | T24 | PASS（命中 0） |
 
 ## 4. 48 条 AC 回填
@@ -96,9 +98,9 @@ AC 区间：CE-01…20（20）、CT-01…09（9）、GW-01…09（9）、TP-01�
 | GW-02 | T7/T21 | `git/attribution.test.mjs`(8)、`exec/isolated-project.test.mjs`(2) | L1+L2 | PASS |
 | GW-03 | T7 | `git/attribution.test.mjs`(8) | L1 | PASS |
 | GW-04 | T9 | `git/commit.test.mjs`(11) | L1 | PASS |
-| GW-05 | T8/T23 | `git/worktree.test.mjs`(6)、`git/worktree-exit.test.mjs`(6) | L1 | PASS |
-| GW-06 | T8/T23 | `git/worktree-exit.test.mjs`(6) | L1 | PASS |
-| GW-07 | T8/T23 | `git/worktree.test.mjs`(6)、`git/worktree-exit.test.mjs`(6) | L1 | PASS |
+| GW-05 | T8/T23/T25 | `git/worktree.test.mjs`(6)、`git/worktree-exit.test.mjs`(6)、`git/tools.test.mjs`(8) | L1 | PASS |
+| GW-06 | T8/T23/T25 | `git/worktree-exit.test.mjs`(6)、`git/tools.test.mjs`(8) | L1 | PASS |
+| GW-07 | T8/T23/T25 | `git/worktree.test.mjs`(6)、`git/worktree-exit.test.mjs`(6)、`git/tools.test.mjs`(8) | L1 | PASS |
 | GW-08 | T6/T8 | `git/status.test.mjs`(7) | L1 | PASS |
 | GW-09 | T9 | `git/commit.test.mjs`(11) | L1 | PASS |
 | TP-01 | T10/T15/T22 | `plan/store.test.mjs`(8)、`tui/sp004-cards.test.mjs`(10) | L0+L2 | PASS |
@@ -118,13 +120,15 @@ AC 区间：CE-01…20（20）、CT-01…09（9）、GW-01…09（9）、TP-01�
 
 - **真实平台隔离后端（CE-11、CE-19、SAFE-02）**：仓库内只有策略层 `createSandboxPolicy`，无已验证的后端实现（设计规定由宿主注入）。生产接线因此在启动前 fail-closed：普通 Bash/PowerShell 被拒（`execSandboxUnavailable`），`plan/test/host.test.mjs` 的 runtime 工具面用例断言了这一行为与零 spawn。恢复条件：宿主提供 `verified: true` 的后端并传入 `createSandboxPolicy({backend})`，随后按 `exec/test/runner.test.mjs` 的同一套真实进程回归在新后端上复跑，再取消 fail-closed。
 - **CT-07 完成证据闸门在生产 runtime 未启用**：`createCodingTaskTracker` 与闸门逻辑已实现并有 18 条用例，但接入 `src/tui/runtime.ts` 会让无隔离后端的 CLI 会话在命令全被拒时持续重试到 `maxIterations`（T15 实测 64 次请求替代 2 次）。恢复条件：隔离后端落地后可重新接入；接入时须复跑 `tui/test/cli.test.mjs` 与 `tui/test/screen-e2e.test.mjs` 防回归。
-- **参考实现像素级对照（VIS-01…04）**：本环境无头，无两路真实交互终端与截图；参考仓也没有计划模式卡片/多题追问向导可供一一对照。恢复条件：具备图形终端与参考环境后，在 100×30 与 70×20 下采证单元格与 PNG，按 §1 的断言逐项目检。
+- **worktree 工具表面未接入生产 runtime**：`createWorktreeTools` 与协议级用例已交付（T25），但会话级 cwd 重绑定（进入隔离工作树后命令/文件工具改到新目录）属 SP005 会话状态重构；现在接线会出现「工具声称已隔离、实际仍写主工作区」的误导。恢复条件：先实现会话 cwd 抽象，再把工具集接入 `src/tui/runtime.ts` 并补伪 TTY 用例（进入→写文件→退出 keep/remove 全链路），复跑 `tui/test/cli.test.mjs` 防回归。
+- **参考实现像素级对照（VIS-01…04）**：行为与交互的逐项对照记在 [reference-parity.md](reference-parity.md)（能力/组件映射、四类差异及理由、未验证边界）；本环境无头，无两路真实交互终端与截图；参考仓也没有计划模式卡片/多题追问向导可供一一对照。恢复条件：具备图形终端与参考环境后，在 100×30 与 70×20 下采证单元格与 PNG，按 §1 的断言逐项目检。
 - **真实 Provider（live）**：本轮全部用例使用 scriptProvider/伪 TTY，未调用真实模型 API。恢复条件：配置真实 Provider 后跑 `npm run test:unit -- live` 类手工场景（仓库未提供自动 live 套件），单独记证据。
 - **发布包核验（SRC-01 的制品侧）**：本轮未打包发布。恢复条件：发布前准备阶段用 `npm pack --dry-run` 核对清单并核对 `THIRD-PARTY-NOTICES.md`，实际 npm 发布由用户在 GitHub 手动触发。
 - **AST 分值不证明来源**：见 `ast-review.md` 的边界说明；不等于法律洁净室认证。
 
 ## 6. 本轮变更与验证范围
 
-- 分支 `feature/SP004/command-execution` 上 30 个本地提交，涉及 `src/exec`、`src/git`、`src/plan`、`src/core`、`src/tui` 与文档；未包含依赖、产物、凭据、`.superpowers` 台账（本地不跟踪）。
-- 文档检查：`npm run spec:check`、`npm run skills:check`、`git diff --check`；48 条 AC 与 25 个任务映射见[实施计划](design/plan.zh.md#测试收口映射ac--任务--用例)。
+- 分支 `feature/SP004/real-coding-task` 上 30 个合入前提交，含 T25 补记 1 个后续提交，涉及 `src/exec`、`src/git`、`src/plan`、`src/core`、`src/tui` 与文档；未包含依赖、产物、凭据、`.superpowers` 台账（本地不跟踪）。
+- 文档检查：`npm run spec:check`、`npm run skills:check`、`git diff --check`；48 条 AC 与 26 个任务（含 T25 补记）映射见[实施计划](design/plan.zh.md#测试收口映射ac--任务--用例)。
+- 参考 TUI 对照记录见 [reference-parity.md](reference-parity.md)（用户 2026-11-18 指定参考仓 `b5c9be8`）。
 - [产品说明书](../../PRODUCT.md)已在同轮同步：§5.4 记录四类卡片与键位，§7 记录命令执行与 worktree 限制。

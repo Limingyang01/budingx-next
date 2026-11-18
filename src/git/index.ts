@@ -22,6 +22,8 @@ export { parsePorcelain } from './porcelain.js'
 export type { ParsedPorcelain, PorcelainBranch, PorcelainEntry } from './porcelain.js'
 export { readGitStatus, sanitizeRemoteUrl } from './status.js'
 export type { GitStatus, ReadGitStatusOptions } from './status.js'
+export { createWorktreeTools } from './tools.js'
+export type { WorktreeToolOptions, WorktreeToolset } from './tools.js'
 export {
   assertWorktreeSlug,
   enterWorktree,

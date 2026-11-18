@@ -479,6 +479,20 @@
 - **验证**：`node scripts/review/sp004-ast.mjs --reference <参考仓> --reference-revision b5c9be8 --base <功能基线>`。先用合成 TS/TSX 检查相似片段、无关实现和样板排除，再输出路径、范围、指标及人工处置。未覆盖路径、解析失败或未处理命中不得记 PASS。文件列表限本轮改动及对应参考源码。
 - 完成事实：2026-11-19 完成。新增维护脚本 `scripts/review/sp004-ast.mjs`（本仓 TypeScript 5.9.3 Compiler API，本地只读，不引入依赖）：固定参考 revision `b5c9be8` 与功能基线 `e808679`；`REFERENCE_ALLOWLIST` 将本仓 39 个改动 TS/TSX 文件逐个映射到参考仓相关源码位置（Git 模块、barrel 导出面、常量表等 9 个路径显式标注「无对应参考模块」及理由，未映射路径判失败）；`DISPOSITIONS` 要求每个命中项给出处置，未处置即失败；脚本先跑三项合成自检——相似片段必须命中、无关实现不得命中、<60 节点样板排除。命中判定：结构化子树签名相同的连续子树 ≥30 节点，或双方均 ≥60 节点且归一化节点序列（三元组 Dice）相似度 ≥0.80。实跑结果：改动文件 39/39 映射，本仓单元 152 个、参考单元 5581 个、函数对 18901 组，命中 0、未处理命中 0、自检 3/3 PASS，结论 PASS。报告 `SP/SP004/ast-review.md` 只保留路径、行范围、节点数、指标与处置，不保留参考源码片段。Ruling：①首版以扁平先序窗口做「30 节点子树」判定，会把跨兄弟语句的 hook 样板串成伪子树（`App` vs `REPL` 误报），改为真实结构化子树签名后消除；②参考仓无 Git 工具层，Git 模块记「无比较对象」而非跳过；③AST 分值不证明来源，仅作人工复核触发线，公共协议字段（卡片状态、Git 只读字段、事件名）按必要重合说明依据；真实终端位图/双尺寸单元格差分仍为 UNVERIFIED（需两侧真实交互终端，本环境无头）。
 
+## T25 · worktree 工具表面补记（2026-11-19）
+
+- **设计**：§7.3「工具协议使用 `EnterWorktree {name?}` 和 `ExitWorktree {action, discard_changes?}`」、§8 对照表「工具表面 等价（会话级）」。
+- **动因**：T17 收口复读设计时发现 §7.3/§8 已承诺 worktree 工具表面，但 T8/T23 只交付库函数（`enterWorktree`/`exitWorktree`），没有模型可调用的工具协议；AC GW-05/GW-06 的现有证据是库级用例，缺协议层覆盖。按「文档与实现必须一致」补齐，而非把承诺降级。
+- **Create**：`src/git/tools.ts`（`createWorktreeTools({cwd, root?, home?})` → `{tools, session()}`）、`src/git/test/tools.test.mjs`（8 条）。
+- **Modify**：`src/core/tools.ts`（`ToolContext.approved`、`ToolHandler.mandatoryApproval`）、`src/core/session.ts`（执行前把审批结论写入 `ToolContext.approved`；`mandatoryApproval` 钩子在完全权限下仍强制走审批通道）、`src/git/index.ts`（导出工具面）。
+- **完成事实**：已交付（8 项新用例，全量 607+8=615 项）。
+  - `EnterWorktree`：参数仅 `{name?}`（未知字段、非字符串、空白均拒绝；缺省 `session`）；进入后记录 `{path, branch, baseBranch, originalCwd}`；返回目录/分支/基准分支/原目录；重复进入明确拒绝；`capability: 'execute'`、`target: none`，`prepareApproval` 展示目标目录与分支模板。
+  - `ExitWorktree`：参数 `{action?, discard_changes?}`；`keep`（默认）`capability: 'read'` 直接保留目录与分支并回原 cwd；`remove` `capability: 'write'` 且带 `mandatoryApproval`——即使「完全权限」档位、即使有会话记忆允许，也必须经宿主审批；执行时要求 `ToolContext.approved === true`，否则抛「删除 worktree 需要宿主单次授权」；有残留但 `discard_changes !== true` 时拒绝并列出「未提交文件 N 个 / 未合并提交 M 个」；成功后回执含 `discardedFiles`/`discardedCommits`。
+  - 语义澄清：不能用既有 `requiresApproval` 承担该职责——它在有策略时会被 `verdict.action === 'ask'` 覆盖，若改为「钩子恒真」会让 Write/Edit 在「本会话允许」后反复弹审批（实测破坏 `tui/test/sp003-review-regressions.test.mjs`）。因此新增独立 `mandatoryApproval` 钩子：只对不可逆操作强制审批，普通写操作语义不变。
+  - RED 证据：①移除 `src/git/tools.ts` 与 dist 产物后 `node --test src/git/test/tools.test.mjs` 0 通过 1 失败（模块缺失）；②保留工具面但移除 `mandatoryApproval` 强制审批分支后 8 项中仅 T25-8 失败（完全权限下审批未触发、`ToolContext.approved` 未置位），证明该分支为必要条件；恢复后 8/8 通过。
+  - 限制（记入验收报告 §5）：工具面已实现并有协议级测试，但**未接入生产 runtime**——会话级 cwd 重绑定（进入 worktree 后命令/文件工具改到隔离目录）属 SP005 会话状态重构；现在接线会误导模型（工具说已隔离、实际写入主工作区）。接入顺序建议：先做会话 cwd 抽象，再接 `createWorktreeTools` 与 `ExitWorktree` 审批界面。
+  - Ruling：①worktree 工具表面按设计补齐，不把 §7.3/§8 承诺降级为「库函数即可」；②删除授权由 `ToolContext.approved`（宿主审批结论）承载，模型参数只表达 `discard_changes` 意图，符合「模型参数本身无授权效力」；③新增 `mandatoryApproval` 而不复用 `requiresApproval`，避免破坏 SP003 的「本会话允许」语义；④生产接线延后并显式记为 UNVERIFIED，原因是它依赖会话 cwd 抽象，属范围外能力。
+
 ## 测试收口映射（AC → 任务 → 用例）
 
 | AC | 任务 | 单元用例（文件） | 功能/端到端用例（文件） |
@@ -516,9 +530,9 @@
 | GW-02 | T7/T21 | `git/test/attribution.test.mjs` | 同上 |
 | GW-03 | T7 | `git/test/attribution.test.mjs` | 同上 |
 | GW-04 | T9 | `git/test/commit.test.mjs` | 同上 |
-| GW-05 | T8/T23 | — | `git/test/worktree.test.mjs`、`git/test/worktree-exit.test.mjs` |
-| GW-06 | T8/T23 | — | `git/test/worktree-exit.test.mjs` |
-| GW-07 | T8/T23 | — | `git/test/worktree.test.mjs`（slug 校验）、`git/test/worktree-exit.test.mjs` |
+| GW-05 | T8/T23/T25 | `git/test/tools.test.mjs`（工具协议） | `git/test/worktree.test.mjs`、`git/test/worktree-exit.test.mjs`、`git/test/tools.test.mjs` |
+| GW-06 | T8/T23/T25 | `git/test/tools.test.mjs`（keep/remove 协议与授权） | `git/test/worktree-exit.test.mjs`、`git/test/tools.test.mjs` |
+| GW-07 | T8/T23/T25 | — | `git/test/worktree.test.mjs`（slug 校验）、`git/test/worktree-exit.test.mjs` |
 | GW-08 | T6/T8 | `git/test/status.test.mjs` | 同上 |
 | GW-09 | T9 | `git/test/commit.test.mjs` | 同上 |
 | TP-01 | T10/T15/T22 | `plan/test/store.test.mjs` | `tui/test/sp004-cards.test.mjs` |

@@ -23,6 +23,11 @@ export type ToolContext = {
    * record evidence for coding-task completion claims (SP004 T13, CT-07).
    */
   onCommandResult?(command: string, result: CommandResult): void
+  /**
+   * 宿主单次授权标记：本次调用经审批通道允许后为 true（SP004 T25）。
+   * 用于「删除等不可逆操作必须由宿主授权、模型参数无授权效力」的场景。
+   */
+  approved?: boolean
 }
 
 export type PreparedTool = {
@@ -37,6 +42,11 @@ export type ToolHandler = {
   summary?: string
   describe(input: unknown): string
   requiresApproval?(input: unknown): boolean
+  /**
+   * 不可逆操作（如删除 worktree）的硬性审批钩子：即使当前档位是「完全权限」、
+   * 或已有会话记忆允许，也必须经过宿主审批通道（SP004 T25，设计 §7.3）。
+   */
+  mandatoryApproval?(input: unknown): boolean
   /**
    * Classification used by the permission policy: read tools never write,
    * write tools mutate the workspace. Defaults to 'read' when absent so

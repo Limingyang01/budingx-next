@@ -965,7 +965,8 @@ export class Session {
       // SP003: with a policy the verdict decides; without one the SP002
       // requiresApproval hook keeps its exact behaviour.
       const policy = this.options.permissionPolicy
-      let needsApproval = handler.requiresApproval?.(input) ?? false
+      const approvalHook = handler.requiresApproval?.(input) ?? false
+      let needsApproval = approvalHook
       let permissionRequest: PermissionRequest | undefined
       // 计划模式的一次性批准：即使宿主勾选“本会话允许”，也不写入记忆（§6.2）。
       let planModeSingleUse = false
@@ -1049,8 +1050,14 @@ export class Session {
         }
         needsApproval = verdict.action === 'ask'
       }
+      // 不可逆操作的硬性审批：即使档位允许也必须由宿主确认（T25）。
+      if (!needsApproval && (handler.mandatoryApproval?.(input) ?? false)) {
+        needsApproval = true
+      }
       let prepared: PreparedTool | undefined
       let remember = false
+      // 本次调用是否经审批通道允许；删除类工具据此确认宿主授权（T25）。
+      let approved = false
       if (needsApproval) {
         try {
           prepared = handler.prepareApproval?.(input)
@@ -1128,6 +1135,7 @@ export class Session {
           }
           continue
         }
+        approved = true
       }
       this.setState('tool_running')
       let content = ''
@@ -1141,6 +1149,7 @@ export class Session {
           turnId: turn.id,
           callId: call.id,
           emit: (event) => this.emit(event),
+          approved,
           ...(this.options.codingTask
             ? {
                 onCommandResult: (command: string, result: CommandResult) =>

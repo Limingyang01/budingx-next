@@ -59,7 +59,7 @@
 
 ## 验收与交接
 
-验收入口为 [test-report.md](test-report.md)：48 条 AC 逐条映射到实际用例与计数，验证层分 L0/L1/L2 记录，未验证项单列恢复条件。已发布产品的实际使用说明和版本由当前发布记录管理。用户已确认 v1.3；T0–T24 完成，等待交叉验证门禁后合入 master。
+验收入口为 [test-report.md](test-report.md)：48 条 AC 逐条映射到实际用例与计数，验证层分 L0/L1/L2 记录，未验证项单列恢复条件。已发布产品的实际使用说明和版本由当前发布记录管理。用户已确认 v1.3；T0–T24 已完成并合入 master，T25 为合入后按设计补齐的 worktree 工具表面补记。
 
 ## 变更记录
 
@@ -75,4 +75,5 @@
 | 2026-11-18 | **实施放行，T0 完成**：基线 `npm run test:unit` = 359/359 通过（旧记 332 为更早基线）；环境修复 npm ci；隔离后端探测无已验证后端（普通 shell 默认关闭，实测 UNVERIFIED）；视觉权利未确认（像素级 UNVERIFIED）；计划 T0 补完成事实 | 用户「继续开发SP004」+「继续」视为 v1.3 确认与放行 | 进入 T1 core 端口；执行台账 `.superpowers/sdd/plan.zh/progress.md` |
 | 2026-11-19 | **实施与验证完成（T0–T24）**：30 个本地提交（HEAD `1f166fb`）；全量 `npm test` 607/607、`test:checks`/`spec:check`/`skills:check` 通过；48 条 AC 回填（PASS 45，UNVERIFIED 3 项恢复条件已写）；AST 复核 PASS（函数对 18901、命中 0）；`PRODUCT.md` 与四份 STATUS 同步 | 2026-11-17 委托：Agent 自审 + 门禁 GREEN 后合入 master 并自主推送 | 待 `npm run merge:gate` GREEN 后按 buding-merge 合入 master、推送；npm 发布与打标签仍由用户手动触发 |
 | 2026-11-19 | **合入 master**：`npm run merge:gate` GREEN（分支/merge-base `e808679`/HEAD `868eae6`，outgoing 31 提交 91 文件，FAIL 0，UNVERIFIED 9 且恢复条件节存在）→ `git merge --no-ff` 合并提交 `fdfdae8`，ancestry 通过，合入后 `npm test` 0 失败；合并时 `PRODUCT.md`、`docs/current-status.md` 因 master 已发布 0.3.6 产生文本冲突，按「保留已发布事实 + SP004 现状」人工解决，无代码冲突 | 2026-11-17 委托（门禁 GREEN 后合入 master） | 功能分支不再作为交付候选，master 含 T0–T24 全部实现 |
+| 2026-11-19 | **T25 补记（合入后）**：按设计 §7.3/§8 补齐 `EnterWorktree {name?}` / `ExitWorktree {action, discard_changes?}` 工具表面（`src/git/tools.ts` + `src/git/test/tools.test.mjs` 8 项），新增 `ToolHandler.mandatoryApproval` 与 `ToolContext.approved` 使删除在完全权限下仍强制宿主审批；全量 615/615（unit 572）；工具面未接入生产 runtime（依赖会话 cwd 抽象，属 SP005），记为 UNVERIFIED | 收口复核发现设计承诺的工具表面未交付，按「文档与实现一致」补齐而非降级承诺 | GW-05/06/07 证据补协议层用例；`git-worktree-safety` STATUS、验收报告 §0/§3/§4/§5 与本汇总同步 |
 | 2026-11-19 | **0.4.0 版本准备**：`npm run version:prepare -- minor --iteration SP004` 将 `src/tui/package.json` 0.3.6→0.4.0、台账新增 prepared 条目、生成 `release-notes/v0.4.0.md`；`npm run publish -- --dry-run --expected-version 0.4.0 --tag latest` 通过（`state=verified-local`、tarball 84 文件含 dist/exec、dist/git、dist/plan、本地 fixture HTTP smoke 1 次请求、`externalProvider=UNVERIFIED`）；文档同步 PRODUCT v1.12/README/current-status/npm-release-plan/versioning/github-actions-npm。**未发布、未打 tag** | 用户 2026-11-17 委托含发布前准备；实际 npm 发布由用户在 GitHub 手动触发 | 维护者可用工作流参数 branch=master、version=0.4.0、tag=latest、dry_run=false 触发；发布回执另按 buding-npm-release 收口 |
