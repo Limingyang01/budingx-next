@@ -94,4 +94,4 @@ SP003 权限模式与会话体验已发布为 [0.3.4](../../release-notes/v0.3.4
 
 阶段状态和逐项验收见 [SP002 与 SP003 旧 TUI 差异清单](repl-alignment-gap-checklist.md)。
 
-本轮 REPL 修复已合入 master，纳入 [0.3.6 发布候选](../../release-notes/v0.3.6.md)。
+本轮 REPL 修复已合入 master，随 [0.3.6](../../release-notes/v0.3.6.md) 发布，npm latest 和官方安装已核对。[GitHub Actions #15](https://github.com/Limingyang01/budingx-next/actions/runs/44304795619)
