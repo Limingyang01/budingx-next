@@ -4,6 +4,7 @@
 // and removals are marked, and the same model feeds both the interactive
 // dialog and the plain-text /diff output. No reference diff component is
 // reused; hunk data comes from our own workspace/diff module.
+import { renderTextLines } from './reducer.js'
 import type { DiffHunk } from '../../workspace/diff.js'
 
 export type DiffSpanKind = 'header' | 'add' | 'remove' | 'context' | 'gutter'
@@ -12,7 +13,7 @@ export type DiffSpan = { text: string; kind: DiffSpanKind }
 
 export type DiffViewLine = { spans: DiffSpan[]; kind: 'header' | 'add' | 'remove' | 'context' }
 
-export function diffViewLines(hunks: DiffHunk[], columns = 100): DiffViewLine[] {
+export function diffViewLines(hunks: DiffHunk[], columns = 100, wrap = false): DiffViewLine[] {
   const lines: DiffViewLine[] = []
   for (const hunk of hunks) {
     const width = String(Math.max(hunk.oldStart + hunk.oldLines, hunk.newStart + hunk.newLines))
@@ -26,6 +27,19 @@ export function diffViewLines(hunks: DiffHunk[], columns = 100): DiffViewLine[] 
           : String(line.oldNo ?? '').padStart(width, ' ')
       const marker = line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '
       const text = line.text.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '')
+      if (wrap) {
+        const parts = renderTextLines(text, Math.max(1, columns - width - 1))
+        for (const [index, part] of parts.entries()) {
+          lines.push({
+            spans: [
+              { text: index === 0 ? number : ' '.repeat(width), kind: 'gutter' },
+              { text: (index === 0 ? marker : ' ') + part, kind: line.type }
+            ],
+            kind: line.type
+          })
+        }
+        continue
+      }
       const limit = Math.max(20, columns - width - 2)
       const shown = text.length > limit ? text.slice(0, limit - 1) + '…' : text
       lines.push({

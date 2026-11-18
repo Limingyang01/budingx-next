@@ -397,6 +397,9 @@ test('tool rows pulse, then show success and failure beside readable tool names'
   let finish
   const gate = new Promise((resolve) => { finish = resolve })
   t.after(() => finish())
+  let finishArguments
+  const argumentsGate = new Promise((resolve) => { finishArguments = resolve })
+  t.after(() => finishArguments())
   let turns = 0
   const ui = await mountTty(t, {
     fullScreen: true,
@@ -407,18 +410,93 @@ test('tool rows pulse, then show success and failure beside readable tool names'
     ],
     provider: { async *stream() {
       if (turns++ > 0) { yield done; return }
-      yield { type: 'tool_call_delta', index: 0, callId: 'private-id-1', nameDelta: 'Read', argsDelta: '{"path":"notes.txt"}' }
+      yield { type: 'tool_call_delta', index: 0, callId: 'private-id-1', nameDelta: 'Read', argsDelta: '{"path":' }
+      await argumentsGate
+      yield { type: 'tool_call_delta', index: 0, argsDelta: '"notes.txt"}' }
       yield { type: 'tool_call_delta', index: 1, callId: 'private-id-2', nameDelta: 'Find', argsDelta: '{"pattern":"needle"}' }
       yield { type: 'message_completed', finishReason: 'tool_calls' }
     } }
   })
   await ui.send('run tools\r')
+  await ui.waitFor((frame) => frame.includes('Read · 接收参数'))
+  finishArguments()
   await ui.waitFor((frame) => frame.includes('Read(notes.txt)'))
   await ui.waitFor(() => /\x1b\[38;2;129;96;189m●/.test(ui.raw()))
-  finish('Read 3 lines')
+  finish('Read 3 lines\nAdditional tool result')
   const final = await ui.waitFor((frame) => frame.includes('Fixture failed') && !ui.session.isBusy)
   assert.match(final, /Find\(needle\)/)
   assert.doesNotMatch(final, /private-id-[12]/)
   assert.match(ui.raw(), /\x1b\[38;2;98;201;129m●/)
   assert.match(ui.raw(), /\x1b\[38;2;255;107;107m●/)
+  assert.doesNotMatch(final, /Additional tool result/)
+  assert.match(final, /\d+\.\ds/)
+  await ui.send('\x0f')
+  await ui.waitFor((frame) => frame.includes('Additional tool result'))
+  await ui.send('\x0f')
+  await ui.waitFor((frame) => !frame.includes('Additional tool result'))
+})
+
+
+test('virtual history keeps the old viewport while new messages arrive', async (t) => {
+  let reply = 0
+  const ui = await mountTty(t, {
+    fullScreen: true, columns: 66, rows: 24,
+    config: { model: 'fixture' },
+    provider: { async *stream() {
+      yield { type: 'text_delta', text: 'Rendered result ' + (++reply) }
+      yield done
+    } }
+  })
+  const submit = (text) => new Promise((resolve) => {
+    const off = ui.session.on((event) => {
+      if (event.type !== 'turn_finalized') return
+      off()
+      resolve()
+    })
+    ui.session.submit(text)
+  })
+  for (let i = 1; i <= 40; i++) await submit('Question ' + i)
+  await ui.waitFor((frame) => frame.includes('Rendered result 40'))
+  assert.doesNotMatch(ui.last(), /Question 1\b/)
+  await ui.send('draft')
+  ui.stdin.write('\x1b[<64;5;8M'.repeat(100))
+  await ui.waitFor((frame) => /Question 1\b/.test(frame) && frame.includes('> draft'))
+  await submit('Question 41')
+  await ui.waitFor((frame) => /Question 1\b/.test(frame) && frame.includes('条新消息'))
+  assert.doesNotMatch(ui.last(), /Rendered result 41/)
+  await ui.send('\x1b[1;5F')
+  await ui.waitFor((frame) => frame.includes('Rendered result 41') && frame.includes('> draft'))
+  assert.doesNotMatch(ui.last(), /条新消息/)
+})
+
+
+test('Ctrl+R recalls input without sending, and transcript search finds a past response', async (t) => {
+  let round = 0
+  const ui = await mountTty(t, {
+    fullScreen: true, rows: 22,
+    provider: { async *stream() {
+      const answer = round++ === 0 ? 'Early anchor response\n'.repeat(5) : 'Late transcript row\n'.repeat(32)
+      yield { type: 'text_delta', text: answer }
+      yield done
+    } },
+    config: { model: 'fixture' }
+  })
+  await ui.send('alpha question\r')
+  await ui.waitFor((frame) => frame.includes('Early anchor') && !ui.session.isBusy)
+  await ui.send('beta question\r')
+  await ui.waitFor((frame) => frame.includes('Late transcript') && !ui.session.isBusy)
+  await ui.send('\x12')
+  await ui.send('alpha')
+  await ui.waitFor((frame) => frame.includes('搜索输入历史') && frame.includes('alpha question'))
+  await ui.send('\r')
+  await ui.waitFor((frame) => frame.includes('> alpha question'))
+  assert.equal(round, 2)
+  await ui.send('\x0f')
+  await ui.send('/')
+  await ui.send('early anchor')
+  await ui.waitFor((frame) => frame.includes('搜索会话') && frame.includes('Early anchor response'))
+  await ui.send('\r')
+  await ui.send('\x0f')
+  await ui.waitFor((frame) => frame.includes('> alpha question') && frame.includes('Late transcript'))
+  assert.equal(round, 2)
 })

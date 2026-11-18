@@ -141,3 +141,10 @@ test('Esc 关闭 overlay，再次输入重新打开', async (t) => {
     rmSync(fixture.base, { recursive: true, force: true })
   }
 })
+
+
+test('fuzzy candidates fill remaining slots within their directory', () => {
+  const files = ['src/input-buffer.ts', 'src/ib.ts', 'other/input-buffer.ts']
+  assert.deepEqual(fileCandidates('src/ib', files).map((candidate) => candidate.value),
+    ['src/ib.ts', 'src/input-buffer.ts'])
+})

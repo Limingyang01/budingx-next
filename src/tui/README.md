@@ -66,6 +66,8 @@ The active turn indicator sits above the input. Queued prompts appear below it. 
 - Shift+Tab — switch Allow edits and Full auto
 - Mouse wheel or PageUp / PageDown — scroll the conversation in full-screen mode
 - Ctrl+End — return to the latest message
+- Ctrl+O — open or close transcript view with expanded tool results. Press / to search the conversation
+- Ctrl+R — search input history and recall a draft
 - Home / End or Ctrl+A / Ctrl+E — move to the start or end of the current input line
 - Ctrl+C — interrupt while a turn runs; at the prompt, press twice to exit
 - ↑ / ↓ — recall earlier input, select completions, or scroll a diff
@@ -79,7 +81,7 @@ A cancelled turn keeps the text that was already produced. A turn cancelled befo
 
 A tool-enabled model can use `Read`, `Glob`, `Grep`, `Write`, and `Edit` in your working directory. Use `@path#L10-20` for a line range or `@"folder/file name.txt"` for a path with spaces. Tab completes paths.
 
-Interactive sessions default to Allow edits. Ordinary workspace writes run directly, and sensitive targets require approval. Use `/permission edit|full` or Shift+Tab to change modes. For an approval, use Up/Down to review the diff and 1 or 3 to allow once or deny. Use `/rules` to manage permission rules and `/denials` to inspect refusals.
+Interactive sessions default to Allow edits. Ordinary workspace writes run directly, and sensitive targets require approval. Use `/permission edit|full` or Shift+Tab to change modes. For an approval, use Up/Down to review the diff and 1 or 3 to allow once or deny. An approval shows 2 only when session memory is available for that operation. Use `/rules` to manage permission rules and `/denials` to inspect refusals.
 
 Use `/diff` to browse session changes, individual turns, and Git working tree changes when Git is available. Use `/undo` to revert the latest change group or `/undo PATH` to revert the most recent change to one file. Undo stops on a file that changed externally.
 

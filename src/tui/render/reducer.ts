@@ -8,6 +8,7 @@ import { initialFrame } from './types.js'
 export type RenderOptions = {
   width: number
   english?: boolean
+  toolElapsedMs?: number
 }
 
 /** Split text into width aware lines without cutting wide characters. */
@@ -140,7 +141,7 @@ export function reduceFrame(
       const entry = next.transcript[index]
       if (entry?.kind === 'tool') {
         next.transcript = [...next.transcript]
-        next.transcript[index] = { ...entry, status, result }
+        next.transcript[index] = { ...entry, status, result, elapsedMs: options.toolElapsedMs }
       } else {
         next.transcript = [...next.transcript, {
           kind: 'tool', text: 'Tool', turnId: event.turnId, callId: event.callId, status, result

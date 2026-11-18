@@ -157,6 +157,24 @@ export function createPermissionPolicy(
     return undefined
   }
 
+  function mandatoryApprovalReason(request: PermissionRequest, real?: string): string | undefined {
+    if (request.capability !== 'write' || !request.path) return undefined
+    const targets = [request.path, ...(real ? [relative(workspace.root, real)] : [])]
+    if (targets.some((path) => /(^|[\\/])\.git([\\/]|$)/i.test(path))) {
+      return `Writing inside .git needs confirmation: ${request.path}`
+    }
+    if (options.autoAcceptWorkspaceEdits && mode === 'workspace_edit' && targets.some(isSensitiveWriteTarget)) {
+      return `Sensitive file needs confirmation: ${request.path}`
+    }
+    return undefined
+  }
+
+  function canRemember(request: PermissionRequest): boolean {
+    if (mode !== 'workspace_edit' || request.capability !== 'write' || !request.path) return false
+    const { real } = resolveTarget(request)
+    return !!real && !mandatoryApprovalReason(request, real)
+  }
+
   return {
     decide(request: PermissionRequest): PermissionVerdict {
       // 1. Floor rules: never overridable, in every mode (AC PC-08).
@@ -177,17 +195,8 @@ export function createPermissionPolicy(
       // 2.5 Version-control metadata is protected even in full access:
       // forced ask ahead of memory and allow rules (SP003 T18g, aligned
       // with the reference's mandatory safety check before allow rules).
-      if (request.capability === 'write' && request.path) {
-        const targets = [request.path, ...(real ? [relative(workspace.root, real)] : [])]
-        const isGitMetadata = targets.some((path) => /(^|[\\/])\.git([\\/]|$)/i.test(path))
-        if (isGitMetadata) {
-          return { action: 'ask', reason: `Writing inside .git needs confirmation: ${request.path}` }
-        }
-        if (options.autoAcceptWorkspaceEdits &&
-            mode === 'workspace_edit' && targets.some(isSensitiveWriteTarget)) {
-          return { action: 'ask', reason: `Sensitive file needs confirmation: ${request.path}` }
-        }
-      }
+      const reason = mandatoryApprovalReason(request, real)
+      if (reason) return { action: 'ask', reason }
       // 3. Allow rules: they relax the mode default but not the floor.
       for (const rule of rules) {
         if (rule.action === 'allow' && ruleMatches(rule, request)) {
@@ -214,8 +223,9 @@ export function createPermissionPolicy(
       }
       return { action: 'allow', reason: 'Full access mode: automatic' }
     },
+    canRemember,
     remember(request: PermissionRequest): void {
-      if (request.capability === 'write') memory.add(memoryKey(request))
+      if (canRemember(request)) memory.add(memoryKey(request))
     },
     getMode: () => mode,
     setMode(next: PermissionMode): void {

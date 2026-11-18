@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { collapseReadSearch, visibleHistoryRange } from '../dist/tui/render/history-window.js'
 import { test } from 'node:test'
 import { reduceFrame, renderTextLines } from '../dist/tui/render/reducer.js'
 import { initialFrame } from '../dist/tui/render/types.js'
@@ -201,4 +202,25 @@ test('G10/G11 回收指示清除且工具内容在终态保留', () => {
   f = reduceFrame(f, { type: 'turn_finalized', turnId, outcome: 'completed' })
   assert.match(f.staticLines.join(' '), /echo/)
   assert.match(f.staticLines.join(' '), /result body/)
+})
+
+
+test('virtual transcript selects a bounded range in a long history', () => {
+  const offsets = Array.from({ length: 10001 }, (_, index) => index * 2)
+  const range = visibleHistoryRange(offsets, 14000, 24)
+  assert.ok(range.start < 7000 && range.end > 7000)
+  assert.ok(range.end - range.start < 50)
+})
+
+test('only consecutive successful reads and searches in one turn are collapsed', () => {
+  const row = (text, callId, status = 'success', turnId = 't') =>
+    ({ kind: 'tool', text, callId, status, turnId, result: 'fixture' })
+  const first = row('Read(a.ts)', '1')
+  const second = row('Grep(needle)', '2')
+  const error = row('Grep(failed)', '3', 'error')
+  const nextTurn = row('Read(b.ts)', '4', 'success', 'next')
+  const result = collapseReadSearch([first, second, error, nextTurn], false)
+  assert.match(result[0].text, /2 次读取／搜索/)
+  assert.deepEqual(result.slice(1), [error, nextTurn])
+  assert.equal(result[0].result, 'Ctrl+O 展开详情')
 })

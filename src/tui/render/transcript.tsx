@@ -78,7 +78,7 @@ function blocks(tokens: Token[], ascii: boolean): ReactNode {
 
 const toolPulse = [ACCENT, '#9a75dd', '#8160bd', '#9a75dd']
 
-function ToolMessage({ entry, ascii }: { entry: ToolTranscriptEntry; ascii: boolean }) {
+function ToolMessage({ entry, ascii, expanded }: { entry: ToolTranscriptEntry; ascii: boolean; expanded: boolean }) {
   const [pulse, setPulse] = useState(0)
   useEffect(() => {
     if (entry.status !== 'pending' || ascii) return
@@ -104,11 +104,13 @@ function ToolMessage({ entry, ascii }: { entry: ToolTranscriptEntry; ascii: bool
       <Box>
         <Text color={color}>{glyph + ' '}</Text>
         <Text bold wrap="truncate-end">{stripVTControlCharacters(entry.text)}</Text>
+        {entry.elapsedMs !== undefined && <Text dimColor>{` · ${(entry.elapsedMs / 1000).toFixed(1)}s`}</Text>}
       </Box>
       {detail && (
         <Box paddingLeft={2}>
-          <Text color={entry.status === 'error' ? color : undefined} dimColor={entry.status !== 'error'} wrap="truncate-end">
-            {(ascii ? '  ' : '└ ')}{detail}
+          <Text color={entry.status === 'error' ? color : undefined} dimColor={entry.status !== 'error'}
+            wrap={expanded ? 'wrap' : 'truncate-end'}>
+            {(ascii ? '  ' : '└ ')}{expanded && result ? result : detail}
           </Text>
         </Box>
       )}
@@ -117,9 +119,9 @@ function ToolMessage({ entry, ascii }: { entry: ToolTranscriptEntry; ascii: bool
 }
 
 export const TranscriptMessage = memo(function TranscriptMessage({
-  entry, ascii
-}: { entry: TranscriptEntry; ascii: boolean }) {
-  if (entry.kind === 'tool') return <ToolMessage entry={entry} ascii={ascii} />
+  entry, ascii, expanded = false
+}: { entry: TranscriptEntry; ascii: boolean; expanded?: boolean }) {
+  if (entry.kind === 'tool') return <ToolMessage entry={entry} ascii={ascii} expanded={expanded} />
   const text = stripVTControlCharacters(entry.text)
   if (entry.kind === 'user') {
     return (

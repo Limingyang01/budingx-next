@@ -28,6 +28,7 @@ export type ToolTranscriptEntry = {
   callId: string
   status: 'pending' | 'success' | 'error' | 'interrupted'
   result?: string
+  elapsedMs?: number
 }
 
 export type TranscriptEntry =
