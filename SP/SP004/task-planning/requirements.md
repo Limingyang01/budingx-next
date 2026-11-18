@@ -28,6 +28,16 @@
 | 参考 §3.1 | todo 卡片 ✔/■/□ + blocked by + 行数自适应 + 完成项 30s TTL + ctrl+t 展开 | 本轮交付 todo 状态与卡片数据；TTL/展开交互属 SP006 |
 | 参考 F-15 | `AskUserQuestion`：**1–4 题**，每题 `{question, header, options[2–4], multiSelect}`；自动 Other 选项；答案按**题目文本**关联 | 行为等价（多题结构） |
 
+## TUI 还原度对本需求的约束（2026-11-18 对齐）
+
+用户 2026-11-18 要求针对参考仓 buding-worker-space 还原能力与 TUI 布局/UI/交互，作为 SP001–SP016 的**横向约束**落地（[路线图 r9](../../../docs/iteration-plan.md)「TUI 还原度要求」、[还原度基线](../../../docs/tui-fidelity-gap-baseline.md)、设计 §9.7）。**本需求的 AC、依赖与出口门槛不变。**
+
+本需求在还原度上的义务：
+
+- **命令卡片随能力同步交付**：命令文本、解释器、退出码、输出摘要（含截断标记）四项在卡片中可见；不允许「能力已实现但卡片未接线」。
+- **不预支 SP006**：本轮不改四区骨架排布，不在 src/tui/render 内引入虚拟列表、冻结缓存、帧缓冲差分或上下文键位系统；卡片动画与折叠汇总属 SP006。
+- **边界不放宽**：权限模式仍固定三档；仍按「读机制、不抄代码」；参考副本中的 no-op stub 工具目录不作为能力来源。
+
 ## 验收条件（AC）
 
 - **TP-01** Given 多步骤任务，When Agent 提交计划，Then 计划以有序步骤与状态（pending/in_progress/completed/blocked）保存，并可查询。

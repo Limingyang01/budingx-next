@@ -28,6 +28,27 @@
 | [git-worktree-safety](git-worktree-safety/requirements.md) | 路线图；AC 切分 MODEL_PROPOSED | GW-01…09：脏工作区识别、用户改动不丢、改动归属、未授权不写、worktree 进出与失败回落、非 Git 仓库明确、提交范围受控、**slug 校验、恢复复用、keep/remove 退出语义、remoteUrl 脱敏** | 新增 `src/git` 模块 | ✅需求→✅设计→✅计划→▶实施→测试→交付 | [需求 v0.1](git-worktree-safety/requirements.md) ／ [设计 v1.1](design/design.zh.md) ／ [计划 v1.1](design/plan.zh.md) ／ [STATUS](git-worktree-safety/STATUS.md) | 未开始（未执行） | 未开始（未提交） | **待用户放行后**：执行 T6–T9、T23 |
 | [task-planning](task-planning/requirements.md) | 路线图；CAP-L2-08/CAP-L3-15；AC 切分 MODEL_PROPOSED | TP-01…10：计划状态机与进度、计划模式降级为需批准、建议≠批准、用户可编辑计划与拒绝反馈、执行前基线校验、结构化多题追问、取消追问、完成报告真实、**计划持久化与落盘** | core 计划端口 + `src/plan` + 工具族 + TUI 最小卡片 | ✅需求→✅设计→✅计划→▶实施→测试→交付 | [需求 v0.1](task-planning/requirements.md) ／ [设计 v1.1](design/design.zh.md) ／ [计划 v1.1](design/plan.zh.md) ／ [STATUS](task-planning/STATUS.md) | 未开始（未执行） | 未开始（未提交） | **待用户放行后**：执行 T10–T12、T15、T22 |
 
+## 与 TUI 还原度的关系（2026-11-18 对齐）
+
+用户 2026-11-18 要求针对参考仓 buding-worker-space 还原能力与 TUI 布局/UI/交互。该要求作为 SP001–SP016 的**横向约束**落地（见[路线图 r9](../../docs/iteration-plan.md)「TUI 还原度要求」与[还原度基线](../../docs/tui-fidelity-gap-baseline.md)），**不新增 SP 编号、不改变 SP004 的依赖与出口门槛**。
+
+**SP004 在还原度上的职责边界**：
+
+| 归类 | SP004 是否交付 | 说明 |
+| --- | --- | --- |
+| L1 布局骨架（首屏/消息区/输入区/页脚四区） | 否 | 属 SP006 P0 批次；本轮卡片渲染沿用既有 src/tui/render 结构 |
+| L2 交互契约（上下文键位/chord） | 否 | 属 SP006 P0 批次；本轮不新增键位面 |
+| L3 能力面（工具族与主循环） | **是（本轮主体）** | 命令执行、计划/待办、追问、Git 隔离——这些是还原度的能力底座 |
+| L3 能力面的**卡片表现** | **是（本轮最小实现）** | 计划/待办/追问/命令四类卡片按参考行为事实渲染最小形态；完整卡片族属 SP006 P1 |
+
+**本轮对还原度的三项具体义务**：
+
+1. **卡片是还原度的一部分，不是附赠**：设计 §6.5 的「TUI 最小卡片」须与工具实现同步交付，不得出现「能力有了但界面没接」的状态。
+2. **不得为赶进度降级卡片**：卡片形态（状态符号、阻塞来源、选项列表、退出码与截断标记）按参考行为事实对齐；参考仓更丰富的卡片动画/TTL/展开留 SP006，但**最小形态不得缺席**。
+3. **本轮不预支 SP006 的渲染层改造**：不得在 src/tui/render 内引入虚拟列表、冻结缓存、帧缓冲差分或键位上下文系统——那是 SP006 P0 的独立可验收批次，本轮只接线不改造，避免一轮同时背「补能力」与「改渲染层」而再次做不理想。
+
+**明确保留的边界**：权限模式仍为三档（仅可查看/工作区内修改/完全权限），参考仓 7 模式只作安全底线语义来源，**不还原模式数量**；本轮新增的工具族按行为事实自写，**不复制参考仓源码、提示词、内部类型或 bundle**；参考副本中为 no-op stub 的工具目录不作为能力来源。
+
 ## 验收与交接
 
 - 本轮出口门槛（对照路线图 SP004）：① 隔离项目完成定位→修改→运行测试→修复；② 用户追问/转向、Git 脏工作区、Windows quoting、后台状态/取消/输出上限和自身修改撤销有实测；③ 没有提交或推送授权不执行 Git 发布；④ 无旧仓源码/提示词/内部类型迁入，模块边界检查通过。
@@ -43,6 +64,8 @@
   - R-06 完成声明空转 → `canClaimDone` 要求至少一次测试类命令成功。
   - 回退：本轮产出预期落在 `feature/SP004/real-coding-task` 分支，产品版本保持 0.2.0 不动，失败可整体弃分支。
 - Git/产品发布：**文档已提交并推送** —— 提交 `84f2004`，分支 `feature/SP004/real-coding-task`（自 `master` `931ad47` 创建），远端 `refs/heads/feature/SP004/real-coding-task` SHA 已核对一致（`84f200404446c8489dd40489a87e76c8dc2b2c69`）；GitHub API 复核分支存在。**合入 master 未执行**（需交叉验证门禁 GREEN，且属交付阶段）；**npm 发布未执行**（不在授权内）。本次提交仅含文档与 `docs/current-status.md` 一处同步，**无产品代码、依赖或产物**。
+- **2026-11-18 还原度对齐提交**：提交 本次对齐提交（分支 feature/SP004/real-coding-task，基于 f0cf5a6）。内容为规划与文档对齐，**20 个文件、无产品代码**（git diff --stat -- src/ 为空）：新增 docs/tui-fidelity-gap-baseline.md 与本轮 SP/SP004/test-report.md；路线图升 r9；能力矩阵拆分「可用性」与「还原度」两行；能力清单升 v1.4（分母 47→49）；SP004 全套文档对齐（设计 v1.2 §9.7 / 计划 v1.2 / 四需求 / 四 STATUS）。交叉验证门禁 GREEN（npm run merge:gate，四项检查退出码均为 0），全量 375 项自动化通过。
+  - **推送未执行**：本会话 git push 两次失败，原因不同——① 首次远端可达（git ls-remote 正常）但**无可用写凭据**（无 credential helper、无 gh CLI、无 token 环境变量），报 could not read Username for https://github.com；② 重试时网络本身不可达，报 Failed to connect to github.com:443。远端该分支仍停在 f0cf5a6。**恢复条件**：在具备凭据的会话执行 git push origin feature/SP004/real-coding-task，并以 git ls-remote 核对远端 SHA 与本次提交一致。**不因此伪造推送回执。**
 - **本会话环境限制（2026-11-18 实测）**：初测时存在三项沙箱权限限制（① `.git/index.lock` ② 写 `src/tui/dist/` ③ `node --test` 的 `spawn EPERM`）；**提交前复核：①③ 已解除**（分支已创建；`npm run build` 成功；测试运行器正常），**② 亦已解除**（清理 `dist/` 后重建成功）。
 - **既有基线实测（2026-11-18）**：`npm run test:unit` = **332 项，331 通过，1 失败**。失败用例为 `G01 Ink 隐藏 Key 输入、持久化且不回显`（`src/tui/test/app.test.mjs:117`）。
   - **该失败为既有的测试隔离缺陷，与本次改动无关**：本次 `src/` 未被触及（`git diff master --stat -- src/` 为空）；在 master 的独立 worktree（同一提交 `931ad47`）上复现——**单独运行该文件 8 项全通过**，**`src/tui/test/*.test.mjs` 并发运行则失败**（139 项中 1 失败），**全量 `src/*/test/*.test.mjs` 运行则 332 项全通过**。

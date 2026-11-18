@@ -1,6 +1,6 @@
 # SP004 真实编码任务 · 实施计划
 
-版本：v1.1｜状态：**prepared（待用户放行后执行）**｜依据：[design.zh.md](design.zh.md) v1.1（approved，Agent 自审 2026-11-18；v1.1 为参考仓只读审计后修订）｜分支：`feature/SP004/real-coding-task`（基线 `master` = `76edf2c`）｜cwd 约定：所有命令在仓库根执行
+版本：v1.2｜状态：**prepared（待用户放行后执行）**｜依据：[design.zh.md](design.zh.md) v1.2（approved，Agent 自审 2026-11-18；v1.1 为参考仓只读审计后修订，v1.2 为 TUI 还原度约束对齐）｜分支：`feature/SP004/real-coding-task`（基线 `master` = `76edf2c`）｜cwd 约定：所有命令在仓库根执行
 
 > **执行方式**：按 `superpowers:executing-plans` 或 `superpowers:subagent-driven-development` 逐任务执行；步骤用 `- [ ]` 复选框跟踪。
 >
@@ -25,7 +25,7 @@
 
 - 设计：[design.zh.md](design.zh.md) v1.0
 - 需求：[command-execution](../command-execution/requirements.md) v0.1、[coding-task-loop](../coding-task-loop/requirements.md) v0.1、[git-worktree-safety](../git-worktree-safety/requirements.md) v0.1、[task-planning](../task-planning/requirements.md) v0.1
-- 路线图 r6 SP004、能力矩阵 v1.1、排查文档 r1 §4 SP004、参考仓行为事实盘点（只读对照）
+- 路线图 **r9** SP004、能力矩阵 **v4**（含「TUI 还原度（结构等价）」行）、排查文档 r1 §4 SP004、参考仓行为事实盘点（只读对照）、**[TUI 还原度基线](../../../docs/tui-fidelity-gap-baseline.md) 与路线图 r9「TUI 还原度要求」节**
 
 ## Global Constraints
 
@@ -41,6 +41,8 @@
 10. **参考仓对照为强制项**：命令执行、计划/追问、Git/worktree、主循环四域的行为以设计 §9 的审计事实（F-01…F-19）为准；实施中若发现参考行为与本设计不符，**以参考为准修正实现**，偏离须登记理由。
 11. 计划/追问/Git 能力按 **r8** 口径核对（SP004 出口门槛、功能目录与六个 CAP 归属均未变；CAP-L2-05 PowerShell 独立交付；CAP-L3-09 沙箱改为「明确声明能力与局限，不冒充 OS 沙箱」）。
 12. **本仓数据路径**：后台任务输出落 `~/.budingx/sessions/<sessionId>/tasks/`；计划落 `~/.budingx/plans/<sessionId>/`；worktree 落 `~/.budingx/worktrees/`——三者均**不写用户项目目录**。
+13. **TUI 还原度约束（2026-11-18 对齐）**：用户要求针对参考仓 buding-worker-space 还原能力与 TUI 布局/UI/交互，作为 SP001–SP016 的横向约束落地（[路线图 r9](../../../docs/iteration-plan.md)「TUI 还原度要求」、[还原度基线](../../../docs/tui-fidelity-gap-baseline.md)、设计 §9.7）。**不新增 SP 编号、不放宽本轮任何出口门槛。** 本轮义务有二：① 计划/待办/追问/命令四类卡片按参考行为事实交付**最小形态**（状态符号 ✔/■/□/⊘、阻塞来源、选项列表、退出码与截断标记），卡片与工具实现**同步交付**，不允许「能力有、界面没接」；② **不得预支 SP006 P0**——禁止在 src/tui/render 内引入虚拟列表、冻结缓存、帧缓冲差分、上下文键位系统或 chord 分发，也不得改四区骨架排布。折叠汇总（CAP-L1-30）与完整卡片族属 SP006。
+14. **还原度不放宽其他边界**：权限模式仍固定三档（不还原参考仓 7 模式数量）；仍按 SP001 决定 3「读机制、不抄代码」；参考副本中为 no-op stub 的工具目录不作为能力来源，工具只按行为事实立项。
 
 ## Review Focus（评审重点）
 
@@ -51,6 +53,8 @@
 - **用户改动不被吞**：脏工作区中 Agent 修改后，用户的 staged/unstaged/untracked 是否原样存在（合理预期：存在）。
 - **完成声明的空转**：模型在没有测试证据时能否声称完成（合理预期：不能，回注要求继续）。
 - **计划模式绕过**：计划模式下是否有任何写/执行工具能落地（合理预期：全部被阻断）。
+- **卡片与能力脱节**：计划/追问/命令能力已实现但卡片未接线，或卡片缺状态符号/阻塞来源/退出码（合理预期：四类卡片最小形态齐备，RED 用例覆盖）。
+- **预支 SP006**：本轮在 `src/tui/render` 内引入虚拟列表/冻结缓存/帧缓冲差分/上下文键位（合理预期：无——渲染层改造属 SP006 P0 独立批次）。
 
 ---
 
@@ -569,3 +573,4 @@
    - 结论：三项均为沙箱权限限制而非代码缺陷，现已全部解除，**不再阻塞实施**。
 3. **既有基线（2026-11-18 实测）**：`npm run test:unit` = **332 项，331 通过，1 失败**。失败项 `G01 Ink 隐藏 Key 输入、持久化且不回显` 为**既有的并发隔离缺陷**（`src/` 本轮未触及；master 同提交 `931ad47` 在 `src/tui/test/*.test.mjs` 并发运行下同样失败），**不在 SP004 范围内修复**。实施第一步应复核该基线：若失败集合与上述一致（即仅此 1 项），视为既有基线；出现**新增失败**则先定位。
 4. **风险**：见设计 §9 R-01…R-07 与 OPEN-01…OPEN-06；实施中遇到 OPEN 项阻塞时按 MODEL_PROPOSED 默认方案执行并在 STATUS 登记，实质行为分叉才停等用户。
+5. **还原度防预支检查（2026-11-18 新增）**：实施期间若发现本轮范围需要改四区骨架或引入渲染层扩展，**不在本轮做**——记入 SP006 开轮输入（[还原度基线](../../../docs/tui-fidelity-gap-baseline.md) §5 的 P0 批次），本轮只保证四类卡片的最小形态接线正确。

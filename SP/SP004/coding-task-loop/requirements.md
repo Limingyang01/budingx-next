@@ -23,6 +23,16 @@ Agent 能完成一个真实编码任务闭环：定位问题 → 修改代码 �
 | 参考 F-16 | 回合终止原因枚举 10 项：`completed`/`max_turns`/`aborted_streaming`/`aborted_tools`/`blocking_limit`/`prompt_too_long`/`image_error`/`model_error`/`stop_hook_blocking`/`stop_hook_prevented` | **对齐**：SP002 现有 5 值，本轮补齐缺失项（与 SP005/SP007 的终止原因契约一致） |
 | 参考 F-19 | 参考仓**无**完成证据校验机制；`VerifyPlanExecutionTool` 为 generated stub | **有意加强**：新仓保留 `canClaimDone`（要求测试成功）与执行前基线校验；明确标注为**新仓自主增强**，不声称「与参考对齐」 |
 
+## TUI 还原度对本需求的约束（2026-11-18 对齐）
+
+用户 2026-11-18 要求针对参考仓 buding-worker-space 还原能力与 TUI 布局/UI/交互，作为 SP001–SP016 的**横向约束**落地（[路线图 r9](../../../docs/iteration-plan.md)「TUI 还原度要求」、[还原度基线](../../../docs/tui-fidelity-gap-baseline.md)、设计 §9.7）。**本需求的 AC、依赖与出口门槛不变。**
+
+本需求在还原度上的义务：
+
+- **命令卡片随能力同步交付**：命令文本、解释器、退出码、输出摘要（含截断标记）四项在卡片中可见；不允许「能力已实现但卡片未接线」。
+- **不预支 SP006**：本轮不改四区骨架排布，不在 src/tui/render 内引入虚拟列表、冻结缓存、帧缓冲差分或上下文键位系统；卡片动画与折叠汇总属 SP006。
+- **边界不放宽**：权限模式仍固定三档；仍按「读机制、不抄代码」；参考副本中的 no-op stub 工具目录不作为能力来源。
+
 ## 验收条件（AC）
 
 - **CT-01** Given 一个编码任务，When Agent 执行修改后运行测试，Then 测试失败信息被回喂给模型并触发修复迭代，而非直接结束回合。

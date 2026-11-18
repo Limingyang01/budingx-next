@@ -8,7 +8,7 @@
 
 USER_CONFIRMED：独立实现 Coding Agent，使用 Node.js + TypeScript，主线 master，当前产品为 TUI 单端，保持共享 Core 的宿主边界。按 SP 与功能目录组织需求，TUI 通过 npm 交付；规划本身不授权发布或实施。
 
-配套必读：[能力与验收矩阵](agent-capability-matrix.md)、[高级能力功能拆分与验收](advanced-capabilities-plan.md)、[TUI npm 一键发布方案](npm-release-plan.md)、[剩余 SP 参考复刻排查](reference-tui-replication-audit.md)。它们是本路线图的组成部分；功能名称作为索引，不引入需求 ID。
+配套必读：[能力与验收矩阵](agent-capability-matrix.md)、[高级能力功能拆分与验收](advanced-capabilities-plan.md)、[TUI npm 一键发布方案](npm-release-plan.md)、[剩余 SP 参考复刻排查](reference-tui-replication-audit.md)、[TUI 还原度差距基线](tui-fidelity-gap-baseline.md)。它们是本路线图的组成部分；功能名称作为索引，不引入需求 ID。
 
 当前交付计划为 **SP001–SP016**，共 16 轮。团队、浏览器、Computer Use 和定时任务仍为必交。SP008 保留宿主契约、共享数据与传输边界，由轻量测试客户端验证。
 
@@ -66,7 +66,7 @@ SP010 继续交付宿主契约与共享边界。SP011 只规划 TUI/npm 交付�
 | SP003 | 工作区与安全修改：workspace-tools、change-preview、permission-controls、file-context | SP002 | 跨目录搜索、编码/CRLF/大文件/忽略规则、补丁冲突、目录穿越/junction 越界有回归；拒绝写入磁盘不变，diff 与实际修改一致，用户无关改动保留。**三权限模式（仅可查看/工作区内修改/完全权限，用户固定）切换与边界有回归**。（SP003 修复已合入 master，0.3.0 候选已准备） |
 | SP004 | 真实编码任务：command-execution、coding-task-loop、git-worktree-safety、task-planning | SP003 | 隔离项目完成定位→修改→运行测试→修复；用户追问/转向、Git 脏工作区、Windows quoting、后台状态/取消/输出上限和自身修改撤销有实测；没有提交或推送授权不执行 Git 发布。 |
 | SP005 | 长会话与数据可靠性：context-budget、session-recovery、failure-recovery、project-memory | SP004 | 压缩保留约束/计划/工具状态；跨进程恢复不盲重放副作用；项目记忆/会话隔离、原子持久化、升级/备份和共享写入约束有 fixture 与真实进程证据；明确长任务失败原因。 |
-| SP006 | 日常开发与 TUI 候选：project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging | SP005 | 项目指令、技能/MCP、受控 hooks、联网来源、追问/计划可用；TUI 中文/多行/快捷键/终端 resize 和无头事件/退出码可验证；实际 tarball 在仓库外隔离安装并完成核心任务，形成 npm dry-run 骨架而不上传。 |
+| SP006 | 日常开发与 TUI 候选：project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging | SP005 | 项目指令、技能/MCP、受控 hooks、联网来源、追问/计划可用；TUI 中文/多行/快捷键/终端 resize 和无头事件/退出码可验证；实际 tarball 在仓库外隔离安装并完成核心任务，形成 npm dry-run 骨架而不上传。**TUI 还原度 P0 达标**：首屏/消息区/输入区/页脚四区骨架、消息折叠汇总、长转录虚拟列表与冻结缓存、上下文键位系统（含 chord 与保留键校验）按[还原度基线](tui-fidelity-gap-baseline.md)§5 判定；P0 未过不得进入 P1 批次。 |
 | SP007 | Agent 质量与扩展：evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | SP006 | 至少两类目标公开协议/实际模型通过能力矩阵；子代理权限/预算/取消/冲突有真实链路；图片和复杂工具参数按能力处理；联网/hooks/MCP 失败不越权；产物符合性、诊断/性能/隐私回归及稳定宿主契约通过。团队/Computer Use 的权限、预算与工具事件边界供 SP011–SP013 复用，不在本轮假称已交付。 |
 | SP008 | 多端架构入口与共享边界：shared-models-and-history、session-ownership、transport-boundaries | SP005、SP007 | 宿主契约（进程内/stdio/WS）与传输边界以**轻量测试客户端**验证：并发共享配置/历史、活动会话归属、凭据作用域和崩溃恢复实测；同机共享不冒充跨设备同步；固定通用身份、事件与权限接口，供 TUI/headless 和调度使用。 |
 | SP009 | TUI 独立交付和 npm 发布工程：tui-distribution、upgrade-compatibility、npm-publish-pipeline | SP008；SP006–007 的 npm 制品/校验基础 | TUI 干净 Windows 安装/升级/卸载；通过一条 npm run publish 完成门禁、同一 tarball 的安装测试、上传与回执；dry-run、next/latest、同版本/权限失败/不确定上传恢复有测试；来源许可及包名权限满足才可实际上传，当前无发布授权。 |
@@ -75,8 +75,8 @@ SP010 继续交付宿主契约与共享边界。SP011 只规划 TUI/npm 交付�
 | SP012 | 浏览器操作：browser-session、page-actions、browser-artifacts | SP010 | 导航、定位、点击/输入、等待、截图、上传/下载在批准范围内真实执行；页面变化/弹窗/断连和不可信内容可控；不以网页抓取代替浏览器操作。 |
 | SP013 | Computer Use：computer-permissions、screen-actions、desktop-control-recovery | SP012 | 授权截图/应用/显示器选择、坐标/键鼠动作、多屏/DPI、焦点变化、拒绝/撤销与紧急停止有真实 Windows 证据；经 TUI 宿主独立使用。 |
 | SP014 | 定时任务：schedule-management、durable-scheduler、scheduled-agent-run | SP010；团队任务依赖 SP011 | 一次性/周期任务、时区/DST、重启/错过触发、租约/重复触发、并发上限、权限快照/撤销、执行历史/通知/取消通过；无交互时不挂起等审批，也不绕过权限。管理入口为 TUI/headless，使用本地或无头回执。 |
-| SP015 | 当前范围全能力集成与交付：tui-capability-integration、advanced-distribution、full-upgrade | SP011–SP013、SP014、SP009 | 团队→浏览器→桌面操作→定时执行的组合任务在 TUI/headless 宿主通过；TUI npm 全能力包与配套可选资源、升级/权限/历史迁移、发布回执重新验证，旧轻量包不能代表全能力包可用；开轮前以 inventory v2 补齐当前范围高级任务与盲测配额。 |
-| SP016 | 当前范围完整替代验收：full-agent-parity、long-running-reliability、final-release-evidence | SP015 | 当前范围能力矩阵（必交 47 项）无缺项/FAIL/UNVERIFIED；固定任务与独立盲测、恢复/负向安全、npm 公开安装和用户工作试用分别验收；有证据不足或实质差距则继续修复/增轮，不宣布完整替代。 |
+| SP015 | 当前范围全能力集成与交付：tui-capability-integration、advanced-distribution、full-upgrade | SP011–SP013、SP014、SP009 | 团队→浏览器→桌面操作→定时执行的组合任务在 TUI/headless 宿主通过；TUI npm 全能力包与配套可选资源、升级/权限/历史迁移、发布回执重新验证，旧轻量包不能代表全能力包可用；开轮前以 inventory v2 补齐当前范围高级任务与盲测配额。**TUI 还原度 P1 达标**：命令注册表三型契约（local/local-jsx/prompt）、面板类命令、工具卡片族与折叠/转录交互按[还原度基线](tui-fidelity-gap-baseline.md)§5 判定。 |
+| SP016 | 当前范围完整替代验收：full-agent-parity、long-running-reliability、final-release-evidence | SP015 | 当前范围能力矩阵（必交 47 项）无缺项/FAIL/UNVERIFIED；固定任务与独立盲测、恢复/负向安全、npm 公开安装和用户工作试用分别验收；有证据不足或实质差距则继续修复/增轮，不宣布完整替代。**TUI 还原度公布**：按[还原度基线](tui-fidelity-gap-baseline.md)§6 的结构覆盖率口径公布 PASS/PARTIAL/MISS 分母与结果；缺项或 FAIL 不得宣称完整替代，禁用「已对齐/同等效果」措辞。 |
 
 
 SP008 自 SP001/005 承接共享数据约束，以契约和轻量测试客户端验证宿主入口。SP002–SP007 保持宿主无关和可取消。
@@ -139,10 +139,32 @@ SP008 自 SP001/005 承接共享数据约束，以契约和轻量测试客户端
 
 待用户拍板（排查文档 §5）：① manifest v2 新增 15 项 CAP ID 的必需性（8 项 L1、2 项 L2、2 项 L3、3 项 L4）；② 10 项基线证据修正登记（含 browser/CU stub、迁移 8+5、hook 27+1、退出码 0/1+subtype 三值）；③ 6 组范围外提议（计费 upsell/营销趣味/云审查云计划/内部与 stub 命令/voice 与原生移动 QR 维持/Slack 安装）。r5 的原始分母为 53。现行必交分母仍为 47。
 
+## TUI 还原度要求（2026-11-18，USER_CONFIRMED）
+
+用户 2026-11-18 指示：已做 3 个 SP，功能还原不理想，要针对旧仓 `buding-worker-space` 还原能力——除部分特色化功能调整外，**能力要相同，TUI 的布局、UI、交互都要还原**。
+
+该要求**不新增 SP 编号**，作为 SP001–SP016 的横向约束落地：
+
+- **口径**：见[还原度基线](tui-fidelity-gap-baseline.md)§6 —— 结构覆盖率（参考仓用户可见表面清单作分母，逐项 PASS/PARTIAL/MISS）+ 行为用例（按键序列 → 期望可见结果）。沿用 SP001 O5=B：**自有测量 + 能力清单覆盖度**，禁用「已对齐/同等效果」措辞，不采集原产品效果基线。
+- **分母**：固定为参考仓**当前版本**的用户可见表面清单；归类框架用还原度基线 §3 的四区结构（首屏/消息区/输入区/页脚）。分母一经固定不随实现进度调整。
+- **落点与出口**：
+  - **P0 骨架**（SP006 出口强制）：首屏/消息区/输入区/页脚四区骨架、消息折叠汇总、长转录虚拟列表与冻结缓存、上下文键位系统（含 chord 与保留键校验）。**P0 未过不得进入 P1 批次**，避免一轮同时背「补能力」与「改渲染层」而再次做不理想。
+  - **P1 命令与工具面**（SP015 出口强制）：命令注册表三型契约（local/local-jsx/prompt）、面板类命令、工具卡片族、折叠/转录交互。
+  - **公布**（SP016 出口强制）：公布结构覆盖率分母与 PASS/PARTIAL/MISS 结果；缺项或 FAIL 不得宣称完整替代。
+- **边界（不因还原要求放宽）**：
+  - 权限模式仍固定三档（仅可查看/工作区内修改/完全权限），参考仓 7 模式仅作安全底线语义来源，**不还原模式数量**。
+  - 仍按 SP001 决定 3「读机制、不抄代码」：参考仓无 LICENSE、视为未开源，**只参考行为与结构事实，不复制源码、提示词、内部类型或 bundle**。
+  - 还原度提高不等于放宽既有出口门槛；SP004–SP006 各自门槛全部保留并叠加。
+  - 参考副本为 local recovery build，约 17 个工具目录是生成 no-op stub（`__stubMissing`），**工具只按行为事实立项**，stub 目录名不作为能力来源。
+- **Vim / 鼠标选区 / 备用屏**：属「受控扩展预算（R-A）」的可选项，**不作为 P0/P1 门槛**，明确标为可选。
+
+本节不单独授权开发；实施随对应轮次开轮时按 SDD 流程写入需求/设计/计划。
+
 ## 版本记录
 
 | 版本 | 日期 | 变化 | 身份 |
 | --- | --- | --- | --- |
+| r9 | 2026-11-18 | 新增「TUI 还原度要求」节；SP006/SP015/SP016 出口门槛叠加还原度判定（P0 骨架 / P1 命令与工具面 / 覆盖率公布）；配套新增[还原度基线](tui-fidelity-gap-baseline.md) | USER_CONFIRMED（还原目标与口径）；分母归类与批次划分为 MODEL_PROPOSED；不授权开发 |
 | r8 | 2026-11-18 | 现行 SP001–SP016 连续编号；依赖、验收、能力绑定和版本准备门槛同步；保留旧版规划与证据 | USER_CONFIRMED |
 | r7 | 2026-11-18 | 移除五个暂缓轮次，当前 16 个 SP，六项能力改范围外，无 SP 归属及当前验收；保留 SP010 和必交分母 47 | USER_CONFIRMED |
 | r6 | 2026-11-17 | 用户决定 TUI 单端优先：SP008/SP009/SP016/SP017/SP018 暂缓（编号保留）；SP010 改多端架构入口契约轮；SP011/012/015/019/020/021 收窄当前范围；三权限模式用户固定；清单 v1.1 分母 53→47、任务清单 REM/IM 批注暂缓；spec 门禁 MUST_KEEP/MUST_DEFER 同步 | USER_CONFIRMED（范围/三模式/提交合入推送授权）；阶段拆分与依赖调整为 MODEL_PROPOSED；不授权暂缓轮开发 |

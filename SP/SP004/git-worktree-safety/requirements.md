@@ -27,6 +27,16 @@ Agent 面对 Git 仓库时能识别工作区状态、隔离自己的改动、不
 | 参考 F-08 | 破坏性 git 命令只警告不阻断 | 行为等价（见 `command-execution` CE-18） |
 | 参考 §6 | `/branch`、`/commit`、`/review` 等命令族 | 本轮不交付命令族，仅交付底层能力与门禁 |
 
+## TUI 还原度对本需求的约束（2026-11-18 对齐）
+
+用户 2026-11-18 要求针对参考仓 buding-worker-space 还原能力与 TUI 布局/UI/交互，作为 SP001–SP016 的**横向约束**落地（[路线图 r9](../../../docs/iteration-plan.md)「TUI 还原度要求」、[还原度基线](../../../docs/tui-fidelity-gap-baseline.md)、设计 §9.7）。**本需求的 AC、依赖与出口门槛不变。**
+
+本需求在还原度上的义务：
+
+- **命令卡片随能力同步交付**：命令文本、解释器、退出码、输出摘要（含截断标记）四项在卡片中可见；不允许「能力已实现但卡片未接线」。
+- **不预支 SP006**：本轮不改四区骨架排布，不在 src/tui/render 内引入虚拟列表、冻结缓存、帧缓冲差分或上下文键位系统；卡片动画与折叠汇总属 SP006。
+- **边界不放宽**：权限模式仍固定三档；仍按「读机制、不抄代码」；参考副本中的 no-op stub 工具目录不作为能力来源。
+
 ## 验收条件（AC）
 
 - **GW-01** Given 仓库存在已暂存修改，When Agent 读取仓库状态，Then 区分 staged / unstaged / untracked / conflicted 四类并分别计数；Git 调用带 `--no-optional-locks`；返回 `remoteUrl`（**凭据脱敏后**）、`isHeadOnRemote`、`worktreeCount`。
