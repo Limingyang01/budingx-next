@@ -403,7 +403,7 @@
   7. `git push`、`git commit`、`npm install` → **不豁免**（CE-09）
 - **GREEN**：自写受限解析与白名单表；diff 复用 SP003 `diffLines`
 - **验证**：`npm run build && node --test src/exec/test/sed-edit.test.mjs src/exec/test/readonly-commands.test.mjs`
-- **完成事实**：待填
+- **完成事实**（2026-11-18）：RED 已确认（`sed-edit.mjs` 模块缺失失败；`readonly-commands.test.mjs` 5 项由 T2 实现直接覆盖，作为 CE-09 回归守卫）→ GREEN 14/14（sed-edit 9 + readonly-commands 5）；全量 440/440 通过。实现：`parseSedEdit` 引号感知分词 + 短旗标白名单（仅 `-i`/`-E`/`-r` 组合，`--` 与备份后缀、多目标文件、`-n` 危险组合、非 `s` 命令一律拒绝）+ s 命令三段式拆分（模式/替换/旗标，仅允许 `g`）；`validateSedEdit` 复用 `Workspace.resolve` 判定工作区内且为已存在文件；`applySedEdit` 按行替换（BRE→JS 正则转换、`&`/`\1` 替换语义）、`diffLines` 产出 diff、`writeWorkspaceFile` 带指纹冲突检查写盘、可选登记 `CheckpointStore`（可撤销、带 turnId）。**Ruling**：`readonly-commands.test.mjs` 为 AC CE-09 回归守卫（T2 已实现），非新增生产代码。
 
 ### T22 · 计划持久化、审批通道与语义修正
 

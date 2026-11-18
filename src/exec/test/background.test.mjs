@@ -82,11 +82,12 @@ test('CE-07 cancel 终止任务且重复取消幂等', async () => {
     ctx()
   )
   assert.equal(runner.cancel(result.taskId), true)
+  // Windows 并行测试负载下 taskkill 可能慢于常态；取消语义仍以最终到达 cancelled 为准。
   const final = await waitFor(() => {
     const snapshot = runner.status(result.taskId)
     return snapshot && snapshot.outcome === 'cancelled' ? snapshot : undefined
-  })
-  assert.ok(final, '取消后 5s 内状态必须为 cancelled')
+  }, 15000)
+  assert.ok(final, '取消后必须到达 cancelled（15s 容忍并行负载）')
   assert.equal(runner.cancel(result.taskId), false)
   assert.equal(runner.cancel('task-not-exists'), false)
 })

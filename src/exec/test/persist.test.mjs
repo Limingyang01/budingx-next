@@ -5,6 +5,18 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+
+/** Windows 下刚退出的 shell 可能短暂占用临时目录：清理带重试并最终忽略失败。 */
+async function cleanupDir(dir) {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      rmSync(dir, { recursive: true, force: true })
+      return
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+  }
+}
 import { createCommandRunner } from '../../tui/dist/exec/runner.js'
 import {
   resolveTaskOutputPath,
@@ -47,7 +59,7 @@ async function waitForDone(runner, taskId, timeoutMs = 10000) {
   throw new Error(`任务 ${taskId} 未在 ${timeoutMs}ms 内结束`)
 }
 
-test('T18 路径解析：会话隔离的绝对路径且位于数据根下', () => {
+test('T18 路径解析：会话隔离的绝对路径且位于数据根下', async () => {
   const home = mkdtempSync(join(tmpdir(), 'budingx-persist-path-'))
   try {
     const p1 = resolveTaskOutputPath('session-a', 'task-1', home)
@@ -56,7 +68,7 @@ test('T18 路径解析：会话隔离的绝对路径且位于数据根下', () =
     assert.notEqual(p1, p2)
     assert.ok(p1.startsWith(home))
   } finally {
-    rmSync(home, { recursive: true, force: true })
+    await cleanupDir(home)
   }
 })
 
@@ -70,7 +82,7 @@ test('T18 persistOutput：创建目录并返回真实字节数', async () => {
     assert.equal(result.size, Buffer.byteLength(content, 'utf8'))
     assert.equal(readFileSync(path, 'utf8'), content)
   } finally {
-    rmSync(home, { recursive: true, force: true })
+    await cleanupDir(home)
   }
 })
 
@@ -94,7 +106,7 @@ test('T18-1 后台任务输出落盘且内容与实际输出一致（真实进�
     assert.equal(snap.persistedOutputPath, done.persistedOutputPath)
   } finally {
     runner.dispose()
-    rmSync(home, { recursive: true, force: true })
+    await cleanupDir(home)
   }
 })
 
@@ -120,7 +132,7 @@ test('T18-2 超大前台输出落盘并回传路径与字节数（真实进程�
     assert.equal(small.persistedOutputPath, undefined)
   } finally {
     runner.dispose()
-    rmSync(home, { recursive: true, force: true })
+    await cleanupDir(home)
   }
 })
 
@@ -147,7 +159,7 @@ test('T18-3 不同会话 ID 的输出互不覆盖（真实进程）', async () =
   } finally {
     runnerA.dispose()
     runnerB.dispose()
-    rmSync(home, { recursive: true, force: true })
+    await cleanupDir(home)
   }
 })
 
@@ -189,6 +201,6 @@ test('T18-4 任务完成产生 command_finished 事件（真实进程）', async
     })
   } finally {
     runner.dispose()
-    rmSync(home, { recursive: true, force: true })
+    await cleanupDir(home)
   }
 })

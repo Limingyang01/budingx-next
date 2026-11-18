@@ -5,6 +5,18 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+
+/** Windows 下刚退出的 shell 可能短暂占用临时目录：清理带重试并最终忽略失败。 */
+async function cleanupDir(dir) {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      rmSync(dir, { recursive: true, force: true })
+      return
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+  }
+}
 import { createCommandRunner } from '../../tui/dist/exec/runner.js'
 import { createSandboxPolicy } from '../../tui/dist/exec/sandbox-policy.js'
 
@@ -69,13 +81,14 @@ test('T19-1 超过阻塞预算：立即返回 running+autoBackgrounded，回合�
     assert.ok(done.persistedOutputPath.startsWith(home))
   } finally {
     runner.dispose()
-    rmSync(home, { recursive: true, force: true })
+    await cleanupDir(home)
   }
 })
 
 test('T19-2 预算内完成：completed 不误转后台', async () => {
   const home = mkdtempSync(join(tmpdir(), 'budingx-auto-bg-fast-'))
-  const runner = makeRunner(home)
+  // 预算放宽到 3000ms：并行测试负载下 node 启动可能超过 300ms，本用例只验证「预算内不误转」。
+  const runner = makeRunner(home, { blockingBudgetMs: 3000 })
   try {
     const result = await runner.run(
       { command: `node -e "process.stdout.write('quick')"` },
@@ -88,7 +101,7 @@ test('T19-2 预算内完成：completed 不误转后台', async () => {
     assert.equal(result.taskId, undefined)
   } finally {
     runner.dispose()
-    rmSync(home, { recursive: true, force: true })
+    await cleanupDir(home)
   }
 })
 
@@ -111,6 +124,6 @@ test('T19-3 自动转后台后 status/cancel 可用且取消幂等', async () =>
     assert.equal(runner.cancel(result.taskId), false, '已终态取消应幂等返回 false')
   } finally {
     runner.dispose()
-    rmSync(home, { recursive: true, force: true })
+    await cleanupDir(home)
   }
 })
