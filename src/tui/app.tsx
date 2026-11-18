@@ -24,6 +24,12 @@ import { ACCENT, renderHeader, sessionTopic, setupHint, terminalStrategy, termin
 import { initialFrame } from './render/types.js'
 import { diffStats, diffViewLines } from './render/diff-view.js'
 import {
+  commandCardLines,
+  planCardLines,
+  questionCardLines,
+  todoCardLines
+} from './render/cards.js'
+import {
   activeToken,
   applyCompletion,
   commandCandidates,
@@ -176,6 +182,27 @@ export function App({
   // SP003 T18c: rejection may carry feedback back to the model, like the
   // reference's "and tell budingx what to do differently" path.
   const [rejectEntry, setRejectEntry] = useState<{ requestId: string; text: string } | null>(null)
+  // SP004 T15 四类卡片：展开、计划焦点/正文编辑与追问作答状态。
+  const [commandExpanded, setCommandExpanded] = useState(false)
+  const [todosExpanded, setTodosExpanded] = useState(false)
+  const [planFocus, setPlanFocus] = useState(0)
+  const [planEditing, setPlanEditing] = useState<{ requestId: string } | null>(null)
+  const [questionIndex, setQuestionIndex] = useState(0)
+  const [questionCursor, setQuestionCursor] = useState(0)
+  const [questionSelections, setQuestionSelections] = useState<Record<string, string[]>>({})
+  const [questionOther, setQuestionOther] = useState<Record<string, string>>({})
+  useEffect(() => {
+    setCommandExpanded(false)
+  }, [frame.command?.callId])
+  useEffect(() => {
+    setPlanFocus(0)
+  }, [frame.plan?.planId])
+  useEffect(() => {
+    setQuestionIndex(0)
+    setQuestionCursor(0)
+    setQuestionSelections({})
+    setQuestionOther({})
+  }, [frame.question?.questionId])
   const editor = useMemo(() => new EditorBuffer(), [])
   const query = search?.text.toLowerCase()
   const inputMatches = search && !transcriptMode
@@ -572,6 +599,107 @@ export function App({
       else if (text === '/') setSearch({ text: '', index: 0 })
       return
     }
+    // SP004 T15 VIS-04：追问挂起时键盘完全交给追问卡片。
+    const question = frame.question
+    if (question !== undefined && question.state === 'pending') {
+      if (key.escape) {
+        session.cancelQuestion(question.questionId)
+        return
+      }
+      if (planEditing !== null) return
+      const index = Math.min(questionIndex, question.questions.length - 1)
+      const current = question.questions[index]
+      if (current === undefined) return
+      const optionCount = current.options.length + 1
+      const answerFor = (merged: Record<string, string[]>): Record<string, string> => {
+        const answers: Record<string, string> = {}
+        for (const item of question.questions) {
+          const values = merged[item.question] ?? []
+          const other = questionOther[item.question] ?? ''
+          if (values.length > 0) answers[item.question] = values.join(', ')
+          else if (other !== '') answers[item.question] = other
+        }
+        return answers
+      }
+      const commit = (merged: Record<string, string[]>) => {
+        if (index + 1 < question.questions.length) {
+          setQuestionIndex(index + 1)
+          setQuestionCursor(0)
+          return
+        }
+        session.answerQuestion(question.questionId, answerFor(merged))
+      }
+      if (key.upArrow || (key.tab && key.shift)) {
+        setQuestionCursor((cursor) => (cursor + optionCount - 1) % optionCount)
+        return
+      }
+      if (key.downArrow || (key.tab && !key.shift)) {
+        setQuestionCursor((cursor) => (cursor + 1) % optionCount)
+        return
+      }
+      if (key.leftArrow) {
+        setQuestionIndex((current) => Math.max(0, current - 1))
+        setQuestionCursor(0)
+        return
+      }
+      if (key.rightArrow) {
+        setQuestionIndex((current) => Math.min(question.questions.length - 1, current + 1))
+        setQuestionCursor(0)
+        return
+      }
+      const keyText = current.question
+      const toggle = (label: string): Record<string, string[]> => {
+        const picked = questionSelections[keyText] ?? []
+        const next = current.multiSelect
+          ? picked.includes(label)
+            ? picked.filter((value) => value !== label)
+            : [...picked, label]
+          : [label]
+        return { ...questionSelections, [keyText]: next }
+      }
+      if (text === ' ' && questionCursor < current.options.length) {
+        setQuestionSelections(toggle(current.options[questionCursor].label))
+        return
+      }
+      if (key.return) {
+        if (questionCursor === current.options.length) {
+          const custom = editor.text.trim()
+          if (custom === '') {
+            setHint(pick('请先输入自定义答案，或 ↑↓ 选择选项', 'Type a custom answer first, or ↑↓ pick an option'))
+            return
+          }
+          const merged = { ...questionSelections, [keyText]: [] }
+          setQuestionOther({ ...questionOther, [keyText]: custom })
+          editor.setText('')
+          setInput('')
+          commit(merged)
+          return
+        }
+        const label = current.options[questionCursor].label
+        const merged = current.multiSelect
+          ? { ...questionSelections, [keyText]: [
+              ...(questionSelections[keyText] ?? []).filter((value) => value !== label),
+              ...((questionSelections[keyText] ?? []).includes(label) ? [] : [label])
+            ] }
+          : { ...questionSelections, [keyText]: [label] }
+        setQuestionSelections(merged)
+        commit(merged)
+        return
+      }
+    }
+    if (planEditing !== null && !typing) {
+      if (key.escape) {
+        setPlanEditing(null)
+        editor.setText('')
+        setInput('')
+        return
+      }
+      if (key.return) {
+        gateway.resolve(planEditing.requestId, 'allow', 'user', undefined, editor.text.trim())
+        setPlanEditing(null)
+        return
+      }
+    }
     const approval = frame.approval
     const previewLength = approval?.preview?.length ?? 0
     if (previewLength > 0 && !typing && (key.upArrow || key.downArrow)) {
@@ -579,6 +707,27 @@ export function App({
         Math.max(0, previewLength - approvalPageSize),
         offset + (key.upArrow ? -1 : 1)
       )))
+      return
+    }
+    if (key.ctrl && text === 'e') {
+      setCommandExpanded((value) => !value)
+      setTodosExpanded((value) => !value)
+      return
+    }
+    if (frame.plan !== undefined && frame.plan.mode !== 'idle' && !typing && editor.isEmpty &&
+      (key.upArrow || key.downArrow)) {
+      const count = Math.max(1, frame.plan.steps.length)
+      setPlanFocus((focus) => (focus + (key.upArrow ? count - 1 : 1)) % count)
+      return
+    }
+    if (approval !== undefined && approval.planId !== undefined && !typing && editor.isEmpty && text === 'e') {
+      const seed = frame.plan !== undefined
+        ? [frame.plan.goal, ...frame.plan.steps.map((step) => `${step.id} ${step.title}`)].join('；')
+        : ''
+      editor.setText(seed)
+      setInput(editor.text)
+      bumpEditor()
+      setPlanEditing({ requestId: approval.requestId })
       return
     }
     if (completion && !approval) {
@@ -853,6 +1002,47 @@ export function App({
       </Box>
     )
   }
+  // SP004 T15：四类卡片按 追问 → 计划 → 待办 → 命令 的顺序显示，行宽与终端一致。
+  const activeQuestion = frame.question?.questions[
+    Math.min(questionIndex, Math.max(0, (frame.question?.questions.length ?? 1) - 1))
+  ]
+  const cardLines: { key: string; dim: boolean; lines: string[] }[] = []
+  if (frame.question !== undefined) {
+    cardLines.push({
+      key: 'question',
+      dim: false,
+      lines: questionCardLines(frame.question, width, {
+        questionIndex,
+        cursor: questionCursor,
+        selected: activeQuestion === undefined
+          ? {}
+          : { [activeQuestion.question]: questionSelections[activeQuestion.question] ?? [] },
+        otherDraft: activeQuestion === undefined ? undefined : questionOther[activeQuestion.question],
+        zh
+      })
+    })
+  }
+  if (frame.plan !== undefined) {
+    cardLines.push({
+      key: 'plan',
+      dim: true,
+      lines: planCardLines(frame.plan, width, { focusIndex: planFocus, zh })
+    })
+  }
+  if (frame.todos !== undefined) {
+    cardLines.push({
+      key: 'todos',
+      dim: true,
+      lines: todoCardLines(frame.todos, width, { expanded: todosExpanded, now, zh })
+    })
+  }
+  if (frame.command !== undefined) {
+    cardLines.push({
+      key: 'command',
+      dim: true,
+      lines: commandCardLines(frame.command, width, { expanded: commandExpanded, zh })
+    })
+  }
   const completionMenu = completion && (
     <Box flexDirection="column">
       {completion.candidates.map((candidate, index) => (
@@ -928,6 +1118,18 @@ export function App({
           {fullScreen && hint && <Text>{hint}</Text>}
         </Box>
       </Box>
+      {cardLines.length > 0 && (
+        <Box flexDirection="column" flexShrink={0}>
+          {cardLines.map((card) => card.lines.map((line, index) => (
+            <Text key={card.key + index} dimColor={card.dim} wrap="truncate-end">{line}</Text>
+          )))}
+          {planEditing !== null && (
+            <Text color="yellow">
+              {pick('编辑计划正文后 Enter 批准 · Esc 取消编辑', 'Enter approves the edited plan · Esc cancels editing')}
+            </Text>
+          )}
+        </Box>
+      )}
       {rejectEntry && (
         <Box flexDirection="column" borderStyle="round" borderColor="yellow">
           <Text color="yellow">

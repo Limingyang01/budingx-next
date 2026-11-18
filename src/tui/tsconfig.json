@@ -19,6 +19,9 @@
     "../provider/**/*.ts",
     "../storage/**/*.ts",
     "../workspace/**/*.ts",
+    "../exec/**/*.ts",
+    "../git/**/*.ts",
+    "../plan/**/*.ts",
     "./**/*.ts",
     "./**/*.tsx"
   ],

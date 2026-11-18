@@ -1,6 +1,7 @@
 // Tool and approval ports owned by Core (SP002 design §3.3, SP003 §4.1 v2).
 
-import type { ChangeRecordSummary } from './events.js'
+import type { ChangeRecordSummary, SessionEvent } from './events.js'
+import type { CommandResult } from './exec.js'
 import type { ToolCapability } from './permissions.js'
 
 export type ToolContext = {
@@ -13,6 +14,15 @@ export type ToolContext = {
   changes?(records: ChangeRecordSummary[]): void
   /** Id of the running turn, for per-turn change grouping (SP003 T18). */
   turnId?: string
+  /** Id of the model tool call this execution belongs to (SP004 T5). */
+  callId?: string
+  /** Lets adapters publish out-of-band events such as command_started (SP004 T5). */
+  emit?(event: SessionEvent): void
+  /**
+   * Lets command adapters report a finished CommandResult so the host can
+   * record evidence for coding-task completion claims (SP004 T13, CT-07).
+   */
+  onCommandResult?(command: string, result: CommandResult): void
 }
 
 export type PreparedTool = {
@@ -46,6 +56,9 @@ export type ApprovalRequest = {
   name: string
   summary: string
   preview?: readonly string[]
+  /** 计划模式待批时携带计划标识与版本（SP004 设计 §6.3）。 */
+  planId?: string
+  planVersion?: number
 }
 
 export type ApprovalDecision = {
@@ -62,6 +75,11 @@ export type ApprovalDecision = {
    * present it is appended to the tool result so the model can act on it.
    */
   feedback?: string
+  /**
+   * 计划批准时宿主可携带用户编辑后的正文；指纹按编辑后正文重算
+   * （SP004 设计 §6.2/§6.3）。
+   */
+  editedText?: string
 }
 
 export interface ApprovalGateway {

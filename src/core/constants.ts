@@ -46,7 +46,14 @@ export const ERROR_CODES = {
   workspaceStaleRead: 'BUDINGX_WORKSPACE_011',
   permissionDenied: 'BUDINGX_PERMISSION_001',
   permissionDeniedByRule: 'BUDINGX_PERMISSION_002',
-  permissionOutsideWorkspace: 'BUDINGX_PERMISSION_003'
+  permissionOutsideWorkspace: 'BUDINGX_PERMISSION_003',
+  execInterpreterUnavailable: 'BUDINGX_EXEC_001',
+  execTimeout: 'BUDINGX_EXEC_002',
+  execInteractiveUnsupported: 'BUDINGX_EXEC_003',
+  execBlockingCommand: 'BUDINGX_EXEC_004',
+  execSandboxUnavailable: 'BUDINGX_EXEC_005',
+  execHardTimeoutExceeded: 'BUDINGX_EXEC_006',
+  execCancelled: 'BUDINGX_EXEC_007'
 } as const
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES]

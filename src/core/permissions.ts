@@ -5,7 +5,7 @@
 
 export type PermissionMode = 'read_only' | 'workspace_edit' | 'full_access'
 
-export type ToolCapability = 'read' | 'write'
+export type ToolCapability = 'read' | 'write' | 'execute'
 
 export type PermissionAction = 'allow' | 'ask' | 'deny'
 

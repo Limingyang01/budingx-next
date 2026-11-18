@@ -1,7 +1,14 @@
+import { randomUUID } from 'node:crypto'
+import { createAskUserQuestionTool } from '../core/questions.js'
 import { Session, type SubmitOptions } from '../core/session.js'
-import type { ApprovalGateway } from '../core/tools.js'
+import type { ApprovalGateway, ToolHandler } from '../core/tools.js'
 import type { DenialRecord } from '../core/events.js'
 import type { PermissionMode } from '../core/permissions.js'
+import { createCommandRunner } from '../exec/runner.js'
+import { createSandboxPolicy } from '../exec/sandbox-policy.js'
+import { createExecTools } from '../exec/tools.js'
+import { createPlanModeHost } from '../plan/host.js'
+import { createPlanModeTools } from '../plan/tools.js'
 import { createOpenAiProvider } from '../provider/openai.js'
 import { ConfigStore } from '../storage/config-store.js'
 import { dataRoot, permissionsPath } from '../storage/paths.js'
@@ -98,17 +105,41 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   })
   // Search results honour Read deny rules (SP003 T18i): a file the policy
   // refuses to read must not leak through Glob/Grep listings either.
-  const { tools, checkpoint } = createWorkspaceTools(workspace, {
+  const { tools: workspaceTools, checkpoint } = createWorkspaceTools(workspace, {
     readDenied: (relativePath) =>
       policy.decide({ tool: 'Read', capability: 'read', path: relativePath })
         .action === 'deny'
   })
+  // SP004 §4.4/§6.1：会话标识隔离后台输出目录与会话计划文件。
+  const sessionId = randomUUID()
+  const planMode = createPlanModeHost({
+    sessionId,
+    workspace,
+    ...(options.home ? { home: options.home } : {})
+  })
+  // SP004 §4.7：隔离后端由宿主注入；本仓尚无已验证后端，因此 fail closed——
+  // 普通命令在 spawn 之前即被拒绝（设计允许的宿主托管能力不受影响）。
+  const runner = createCommandRunner({
+    defaultCwd: workspace.root,
+    sandboxPolicy: createSandboxPolicy({}),
+    sessionId,
+    ...(options.home ? { home: options.home } : {})
+  })
+  const execTools = createExecTools({
+    runner,
+    defaultCwd: workspace.root,
+    platform: process.platform
+  })
+  const tools: ToolHandler[] = [...workspaceTools, ...execTools]
   const denials: DenialRecord[] = []
   const session = new Session({
+    id: sessionId,
     provider: provider(),
     resolveProvider: provider,
     approval: options.approval,
     tools,
+    planMode,
+    disposers: [() => runner.dispose?.()],
     permissionPolicy: policy,
     resolveSnapshot: () => {
       const config = options.getConfig()
@@ -123,6 +154,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       }
     }
   })
+  // 追问与计划模式工具需要 Session 实例本身，因此在构造后追加（数组引用共享）。
+  tools.push(createAskUserQuestionTool(session), ...createPlanModeTools(session))
   session.on((event) => {
     if (event.type === 'denial_recorded') denials.push(event.denial)
   })

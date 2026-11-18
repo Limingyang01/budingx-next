@@ -1,6 +1,8 @@
-// Core event contract (SP002 design §3.2, SP003 design §4.2 v2).
+// Core event contract (SP002 design §3.2, SP003 design §4.2 v2, SP004 design §4.4/§6).
 // Host agnostic: no UI types, JSON serializable.
 import type { PermissionMode } from './permissions.js'
+import type { CommandOutcome } from './exec.js'
+import type { Plan, PendingQuestion, PlanModePhase, QuestionAnswers, QuestionAnnotations } from './plan.js'
 
 export type SessionState =
   | 'idle'
@@ -17,6 +19,12 @@ export type TurnOutcome =
   | 'length_capped'
   | 'max_turns'
   | 'unknown'
+  // SP004 对齐参考终止原因（设计 C-09/F-16；本轮仅契约，产生属后续接线）。
+  | 'blocking_limit'
+  | 'prompt_too_long'
+  | 'image_error'
+  | 'stop_hook_blocking'
+  | 'stop_hook_prevented'
 
 export type NoticeCode =
   | 'api_retry'
@@ -28,6 +36,10 @@ export type NoticeCode =
   | 'orphan_keys_found'
   | 'model_limit_reached'
   | 'file_context'
+  /** 计划模式提示：进入调研/待批、漂移回待审或恢复原档位（SP004 §6.2）。 */
+  | 'plan_mode'
+  /** 编码任务提示：完成声明缺少执行证据并被拒绝（SP004 §5.2，CT-07）。 */
+  | 'coding_task'
 
 export type ErrorClass =
   | 'auth'
@@ -136,6 +148,9 @@ export type SessionEvent =
       name: string
       summary: string
       preview?: readonly string[]
+      /** SP004 T11/T15：计划审批的计划身份，TUI 用它渲染计划卡片与编辑正文。 */
+      planId?: string
+      planVersion?: number
     }
   | {
       type: 'approval_resolved'
@@ -163,6 +178,57 @@ export type SessionEvent =
       boundary: 'intra_turn' | 'inter_turn'
     }
   | { type: 'status'; state: SessionState; note?: string }
+  | {
+      type: 'command_started'
+      turnId: string
+      callId: string
+      command: string
+      interpreter: string
+      cwd: string
+      taskId?: string
+      startedAt: number
+    }
+  | {
+      type: 'command_finished'
+      taskId: string
+      callId?: string
+      turnId?: string
+      outcome: CommandOutcome
+      exitCode?: number
+      outputPath?: string
+      finishedAt: number
+    }
+  | { type: 'plan_updated'; plan: Plan }
+  | {
+      /**
+       * 计划模式单一状态转换（SP004 设计 §6.2）。active=false 表示已离开
+       * 计划模式并恢复 originalMode；phase 描述调研/待批子状态。
+       */
+      type: 'plan_mode_changed'
+      active: boolean
+      phase?: PlanModePhase
+      originalMode?: PermissionMode
+    }
+  | {
+      type: 'question_requested'
+      turnId: string
+      callId: string
+      question: PendingQuestion
+    }
+  | {
+      type: 'question_answered'
+      turnId: string
+      callId: string
+      questionId: string
+      answers: QuestionAnswers
+      annotations?: QuestionAnnotations
+    }
+  | {
+      type: 'question_cancelled'
+      turnId: string
+      callId: string
+      questionId: string
+    }
   | {
       type: 'notice'
       level: 'info' | 'warning' | 'error'

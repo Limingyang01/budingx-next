@@ -63,7 +63,7 @@ test('a silently demoted mandatory capability is reported', () => {
 })
 
 test('statistics that disagree with the rows are reported', () => {
-  const broken = read(MANIFEST).replace('- 总条目：85', '- 总条目：87')
+  const broken = read(MANIFEST).replace(/- 总条目：\d+$/m, '- 总条目：999')
   const result = checkManifest(broken)
   assert.ok(result.failures.some((f) => f.includes('总条目')))
 })

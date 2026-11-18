@@ -112,6 +112,9 @@ function pathCovers(denyPath: string | undefined, allowPath: string | undefined)
   return false
 }
 
+/** 命令执行入口工具：仅可查看模式下连只读白名单命令也不启动（CE-08）。 */
+const EXEC_ENTRY_TOOLS = new Set(['Bash', 'PowerShell'])
+
 export function createPermissionPolicy(
   options: PermissionPolicyOptions
 ): BudingPermissionPolicy {
@@ -170,6 +173,9 @@ export function createPermissionPolicy(
   }
 
   function canRemember(request: PermissionRequest): boolean {
+    // SP004: "allow for this session" also covers command execution in the
+    // workspace-edit mode; execution has no path, so the key is tool-scoped.
+    if (mode === 'workspace_edit' && request.capability === 'execute') return true
     if (mode !== 'workspace_edit' || request.capability !== 'write' || !request.path) return false
     const { real } = resolveTarget(request)
     return !!real && !mandatoryApprovalReason(request, real)
@@ -205,7 +211,27 @@ export function createPermissionPolicy(
       }
       // 5. Mode default (AC PC-01 … PC-05).
       if (request.capability === 'read') {
+        // SP004 CE-08：仅可查看模式下命令入口一律拒绝，即便命令在只读白名单内
+        // （读取类工具不经过命令入口，因此不受此限制）。
+        if (mode === 'read_only' && EXEC_ENTRY_TOOLS.has(request.tool)) {
+          return { action: 'deny', reason: 'The read-only mode does not allow running commands' }
+        }
         return { action: 'allow', reason: 'Read is allowed in every mode' }
+      }
+      // 5.5 SP004: command execution (design §4.5). The read-only mode never runs
+      // commands (CE-08); whitelisted host-managed read-only commands are classified
+      // as 'read' by the execution adapter and stay exempt from approval (CE-09).
+      if (request.capability === 'execute') {
+        if (mode === 'read_only') {
+          return { action: 'deny', reason: 'The read-only mode does not allow running commands' }
+        }
+        if (mode === 'workspace_edit') {
+          if (memory.has(memoryKey(request))) {
+            return { action: 'allow', reason: 'Allowed for this session' }
+          }
+          return { action: 'ask', reason: `Running ${request.tool} needs confirmation` }
+        }
+        return { action: 'allow', reason: 'Full access mode: automatic' }
       }
       if (mode === 'read_only') {
         return { action: 'deny', reason: 'The read-only mode does not allow modifying files' }
