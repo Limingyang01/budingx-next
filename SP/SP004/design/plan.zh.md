@@ -86,7 +86,6 @@
 - **验证**：`npm run build && node --test src/core/test/exec.test.mjs src/core/test/plan.test.mjs src/core/test/coding.test.mjs`
 
 **完成事实（2026-11-18）**：RED 三文件因模块缺失失败 → GREEN 18/18 通过，全量 377/377（基线 359 + 新增 18）。`CommandSpec` 按设计 §4.1 五字段（计划旧文 args/interactive 不入模型规格）；追问端口按设计 §6.4 多题形状。Ruling：`observeCommand(command, result)` 携带命令文本、`CodingTaskState.testEvidence` 记录最近成功测试证据（设计判定表「至少一次测试成功」行的落实）；`BUDINGX_EXEC_001…007` 命名 MODEL_PROPOSED；TurnOutcome 补五值并同步 `src/tui/render/reducer.ts` 标签映射（新值本轮不产生）。
-- **完成事实**：待填
 
 ### T2 · 命令解释器选择与只读命令族判定
 
@@ -103,7 +102,7 @@
 - **RED**：Windows 探测 Git Bash 并执行 POSIX quoting，POSIX 探测 Bash，Windows 独立探测 PowerShell，缺解释器或 POSIX PowerShell 返回错误。固定只读操作与未知参数分别判定，复杂语句不可获得豁免。
 - **GREEN**：以显式表驱动实现，不做自然语言解析
 - **验证**：`npm run build && node --test src/exec/test/interpreter.test.mjs`
-- **完成事实**：待填
+- **完成事实（2026-11-18）**：RED 模块缺失失败 → GREEN 11/11 通过，全量 388/388（377 + 新增 11）。`selectInterpreter` 表驱动探测真实路径（Windows Git Bash 候选 `C:/Program Files/Git/bin/bash.exe` 等；PowerShell 用 `%SystemRoot%/System32/WindowsPowerShell/v1.0/powershell.exe`，参数 `-NoProfile -NonInteractive -Command`；POSIX PowerShell 明确不可用）。`tokenizeCommand` 引号感知分词，复合元字符（; & | > < ` $( ) 换行）与不闭合引号返回 undefined → 不豁免；只读白名单逐参数校验（git 仅 status/log/diff/show/rev-parse/branch 列表形态/remote -v/--version；裸 `git branch <name>` 属创建分支不豁免）；argv 形式同判定。Ruling：第三参 `{exists?}` 探测注入（跨平台测试）；tsconfig include 提前加 `../exec/**/*.ts`。
 
 ### T3 · 真实进程执行（前台）
 
@@ -381,6 +380,7 @@
 - **Create**：`src/exec/destructive.ts`、`src/exec/sandbox-policy.ts`、`src/exec/test/destructive.test.mjs`、`src/exec/test/sandbox-policy.test.mjs`。**Produces**：宿主执行能力探测、受控策略和结构化拒绝。
 - **RED → GREEN**：单元覆盖缺后端、缺网络或文件约束时零 spawn，警告不改写策略及普通命令无 Git 授权。真实后端用合成目标证明子进程无法访问宿主受保护文件、Git 元数据和被拒网络，前后台同等执行。平台不可用记 UNVERIFIED。
 - **验证**：`npm run build && node --test src/exec/test/destructive.test.mjs src/exec/test/sandbox-policy.test.mjs`，另记录每个平台真实后端验证命令及结果。
+- **完成事实（2026-11-18）**：RED（两测试文件模块缺失）→ GREEN 10/10（destructive 4 + sandbox-policy 7）；全量 399/399。`detectDestructiveCommand` 表驱动分词+复合语句保守正则扫描，`destructiveWarningText` 固定文案；`createSandboxPolicy({backend?})` 纯决策层：模型控制字段（dangerouslyDisableSandbox/sandbox/isolation）拒绝、无后端/未验收拒绝（EXEC_005）、网络域名不可强制拒绝；拒绝路径零 spawn 由结构保证。真实后端合成目标验证：本机无 WindowsSandbox/docker/bwrap，记 UNVERIFIED（T0 探测）；runner 注入 spawn 计数断言在 T3 落实。
 
 ### T21 · 命令内受限编辑（sed -i）与结构化只读命令表
 
