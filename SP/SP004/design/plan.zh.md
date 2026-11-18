@@ -281,7 +281,7 @@
   8. `isTestCommand` 覆盖 `npm test`/`vitest`/`pytest`/`go test`/`cargo test` 等
 - **GREEN**：纯状态机 + Session 校验点接线
 - **验证**：`npm run build && node --test src/core/test/coding.test.mjs`；回归 `npm run test:unit`
-- **完成事实**：待填
+- **完成事实**：2026-11-18 完成。`src/core/coding.ts` 由契约（T1）补全为实现：`createCodingTaskTracker({now?,taskId?})`（`start/supplement/redirect/observeCommand/canClaimDone`；`redirect` 替换 goal、重置 `phase='orienting'`、写 `goalReplacedAt` 并清空 `lastTest`/`testEvidence`，旧目标证据不再背书；`supplement` 只追加 `supplements` 不动 goal；`observeCommand` 记录最近命令证据并推进 `fixing`/`testing`/`editing`）与 `createTaskRedirectTool(tracker)`（名称 `TaskRedirect`，仅 `goal` 必填、`reason` 可选，`capability:'read'`、`target` kind `none`，故任何档位免审批）。`src/core/session.ts` 接线：`SessionOptions.codingTask?: CodingTaskTracker`；`dispatchTools` 的 `ToolContext` 注入 `onCommandResult` 转发到 `observeCommand`；`runTurn` 在模型无工具调用准备收尾时校验 `canClaimDone()`，不通过则发 `notice{code:'coding_task'}`、向历史注入一条说明原因的用户消息并 `continue`（受 `maxIterations` 约束，最终仍以 `max_turns` 收尾且保留最后失败证据）。`src/core/tools.ts` 的 `ToolContext` 增 `onCommandResult?(command,result)`；`src/exec/tools.ts` 在前台终态（`outcome !== 'running'`）上报结果；`src/core/events.ts` 的 `NoticeCode` 增 `'coding_task'`。RED：实现前 `node --test src/core/test/coding.test.mjs` 报 `SyntaxError: The requested module ... does not provide an export named 'createCodingTaskTracker'`。GREEN：契约 7 条与新增 11 条同文件共 18/18 通过；全量 `npm run test:unit` **528/528**（`.superpowers/sdd/plan.zh/t13-full-unit.log`，exit=0），`npm run test:checks` 模块边界通过。Ruling：T13 覆盖的 `src/core/test/coding.test.mjs` 原为 T1 契约用例，本轮在同一文件追加用例而非新建文件（计划写的 Create 路径已存在），合并后两批用例同时保留。
 
 ### T14 · 隔离项目端到端闭环（真实编码任务）
 

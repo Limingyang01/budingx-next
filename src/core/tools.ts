@@ -1,6 +1,7 @@
 // Tool and approval ports owned by Core (SP002 design §3.3, SP003 §4.1 v2).
 
 import type { ChangeRecordSummary, SessionEvent } from './events.js'
+import type { CommandResult } from './exec.js'
 import type { ToolCapability } from './permissions.js'
 
 export type ToolContext = {
@@ -17,6 +18,11 @@ export type ToolContext = {
   callId?: string
   /** Lets adapters publish out-of-band events such as command_started (SP004 T5). */
   emit?(event: SessionEvent): void
+  /**
+   * Lets command adapters report a finished CommandResult so the host can
+   * record evidence for coding-task completion claims (SP004 T13, CT-07).
+   */
+  onCommandResult?(command: string, result: CommandResult): void
 }
 
 export type PreparedTool = {

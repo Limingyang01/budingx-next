@@ -38,6 +38,8 @@ export type NoticeCode =
   | 'file_context'
   /** 计划模式提示：进入调研/待批、漂移回待审或恢复原档位（SP004 §6.2）。 */
   | 'plan_mode'
+  /** 编码任务提示：完成声明缺少执行证据并被拒绝（SP004 §5.2，CT-07）。 */
+  | 'coding_task'
 
 export type ErrorClass =
   | 'auth'

@@ -33,6 +33,8 @@ import type {
   ToolContext,
   ToolHandler
 } from './tools.js'
+import type { CommandResult } from './exec.js'
+import type { CodingTaskTracker } from './coding.js'
 import type {
   PermissionMode,
   PermissionPolicy,
@@ -61,6 +63,11 @@ export type SessionOptions = {
   permissionPolicy?: PermissionPolicy
   /** SP004 §6.2: host integration for plan mode (research/pending/approve). */
   planMode?: PlanModeHost
+  /**
+   * SP004 §5.2: coding-task goal state machine. When present, command results
+   * become completion evidence and unsupported "done" claims are rejected (CT-07).
+   */
+  codingTask?: CodingTaskTracker
   maxIterations?: number
   cancelBudgetMs?: number
   queueAutostartMs?: number
@@ -853,7 +860,33 @@ export class Session {
       }
 
       if (calls.length === 0) {
-        outcome = finishReason === 'length' ? 'length_capped' : 'completed'
+        if (finishReason === 'length') {
+          outcome = 'length_capped'
+          break
+        }
+        // CT-07：完成声明必须附带真实证据；无证据时回喂原因并继续迭代。
+        const claim = this.options.codingTask?.canClaimDone()
+        if (claim && !claim.ok && this.options.codingTask?.get()) {
+          const reason = claim.reason ?? '未运行测试'
+          this.emit({
+            type: 'notice',
+            level: 'warning',
+            code: 'coding_task',
+            text: `完成声明缺少证据：${reason}`
+          })
+          this.messages.push({
+            id: randomUUID(),
+            role: 'user',
+            blocks: [
+              {
+                type: 'text',
+                text: `在声称完成之前必须先提供真实执行证据：${reason}。请继续执行必要命令（包含测试）并修复失败，再声明完成。`
+              }
+            ]
+          })
+          continue
+        }
+        outcome = 'completed'
         break
       }
 
@@ -1095,7 +1128,13 @@ export class Session {
           changes: (records) => this.emit({ type: 'change_set', changes: records }),
           turnId: turn.id,
           callId: call.id,
-          emit: (event) => this.emit(event)
+          emit: (event) => this.emit(event),
+          ...(this.options.codingTask
+            ? {
+                onCommandResult: (command: string, result: CommandResult) =>
+                  this.options.codingTask?.observeCommand(command, result)
+              }
+            : {})
         }
         if (permissionRequest && policy?.decide(permissionRequest).action === 'deny') {
           this.pushToolResult(turn, call.id, 'Permission changed before execution', true, ERROR_CODES.permissionDenied)

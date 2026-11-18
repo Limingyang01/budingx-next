@@ -198,6 +198,8 @@ export function createExecTools(options: ExecToolsOptions): ToolHandler[] {
         },
         { signal: context.signal, cwd: options.defaultCwd, onStarted: (info) => emitStarted(info.taskId) }
       )
+      // 前台终态结果作为完成证据上报（SP004 T13，CT-07）；后台任务完成另由 command_finished 事件承载。
+      if (result.outcome !== 'running') context.onCommandResult?.(args.command, result)
       return formatResult(result)
     }
 
