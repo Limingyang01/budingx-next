@@ -1,27 +1,33 @@
 # budingx-next 迭代路线图
 
-状态：r6 已自审采纳（2026-11-17 委托）；TUI 优先、多端暂缓，SP003+ 开轮继承排查清单。版本：r6；更新：2026-11-17。
+状态：r7 当前有效；TUI 单端，规划保留 16 个 SP。版本：r7；更新：2026-11-18。
 
-用户已授权制定 SP 数量和编号，尚未授权按此计划启动 SDD 或产品开发。当前无产品实现；下文均为计划和建议验收门槛，不是通过记录。后续 Agent 必须先读本文件、[迭代管理](../SP/README.md)、[当前状态](current-status.md)和目标迭代记录，核实最新用户授权。
+用户已授权制定 SP 数量和编号，尚未授权按此计划启动 SDD 或产品开发。SP001–SP003 的实际交付状态见当前状态与各轮记录；后续表格列的是出口门槛。后续 Agent 必须先读本文件、[迭代管理](../SP/README.md)、[当前状态](current-status.md)和目标迭代记录，核实最新用户授权。
 
 ## 目标与安排依据
 
-USER_CONFIRMED：独立实现自己的 Coding Agent；使用 Node.js + TypeScript、不依赖 Bun；主线 master；TUI、Desktop、VS Code 独立安装和使用，允许共享模型和历史；可接入未来手机端；效果达到原 Agent 的实际工作能力。项目没有需求 ID，按 SP 版本号和具体功能/优化目录组织；需要建设 TUI npm 一键发布能力，未来由 publish 入口直达 npm，当前不执行发布。
+USER_CONFIRMED：独立实现 Coding Agent，使用 Node.js + TypeScript，主线 master，当前产品为 TUI 单端，保持共享 Core 的宿主边界。按 SP 与功能目录组织需求，TUI 通过 npm 交付；规划本身不授权发布或实施。
 
 配套必读：[能力与验收矩阵](agent-capability-matrix.md)、[高级能力功能拆分与验收](advanced-capabilities-plan.md)、[TUI npm 一键发布方案](npm-release-plan.md)、[剩余 SP 参考复刻排查](reference-tui-replication-audit.md)。它们是本路线图的组成部分；功能名称作为索引，不引入需求 ID。
 
-现扩展为 **21 个 SP**。**r6（2026-11-17 用户决定）起当前交付路线只做 TUI 单端**：SP001–SP007 编码核心与 TUI 体验、SP010 多端架构入口契约、SP011 TUI 交付与 npm 发布工程、SP012 中期编码效果检查；SP013–SP015、SP019 交付团队、浏览器、Computer Use、定时任务；SP020 完成当前范围（TUI + 保留高级能力）集成与升级发布验证，SP021 作当前范围完整替代验收。**SP008（Desktop）、SP009（VS Code）、SP016（远程/H5）、SP017（IM 基础与 Telegram/飞书）、SP018（微信/钉钉）暂缓（DEFERRED）**：编号保留不回收、移出当前依赖与验收分母，恢复须用户另行决定；多端架构入口保留（见 r6 决定节）。
+当前交付计划共 **16 个 SP**，采用现有编号：SP001–SP007、SP010–SP015、SP019–SP021。团队、浏览器、Computer Use 和定时任务仍为必交。SP010 保留宿主契约、共享数据与传输边界，由轻量测试客户端验证。
 
-USER_CONFIRMED（2026-11-16 纳入、**2026-11-17 r6 调整**）：Computer Use、多代理团队、定时任务与浏览器操作仍为必交；**远程访问与 IM 两类随 SP016–SP018 暂缓**，不再是当前必交范围（原「五类高级能力必交」表述被本决定替代）。不能在 SP001 将保留能力重新降为候选；具体技术、交互和验收阈值仍为 MODEL_PROPOSED，尚未启动实施。原有基本编码功能同样是完整替代的必交范围。
+USER_CONFIRMED（2026-11-17 r6）：TUI 权限模式固定为三种——**仅可查看**（只读文件与分析，不修改代码）、**工作区内修改**（允许编辑工作区文件）、**完全权限**（自动执行，无需反复确认）；替代参考仓 7 模式与早前「四类语义」提议，SP003 已交付文件工具权限，SP004 计划扩展命令执行边界。模式切换交互、命令执行边界与安全底线在 SP003 开轮细化，不得借「完全权限」绕过 deny 规则与凭据保护。
 
-USER_CONFIRMED（2026-11-17 r6）：TUI 权限模式固定为三种——**仅可查看**（只读文件与分析，不修改代码）、**工作区内修改**（允许编辑工作区文件）、**完全权限**（自动执行，无需反复确认）；替代参考仓 7 模式与早前「四类语义」提议，由 SP003/SP004 交付，当前未实现。模式切换交互、命令执行边界与安全底线在 SP003 开轮细化，不得借「完全权限」绕过 deny 规则与凭据保护。
-
-后续补充授权：单独实现并验证 MIT 简易聊天 TUI，作为 bootstrap 0.1.0 发布 npm；这不是启动完整 21 轮 SDD。每个完成交付的 SP 更新产品版本，规范见 [版本管理](versioning.md)。用户数据统一由当前用户 home 解析为 `~/.budingx`，禁止硬编码用户名/盘符或使用 `~/.claude`。
+后续补充授权：单独实现并验证 MIT 简易聊天 TUI，作为 bootstrap 0.1.0 发布 npm；后续迭代按各轮授权启动。每个完成交付的 SP 更新产品版本，规范见 [版本管理](versioning.md)。用户数据统一由当前用户 home 解析为 `~/.budingx`，禁止硬编码用户名/盘符或使用 `~/.claude`。
 这是依赖顺序，不是每轮固定一周的工期承诺。每轮以出口门槛为准；模型访问、评测、平台打包等工作量尚未实测，不给出虚假完成日期。某轮过大可拆分后续编号，已使用编号不改名或回收，更新本表与影响记录。
 
 “原 Agent”暂按用户当前使用的原产品行为理解，具体版本和必需能力在 SP001 固定。只用合法可使用的公开接口和黑盒行为建立对比，不复制旧实现、内部类型、提示词或 bundle。没有可运行的合法基线时，只能报告自有能力测量，不宣称对齐成功。
 
-## r6 TUI 优先与多端暂缓（2026-11-17 用户决定）
+## r7 从当前规划移除暂缓轮次（2026-11-18，USER_CONFIRMED）
+
+Desktop、VS Code、远程访问/H5 及 Telegram、飞书、微信、钉钉 IM 移出当前 SP 总表、依赖链、验收与发布范围。原编号 SP008、SP009、SP016、SP017、SP018 只用于历史追溯，保留空号。未来如需纳入，由用户另行确认范围与排期。
+
+SP010 继续交付宿主契约与共享边界。SP011 只规划 TUI/npm 交付，SP015 经 TUI 使用，SP019 提供本地和无头回执。SP020–SP021 验收 TUI、团队、浏览器、Computer Use 和定时任务。[能力清单 v1.2](../SP/SP001/capability-baseline/capability-manifest.md) 将六项记为范围外，清空其当前 SP 和验收方式，必交分母维持 47。历史任务清单 v1 的远程/IM 题目不进入当前任务集，SP020 开轮前仍须补齐高级任务和盲测配额。
+
+## r6 TUI 优先与多端暂缓（2026-11-17，历史记录）
+
+下节保留 r6 决策过程，当前范围以 r7 为准。
 
 用户 2026-11-17 指示：未来 SP 规划调整，目前不需要实现多个端，先做好 TUI 终端；不需要 Desktop、VS Code、远程/H5 与四类 IM 能力，但**保留接入多端的架构入口**方便后续接入；TUI 权限模式保留三种（仅可查看/工作区内修改/完全权限）。据此：
 
@@ -39,30 +45,25 @@ USER_CONFIRMED（2026-11-17 r6）：TUI 权限模式固定为三种——**仅�
 
 | 迭代 | 目标及功能/优化目录（位于 SP/SPnnn/） | 依赖 | 出口验收与下一轮输入 |
 | --- | --- | --- | --- |
-| SP001 | 能力盘点、基线和核心边界：capability-baseline、evaluation-suite、core-boundaries、release-scope | 无 | 固定原产品版本、核心/完整对齐范围、任务集/盲测/预算、公开契约、数据共享/凭据边界和来源台账；npm 包名/平台/运行条件列出待决项。五类新增必交能力不能排除（**r6 调整：远程/IM 随 SP016–SP018 暂缓，见 r6 决定节**）；逐项登记实际行为、目标平台及对照场景。发现其他基线能力差距补计划，不缩减完整替代目标。 |
+| SP001 | 能力盘点、基线和核心边界：capability-baseline、evaluation-suite、core-boundaries、release-scope | 无 | 固定原产品版本、核心/完整对齐范围、任务集/盲测/预算、公开契约、数据共享/凭据边界和来源台账；npm 包名/平台/运行条件列出待决项。按 r7 当前能力矩阵固定必交范围；逐项登记实际行为、目标平台及对照场景。发现其他基线能力差距补计划，不缩减完整替代目标。 |
 | SP002 | 模型与会话闭环：provider-streaming、model-management、session-lifecycle、tui-conversation | SP001 | 真实模型配置与流式交互、工具回合、取消和错误有证据；会话配置快照、事件/终态契约、首个构建和 Node bin/资源边界明确；TUI 不成为其他端运行前置。 |
-| SP003 | 工作区与安全修改：workspace-tools、change-preview、permission-controls、file-context | SP002 | 跨目录搜索、编码/CRLF/大文件/忽略规则、补丁冲突、目录穿越/junction 越界有回归；拒绝写入磁盘不变，diff 与实际修改一致，用户无关改动保留。**三权限模式（仅可查看/工作区内修改/完全权限，用户固定）切换与边界有回归**。（2026-11-17：SP003 已在功能分支实现并完成自动化验证，含对照参考仓的能力对齐批次 T18；待交叉验证门禁 GREEN 后合入 master） |
+| SP003 | 工作区与安全修改：workspace-tools、change-preview、permission-controls、file-context | SP002 | 跨目录搜索、编码/CRLF/大文件/忽略规则、补丁冲突、目录穿越/junction 越界有回归；拒绝写入磁盘不变，diff 与实际修改一致，用户无关改动保留。**三权限模式（仅可查看/工作区内修改/完全权限，用户固定）切换与边界有回归**。（SP003 修复已合入 master，0.3.0 候选已准备） |
 | SP004 | 真实编码任务：command-execution、coding-task-loop、git-worktree-safety、task-planning | SP003 | 隔离项目完成定位→修改→运行测试→修复；用户追问/转向、Git 脏工作区、Windows quoting、后台状态/取消/输出上限和自身修改撤销有实测；没有提交或推送授权不执行 Git 发布。 |
 | SP005 | 长会话与数据可靠性：context-budget、session-recovery、failure-recovery、project-memory | SP004 | 压缩保留约束/计划/工具状态；跨进程恢复不盲重放副作用；项目记忆/会话隔离、原子持久化、升级/备份和共享写入约束有 fixture 与真实进程证据；明确长任务失败原因。 |
 | SP006 | 日常开发与 TUI 候选：project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging | SP005 | 项目指令、技能/MCP、受控 hooks、联网来源、追问/计划可用；TUI 中文/多行/快捷键/终端 resize 和无头事件/退出码可验证；实际 tarball 在仓库外隔离安装并完成核心任务，形成 npm dry-run 骨架而不上传。 |
 | SP007 | Agent 质量与扩展：evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | SP006 | 至少两类目标公开协议/实际模型通过能力矩阵；子代理权限/预算/取消/冲突有真实链路；图片和复杂工具参数按能力处理；联网/hooks/MCP 失败不越权；产物符合性、诊断/性能/隐私回归及稳定宿主契约通过。团队/Computer Use 的权限、预算与工具事件边界供 SP013–SP015 复用，不在本轮假称已交付。 |
-| SP008 | **暂缓（DEFERRED，r6）** Desktop 独立工作台：desktop-host、desktop-coding-workflow、multi-project-sessions | 原 SP007；恢复须用户另行决定 | 编号保留不回收，移出当前依赖与验收分母。原出口门槛保留作恢复依据：干净 Windows 安装即可配模型/编码/审批/看 diff/管理项目会话；宿主崩溃和 UI 重连不重复执行；无需另一端或外部手动服务。 |
-| SP009 | **暂缓（DEFERRED，r6）** VS Code 独立端：vscode-host、workspace-integration | 原 SP007；恢复须用户另行决定 | 编号保留不回收。原出口门槛保留作恢复依据：独立 VSIX 配模型/编码可用，多根/未信任工作区、未保存编辑冲突、diff 和宿主恢复有证据；Remote/WSL 执行位置或限制明确。 |
-| SP010 | 多端架构入口与共享边界：shared-models-and-history、session-ownership、transport-boundaries | SP005、SP007 | 宿主契约（进程内/stdio/WS）与传输边界以**轻量测试客户端**验证：并发共享配置/历史、活动会话归属、凭据作用域和崩溃恢复实测；同机共享不冒充跨设备同步；为未来恢复的远程/IM/调度固定通用身份/事件/权限边界入口。本轮接口通过不等于真实多端功能完成，不交付 Desktop/VS Code/H5/IM 客户端。 |
-| SP011 | TUI 独立交付和 npm 发布工程：tui-distribution、upgrade-compatibility、npm-publish-pipeline | SP010；SP006–007 的 npm 制品/校验基础 | TUI 干净 Windows 安装/升级/卸载；通过一条 npm run publish 完成门禁、同一 tarball 的安装测试、上传与回执；dry-run、next/latest、同版本/权限失败/不确定上传恢复有测试；来源许可及包名权限满足才可实际上传，当前无发布授权。desktop-distribution/vscode-distribution 随 SP008/SP009 暂缓。 |
+| SP010 | 多端架构入口与共享边界：shared-models-and-history、session-ownership、transport-boundaries | SP005、SP007 | 宿主契约（进程内/stdio/WS）与传输边界以**轻量测试客户端**验证：并发共享配置/历史、活动会话归属、凭据作用域和崩溃恢复实测；同机共享不冒充跨设备同步；固定通用身份、事件与权限接口，供 TUI/headless 和调度使用。 |
+| SP011 | TUI 独立交付和 npm 发布工程：tui-distribution、upgrade-compatibility、npm-publish-pipeline | SP010；SP006–007 的 npm 制品/校验基础 | TUI 干净 Windows 安装/升级/卸载；通过一条 npm run publish 完成门禁、同一 tarball 的安装测试、上传与回执；dry-run、next/latest、同版本/权限失败/不确定上传恢复有测试；来源许可及包名权限满足才可实际上传，当前无发布授权。 |
 | SP012 | 中期编码效果检查：coding-parity-checkpoint、core-reliability | SP011 | 固定/盲测核对基本编码能力、长任务与 TUI npm 制品；修复影响高级能力接入的 Core 缺陷，交接稳定基线。此轮只报告中期结果，不能称完整替代。 |
 | SP013 | 多代理团队：team-lifecycle、task-coordination、team-messaging、worktree-isolation | SP012 | 多成员真实并行、任务依赖/租约、消息重放去重、权限/预算/取消传播、冲突合并和崩溃恢复均通过；至少完成一次跨文件开发+独立审查的团队实战。 |
 | SP014 | 浏览器操作：browser-session、page-actions、browser-artifacts | SP012 | 导航、定位、点击/输入、等待、截图、上传/下载在批准范围内真实执行；页面变化/弹窗/断连和不可信内容可控；不以网页抓取代替浏览器操作。 |
-| SP015 | Computer Use：computer-permissions、screen-actions、desktop-control-recovery | SP014 | 授权截图/应用/显示器选择、坐标/键鼠动作、多屏/DPI、焦点变化、拒绝/撤销与紧急停止有真实 Windows 证据；经 TUI 宿主独立使用（SP008 暂缓，不再依赖 Desktop）；未来恢复各端按宿主能力入口接入。 |
-| SP016 | **暂缓（DEFERRED，r6）** 远程访问与 H5：gateway-auth、remote-session、h5-client、remote-recovery | 原 SP010、SP012；恢复须用户另行决定 | 编号保留不回收。原出口门槛保留作恢复依据：配对/短期凭据/吊销、设备/workspace 权限、H5 实际操作、审批归属、会话观察/接管、断线恢复/幂等和远程停止可用；网关可单独运行；手机浏览器实测。 |
-| SP017 | **暂缓（DEFERRED，r6）** IM 基础与 Telegram/飞书：im-adapter-contract、identity-binding、telegram、feishu | 原 SP016；恢复须用户另行决定 | 编号保留不回收。原出口门槛保留作恢复依据：两类渠道真实收发、项目/会话路由、审批、流式编辑/长消息、附件、取消/重试/去重和身份撤销实测；共享适配契约，不能跨用户/群/项目串会话。 |
-| SP018 | **暂缓（DEFERRED，r6）** 微信/钉钉与 IM 完整性：wechat、dingtalk、im-cross-channel | 原 SP017；恢复须用户另行决定 | 编号保留不回收。原出口门槛保留作恢复依据：两类渠道分别完成真实链路，群聊/私聊权限、入站验证、媒体/限流、重启重投、解绑可测；无合法稳定接入时记阻塞，不能以 mock 宣称四渠道完成。 |
-| SP019 | 定时任务：schedule-management、durable-scheduler、scheduled-agent-run | SP012；团队任务依赖 SP013 | 一次性/周期任务、时区/DST、重启/错过触发、租约/重复触发、并发上限、权限快照/撤销、执行历史/通知/取消通过；无交互时不挂起等审批，也不绕过权限。管理入口为 TUI/headless；IM 通知随 SP017/SP018 暂缓，通知渠道恢复前以本地/ headless 回执为准。 |
-| SP020 | 当前范围全能力集成与交付：tui-capability-integration、advanced-distribution、full-upgrade | SP013–SP015、SP019、SP011 | 团队→浏览器→桌面操作→定时执行的组合任务在 TUI/headless 宿主通过；TUI npm 全能力包与配套可选资源、升级/权限/历史迁移、发布回执重新验证，旧轻量包不能代表全能力包可用；开轮前以 inventory v2 补齐当前范围高级任务与盲测配额。Desktop/VSIX/网关/IM 制品随暂缓轮移出。 |
-| SP021 | 当前范围完整替代验收：full-agent-parity、long-running-reliability、final-release-evidence | SP020 | 当前范围能力矩阵（必交 47 项）无缺项/FAIL/UNVERIFIED；固定任务与独立盲测、恢复/负向安全、npm 公开安装和用户工作试用分别验收；暂缓能力单列 DEFERRED 不计缺项、也不得宣称已交付；有证据不足或实质差距则继续修复/增轮，不宣布完整替代。 |
+| SP015 | Computer Use：computer-permissions、screen-actions、desktop-control-recovery | SP014 | 授权截图/应用/显示器选择、坐标/键鼠动作、多屏/DPI、焦点变化、拒绝/撤销与紧急停止有真实 Windows 证据；经 TUI 宿主独立使用。 |
+| SP019 | 定时任务：schedule-management、durable-scheduler、scheduled-agent-run | SP012；团队任务依赖 SP013 | 一次性/周期任务、时区/DST、重启/错过触发、租约/重复触发、并发上限、权限快照/撤销、执行历史/通知/取消通过；无交互时不挂起等审批，也不绕过权限。管理入口为 TUI/headless，使用本地或无头回执。 |
+| SP020 | 当前范围全能力集成与交付：tui-capability-integration、advanced-distribution、full-upgrade | SP013–SP015、SP019、SP011 | 团队→浏览器→桌面操作→定时执行的组合任务在 TUI/headless 宿主通过；TUI npm 全能力包与配套可选资源、升级/权限/历史迁移、发布回执重新验证，旧轻量包不能代表全能力包可用；开轮前以 inventory v2 补齐当前范围高级任务与盲测配额。 |
+| SP021 | 当前范围完整替代验收：full-agent-parity、long-running-reliability、final-release-evidence | SP020 | 当前范围能力矩阵（必交 47 项）无缺项/FAIL/UNVERIFIED；固定任务与独立盲测、恢复/负向安全、npm 公开安装和用户工作试用分别验收；有证据不足或实质差距则继续修复/增轮，不宣布完整替代。 |
 
 
-SP008/SP009 已暂缓（r6），不再安排并行实施；恢复时只有在 Core、宿主协议和验证资源稳定后才可并行。SP010 的共享数据约束从 SP001/005 就需纳入设计，SP010 负责以契约与轻量测试客户端落地多端入口，避免到时重写存储；SP002–007 必须保持宿主无关和可取消，不能让 TUI 变成未来各端的后端前置服务。
+SP010 自 SP001/005 承接共享数据约束，以契约和轻量测试客户端验证宿主入口。SP002–SP007 保持宿主无关和可取消。
 
 ## 如何证明达到原 Agent 效果
 
@@ -77,7 +78,7 @@ SP008/SP009 已暂缓（r6），不再安排并行实施；恢复时只有在 Co
 5. 真实模型不可用、原产品无法合法运行或样本不足时标 UNVERIFIED，并写恢复条件，不能用 mock 结果替代。公开榜单分数也不能替代自己的任务集。
 6. SP006 起收集用户真实开发失败，SP021 建议连续两轮完整回归及至少 5 个工作日真实任务试用；新增失败加入回归集并保留原任务集的可比版本，不能通过删除难题提分。
 
-这是可观测行为对齐，不承诺黑盒内部结构相同。完整多代理团队、浏览器/Computer Use 和定时任务仍为必交（SP013–SP015、SP019）；远程/H5 与四类 IM 随 SP016–SP018 暂缓（r6 用户决定），不得用“核心任务通过”替代保留功能的验收，也不得把暂缓能力宣称为已交付。新增能力的具体功能目录、正向/负向场景和组合任务见高级能力计划。
+这是可观测行为对齐，不承诺黑盒内部结构相同。完整多代理团队、浏览器/Computer Use 和定时任务仍为必交（SP013–SP015、SP019）；远程/H5 与四类 IM 已移出当前范围（r7），不得用“核心任务通过”替代保留功能的验收，也不得把范围外能力宣称为已交付。新增能力的具体功能目录、正向/负向场景和组合任务见高级能力计划。
 
 统计限制：30 题×3 次是初始测量方案，不足以自动证明非劣性；分别报告独立任务数量与重复运行的相关性、关键分组和不确定性。结果区间跨越 5 个百分点门槛时结论为“证据不足”，扩充独立样本或运行后再判断；不得只报告点估计。
 
@@ -92,7 +93,7 @@ SP008/SP009 已暂缓（r6），不再安排并行实施；恢复时只有在 Co
 
 ## 后续 Agent 的执行入口
 
-当前状态：**SP001 已验收（规格轮，用户 2026-11-16 验收通过，设计 v1 批准；2026-11-17 清单 v1.1 范围调整见 r6）；SP002 已实现并完成本地验证并发布 0.2.0；**SP003 已实现并完成本地验证（302 项产品单元全绿，含对照参考仓的能力对齐批次 T18），待交叉验证门禁 GREEN 后合入 master**；其余轮次中 SP008/SP009/SP016/SP017/SP018 为 DEFERRED（r6），其余仍为 PLANNED。SP001 已产出[能力基线、核心边界与发布范围](../SP/SP001/requirements-summary.md)，含[能力清单 v1.1](../SP/SP001/capability-baseline/capability-manifest.md)（85 项，必交 47、暂缓 6）、核心边界与不变量、评测集规格与[任务清单](../SP/SP001/evaluation-suite/task-inventory.md)、发布范围与待决项。47 条 AC 走查：46 PASS / 1 NOT_APPLICABLE（规格层面，不代表产品能力已实现），见[验证报告](../SP/SP001/test-report.md)。用户已拍板 O1=A（完整制品沿用 npm `budingx` 同名）、O2=A（Windows 先行）、O5=B（不采集原产品效果基线，效果口径永久为自有测量 + 覆盖度，5 个百分点非劣门槛废除）。2026-11-17 完成[剩余 SP 参考复刻全面排查](reference-tui-replication-audit.md)（r1，待审阅）：逐 SP 参考行为对照与补充任务、15 项 manifest v2 新增提议、10 项基线证据修正、6 组范围外提议；采纳后各轮开轮设计继承对应清单（暂缓轮清单保留作恢复储备）。
+当前状态：SP001 规格已验收，SP002 已发布 0.2.0，SP003 已合入 master 并准备 0.3.0。后续轮次以[当前状态](current-status.md)与对应 STATUS 为准。[能力清单 v1.2](../SP/SP001/capability-baseline/capability-manifest.md) 保留 85 个基线条目，当前必交 47。效果口径为 SP001 决议 O5=B 的自有能力测量与覆盖度。
 
 1. 用户授权启动时，从 SP001 开始，不跳过基线直接搭三端 UI；若用户改变顺序，记录影响并保留新决定。
 2. 在 SP/SP001/requirements-summary.md 列具体功能/优化目录，不创建需求 ID；按模板补来源、AC、依赖和状态。
@@ -100,7 +101,7 @@ SP008/SP009 已暂缓（r6），不再安排并行实施；恢复时只有在 Co
 4. 下一轮先核对上一轮出口证据。缺口明确记录后由用户决定延期或带风险继续，不自动把未验证记成通过。
 5. 修改路线图时记录原因和影响；保留已执行迭代的历史，不覆盖旧验收结论。
 
-## r5 参考复刻全面排查（2026-11-17）
+## r5 参考复刻全面排查（2026-11-17，历史记录）
 
 依据用户 2026-11-17 指示（SP002 完成后全面排查剩余 SP，以参考仓 TUI 为还原目标；UI/交互/功能点直接参考、实现逻辑独立编写），产出[排查文档 r1](reference-tui-replication-audit.md)：6 路只读盘点（输入渲染 / 命令 / 工具 / 权限·Hook / 会话·无头 / 记忆·扩展）× 清单 v1 × 本表交叉核对。**21 轮结构与必交范围不变；排查只增补行为对照与补充任务，不降低任何门槛。**（r6 注：必交范围随后经用户 2026-11-17 决定调整——远程/IM/多端暂缓、分母 47；排查事实不变，暂缓轮对照保留作恢复储备。）
 
@@ -117,22 +118,22 @@ SP008/SP009 已暂缓（r6），不再安排并行实施；恢复时只有在 Co
 | SP010 | 存储事务锁/迁移门控/rename 竞态 guard/权限桥行为面 → 自定最小契约+符合性测试 |
 | SP013 | swarm 消息协议（广播成本警告/shutdown request_id）、teammate pills/banner、团队记忆；worktree 隔离保持更强门槛 |
 | SP014/SP015 | **参考副本为 recovery build：WebBrowser 为 stub、无 computer-use 目录 → 无本地实现可参考**；行为规格以公开描述+高级能力计划为准，全自写（Playwright/CDP、Windows 公开 API）；门槛不降 |
-| SP016 | **暂缓（r6）**；/session URL+QR、teleport（部分 stub，可选提议）、remotePermissionBridge 参考事实保留作恢复储备 |
 | SP019 | cron 四工具卡片、durable:false 会话级 vs 持久双档、jitter、任务类型族 |
 | SP020/SP021 | 按 r6 当前范围（TUI + 团队/浏览器/CU/调度）验收；以自有测量+覆盖度（分母 47）+保护用例+用户试用（O5=B）；inventory v2 补齐高级任务/盲测配额后才可宣称全量覆盖 |
 
-待用户拍板（排查文档 §5）：① manifest v2 新增 15 项 CAP ID 的必需性（8 项 L1、2 项 L2、2 项 L3、3 项 L4）；② 10 项基线证据修正登记（含 browser/CU stub、迁移 8+5、hook 27+1、退出码 0/1+subtype 三值）；③ 6 组范围外提议（计费 upsell/营销趣味/云审查云计划/内部与 stub 命令/voice 与原生移动 QR 维持/Slack 安装）。未拍板前维持 v1 分母 53 与各默认处理。
+待用户拍板（排查文档 §5）：① manifest v2 新增 15 项 CAP ID 的必需性（8 项 L1、2 项 L2、2 项 L3、3 项 L4）；② 10 项基线证据修正登记（含 browser/CU stub、迁移 8+5、hook 27+1、退出码 0/1+subtype 三值）；③ 6 组范围外提议（计费 upsell/营销趣味/云审查云计划/内部与 stub 命令/voice 与原生移动 QR 维持/Slack 安装）。r5 的原始分母为 53。现行必交分母按 r7 为 47。
 
 ## 版本记录
 
 | 版本 | 日期 | 变化 | 身份 |
 | --- | --- | --- | --- |
+| r7 | 2026-11-18 | 移除五个暂缓轮次，当前 16 个 SP，六项能力改范围外，无 SP 归属及当前验收；保留 SP010 和必交分母 47 | USER_CONFIRMED |
 | r6 | 2026-11-17 | 用户决定 TUI 单端优先：SP008/SP009/SP016/SP017/SP018 暂缓（编号保留）；SP010 改多端架构入口契约轮；SP011/012/015/019/020/021 收窄当前范围；三权限模式用户固定；清单 v1.1 分母 53→47、任务清单 REM/IM 批注暂缓；spec 门禁 MUST_KEEP/MUST_DEFER 同步 | USER_CONFIRMED（范围/三模式/提交合入推送授权）；阶段拆分与依赖调整为 MODEL_PROPOSED；不授权暂缓轮开发 |
 | r5 | 2026-11-17 | 并入剩余 SP 参考复刻排查 r1：逐 SP 行为对照增补、渲染模式决策提议、SP014/015 证据修正（参考 stub）、manifest v2 与范围外提议待各轮开轮拍板；SP002 状态更新为已实现待验收 | AGENT_REVIEWED（2026-11-17 委托自审采纳）；排查不授权开发 |
 | r1 | 2026-11-16 | 提议 SP001–SP012；按具体功能/优化拆分，无需求 ID；定义效果对齐评测和阶段出口 | MODEL_PROPOSED；编号与数量安排由用户授权，实施未授权 |
 | r4 | 2026-11-16 | SP001 验收通过（规格轮）；O1=A 沿用 `budingx` 同名、O2=A Windows 先行、O5=B 不采集原产品效果基线：5 个百分点非劣门槛与原产品对照条款废除，效果口径改为自有测量 + 覆盖度 | USER_CONFIRMED；SP002+ 实施仍未授权 |
 
-## r2 复查及迭代拆分约束
+## r2 复查及迭代拆分约束（历史记录）
 
 原计划遗漏的具体出口已补入：终端交互、配置管理、Git/worktree 与撤销、计划/追问、项目记忆、联网、hooks、子代理、多模态、无头调用、宿主断连、共享/远程边界及 npm 发布。完整场景逐项见能力矩阵，npm 方案规定发布命令、制品身份和失败恢复。
 
@@ -142,7 +143,7 @@ r2 历史说明：原 SP006/SP007/SP010/SP011 范围较大；它们是阶段，�
 | --- | --- | --- | --- |
 | r2 | 2026-11-16 | 补能力矩阵、具体出口、统计限制；npm 验证前移 SP006，SP011 完成一键发布工程；明确完整对齐候选和拆轮条件 | MODEL_PROPOSED；仅规划，未启动开发或发布 |
 
-## r3 完整替代范围与编号调整
+## r3 完整替代范围与编号调整（历史记录）
 
 本次追加 SP013–SP021，保留原编号，不重排已规划的功能。原 SP012 的最终验收职责移至 SP021，SP012 保留中期编码检查职责；SP011 初版发布和 SP020 全能力发布验证都保留，避免一开始的制品测试替代最终制品测试。五类高级能力范围是 USER_CONFIRMED，不是待决定的候选；本表拆分、顺序和技术阈值是 MODEL_PROPOSED。（**r6 注：2026-11-17 用户决定将远程/H5 与 IM 两类暂缓，保留团队/浏览器/CU/调度；见 r6 决定节。**）
 

@@ -16,7 +16,7 @@
 
 ## 未实现
 
-完整编码 Agent 的**命令执行与任务循环**、转录持久化与恢复、Computer Use、团队、浏览器和调度均未实现；Desktop/VSIX、远程/H5、IM 按 r6 暂缓（未实现且移出当前规划交付）。SP003 交付的是**文件工具与权限控制**，不等于完整 Coding Agent：终端命令、计划与测试循环由 SP004 实现，跨会话快照由 SP005 实现。
+完整编码 Agent 的**命令执行与任务循环**、转录持久化与恢复、Computer Use、团队、浏览器和调度均未实现；Desktop、VS Code、远程/H5 和 IM 已在 r7 移出当前 SP。SP003 交付的是**文件工具与权限控制**，不等于完整 Coding Agent：终端命令、计划与测试循环由 SP004 实现，跨会话快照由 SP005 实现。
 
 首发使用 Node.js >=22.18、TypeScript 和 Node test runner，当前真实命令见 package.json 与 [开发指南](development.md)。禁止引入 Bun；不能把旧项目版本 0.5.0、旧测试成绩或 Git 发布状态当作本仓事实。
 
@@ -40,7 +40,7 @@
 
 历史迁移验证见 [迁移记录](migration/README.md)。0.2.0 延续 CLI 子进程及制品隔离安装验证；一个真实外部服务已有五项回执，见 SP002 报告 §16。历史版本的 UNVERIFIED 不作为当前结论。
 
-规划已完善至 [路线图 r6](iteration-plan.md)（TUI 优先、多端暂缓），配套 [能力矩阵](agent-capability-matrix.md)、[高级功能计划](advanced-capabilities-plan.md)、[npm 发布方案](npm-release-plan.md)与 [版本规范](versioning.md)。bootstrap 是单独授权的简易首发。
+当前有效规划为 [路线图 r7](iteration-plan.md)（16 个 SP，TUI 单端及通用宿主契约），配套 [能力矩阵](agent-capability-matrix.md)、[高级功能计划](advanced-capabilities-plan.md)、[npm 发布方案](npm-release-plan.md)与 [版本规范](versioning.md)。bootstrap 是单独授权的简易首发。
 
 SP001 **仅限规格且已验收**（用户 2026-11-16 验收通过，设计 v1 批准）：已产出 [能力基线、核心边界与发布范围](../SP/SP001/requirements-summary.md)（能力清单 v1 共 85 项、必交 53 项；核心边界与不变量；评测集规格与任务清单；发布范围与待决项）。本轮**不含产品代码**；47 条 AC 已逐条走查：46 PASS / 1 NOT_APPLICABLE。用户同日拍板：**O1=A** 完整 Agent 制品沿用 npm `budingx` 同名（发布轮须提供破坏性升级/迁移说明）；**O2=A** 只声明 Windows 已验证，macOS/Linux 于 SP011 后逐个验证；**O5=B** 不采集原产品效果基线——对照基线只做**静态盘点**、不运行原 Agent，效果对比永久采用「自有能力测量 + 能力清单覆盖度」口径，5 个百分点非劣门槛废除，「已对齐」措辞永久禁止。
 
@@ -58,7 +58,7 @@ SP002 的制品布局已变更（bin 由 `dist/cli.js` 改为 `dist/tui/cli.js`�
 
 0.2.0 发布前补充：已修复伪 TTY 在 CI 中被 Ink 自动切为非交互的问题；CI=true 的完整发布预演 203 项通过，31 文件制品与此前 integrity 一致，已合入 master。版本为 prepared，维护者自行触发 master 的发布工作流，未上传 npm。
 
-## 2026-11-17 规划调整（路线图 r6，USER_CONFIRMED）
+## 2026-11-17 规划调整（路线图 r6，历史记录）
 
 用户决定：当前交付路线只做 TUI 单端；SP008（Desktop）、SP009（VS Code）、SP016（远程/H5）、SP017（IM 基础与 Telegram/飞书）、SP018（微信/钉钉）**暂缓（DEFERRED）**，编号保留不回收、移出当前依赖与验收分母，恢复须用户另行决定；**多端架构入口保留**（宿主契约/传输边界/共享模型与历史，SP010 改契约轮以轻量测试客户端验证）。TUI 权限模式固定三种：**仅可查看 / 工作区内修改 / 完全权限**（SP003/SP004 交付，当前未实现）。团队/浏览器/Computer Use/定时任务仍必交。
 

@@ -4,7 +4,7 @@
 
 默认主分支为 `master`；新项目统一使用 Node.js + TypeScript，不引入 Bun。
 
-目标是从自己的需求与公开协议出发实现核心，**先做好 TUI 终端单端（2026-11-17 用户决定，路线图 r6）**；Desktop、VS Code、远程/H5 与 IM 暂缓，架构保留多端接入入口供后续恢复接入。现有项目的界面、工具和模块必须经过来源/许可/依赖审计，不能直接视为可复用实现。
+目标是从自己的需求与公开协议出发实现核心，**当前交付为 TUI 单端（路线图 r7）**。Desktop、VS Code、远程/H5 与 IM 已移出当前 SP，SP010 保留通用宿主边界。现有项目的界面、工具和模块必须经过来源/许可/依赖审计，不能直接视为可复用实现。
 
 - [产品说明书](PRODUCT.md)
 - [文档导航](docs/index.md)
@@ -18,7 +18,7 @@
 
 本次不包含旧产品源码、构建产物、系统提示词、用户配置或聊天历史。新产品 MIT 及首发验证后 npm 发布已获用户授权，当前发布状态以 release-ledger.json 为准。已迁入的第三方开发技能按各自许可证保留声明。
 
-迭代统一按 [SP 管理说明](SP/README.md)执行；[21 轮迭代路线图 r6](docs/iteration-plan.md)供后续 Agent 读取：SP001 已验收（规格轮）、SP002 已实现并发布，SP003 已合入并准备发布，SP008/SP009/SP016–SP018 暂缓（DEFERRED，编号保留），其余未启动。
+迭代统一按 [SP 管理说明](SP/README.md)执行；[16 轮迭代路线图 r7](docs/iteration-plan.md)记录当前交付及依赖。SP001 已验收；SP002 已发布；SP003 已合入并准备 0.3.0。
 
 当前单仓布局：外层管理文档/SP/Skills 和编排，产品统一放 src/，不建子仓或 packages/；见 [仓库布局](docs/repository-layout.md)。产品用户数据统一使用当前用户 home 下 ~/.budingx，不读取 ~/.claude。版本按 [SemVer/SP 规范](docs/versioning.md)管理。
 

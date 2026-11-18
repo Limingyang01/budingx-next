@@ -9,22 +9,32 @@ const read = (file) => readFileSync(path.join(ROOT, file), 'utf8')
 test('the capability manifest and task inventory are internally consistent', () => {
   const result = checkSpec()
   assert.deepEqual(result.failures, [])
-  assert.equal(result.manifest.total, result.manifest.必交 + result.manifest.建议 + result.manifest.可选 + result.manifest.范围外 + result.manifest.暂缓)
+  assert.equal(result.manifest.total, result.manifest.必交 + result.manifest.建议 + result.manifest.可选 + result.manifest.范围外)
   assert.equal(result.inventory.blind, 20)
 })
 
-test('a silently restored deferred capability is reported', () => {
+test('a removed capability cannot acquire a delivery iteration', () => {
   const original = read(MANIFEST)
   const broken = original.replace(
-    '| CAP-L4-13 | Desktop 工作台 | 桌面端约 11.9 万行 | 独立安装可用、崩溃不重复执行 | SP008 | 真实进程+UI | 暂缓 |',
-    '| CAP-L4-13 | Desktop 工作台 | 桌面端约 11.9 万行 | 独立安装可用、崩溃不重复执行 | SP008 | 真实进程+UI | 必交 |'
+    '| CAP-L4-13 | Desktop 工作台 | 桌面端约 11.9 万行 | 独立安装可用、崩溃不重复执行 | — | — | 范围外 |',
+    '| CAP-L4-13 | Desktop 工作台 | 桌面端约 11.9 万行 | 独立安装可用、崩溃不重复执行 | SP010 | 真实进程+UI | 范围外 |'
   )
-  assert.notEqual(broken, original, 'deferred fixture did not apply')
+  assert.notEqual(broken, original, 'out-of-scope fixture did not apply')
   const result = checkManifest(broken)
   assert.ok(result.failures.some((f) => f.includes('CAP-L4-13')))
 })
 
-test('a silently deleted deferred capability is reported', () => {
+test('an active capability cannot use a retired iteration number', () => {
+  const original = read(MANIFEST)
+  const broken = original.replace(
+    /(^\| CAP-L4-09 \|[^\n]*\| )SP010( \|)/m,
+    '$1SP009$2'
+  )
+  assert.notEqual(broken, original, 'retired iteration fixture did not apply')
+  assert.ok(checkManifest(broken).failures.some((f) => f.includes('SP009') && f.includes('CAP-L4-09')))
+})
+
+test('a silently deleted out-of-scope baseline capability is reported', () => {
   const original = read(MANIFEST)
   const broken = original
     .split('\n')

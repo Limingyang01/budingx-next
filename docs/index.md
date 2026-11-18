@@ -9,11 +9,11 @@
 4. [架构方向草案](architecture.md)：稳定责任边界，尚不是已批准实施规格。
 5. [开发指南](development.md)：当前可运行的维护命令和未来测试选择。
 6. [文档约定](documentation.md)：需求、设计、计划、证据和历史材料的身份。
-7. [迭代路线图](iteration-plan.md)：SP001–SP021 的目标、依赖和验收门槛；r6（2026-11-17）TUI 优先、SP008/SP009/SP016–SP018 暂缓、多端架构入口保留；SP001 已启动（规格轮），其余尚未启动。
+7. [迭代路线图](iteration-plan.md)：r7 当前 16 个 SP 的目标、依赖与验收门槛，TUI 单端交付及通用宿主契约。
 8. [SP 管理与模板](../SP/README.md)：统一按迭代及功能/优化记录。
 9. [SP001 迭代汇总](../SP/SP001/requirements-summary.md)：能力基线、核心边界与发布范围（规格轮，已验收，未启动实现）。
 10. [迁移记录](migration/README.md)：本次取舍、来源和检查结果。
-11. [剩余 SP 参考复刻排查](reference-tui-replication-audit.md)：SP003–SP021 对照参考仓 TUI 的逐轮排查、缺口与独立实现周旋点（r1 draft 待审）。
+11. [剩余 SP 参考复刻排查](reference-tui-replication-audit.md)：对照参考仓 TUI 的逐轮排查、缺口与独立实现周旋点（r1 draft 待审）。
 12. [集成门禁与自审流程](integration-gate.md)：2026-11-17 委托——Agent 自审、交叉验证门禁 GREEN 才合入 master、自动化命令与报告。
 
 开发约定见 [AGENTS.md](../AGENTS.md)，开发技能入口见 [skills/README.md](../skills/README.md)，第三方许可见 [声明](../THIRD-PARTY-NOTICES.md)。

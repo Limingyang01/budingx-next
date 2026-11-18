@@ -1,6 +1,6 @@
 # TUI 的 npm 打包与一键发布计划
 
-状态：bootstrap 实现及后续扩展计划；r4；2026-11-17（r6 范围同步：TUI 单端优先，Desktop/VSIX 随 SP008/SP009 暂缓）。用户已确认 MIT/简易聊天范围并授权验证后发布；本地发布编排与安装 smoke 已实现，正式状态见 release-ledger.json。范围为 TUI/CLI，不把 Desktop、VSIX、维护仓和技能资料整体发布到 npm。
+状态：bootstrap 实现及后续扩展计划；r5；2026-11-18（同步路线图 r7，当前只规划 TUI/CLI 制品）。用户已确认 MIT/简易聊天范围并授权验证后发布；本地发布编排与安装 smoke 已实现，正式状态见 release-ledger.json。范围为 TUI/CLI，不把 Desktop、VSIX、维护仓和技能资料整体发布到 npm。
 
 ## 推荐入口：GitHub Actions + Trusted Publishing
 

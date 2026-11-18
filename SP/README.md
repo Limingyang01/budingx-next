@@ -6,7 +6,7 @@
 
 ## 编号与目录
 
-用户已授权由 Agent 安排编号；当前计划采用 SP001–SP021（**r6，2026-11-17：SP008/SP009/SP016/SP017/SP018 暂缓 DEFERRED，编号保留不回收，恢复须用户另行决定**）。目录、分支和文档统一使用三位编号，不复用旧仓编号的历史含义。编号分配不表示需求、设计、实施或发布获批。迭代保留原编号，取消后不回收重用。
+当前计划按[路线图 r7](../docs/iteration-plan.md)执行，共 16 轮：SP001–SP007、SP010–SP015、SP019–SP021。原 SP008、SP009、SP016–SP018 退出规划，编号留空供历史追溯。目录、分支和文档统一使用三位编号。新范围须另行确认。
 
 ```text
 SP/
@@ -35,7 +35,7 @@ SP/
 
 ## 状态和完成标准
 
-- 生命周期：PLANNED → ACTIVE → VERIFYING → ACCEPTED → CLOSED；BLOCKED/CANCELLED 记录原因、恢复条件及日期；**DEFERRED（暂缓，r6 引入）为用户决定移出当前交付与验收分母的状态，记录原因、恢复条件及日期，编号保留不回收，恢复须用户另行决定**。ACCEPTED 必须有实际验收依据，CLOSED 不能掩盖未完成项。
+- 生命周期：PLANNED → ACTIVE → VERIFYING → ACCEPTED → CLOSED；BLOCKED/CANCELLED 记录原因、恢复条件及日期；已移出路线图的编号只留历史记录，无当前目录、依赖或验收。ACCEPTED 必须有实际验收依据，CLOSED 不能掩盖未完成项。
 - 批准：正式 SDD 以设计文档为唯一常规人工审阅点，其批准覆盖计划、实现、测试、交付与各阶段本地提交（提交说明中文）；用户验收、合并、推送、发布仍独立授权并分别记录。需求不单设批准门，阻塞性 OPEN 先行确认，其余随设计审阅。技术提议使用 MODEL_PROPOSED，用户确认使用 USER_CONFIRMED，未决定使用 OPEN。
 - 验证：PASS / FAIL / UNVERIFIED / NOT_APPLICABLE；零测试、全 skip、未执行不能记 PASS。保留命令/cwd/revision/环境和实际计数，不引用旧仓成绩充当通过证明。
 - 日志、coverage、临时截图放忽略的 artifacts/quality-runs/<SP>/<slug>/<run>/；仓库保留脱敏摘要。没有 Git 提交时写“无提交”，不得虚构 SHA。
