@@ -286,7 +286,7 @@ test('full screen pins the prompt and mode hint through height and width resize'
   await ui.send('/exit')
   await ui.send('\r')
   await ui.waitFor(() => ui.raw().includes('\x1b[?1049l'))
-  assert.equal(ui.exitCalls.length, 1)
+  assert.deepEqual(ui.exitCalls, ['command', 'app'])
 })
 
 test('full-screen scrollback can read older output while leaving the prompt visible', async (t) => {
