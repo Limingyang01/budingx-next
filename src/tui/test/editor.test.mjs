@@ -113,3 +113,14 @@ test('G08 多行有输入历史时上下键先移动行', () => {
   assert.equal(b.cursor.line, 0)
   assert.equal(b.text, 'first\nsecond')
 })
+
+
+test('Home and End move within the current draft line', () => {
+  const buffer = new EditorBuffer()
+  buffer.insert('第一行\n第二行')
+  applyKey(buffer, '', { home: true }, { busy: false })
+  assert.equal(buffer.cursor.line, 1)
+  assert.equal(buffer.cursor.col, 0)
+  applyKey(buffer, '', { end: true }, { busy: false })
+  assert.equal(buffer.cursor.col, 3)
+})

@@ -58,7 +58,7 @@ Usage: budingx [--model NAME] [--base-url URL] [--timeout MS] [--prompt TEXT]
 Environment: BUDINGX_API_KEY, BUDINGX_MODEL, BUDINGX_BASE_URL
 Commands: /help /config /models /model NAME
   /permission [read|workspace|full] /rules [add|rm] /diff [path] /undo [path] /denials /clear /exit
-Keys: Esc interrupts, Shift+Tab cycles permission modes (read-only / workspace edit / full access),
+Keys: Esc interrupts, Shift+Tab switches Allow edits / Full auto in the TUI,
 Enter submits, Ctrl+C interrupts and exits. @path attaches a workspace file, Tab completes.
 File tools run under the permission modes; full access never overrides deny rules or credential protection.`
 

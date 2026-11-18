@@ -10,13 +10,14 @@ import {
   measureElement,
   type DOMElement
 } from 'ink'
-import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import type { SessionEvent } from '../core/events.js'
 import type { Session } from '../core/session.js'
 import type { InkApprovalGateway } from './approval.js'
-import { changePermissionMode, runCommand, type CommandContext } from './commands.js'
+import { changePermissionMode, interactiveModeLabel, runCommand, type CommandContext } from './commands.js'
 import { EditorBuffer } from './editor/buffer.js'
+import { useWheel } from './editor/mouse.js'
 import { applyKey } from './editor/keys.js'
 import { reduceFrame, renderTextLines } from './render/reducer.js'
 import { ACCENT, renderHeader, sessionTopic, setupHint, terminalStrategy, terminalTitle } from './render/header.js'
@@ -29,11 +30,12 @@ import {
   fileCandidates,
   longestCommonPrefix
 } from './render/completion.js'
+import { collapseReadSearch, HistoryWindow } from './render/history-window.js'
 import { TranscriptMessage } from './render/transcript.js'
 import { workspacePromptOptions } from './runtime.js'
 import { ModelManager, type ModelManagerInput } from './model-manager.js'
 import { readClipboard } from './editor/clipboard.js'
-import { MODES_EN, MODES_ZH, nextMode } from '../workspace/policy.js'
+import { nextMode } from '../workspace/policy.js'
 import { walkWorkspaceFiles } from '../workspace/search.js'
 import { changeDiffs } from '../workspace/checkpoint.js'
 import { gitWorkspaceChanges, hasGitWorkspace } from '../workspace/git-diff.js'
@@ -102,14 +104,31 @@ export function App({
   const strategy = useMemo(() => terminalStrategy(process.env, process.platform), [])
   const zh = strategy === 'pixel'
   const [frame, dispatch] = useReducer(
-    (state: ReturnType<typeof initialFrame>, event: SessionEvent) =>
-      reduceFrame(state, event, { width, english: !zh }),
+    (state: ReturnType<typeof initialFrame>, action: { event: SessionEvent; toolElapsedMs?: number }) =>
+      reduceFrame(state, action.event, { width, english: !zh, toolElapsedMs: action.toolElapsedMs }),
     commandContext.permission?.policy.getMode(),
     (mode) => initialFrame(mode ?? 'read_only')
   )
   const [input, setInput] = useState('')
+  const [previewTools, setPreviewTools] = useState<readonly string[]>([])
+  useEffect(() => session.onToolPreview(setPreviewTools), [session])
   const [topic, setTopic] = useState<string>()
   const [scrollTop, setScrollTop] = useState<number>()
+  const [transcriptMode, setTranscriptMode] = useState(false)
+  const [search, setSearch] = useState<{ text: string; index: number }>()
+  const displayedHistory = useMemo(
+    () => transcriptMode || !fullScreen ? frame.transcript : collapseReadSearch(frame.transcript, !zh),
+    [frame.transcript, fullScreen, transcriptMode, zh]
+  )
+  const [historyCountAtScroll, setHistoryCountAtScroll] = useState(0)
+  const transcriptHeader = useRef<DOMElement>(null)
+  const headerMetrics = useBoxMetrics(transcriptHeader)
+  const revealHistory = useCallback((row: number) => {
+    setScrollTop(row + headerMetrics.height)
+  }, [headerMetrics.height])
+  const correctPriorRows = useCallback((delta: number) => {
+    setScrollTop((row) => row === undefined ? undefined : Math.max(0, row + delta))
+  }, [])
   const transcriptBox = useRef<DOMElement>(null)
   const transcriptContent = useRef<DOMElement>(null)
   const viewport = useBoxMetrics(transcriptBox)
@@ -117,11 +136,17 @@ export function App({
   const maxScroll = Math.max(0, contentMetrics.height - viewport.clientHeight)
   const offset = Math.min(scrollTop ?? maxScroll, maxScroll)
   const scrolled = fullScreen && offset < maxScroll
+  const unseenMessages = scrolled && !transcriptMode ? Math.max(0, frame.transcript.length - historyCountAtScroll) : 0
+  function scrollHistory(lines: number) {
+    if (lines < 0 && !scrolled) setHistoryCountAtScroll(frame.transcript.length)
+    setScrollTop((previous) => {
+      const current = Math.min(previous ?? maxScroll, maxScroll)
+      const next = Math.max(0, Math.min(maxScroll, current + lines))
+      return next === maxScroll ? undefined : next
+    })
+  }
   const working = frame.status.state !== 'idle'
-  const modeLabel = (zh
-    ? { read_only: '只读', workspace_edit: '编辑', full_access: '全自动' }
-    : { read_only: 'Read-only', workspace_edit: 'Edit', full_access: 'Full auto' }
-  )[frame.permissionMode]
+  const modeLabel = interactiveModeLabel(frame.permissionMode, zh ? 'zh' : 'en')
   const modeColor = {
     read_only: '#56b6c2',
     workspace_edit: '#e5c07b',
@@ -142,6 +167,7 @@ export function App({
   const [dialog, setDialog] = useState<DiffDialog | null>(null)
   const [gitAvailable, setGitAvailable] = useState(false)
   const [detailScroll, setDetailScroll] = useState(0)
+  const diffDetailPageSize = Math.max(1, Math.min(24, rows - 5))
   const [approvalScroll, setApprovalScroll] = useState(0)
   useEffect(() => setApprovalScroll(0), [frame.approval?.requestId])
   const [overlayDismissed, setOverlayDismissed] = useState(false)
@@ -151,6 +177,18 @@ export function App({
   // reference's "and tell budingx what to do differently" path.
   const [rejectEntry, setRejectEntry] = useState<{ requestId: string; text: string } | null>(null)
   const editor = useMemo(() => new EditorBuffer(), [])
+  const query = search?.text.toLowerCase()
+  const inputMatches = search && !transcriptMode
+    ? editor.history.filter((item) => item.toLowerCase().includes(query ?? '')).toReversed()
+    : []
+  const messageMatches = query && transcriptMode
+    ? frame.transcript.flatMap((entry, index) => {
+        const text = entry.kind === 'tool' ? entry.text + '\n' + (entry.result ?? '') : entry.text
+        return text.toLowerCase().includes(query) ? [index] : []
+      }).reverse()
+    : []
+  const inputMatch = search ? inputMatches[search.index % Math.max(1, inputMatches.length)] : undefined
+  const messageMatch = search ? messageMatches[search.index % Math.max(1, messageMatches.length)] : undefined
   const [, bumpEditor] = useReducer((n: number) => n + 1, 0)
   const ctrlC = useRef(0)
   const pick = (a: string, b: string) => (zh ? a : b)
@@ -162,9 +200,11 @@ export function App({
   const [cursorPosition, setPosition] = useState<{ x: number; y: number } | undefined>(
     undefined
   )
-  setCursorPosition(cursorPosition)
+  setCursorPosition(transcriptMode || search ? undefined : cursorPosition)
   const commands = useRef<string[]>([])
   const [commandCount, setCommandCount] = useState(0)
+  const queuePreviewRows = fullScreen ? Math.max(1, Math.min(3, Math.floor(rows / 12))) : frame.queue.length
+  const hiddenQueued = Math.max(0, frame.queue.length - queuePreviewRows)
   const chain = useRef(Promise.resolve())
   const pendingActions = useRef(0)
   const managerDone = useRef<(() => void) | undefined>(undefined)
@@ -329,7 +369,10 @@ export function App({
   useEffect(
     () =>
       session.on((event) => {
-        dispatch(event)
+        const toolElapsedMs = event.type === 'tool_result'
+          ? session.toolElapsedMs(event.turnId, event.callId)
+          : undefined
+        dispatch({ event, toolElapsedMs })
         if (event.type === 'conversation_cleared') {
           setTopic(undefined)
           setScrollTop(undefined)
@@ -356,6 +399,11 @@ export function App({
       managerInput.current?.paste(text)
       return
     }
+    if (search) {
+      setSearch({ text: search.text + text.replace(/\s+/g, ' '), index: 0 })
+      return
+    }
+    if (transcriptMode) return
     editor.insert(text.replace(/\r\n?/g, '\n'))
     setInput(editor.text)
     markTyping()
@@ -390,7 +438,7 @@ export function App({
     // (legacy Windows conhost / cmd). Ink's usePaste relies on DEC 2004
     // which these terminals ignore, so Ctrl+V arrives as a plain ctrl+v
     // keypress. Read the system clipboard and insert it directly.
-    if (key.ctrl && text === 'v' && !rejectEntry && !dialog) {
+    if (key.ctrl && text === 'v' && !rejectEntry && !dialog && !search && !transcriptMode) {
       try {
         const clip = readClipboard()
         if (clip) {
@@ -470,14 +518,58 @@ export function App({
       } else if (key.upArrow) {
         setDetailScroll((s) => Math.max(0, s - 1))
       } else if (key.downArrow) {
-        setDetailScroll((s) => s + 1)
+        const hunks = dialogEntries[dialog.index]?.hunks ?? []
+        const count = diffViewLines(hunks, Math.max(1, width - 2), true).length
+        setDetailScroll((s) => Math.min(s + 1, Math.max(0, count - diffDetailPageSize)))
       }
+      return
+    }
+    if (fullScreen && key.ctrl && text === 'o') {
+      setSearch(undefined)
+      if (transcriptMode) setScrollTop(undefined)
+      setTranscriptMode((current) => !current)
+      return
+    }
+    if (search) {
+      if (key.escape) setSearch(undefined)
+      else if (key.return) {
+        if (inputMatch !== undefined) {
+          editor.setText(inputMatch)
+          setInput(editor.text)
+          bumpEditor()
+        }
+        setSearch(undefined)
+      } else if (key.backspace) {
+        setSearch({ text: Array.from(search.text).slice(0, -1).join(''), index: 0 })
+      } else if (key.upArrow || (key.ctrl && text === 'r')) {
+        setSearch({ ...search, index: search.index + 1 })
+      } else if (key.downArrow) {
+        const count = Math.max(1, transcriptMode ? messageMatches.length : inputMatches.length)
+        setSearch({ ...search, index: (search.index + count - 1) % count })
+      } else if (text && !key.ctrl && !key.meta) {
+        setSearch({ text: search.text + text, index: 0 })
+      }
+      return
+    }
+    if (!transcriptMode && !frame.approval && key.ctrl && text === 'r') {
+      setSearch({ text: '', index: 0 })
+      return
+    }
+    if (fullScreen && key.ctrl && key.end) {
+      setScrollTop(undefined)
       return
     }
     if (fullScreen && (key.pageUp || key.pageDown)) {
       const page = Math.max(1, viewport.clientHeight - 1)
-      const next = Math.max(0, Math.min(maxScroll, offset + (key.pageUp ? -page : page)))
-      setScrollTop(next === maxScroll ? undefined : next)
+      scrollHistory(key.pageUp ? -page : page)
+      return
+    }
+    if (transcriptMode) {
+      if (key.escape) {
+        setTranscriptMode(false)
+        setScrollTop(undefined)
+      }
+      else if (text === '/') setSearch({ text: '', index: 0 })
       return
     }
     const approval = frame.approval
@@ -546,6 +638,7 @@ export function App({
         setRejectEntry({ requestId: approval.requestId, text: '' })
         return
       }
+      if (text === '2' && !session.canRememberApproval(approval.requestId)) return
       gateway.resolve(approval.requestId, text === '1' ? 'allow' : 'allow_session')
       return
     }
@@ -568,7 +661,7 @@ export function App({
         return
       }
       setHint(
-        pick(`权限模式：${MODES_ZH[next]}`, `Permission mode: ${MODES_EN[next]}`)
+        pick(`权限模式：${interactiveModeLabel(next, 'zh')}`, `Permission mode: ${interactiveModeLabel(next, 'en')}`)
       )
       return
     }
@@ -667,13 +760,10 @@ export function App({
     if (overlayDismissed && (text || key.backspace)) setOverlayDismissed(false)
     if (text || key.backspace || key.delete) markTyping()
   })
+  useWheel(fullScreen, (lines) => {
+    if (!modelManagerOpen && !dialog) scrollHistory(lines)
+  })
   const config = commandContext.getConfig()
-  const history = useMemo(
-    () => frame.transcript.map((entry, index) => (
-      <TranscriptMessage key={index} entry={entry} ascii={!zh} />
-    )),
-    [frame.transcript, zh]
-  )
   if (modelManagerOpen) {
     return <ModelManager context={{ ...context, session }} input={managerInput} readClipboard={readClipboard} close={(notice) => {
       const done = managerDone.current
@@ -722,26 +812,27 @@ export function App({
       )
     }
     const hunks = entry?.hunks ?? []
-    const lines = diffViewLines(hunks, width)
-    const visible = lines.slice(detailScroll, detailScroll + 24)
+    const lines = diffViewLines(hunks, Math.max(1, width - 2), true, entry?.path)
+    const first = Math.min(detailScroll, Math.max(0, lines.length - diffDetailPageSize))
+    const visible = lines.slice(first, first + diffDetailPageSize)
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="gray">
         <Text bold>
           ── {entry?.path ?? ''} · {sourceLabel(dialog.source)} ──
         </Text>
         {visible.map((line, index) => (
-          <Text key={detailScroll + index}>
+          <Text key={first + index}>
             {line.spans.map((span, j) => (
               <Text
                 key={j}
                 color={
-                  span.kind === 'add'
+                  span.color ?? (span.kind === 'add'
                     ? 'green'
                     : span.kind === 'remove'
                       ? 'red'
                       : span.kind === 'header'
                         ? 'cyan'
-                        : undefined
+                        : undefined)
                 }
                 dimColor={span.kind === 'gutter' || span.kind === 'context'}
               >
@@ -781,32 +872,6 @@ export function App({
   )
   return (
     <Box flexDirection="column" height={fullScreen ? rows : undefined}>
-      <Box flexDirection="column" flexShrink={0}>
-        {renderHeader({
-          version,
-          model: config.model,
-          baseUrl: config.baseUrl,
-          keyPresent: !!config.apiKey.trim(),
-          cwd,
-          columns: width,
-          strategy,
-          compact: fullScreen
-        }).slice(0, fullScreen && rows < 18 ? 1 : undefined).map((line, i) => (
-          <Text key={i} wrap={fullScreen ? 'truncate-end' : 'wrap'}>
-            {line.map((span, j) => (
-              <Text
-                key={j}
-                color={span.color}
-                dimColor={span.dim}
-                bold={span.bold}
-                italic={span.italic}
-              >
-                {span.text}
-              </Text>
-            ))}
-          </Text>
-        ))}
-      </Box>
       <Box
         ref={transcriptBox}
         flexDirection="column"
@@ -816,25 +881,47 @@ export function App({
         contentOffsetY={fullScreen ? offset : undefined}
       >
         <Box ref={transcriptContent} flexDirection="column" flexShrink={0}>
-          {history}
+          <Box ref={transcriptHeader} flexDirection="column" flexShrink={0}>
+            {renderHeader({
+              version,
+              model: config.model,
+              baseUrl: config.baseUrl,
+              keyPresent: !!config.apiKey.trim(),
+              cwd,
+              columns: width,
+              strategy,
+              compact: fullScreen
+            }).slice(0, fullScreen && rows < 18 ? 1 : undefined).map((line, i) => (
+              <Text key={i} wrap={fullScreen ? 'truncate-end' : 'wrap'}>
+                {line.map((span, j) => (
+                  <Text
+                    key={j}
+                    color={span.color}
+                    dimColor={span.dim}
+                    bold={span.bold}
+                    italic={span.italic}
+                  >
+                    {span.text}
+                  </Text>
+                ))}
+              </Text>
+            ))}
+          </Box>
+          <HistoryWindow entries={displayedHistory} width={width} height={viewport.clientHeight}
+            offset={Math.max(0, offset - headerMetrics.height)} fullScreen={fullScreen}
+            ascii={!zh} expanded={transcriptMode}
+            targetIndex={messageMatch} onTargetOffset={revealHistory} onPriorRowsChanged={correctPriorRows} />
           {frame.liveText && (
             <TranscriptMessage entry={{ kind: 'assistant', text: frame.liveText }} ascii={!zh} />
           )}
+          {previewTools.map((name, index) => (
+            <Text key={index} color={ACCENT} wrap="truncate-end">
+              {pick('● ', '* ')}{name}{pick(' · 接收参数…', ' · Receiving arguments…')}
+            </Text>
+          ))}
           {frame.notices.map((notice, i) => (
             <Text key={'notice-' + i} color={notice.level === 'error' ? 'red' : 'yellow'}>
               {notice.text}
-            </Text>
-          ))}
-          {commandCount > 0 && (
-            <Text color="yellow">
-              {pick('排队命令：', 'Queued commands: ')}
-              {commandCount}
-            </Text>
-          )}
-          {frame.queue.map((item) => (
-            <Text key={item.id} color="yellow">
-              {pick('⧗ 排队：', '[queued] ')}
-              {item.preview}
             </Text>
           ))}
           {fullScreen && frame.error && <Text color="red">{frame.error}</Text>}
@@ -878,8 +965,12 @@ export function App({
           <Text>
             {permissionHandles
               ? pick(
-                  '1 允许一次 · 2 本会话记住 · 3 拒绝（或 Esc）',
-                  '1 allow once · 2 allow for session · 3 deny (or Esc)'
+                  session.canRememberApproval(frame.approval.requestId)
+                    ? '1 允许一次 · 2 本会话记住 · 3 拒绝（或 Esc）'
+                    : '1 允许一次 · 3 拒绝（或 Esc） · 每次审批',
+                  session.canRememberApproval(frame.approval.requestId)
+                    ? '1 allow once · 2 allow for session · 3 deny (or Esc)'
+                    : '1 allow once · 3 deny (or Esc) · required each time'
                 )
               : pick('y 允许，n 或 Esc 拒绝', 'y allows; n or Esc denies')}
             {!editor.isEmpty
@@ -893,6 +984,28 @@ export function App({
       )}
       {!fullScreen && frame.error && <Text color="red">{frame.error}</Text>}
       <Box flexDirection="column" flexShrink={0}>
+        {working && (
+          <Text color={ACCENT} wrap="truncate-end">
+            {zh ? '● ' : '* '}
+            {thinking ? pick('思考中', 'Thinking') : zh ? STATUS_ZH[frame.status.state] : frame.status.state}
+            {frame.startedAt !== undefined && (
+              <Text dimColor>
+                {' · '}{Math.max(0, Math.floor((now - frame.startedAt) / 1000))}{pick(' 秒', 's')}
+              </Text>
+            )}
+          </Text>
+        )}
+        {transcriptMode && (
+          <Text dimColor>{pick('转录视图 · / 搜索 · Ctrl+O 或 Esc 返回', 'Transcript · / search · Ctrl+O or Esc to return')}</Text>
+        )}
+        {scrolled && (
+          <Box justifyContent="flex-end">
+            <Text color={ACCENT} wrap="truncate-end">
+              {unseenMessages > 0 && pick(`${unseenMessages} 条新消息 · `, `${unseenMessages} new messages · `)}
+              {pick('回到最新 · Ctrl+End', 'Jump to bottom · Ctrl+End')}
+            </Text>
+          </Box>
+        )}
         {fullScreen && completionMenu}
         {fullScreen && (
           <Box
@@ -905,7 +1018,16 @@ export function App({
           />
         )}
         <Box ref={inputBox}>
-          {suggestion ? (
+          {search ? (
+            <Box flexDirection="column">
+              <Text color={ACCENT} wrap="truncate-end">
+                {transcriptMode ? pick('搜索会话', 'Search transcript') : pick('搜索输入历史', 'Search input history')}
+                {' › '}{search.text}
+                {transcriptMode && ` · ${messageMatches.length}`}
+              </Text>
+              {inputMatch && <Text dimColor wrap="truncate-end">{inputMatch}</Text>}
+            </Box>
+          ) : transcriptMode ? null : suggestion ? (
             <Text wrap="truncate-end">
               {'> '}<Text dimColor>{pick('Tab 填入', 'Tab to fill')} · {suggestion}</Text>
             </Text>
@@ -913,20 +1035,31 @@ export function App({
             <Text>{fullScreen ? draftLines.slice(draftStart, draftStart + composerRows).join('\n') : `> ${input}`}</Text>
           )}
         </Box>
+        {fullScreen && (
+          <Box height={1} borderStyle="single" borderColor="gray"
+            borderLeft={false} borderRight={false} borderBottom={false}
+          />
+        )}
         {!fullScreen && completionMenu}
-        {(working || permissionHandles || (!fullScreen && hint)) && (
+        {frame.queue.slice(0, queuePreviewRows).map((item, index) => (
+          <Text key={item.id} dimColor wrap={fullScreen ? 'truncate-end' : 'wrap'}>
+            {pick('⧗ 排队 · ', '[queued] ')}{item.preview.replace(/\s+/g, ' ')}
+            {index === queuePreviewRows - 1 && hiddenQueued > 0 && ` (+${hiddenQueued})`}
+          </Text>
+        ))}
+        {commandCount > 0 && (
+          <Text dimColor>{pick('排队命令：', 'Queued commands: ')}{commandCount}</Text>
+        )}
+        {(permissionHandles || (!fullScreen && hint)) && (
           <Text wrap={fullScreen ? 'truncate-end' : 'wrap'}>
-            {fullScreen && working && <Text color={ACCENT}>{'● '}</Text>}
-            {working && (thinking
-              ? pick('思考中', 'thinking')
-              : zh ? STATUS_ZH[frame.status.state] : frame.status.state)}
-            {frame.startedAt !== undefined && ` ${Math.max(0, Math.floor((now - frame.startedAt) / 1000))}${pick(' 秒', 's')}`}
             {permissionHandles && (
               <>
-                {working && ' · '}
                 <Text color={modeColor}>{modeLabel}</Text>
                 <Text dimColor>{' · Shift+Tab '}{pick('切换模式', 'cycle mode')}</Text>
               </>
+            )}
+            {working && !frame.approval && (
+              <Text dimColor>{permissionHandles ? ' · ' : ''}{pick('Esc 打断', 'Esc interrupt')}</Text>
             )}
             {!fullScreen && hint ? ` — ${hint}` : ''}
           </Text>
@@ -934,11 +1067,6 @@ export function App({
         {permissionHandles && frame.permissionMode === 'full_access' && (
           <Text color={modeColor}>
             {pick('! 可获准的写入免审批', '! Eligible writes skip approval')}
-          </Text>
-        )}
-        {scrolled && (
-          <Text dimColor wrap="truncate-end">
-            {pick('浏览历史 · PageDown 向下', 'History · PageDown to scroll down')}
           </Text>
         )}
         {setupHint(config, strategy) && (

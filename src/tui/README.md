@@ -56,13 +56,19 @@ Version 0.3.4 displays user turns, elapsed time and completion time. After a suc
 
 Version 0.3.5 distinguishes submitted prompts from Markdown replies and displays completion times as secondary text. The status bar shows a short permission label and omits idle activity.
 
+The active turn indicator sits above the input. Queued prompts appear below it. Tool rows use a pulsing theme dot while pending, a green dot on success, and a red dot on failure. A short result appears below the tool name.
+
 ## Keys
 
 - Enter — submit; during a turn the input is queued and injected at the next safe boundary
 - Esc — deny the visible approval and continue; otherwise interrupt the turn, recycle idle queued input, or cancel key entry
 - Shift+Enter — insert a line break
-- Shift+Tab — cycle permission modes shown in the status bar
-- PageUp / PageDown — scroll the conversation in full-screen mode
+- Shift+Tab — switch Allow edits and Full auto
+- Mouse wheel or PageUp / PageDown — scroll the conversation in full-screen mode
+- Ctrl+End — return to the latest message
+- Ctrl+O — open or close transcript view with expanded tool results. Press / to search the conversation
+- Ctrl+R — search input history and recall a draft
+- Home / End or Ctrl+A / Ctrl+E — move to the start or end of the current input line
 - Ctrl+C — interrupt while a turn runs; at the prompt, press twice to exit
 - ↑ / ↓ — recall earlier input, select completions, or scroll a diff
 - 1 / 2 / 3 — allow once, remember for this session, or deny a pending tool approval
@@ -75,7 +81,7 @@ A cancelled turn keeps the text that was already produced. A turn cancelled befo
 
 A tool-enabled model can use `Read`, `Glob`, `Grep`, `Write`, and `Edit` in your working directory. Use `@path#L10-20` for a line range or `@"folder/file name.txt"` for a path with spaces. Tab completes paths.
 
-Start in read-only mode. Use `/permission read|workspace|full` or Shift+Tab to change modes. In workspace mode, review the proposed diff with Up/Down, then press 1 to allow once, 2 to remember the target for the session, or 3 to deny. Use `/rules` to manage permission rules and `/denials` to inspect refusals.
+Interactive sessions default to Allow edits. Ordinary workspace writes run directly, and sensitive targets require approval. Use `/permission edit|full` or Shift+Tab to change modes. For an approval, use Up/Down to review the diff and 1 or 3 to allow once or deny. An approval shows 2 only when session memory is available for that operation. Use `/rules` to manage permission rules and `/denials` to inspect refusals.
 
 Use `/diff` to browse session changes, individual turns, and Git working tree changes when Git is available. Use `/undo` to revert the latest change group or `/undo PATH` to revert the most recent change to one file. Undo stops on a file that changed externally.
 
@@ -91,4 +97,4 @@ Source and roadmap: https://github.com/Limingyang01/budingx-next
 
 ## Permission mode preference
 
-In an interactive terminal, `/permission read|workspace|full` or Shift+Tab saves your choice to `~/.budingx/permission-mode.json`. New interactive sessions restore that choice across workspaces. The badge is cyan for read-only, yellow for workspace edit, and red for full access. In full access, the status area also indicates that eligible writes skip approval. Pipe and `--prompt` invocations start in read-only mode.
+In an interactive terminal, `/permission edit|full` or Shift+Tab saves your choice to `~/.budingx/permission-mode.json`. Sessions restore Allow edits or Full auto across workspaces. The badges are yellow and red respectively. Invalid or legacy read-only preferences default to Allow edits. Corrupt permission rules start the session with writes locked. Pipe and `--prompt` invocations start in read-only mode.

@@ -99,7 +99,7 @@ test('拒绝后磁盘不变、会话继续，/denials 可见记录（PC-10）', 
   }
 })
 
-test('Shift+Tab 轮播三模式且徽标可见；完全权限自动执行不弹卡（PC-02/PC-05）', async (t) => {
+test('Shift+Tab 轮播两模式且徽标可见；完全权限自动执行不弹卡（PC-02/PC-05）', async (t) => {
   const fixture = agentFixture({ mode: 'read_only' })
   try {
     const ui = await mount(t, fixture, [
@@ -107,11 +107,11 @@ test('Shift+Tab 轮播三模式且徽标可见；完全权限自动执行不弹�
       [{ type: 'message_completed', finishReason: 'stop' }]
     ])
     fixture.attach(ui.session)
-    await ui.waitFor((frame) => frame.includes('只读'))
-    assert.match(ui.raw(), /\x1b\[38;2;86;182;194m(?:\x1b\[[0-9;]*m)*只读/)
+    await ui.waitFor((frame) => frame.includes('写入锁定'))
+    assert.match(ui.raw(), /\x1b\[38;2;86;182;194m(?:\x1b\[[0-9;]*m)*写入锁定/)
     await ui.send('\x1b[Z')
     await ui.waitFor((frame) => frame.includes('编辑'))
-    assert.match(ui.raw(), /\x1b\[38;2;229;192;123m(?:\x1b\[[0-9;]*m)*编辑/)
+    assert.match(ui.raw(), /\x1b\[38;2;229;192;123m(?:\x1b\[[0-9;]*m)*允许编辑/)
     await ui.send('\x1b[Z')
     await ui.waitFor((frame) => frame.includes('全自动') && frame.includes('写入免审批'))
     assert.match(ui.raw(), /\x1b\[38;2;255;107;107m.*全自动/)
@@ -158,4 +158,30 @@ test('完全权限仍拒绝凭据特征文件（PC-08 底线不可绕过）', as
   } finally {
     rmSync(fixture.base, { recursive: true, force: true })
   }
+})
+
+
+test('允许编辑直接写普通文件，敏感目标仍须审批', async (t) => {
+  const fixture = agentFixture({ mode: 'workspace_edit', autoAcceptWorkspaceEdits: true })
+  t.after(() => rmSync(fixture.base, { recursive: true, force: true }))
+  const ui = await mount(t, fixture, [
+    ...toolTurn('Write', { path: 'ordinary.txt', content: 'safe\n' }),
+    ...toolTurn('Write', { path: '.vscode/tasks.json', content: '{}' })
+  ])
+  await ui.send('write ordinary\r')
+  await ui.waitFor((frame) => frame.includes('Wrote') && !ui.session.isBusy)
+  assert.equal(readFileSync(join(fixture.root, 'ordinary.txt'), 'utf8'), 'safe\n')
+  assert.equal(ui.frames().some((frame) => frame.includes('需要审批')), false)
+
+  await ui.send('write sensitive\r')
+  await ui.waitFor((frame) => frame.includes('需要审批'))
+  const target = join(fixture.root, '.vscode', 'tasks.json')
+  assert.equal(existsSync(target), false)
+  assert.doesNotMatch(ui.last(), /2 本会话记住/)
+  await ui.send('2')
+  assert.equal(ui.gateway.pendingRequests.length, 1)
+  assert.equal(existsSync(target), false)
+  await ui.send('\x1b')
+  await ui.waitFor(() => !ui.session.isBusy)
+  assert.equal(existsSync(target), false)
 })

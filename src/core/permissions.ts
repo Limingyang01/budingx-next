@@ -28,6 +28,7 @@ export interface PermissionPolicy {
   decide(request: PermissionRequest): PermissionVerdict
   /** Called when the user picks "allow for this session". */
   remember(request: PermissionRequest): void
+  canRemember?(request: PermissionRequest): boolean
   getMode(): PermissionMode
   setMode(mode: PermissionMode): void
   /** Lets the Session emit permission_changed when the mode moves. */

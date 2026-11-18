@@ -1,8 +1,9 @@
 import { stripVTControlCharacters } from 'node:util'
 import { Box, Text } from 'ink'
 import { Marked, type Token, type Tokens } from 'marked'
-import { Fragment, memo, type ReactNode } from 'react'
-import type { TranscriptEntry } from './types.js'
+import { Fragment, memo, useEffect, useState, type ReactNode } from 'react'
+import { ACCENT } from './header.js'
+import type { ToolTranscriptEntry, TranscriptEntry } from './types.js'
 
 const markdown = new Marked({ gfm: true })
 
@@ -75,9 +76,52 @@ function blocks(tokens: Token[], ascii: boolean): ReactNode {
   })
 }
 
+const toolPulse = [ACCENT, '#9a75dd', '#8160bd', '#9a75dd']
+
+function ToolMessage({ entry, ascii, expanded }: { entry: ToolTranscriptEntry; ascii: boolean; expanded: boolean }) {
+  const [pulse, setPulse] = useState(0)
+  useEffect(() => {
+    if (entry.status !== 'pending' || ascii) return
+    const timer = setInterval(() => setPulse((frame) => (frame + 1) % toolPulse.length), 220)
+    return () => clearInterval(timer)
+  }, [entry.status, ascii])
+  const color = {
+    pending: toolPulse[pulse],
+    success: '#62c981',
+    error: '#ff6b6b',
+    interrupted: 'gray'
+  }[entry.status]
+  const glyph = ascii
+    ? { pending: '*', success: '+', error: '!', interrupted: '-' }[entry.status]
+    : '●'
+  const result = stripVTControlCharacters(entry.result ?? '').trim()
+  const lines = result ? result.split(/\r?\n/) : []
+  const detail = lines.length > 0
+    ? lines[0] + (lines.length > 1 ? (ascii ? ` (+${lines.length - 1} lines)` : `（另有 ${lines.length - 1} 行）`) : '')
+    : entry.status === 'interrupted' ? (ascii ? 'Interrupted' : '已中断') : undefined
+  return (
+    <Box marginTop={1} paddingX={1} flexDirection="column">
+      <Box>
+        <Text color={color}>{glyph + ' '}</Text>
+        <Text bold wrap="truncate-end">{stripVTControlCharacters(entry.text)}</Text>
+        {entry.elapsedMs !== undefined && <Text dimColor>{` · ${(entry.elapsedMs / 1000).toFixed(1)}s`}</Text>}
+      </Box>
+      {detail && (
+        <Box paddingLeft={2}>
+          <Text color={entry.status === 'error' ? color : undefined} dimColor={entry.status !== 'error'}
+            wrap={expanded ? 'wrap' : 'truncate-end'}>
+            {(ascii ? '  ' : '└ ')}{expanded && result ? result : detail}
+          </Text>
+        </Box>
+      )}
+    </Box>
+  )
+}
+
 export const TranscriptMessage = memo(function TranscriptMessage({
-  entry, ascii
-}: { entry: TranscriptEntry; ascii: boolean }) {
+  entry, ascii, expanded = false
+}: { entry: TranscriptEntry; ascii: boolean; expanded?: boolean }) {
+  if (entry.kind === 'tool') return <ToolMessage entry={entry} ascii={ascii} expanded={expanded} />
   const text = stripVTControlCharacters(entry.text)
   if (entry.kind === 'user') {
     return (

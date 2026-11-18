@@ -170,8 +170,10 @@ test('PC-11 restores explicit interactive permission choices and preserves store
   const first = start()
   const rules = [{ id: 'deny-private', action: 'deny', tool: 'Write', path: 'private.txt' }]
   first.permissionStore.save({ schemaVersion: 1, rules, extra: 'preserved' })
-  assert.equal(first.policy.getMode(), 'read_only')
-  for (const mode of ['workspace_edit', 'full_access', 'read_only']) {
+  assert.equal(first.policy.getMode(), 'workspace_edit')
+  assert.equal(first.policy.decide({ tool: 'Write', capability: 'write', path: 'normal.ts' }).action, 'allow')
+  assert.equal(first.policy.decide({ tool: 'Write', capability: 'write', path: '.vscode/tasks.json' }).action, 'ask')
+  for (const mode of ['workspace_edit', 'full_access']) {
     assert.equal(first.setPermissionMode(mode), true)
     const resumed = start()
     assert.equal(resumed.policy.getMode(), mode)
@@ -180,6 +182,7 @@ test('PC-11 restores explicit interactive permission choices and preserves store
   }
   const commandContext = {
     session: first.session,
+    interactive: true,
     permission: {
       policy: first.policy,
       store: first.permissionStore,
@@ -187,6 +190,12 @@ test('PC-11 restores explicit interactive permission choices and preserves store
       modes: { zh: {}, en: {}, order: ['read_only', 'workspace_edit', 'full_access'] }
     }
   }
+  const listed = await runCommand('/permission', commandContext)
+  assert.match(listed.message, /Allow edits[\s\S]*Full auto/)
+  assert.doesNotMatch(listed.message, /read_only|read-only/i)
+  assert.match((await runCommand('/permission read', commandContext)).error, /edit\|full/)
+  assert.equal((await runCommand('/permission edit', commandContext)).error, undefined)
+  assert.equal(first.policy.getMode(), 'workspace_edit')
   assert.equal((await runCommand('/permission full', commandContext)).error, undefined)
   assert.equal((await runCommand('/rules add deny Write other.txt', commandContext)).error, undefined)
   assert.equal(start().policy.getMode(), 'full_access')
@@ -199,8 +208,10 @@ test('PC-11 restores explicit interactive permission choices and preserves store
 
   const file = first.permissionStore.path
   const preference = permissionModePath(home)
+  writeFileSync(preference, JSON.stringify({ mode: 'read_only' }))
+  assert.equal(start().policy.getMode(), 'workspace_edit')
   writeFileSync(preference, JSON.stringify({ mode: 'unknown' }))
-  assert.equal(start().policy.getMode(), 'read_only')
+  assert.equal(start().policy.getMode(), 'workspace_edit')
   writeFileSync(preference, JSON.stringify({ mode: 'full_access' }))
   writeFileSync(file, JSON.stringify({ schemaVersion: 1, rules: null }))
   assert.equal(start().policy.getMode(), 'read_only')

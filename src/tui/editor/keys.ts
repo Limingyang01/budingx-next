@@ -8,6 +8,8 @@ export type KeyFlags = {
   leftArrow?: boolean
   rightArrow?: boolean
   pageDown?: boolean
+  home?: boolean
+  end?: boolean
   pageUp?: boolean
   return?: boolean
   escape?: boolean
@@ -94,11 +96,11 @@ export function applyKey(
     buffer.moveRight()
     return { handled: true }
   }
-  if (key.pageUp) {
+  if (key.home || key.pageUp || (key.ctrl && input === 'a')) {
     buffer.moveHome()
     return { handled: true }
   }
-  if (key.pageDown) {
+  if (key.end || key.pageDown || (key.ctrl && input === 'e')) {
     buffer.moveEnd()
     return { handled: true }
   }

@@ -111,10 +111,12 @@ export function fileCandidates(token: string, files: string[]): CompletionCandid
     }
     if (seen.size >= MAX_CANDIDATES * 4) break
   }
-  if (seen.size > 0 || !lowerStem || base) return [...seen.values()].slice(0, MAX_CANDIDATES)
+  const preferred = [...seen.values()].slice(0, MAX_CANDIDATES)
+  if (!lowerStem || preferred.length >= MAX_CANDIDATES) return preferred
 
-  return files
+  const fuzzy = files
     .flatMap((value) => {
+      if (!value.startsWith(base) || seen.has(value)) return []
       const name = value.split('/').at(-1)?.toLowerCase() ?? ''
       let position = -1
       let first = -1
@@ -127,8 +129,9 @@ export function fileCandidates(token: string, files: string[]): CompletionCandid
       return [{ value, score }]
     })
     .sort((a, b) => a.score - b.score)
-    .slice(0, MAX_CANDIDATES)
-    .map(({ value }) => ({ value, kind: 'file', directory: false }))
+    .slice(0, MAX_CANDIDATES - preferred.length)
+    .map(({ value }): CompletionCandidate => ({ value, kind: 'file', directory: false }))
+  return [...preferred, ...fuzzy]
 }
 
 /**
