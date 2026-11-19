@@ -6,7 +6,8 @@ import { ERROR_CODES } from '../core/constants.js'
 import {
   EXEC_OUTPUT_CAP,
   type BackgroundTask,
-  type CommandResult
+  type CommandResult,
+  type TestEvidence
 } from '../core/exec.js'
 import { OutputCollector, capMergedText, formatStream } from './output.js'
 import { buildCommandFinishedEvent, persistOutput, resolveTaskOutputPath } from './persist.js'
@@ -25,6 +26,8 @@ interface BackgroundRecord {
   reason?: string
   callId?: string
   turnId?: string
+  verifyResult?: () => TestEvidence
+  testEvidence?: TestEvidence
   /** 终止重试计时器（T4 稳定性：首次终止未生效时重发，进程退出即清理）。 */
   killRetry?: NodeJS.Timeout
 }
@@ -50,6 +53,7 @@ export interface BackgroundRegistration {
   startedAt?: number
   callId?: string
   turnId?: string
+  verifyResult?: () => TestEvidence
   autoBackgrounded: boolean
   backgroundedByUser: boolean
 }
@@ -95,7 +99,8 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
       autoBackgrounded: record.task.autoBackgrounded || undefined,
       backgroundedByUser: record.task.backgroundedByUser || undefined,
       persistedOutputPath: record.task.outputPath,
-      persistedOutputSize: record.task.outputSize
+      persistedOutputSize: record.task.outputSize,
+      ...(record.testEvidence !== undefined ? { testEvidence: record.testEvidence } : {})
     }
   }
 
@@ -163,6 +168,8 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
     record.task.outputPath = outputPath
     record.task.outputSize = outputSize
     if (errorReason !== undefined) record.reason = errorReason
+    record.testEvidence = state === 'completed' ? record.verifyResult?.() : undefined
+    record.verifyResult = undefined
     options.onFinished?.(
       buildCommandFinishedEvent({
         taskId: record.task.taskId,
@@ -171,7 +178,8 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
         outcome: state,
         exitCode: finalExitCode,
         outputPath,
-        finishedAt
+        finishedAt,
+        ...(record.testEvidence !== undefined ? { testEvidence: record.testEvidence } : {})
       })
     )
   }
@@ -205,6 +213,7 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
       signal,
       callId: meta.callId,
       turnId: meta.turnId,
+      verifyResult: meta.verifyResult,
       onAbort: () => force(record, 'cancelled', '命令已取消'),
       timer: setTimeout(
         () => force(record, 'timeout', `命令执行超过 ${meta.timeoutMs}ms 超时限制，已终止进程树`),

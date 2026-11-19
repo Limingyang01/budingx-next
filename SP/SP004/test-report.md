@@ -1,6 +1,6 @@
 # SP004 验收与验证报告 · 真实编码任务
 
-状态：**第二轮复审修复待用户确认**。分支 `feature/SP004/real-coding-task`，复审起点 `9b76d4a`，实施基线 `e808679`，参考 TUI `b5c9be8`。本次交付范围为 SP004 功能分支。
+状态：**第三轮复审修复待用户确认**。分支 `feature/SP004/real-coding-task`，复审产品基线 `f8b6f09`，参考 TUI `b5c9be8`。本次交付范围为 SP004 功能分支。
 
 ## 0. 本轮执行证据
 
@@ -9,22 +9,22 @@
 | 检查 | 命令 | 结果 |
 | --- | --- | --- |
 | 构建 | `npm run build` | 通过（tsc，无错误） |
-| 单元/功能 | `npm run test:unit` | **598/598 通过**（`npm test` 内运行） |
+| 单元/功能 | `npm run test:unit` | **609/609 通过**（`npm test` 内运行） |
 | 模块边界 | `npm run test:checks` | 「模块边界检查通过」 |
 | 规格自洽 | `npm run spec:check` | 「OK: 路线图、能力清单与任务清单自洽」（能力 91 项） |
 | 技能入口 | `npm run skills:check` | 「Skill entries are current」 |
 | 发布脚本 | `npm run test:release` | 17/17 通过 |
 | 合入门禁脚本 | `npm run merge:test` | 5/5 通过 |
-| 全量 | `npm test`（启用 `BUDINGX_TEST_BUBBLEWRAP=1`） | **641 通过 / 0 失败 / 0 跳过**（skills 10 + spec 11 + unit 598 + release 17 + merge 5） |
+| 全量 | `npm test`（启用 `BUDINGX_TEST_BUBBLEWRAP=1`） | **652 通过 / 0 失败 / 0 跳过**（skills 10 + spec 11 + unit 609 + release 17 + merge 5） |
 | 交叉验证门禁 | `npm run merge:gate` | 本次只推送功能分支，未执行 master 合入门禁 |
-| 来源 AST 复核 | `node scripts/review/sp004-ast.mjs --worktree --reference <参考仓> --reference-revision b5c9be8 --base master` | 改动 42/42 映射，函数对 19,600 组，命中 0，自检 4/4 通过（详见 [ast-review.md](ast-review.md)） |
+| 来源 AST 复核 | `node scripts/review/sp004-ast.mjs --worktree --reference <参考仓> --reference-revision b5c9be8 --base master` | 改动 42/42 映射，函数对 19,834 组，命中 0，自检 4/4 通过（详见 [ast-review.md](ast-review.md)） |
 
-新增复审回归覆盖：
+本轮复审回归覆盖：
 
-- 正式交互 CLI 读取宿主开关并探测隔离能力。正式 runtime、Ink 与本地 HTTP 联合用例使用同一后端工厂，验证 Bash 读取允许的项目输入，并隔离 `.git`、凭据和明确禁止读取的文件。
+- 正式交互 CLI 读取宿主开关并探测隔离能力。正式 runtime、Ink 与本地 HTTP 联合用例使用同一后端工厂，验证 Bash 读取允许的项目输入，并隔离 `.git`、OpenSSH 默认私钥、凭据和明确禁止读取的文件。使用合成内容验证 Ed25519、安全密钥变体及可见的公钥文件。
 - `BUDINGX_TEST_BUBBLEWRAP=1` 时运行 `node --test src/exec/test/host-sandbox.test.mjs`。真实 WSL 后端验证网络命名空间、seccomp 阻断 VM 通信套接字、私有读写视图、只读拒绝写入及取消后的进程树清理。
-- Ink 流程通过键盘分别批准首次计划和漂移后的新请求。被拦截的原动作不执行，重新发起的动作在审批后完成。
-- 正式 runtime 用例使用真实测试进程验证后台测试终态可直接作为证据，以及文件写入后须重新测试。核心用例额外覆盖自动转后台、取消、转向与工作区切换后到达的旧终态。
+- Ink 流程通过键盘分别批准首次计划和漂移后的新请求。覆盖裸写中文、Markdown 反引号标记的含空格路径和通过 `WritePlan.targetPaths` 明确声明的中文路径。被拦截的原动作不执行，重新发起的动作在审批后完成。
+- 正式 runtime 用例验证前后台测试终态、私有快照内临时修改、文件工具写入及测试返回后工作区变动。可验收的 Bubblewrap 测试使用只读项目输入，关键信息由宿主生成。核心用例额外覆盖自动转后台、取消、转向与工作区切换后到达的旧终态。
 
 ## 1. 视觉与交互验收
 
@@ -93,7 +93,7 @@ AC 区间：CE-01…20（20）、CT-01…09（9）、GW-01…09（9）、TP-01�
 | CT-04 | T13 | `core/coding.test.mjs`(18) | L0 | PASS |
 | CT-05 | T12 | `core/question.test.mjs`(7)、`tui/sp004-cards.test.mjs`(10) | L0+L2 | PASS |
 | CT-06 | T12 | `core/question.test.mjs`(7) | L2 | PASS |
-| CT-07 | T13 | `core/coding.test.mjs` 与 `tui/test/runtime.test.mjs` 验证前后台同一证据门禁、写入失效、命令失败及后端缺失时退出 | L0+L1 | PASS（正式入口，后端使用测试替身） |
+| CT-07 | T13 | `core/coding.test.mjs` 与 `tui/test/runtime.test.mjs` 验证前后台同一证据门禁、快照只读及内容校验、写入失效、命令失败及后端缺失时退出 | L0+L1 | PASS（正式入口，后端使用测试替身） |
 | CT-08 | T13/T14 | `core/coding.test.mjs`(18)、`exec/isolated-project.test.mjs`(2) | L0+L2 | PASS |
 | CT-09 | T4/T12 | `exec/background.test.mjs`(7)、`core/question.test.mjs`(7) | L1 | PASS |
 | GW-01 | T6/T23 | `git/status.test.mjs`(7)、`git/status-extended.test.mjs`(4) | L1 | PASS |
@@ -116,11 +116,12 @@ AC 区间：CE-01…20（20）、CT-01…09（9）、GW-01…09（9）、TP-01�
 | TP-09 | T10 | `plan/store.test.mjs`(8)、`tui/sp004-cards.test.mjs`(10) | L0+L2 | PASS |
 | TP-10 | T10/T22 | `plan/store.test.mjs`(8)、`plan/persist.test.mjs`(8)、`plan/host.test.mjs`(4) | L0 | PASS（跨进程恢复属 SP005） |
 
-48 条 AC 保留逐条映射。CE-11、CE-19 与 SAFE-02 已在 Windows WSL 2 Bash 验证。CT-07 已在正式入口分别覆盖前台、后台和写入后失效。其他平台、参考终端对照和真实 Provider 仍为 UNVERIFIED。
+48 条 AC 保留逐条映射。CE-11、CE-19 与 SAFE-02 已在 Windows WSL 2 Bash 验证。CT-07 已在正式入口分别覆盖前台、后台、工作区写入失效与结束后输入漂移。其他平台、参考终端对照和真实 Provider 仍为 UNVERIFIED。
 
 ## 5. 未验证项与恢复条件
 
-- **平台边界（CE-11、CE-19、SAFE-02）**：已验收 Windows + WSL 2 Ubuntu 的 Bubblewrap Bash。Linux 原生宿主尚未独立实测；Windows 原生 PowerShell 和非交互入口保持拒绝。通过 `BUDINGX_SANDBOX=bubblewrap` 显式开启交互 CLI 后探测。每次 Bash 运行复制获准项目输入，使用私有 PID 和网络命名空间，命令生成物不回写。文件工具承担持久修改。
+- **平台边界（CE-11、CE-19、SAFE-02）**：已验收 Windows + WSL 2 Ubuntu 的 Bubblewrap Bash。Linux 原生宿主尚未独立实测，非交互入口保持拒绝。通过 `BUDINGX_SANDBOX=bubblewrap` 显式开启交互 CLI 后探测。每次 Bash 运行复制获准项目输入，使用私有 PID 和网络命名空间，命令生成物不回写。文件工具承担持久修改。
+- **Windows 原生 PowerShell（CAP-L2-05）**：仍是 SP004 必交缺口。该工具入口已注册，但没有经过验证的原生 Windows 隔离执行后端，正式 CLI 拒绝启动。Bubblewrap 的 WSL Bash 验收无法覆盖原生 PowerShell 的解释器、quoting、退出码、网络和文件隔离。恢复条件是接入原生隔离后端并执行真实终端与进程回归。
 - **参考像素对照（VIS-01…04）**：参考提交包含 `ExitPlanModePermissionRequest.tsx` 及 `AskUserQuestionPermissionRequest/`，含独立预览、题间导航、备注和提交确认等参考路径。本轮仅运行本仓伪 TTY 回归，真实对照须确认设计使用权并在同环境采集 100×30、70×20 的单元格和 PNG。
 - **真实 Provider（live）**：本轮用例使用本地 HTTP fixture、scriptProvider 或伪 TTY，未调用真实模型 API。恢复条件：配置真实 Provider 后跑 `npm run test:unit -- live` 类手工场景（仓库未提供自动 live 套件），单独记证据。
 - **发布包核验（SRC-01 的制品侧）**：本轮未打包发布。恢复条件：发布前准备阶段用 `npm pack --dry-run` 核对清单并核对 `THIRD-PARTY-NOTICES.md`，实际 npm 发布由用户在 GitHub 手动触发。

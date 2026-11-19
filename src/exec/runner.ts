@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { realpathSync, statSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { ERROR_CODES } from '../core/constants.js'
+import { isTestCommand } from '../core/coding.js'
 import {
   EXEC_BLOCKING_BUDGET_MS,
   EXEC_OUTPUT_CAP,
@@ -13,7 +14,9 @@ import {
   type CommandResult,
   type CommandRunner,
   type CommandRunContext,
-  type CommandSpec
+  type CommandSpec,
+  type TestEvidence,
+  type VerifiedTestEvidence
 } from '../core/exec.js'
 import { selectInterpreter } from './interpreter.js'
 import { isBlockingWaitCommand, isInteractiveCommand } from './readonly-commands.js'
@@ -68,12 +71,38 @@ function insideDirectory(root: string, path: string): boolean {
   return delta !== '..' && !delta.startsWith(`..${sep}`) && !isAbsolute(delta)
 }
 
+/** Test attestation permits a single direct invocation, without shell composition. */
+function isDirectTestCommand(command: string): boolean {
+  if (/[\r\n]/.test(command)) return false
+  const [program, ...args] = command.trim().split(/[ \t]+/)
+  const projectPath = (value: string) =>
+    /^(?:\.\/)?[a-zA-Z0-9_@.-]+(?:\/[a-zA-Z0-9_@.-]+)*$/.test(value) &&
+    !value.startsWith('-') && !value.replace(/^\.\//, '').split('/').some((part) => part === '.' || part === '..')
+  if (program === 'node') return args[0] === '--test' && args.slice(1).every(projectPath)
+  if (program === 'bash' || program === 'sh') {
+    return args.length === 1 && projectPath(args[0]) &&
+      /(?:^|\/)(?:tests?\.sh|test[-_.][a-zA-Z0-9_.-]+\.sh|[a-zA-Z0-9_.-]+[._-](?:test|spec)\.sh)$/.test(args[0])
+  }
+  if (program === 'npm' || program === 'pnpm') {
+    return (args.length === 1 && args[0] === 'test') ||
+      (args.length === 2 && args[0] === 'run' && /^test(?::[a-zA-Z0-9_-]+)*$/.test(args[1]))
+  }
+  if (program === 'cargo' || program === 'go' || program === 'make') {
+    return args.length === 1 && args[0] === 'test'
+  }
+  if (program === 'pytest' || program === 'jest' || program === 'mocha') return args.every(projectPath)
+  if (program === 'vitest') return args[0] === 'run' && args.slice(1).every(projectPath)
+  return (program === 'python' || program === 'python3') && args[0] === '-m' &&
+    args[1] === 'unittest' && args.slice(2).every(projectPath)
+}
+
 export function createCommandRunner(options: CommandRunnerOptions): CommandRunner {
   const sandboxPolicy = options.sandboxPolicy ?? createSandboxPolicy()
   const platform = options.platform ?? process.platform
   const timeouts = resolveTimeoutConfig(process.env)
   const persistThreshold = options.persistThreshold ?? EXEC_PERSIST_THRESHOLD
   const terminators = new WeakMap<ChildProcess, () => void>()
+  const verifiedEvidence = new WeakMap<VerifiedTestEvidence, () => boolean>()
   const terminate = (child: ChildProcess) => terminators.get(child)?.()
   const background = createBackgroundTable({
     kill: terminate,
@@ -156,6 +185,9 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
     if (denied || (allowed.length > 0 && !allowed.some((path) => insideDirectory(path, cwd)))) {
       return early({ outcome: 'blocked', reason: '工作目录超出隔离后端允许读取的范围', errorCode: ERROR_CODES.permissionDenied })
     }
+    const attestsHostInput = backend.testSnapshot !== undefined
+    const verifyTestInput = attestsHostInput && isDirectTestCommand(spec.command)
+    const mode = verifyTestInput ? 'read_only' : context.mode ?? 'workspace'
     let child: ChildProcess
     try {
       child = backend.start({
@@ -163,7 +195,8 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
         args: [...interpreter.args, spec.command],
         cwd,
         env: allowedEnvironment(options, spec, platform),
-        mode: context.mode ?? 'workspace',
+        mode,
+        ...(verifyTestInput ? { verifyTestInput: true } : {}),
         ...(options.isWorkspacePathReadable ? {
           isWorkspacePathReadable: (path: string) =>
             options.isWorkspacePathReadable!(relative(root, resolve(cwd, path)).split(sep).join('/'))
@@ -173,6 +206,21 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
       const message = error instanceof Error ? error.message : String(error)
       return early({ outcome: 'failed', reason: `隔离后端启动失败：${message}`, errorCode: ERROR_CODES.coreToolFailed })
     }
+    const verifyResult = attestsHostInput && (verifyTestInput || isTestCommand(spec.command))
+      ? (): TestEvidence => {
+          try {
+            if (!verifyTestInput) return { status: 'unavailable' }
+            const snapshot = backend.testSnapshot?.(child)
+            if (!snapshot) return { status: 'unavailable' }
+            if (!snapshot.isCurrent()) return { status: 'stale' }
+            const evidence: VerifiedTestEvidence = Object.freeze({ status: 'verified', workspaceDigest: snapshot.digest })
+            verifiedEvidence.set(evidence, () => snapshot.isCurrent())
+            return evidence
+          } catch {
+            return { status: 'unavailable' }
+          }
+        }
+      : undefined
     terminators.set(child, () => backend.terminate(child))
     // stdin 立即关闭：交互式子进程因 EOF 退出，不无限挂起。
     if (backend.keepsSupervisorStdinOpen !== true) child.stdin?.end()
@@ -194,6 +242,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
           startedAt: started,
           turnId: context.turnId,
           callId: context.callId,
+          verifyResult,
           autoBackgrounded: false,
           backgroundedByUser: true
         },
@@ -203,12 +252,12 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
         context.signal
       )
       // 命令已真正启动才通知宿主（拒绝路径零 spawn，也就不发 command_started）。
-      context.onStarted?.({ taskId, startedAt: started })
+      context.onStarted?.({ taskId, startedAt: started, readOnlyWorkspace: mode === 'read_only' })
       return early({ outcome: 'running', taskId, backgroundedByUser: true })
     }
 
     // 前台命令已真正启动：通知宿主（拒绝路径零 spawn，不发 command_started）。
-    context.onStarted?.({ startedAt: started })
+    context.onStarted?.({ startedAt: started, readOnlyWorkspace: mode === 'read_only' })
 
     return await new Promise<CommandResult>((resolve) => {
       let settled = false
@@ -241,6 +290,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
             startedAt: started,
             turnId: context.turnId,
             callId: context.callId,
+            verifyResult,
             autoBackgrounded: true,
             backgroundedByUser: false
           },
@@ -293,6 +343,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
             // 落盘失败不改变命令终态。
           }
         }
+        const testEvidence = outcome === 'completed' ? verifyResult?.() : undefined
         resolve({
           outcome,
           // 被信号终止/强制结束时不伪造退出码。
@@ -309,7 +360,8 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
             ? ERROR_CODES.execTimeout
             : forced?.outcome === 'cancelled' ? ERROR_CODES.execCancelled : undefined,
           persistedOutputPath,
-          persistedOutputSize
+          persistedOutputSize,
+          ...(testEvidence !== undefined ? { testEvidence } : {})
         })
       }
       child.on('error', (error) => {
@@ -333,6 +385,13 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
     status: (taskId) => background.status(taskId),
     cancel: (taskId) => background.cancel(taskId),
     list: () => background.list(),
+    isTestEvidenceCurrent(evidence) {
+      try {
+        return verifiedEvidence.get(evidence)?.() === true
+      } catch {
+        return false
+      }
+    },
     dispose: () => background.dispose()
   }
 }

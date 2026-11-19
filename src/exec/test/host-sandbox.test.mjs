@@ -38,6 +38,18 @@ test('Bubblewrap gates workspace, credentials, network, and cancellation in real
   writeFileSync(join(workspace, 'nested', '.env'), 'private fixture')
   linkSync(join(workspace, 'nested', '.env'), join(workspace, 'credential-alias.txt'))
   writeFileSync(join(workspace, 'nested', '.git', 'config'), 'private fixture')
+  const privateKeyFixtures = [
+    'id_dsa',
+    'id_ecdsa',
+    'ID_ECDSA_SK',
+    'id_ed25519',
+    'id_ed25519_sk',
+    'nested/ssh_host_ed25519_key'
+  ]
+  for (const name of privateKeyFixtures) {
+    writeFileSync(join(workspace, name), 'synthetic filename fixture')
+  }
+  writeFileSync(join(workspace, 'id_ed25519.pub'), 'synthetic public fixture')
   writeFileSync(join(root, 'outside.txt'), 'private fixture')
 
   const socket = createServer()
@@ -59,6 +71,10 @@ test('Bubblewrap gates workspace, credentials, network, and cancellation in real
   const before = await run(`set -eu
     cat visible.txt
     test ! -e nested/.git && test ! -e nested/.env && test ! -e .ssh
+    for key in ${privateKeyFixtures.join(' ')}; do
+      test ! -e "$key" || { printf 'private key filename was copied: %s\n' "$key" >&2; exit 23; }
+    done
+    test -f id_ed25519.pub
     test ! -e denied.txt && test ! -e credential-alias.txt && test ! -e ../outside.txt && test ! -e /mnt/c
     if ( : >/dev/tcp/127.0.0.1/${socket.address().port} ) 2>/dev/null; then exit 19; fi
     test ! -e /init

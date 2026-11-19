@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path'
 import {
   PLAN_APPROVAL_STATES,
   PLAN_STEP_STATUSES,
+  isPlanTargetPaths,
   type Plan,
   type PlanStep
 } from '../core/plan.js'
@@ -44,6 +45,7 @@ export function serializePlan(plan: Plan): string {
   ]
   if (plan.fingerprint !== undefined) lines.push(`fingerprint: ${scalar(plan.fingerprint)}`)
   if (plan.draftText !== undefined) lines.push(`draftText: ${scalar(plan.draftText)}`)
+  if (plan.targetPaths !== undefined) lines.push(`targetPaths: ${JSON.stringify(plan.targetPaths)}`)
   if (plan.approvedText !== undefined) lines.push(`approvedText: ${scalar(plan.approvedText)}`)
   lines.push('steps:')
   for (const step of plan.steps) lines.push(...stepLines(step))
@@ -151,6 +153,10 @@ export function parsePlan(text: string): Plan {
   }
   if (typeof meta.fingerprint === 'string') plan.fingerprint = meta.fingerprint
   if (typeof meta.draftText === 'string') plan.draftText = meta.draftText
+  if (meta.targetPaths !== undefined) {
+    if (!isPlanTargetPaths(meta.targetPaths)) throw new Error('计划文件 targetPaths 不合法')
+    plan.targetPaths = meta.targetPaths
+  }
   if (typeof meta.approvedText === 'string') plan.approvedText = meta.approvedText
   return plan
 }

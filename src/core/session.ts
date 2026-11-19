@@ -33,7 +33,7 @@ import type {
   ToolContext,
   ToolHandler
 } from './tools.js'
-import type { CommandResult } from './exec.js'
+import type { CommandResult, VerifiedTestEvidence } from './exec.js'
 import type { CodingTaskTracker } from './coding.js'
 import type {
   PermissionMode,
@@ -74,6 +74,7 @@ export type SessionOptions = {
    * become completion evidence and unsupported "done" claims are rejected (CT-07).
    */
   codingTask?: CodingTaskTracker
+  isTestEvidenceCurrent?: (evidence: VerifiedTestEvidence) => boolean
   maxIterations?: number
   cancelBudgetMs?: number
   queueAutostartMs?: number
@@ -304,7 +305,7 @@ export class Session {
     if (plan.approval === 'approved') {
       return { ok: false, message: '旧计划已获批准：请用 WritePlan 写入新草稿再申请审批' }
     }
-    const reviewSnapshot = host.snapshot(text)
+    const reviewSnapshot = host.snapshot(text, plan.targetPaths)
     const drift = host.diff(state.baseline, reviewSnapshot)
     if (drift.length > 0) {
       this.reopenPlanForApproval(plan, text, drift)
@@ -327,6 +328,7 @@ export class Session {
     const requestId = randomUUID()
     const intents = context.allowedPrompts?.map(({ tool, prompt }) => `${tool}: ${prompt}`) ?? []
     const reapproval = state.reapprovalDrift?.map((item) => describeDrift([item])) ?? []
+    const targets = pending.targetPaths ?? []
     const request: ApprovalRequest = {
       requestId,
       turnId,
@@ -336,6 +338,7 @@ export class Session {
       preview: [
         ...(reapproval.length ? ['重新审批的漂移项', ...reapproval, ''] : []),
         ...(intents.length ? ['权限意图（仅供审查，不授予权限）', ...intents, ''] : []),
+        ...(targets.length ? ['计划明确列出的目标文件', ...targets, ''] : []),
         ...text.split('\n').slice(0, 40)
       ],
       planId: pending.id,
@@ -405,7 +408,7 @@ export class Session {
       const feedback = decision.feedback?.trim() ? `：${decision.feedback.trim()}` : ''
       return { ok: false, message: `计划未获批准${feedback}` }
     }
-    const reviewDrift = host.diff(reviewSnapshot, host.snapshot(text), true)
+    const reviewDrift = host.diff(reviewSnapshot, host.snapshot(text, pending.targetPaths), true)
     if (reviewDrift.length > 0) {
       this.reopenPlanForApproval(pending, text, reviewDrift)
       return {
@@ -574,13 +577,15 @@ export class Session {
     this.planModeState = {
       phase: 'research',
       originalMode,
-      baseline: host.snapshot(text),
+      baseline: host.snapshot(text, plan?.targetPaths),
       reapprovalDrift: drift
     }
     this.options.permissionPolicy?.setMode('workspace_edit')
     this.emit({ type: 'plan_mode_changed', active: true, phase: 'research', originalMode })
     if (plan) {
-      const draft = host.store.create(plan.goal, plan.steps.map((step) => ({ title: step.title })), text)
+      const draft = host.store.create(
+        plan.goal, plan.steps.map((step) => ({ title: step.title })), text, plan.targetPaths
+      )
       this.emit({ type: 'plan_updated', plan: draft })
     }
     this.emit({
@@ -949,7 +954,7 @@ export class Session {
           break
         }
         // CT-07：完成声明必须附带真实证据；无证据时回喂原因并继续迭代。
-        const claim = this.options.codingTask?.canClaimDone()
+        const claim = this.options.codingTask?.canClaimDone(this.options.isTestEvidenceCurrent)
         const codingTask = this.options.codingTask?.get()
         if (claim && !claim.ok && codingTask) {
           if (codingTask.lastTest?.errorCode === ERROR_CODES.execSandboxUnavailable) {
@@ -1236,7 +1241,7 @@ export class Session {
             if (tracker && event.type === 'command_started' && !this.runningCommands.has(commandKey)) {
               const capability = permissionRequest?.capability ?? handler.capability?.(input)
               this.runningCommands.set(commandKey, {
-                token: tracker.beginCommand(capability !== 'read'),
+                token: tracker.beginCommand(event.readOnlyWorkspace !== true && capability !== 'read'),
                 command: event.command,
                 taskId: event.taskId
               })

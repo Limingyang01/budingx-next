@@ -30,6 +30,8 @@ export type Plan = {
   fingerprint?: string
   /** Draft Markdown written by the session's planning tool. */
   draftText?: string
+  /** Explicit workspace-relative file paths that need to be reviewed with the plan. */
+  targetPaths?: string[]
   /** 批准时可携带用户编辑后的计划正文（对齐 F-13 的 planWasEdited）。 */
   approvedText?: string
   createdAt: number
@@ -38,10 +40,18 @@ export type Plan = {
 
 /** 单计划步骤上限（设计 §6.1，超出拒绝并要求拆分）。 */
 export const PLAN_MAX_STEPS = 50
+export const PLAN_MAX_TARGET_PATHS = 64
+export const PLAN_MAX_TARGET_PATH_LENGTH = 1024
+
+export function isPlanTargetPaths(value: unknown): value is string[] {
+  return Array.isArray(value) && value.length <= PLAN_MAX_TARGET_PATHS &&
+    value.every((path) => typeof path === 'string' && path.trim().length > 0 &&
+      path.length <= PLAN_MAX_TARGET_PATH_LENGTH && !/\p{Cc}/u.test(path))
+}
 
 export interface PlanStore {
   current(): Plan | undefined
-  create(goal: string, steps: { title: string }[], draftText?: string): Plan
+  create(goal: string, steps: { title: string }[], draftText?: string, targetPaths?: readonly string[]): Plan
   update(stepId: string, patch: Partial<PlanStep>): Plan
   /** 请求批准：进入 pending。 */
   requestApproval(planText: string): Plan
@@ -86,7 +96,7 @@ export type PlanModeHost = {
   store: PlanStore
   /** 读取当前会话计划文件正文；缺失或为空返回 undefined。 */
   readPlanText: () => Promise<string | undefined>
-  snapshot: (planText?: string) => PlanModeSnapshot
+  snapshot: (planText?: string, targetPaths?: readonly string[]) => PlanModeSnapshot
   diff: (baseline: PlanModeSnapshot, current: PlanModeSnapshot, strictFiles?: boolean) => PlanDriftItem[]
   validate: (plan: Plan) => { ok: boolean; drift: PlanDriftItem[] }
 }

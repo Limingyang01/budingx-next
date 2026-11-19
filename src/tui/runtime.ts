@@ -144,6 +144,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   const planMode = createPlanModeHost({
     sessionId,
     workspace,
+    canReadPath: (path) => !workspaceToolOptions.readDenied(path),
     ...(options.home ? { home: options.home } : {})
   })
   const runner = createCommandRunner({
@@ -208,6 +209,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     tools,
     planMode,
     codingTask,
+    isTestEvidenceCurrent: (evidence) => runner.isTestEvidenceCurrent?.(evidence) === true,
     disposers: [() => runner.dispose?.()],
     permissionPolicy: policy,
     resolveSnapshot: () => {

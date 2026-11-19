@@ -71,8 +71,8 @@ export function validateBeforeExecute(plan: Plan | undefined, snapshot: PlanSnap
   }
   const paths = new Set([...Object.keys(expected.files), ...Object.keys(actual.files)])
   for (const path of [...paths].sort()) {
-    const before = expected.files[path]
-    const now = actual.files[path]
+    const before = Object.hasOwn(expected.files, path) ? expected.files[path] : undefined
+    const now = Object.hasOwn(actual.files, path) ? actual.files[path] : undefined
     if (before === now) continue
     drift.push({
       item: `files:${path}`,

@@ -2,7 +2,7 @@
 // 覆盖：计划文件落盘、工作区/Git 快照指纹、漂移判定、执行前校验、工具调用成功与失败路径。
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -91,6 +91,64 @@ test('T15-11b 生产 PlanModeHost：未提交的 HEAD 变化也计入漂移', (t
   git(f.repo, 'commit', '-q', '-m', 'external commit')
   const drift = host.diff(baseline, host.snapshot())
   assert.deepEqual(drift.map((d) => d.item), ['head'])
+})
+
+test('普通 Markdown 正文追踪中文文件名、引号内空格和 Markdown 链接', (t) => {
+  const f = makeRepo(t)
+  const { host } = makeHost(f)
+  const files = ['src/核心.mjs', 'src/新 模块.mjs', 'src/旧 说明.md', 'src/构建 文档.md']
+  for (const file of files) writeFileSync(join(f.repo, file), 'initial')
+  const text = [
+    '修改 src/核心.mjs。',
+    '修改 `src/新 模块.mjs`。',
+    '更新 “src/旧 说明.md”。',
+    '更新 [文档](<src/构建%20文档.md>)。'
+  ].join('\n')
+  host.writePlanText(text, '更新文件', ['修改目标'])
+  const reviewed = host.snapshot()
+  assert.deepEqual(Object.keys(reviewed.files).sort(), [...files].sort())
+  host.store.requestApproval(text)
+  const approved = host.store.approve(text)
+  for (const file of files) writeFileSync(join(f.repo, file), 'changed')
+  assert.deepEqual(host.validate(approved).drift.map((entry) => entry.item),
+    files.map((file) => `files:${file}`).sort())
+})
+
+test('明确目标持久化并检测原本不存在的扩展名为空的文件', (t) => {
+  const f = makeRepo(t)
+  const { workspace, host } = makeHost(f)
+  const path = 'src/空格 目录/新 文件'
+  const text = '按计划添加新文件'
+  host.writePlanText(text, '添加文件', ['写入新文件'], [path])
+  const before = host.snapshot()
+  assert.ok(Object.hasOwn(before.files, path))
+  host.store.requestApproval(text)
+  const approved = host.store.approve(text)
+  const reopened = createPlanModeHost({ sessionId: 'sess-1', workspace, home: f.home })
+  assert.deepEqual(reopened.store.current().targetPaths, [path])
+  mkdirSync(join(f.repo, 'src', '空格 目录'), { recursive: true })
+  writeFileSync(join(f.repo, path), 'unexpected creation')
+  assert.deepEqual(reopened.validate(approved).drift.map((entry) => entry.item), [`files:${path}`])
+})
+
+test('明确目标拒绝越界、目录、链接和拒绝读取的目标', (t) => {
+  const f = makeRepo(t)
+  const outside = join(f.base, 'outside')
+  mkdirSync(outside)
+  symlinkSync(outside, join(f.repo, 'linked'), 'junction')
+  const workspace = createWorkspace(f.repo)
+  const host = createPlanModeHost({
+    sessionId: 'sess-bounds',
+    workspace,
+    home: f.home,
+    canReadPath: (path) => path !== 'notes.txt'
+  })
+  for (const path of ['../outside/file.mjs', join(outside, 'file.mjs'), 'linked/file.mjs',
+    'C:/outside/file.mjs', 'src', 'src/.env', '.git/config', 'notes.txt']) {
+    assert.throws(() => host.writePlanText('新计划', '修改目标', ['步骤'], [path]), /targetPaths/)
+  }
+  assert.deepEqual(host.snapshot('计划参考 `notes.txt` 和 `src/app.mjs`').files,
+    { 'src/app.mjs': host.snapshot('src/app.mjs').files['src/app.mjs'] })
 })
 
 test('T15-12 计划模式工具：EnterPlanMode 进入调研、ExitPlanMode 缺计划文件报错、批准后恢复原档位', async (t) => {

@@ -5,6 +5,7 @@ import {
   PLAN_MAX_STEPS,
   PLAN_STEP_STATUSES,
   TODO_STATUSES,
+  isPlanTargetPaths,
   nextPlanStepId,
   planProgress,
   type Plan,
@@ -35,8 +36,7 @@ export type PlanEvidence = {
 
 /** 生成稳定排序的证据对象（键顺序固定，便于指纹比较）。 */
 export function planEvidenceOf(plan: Pick<Plan, 'updatedAt'>, snapshot: PlanSnapshot): PlanEvidence {
-  const files: Record<string, string> = {}
-  for (const path of Object.keys(snapshot.files).sort()) files[path] = snapshot.files[path]
+  const files = Object.fromEntries(Object.keys(snapshot.files).sort().map((path) => [path, snapshot.files[path]]))
   return {
     root: snapshot.root,
     head: snapshot.head ?? null,
@@ -52,7 +52,7 @@ export function planFingerprintOf(plan: Pick<Plan, 'updatedAt'>, snapshot: PlanS
 
 export type PlanStoreOptions = {
   /** 批准时读取当前工作区快照；缺省为无工作区绑定（仅内存测试）。 */
-  snapshot?: (planText?: string) => PlanSnapshot
+  snapshot?: (planText?: string, targetPaths?: readonly string[]) => PlanSnapshot
   now?: () => number
   id?: () => string
   /** 提供时计划持久化为该 `.md` 文件：创建即落盘，重开同一路径可读回（TP-10）。 */
@@ -95,7 +95,7 @@ export function createPlanStore(options: PlanStoreOptions = {}): PlanStore {
   const store: PlanStore = {
     current: () => plan,
 
-    create(goal, steps, draftText) {
+    create(goal, steps, draftText, targetPaths) {
       if (typeof goal !== 'string' || goal.trim().length === 0) {
         throw new Error('计划目标不能为空')
       }
@@ -104,6 +104,9 @@ export function createPlanStore(options: PlanStoreOptions = {}): PlanStore {
       }
       if (steps.length > PLAN_MAX_STEPS) {
         throw new Error(`计划步骤不能超过 ${PLAN_MAX_STEPS} 步，请拆分为多个计划`)
+      }
+      if (targetPaths !== undefined && !isPlanTargetPaths(targetPaths)) {
+        throw new Error('无效的计划 targetPaths')
       }
       const list: PlanStep[] = []
       for (const step of steps) {
@@ -116,6 +119,7 @@ export function createPlanStore(options: PlanStoreOptions = {}): PlanStore {
         steps: list,
         approval: 'none',
         ...(draftText !== undefined ? { draftText } : {}),
+        ...(targetPaths !== undefined ? { targetPaths: [...targetPaths] } : {}),
         createdAt: timestamp,
         updatedAt: timestamp
       }
@@ -185,7 +189,7 @@ export function createPlanStore(options: PlanStoreOptions = {}): PlanStore {
       const timestamp = nextVersion()
       current.updatedAt = timestamp
       current.approval = 'approved'
-      current.fingerprint = planFingerprintOf({ updatedAt: timestamp }, snapshot(approvedText))
+      current.fingerprint = planFingerprintOf({ updatedAt: timestamp }, snapshot(approvedText, current.targetPaths))
       if (approvedText !== undefined) {
         if (typeof approvedText !== 'string') throw new Error('approvedText 必须是字符串')
         current.approvedText = approvedText

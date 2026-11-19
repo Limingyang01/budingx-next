@@ -46,12 +46,16 @@ export type BudingPermissionPolicy = PermissionPolicy & {
 }
 
 const CREDENTIAL_SUFFIXES = ['.pem', '.key', '.p12', '.pfx']
+const OPENSSH_PRIVATE_KEY_NAME =
+  /^(?:id_(?:dsa|(?:ecdsa|ed25519)(?:_sk)?)|ssh_host_(?:rsa|dsa|ecdsa|ed25519)_key)$/
 
 export function isCredentialLike(name: string): boolean {
   const lower = name.toLowerCase()
   if (lower === 'credentials.json') return true
   if (lower === '.env' || lower.startsWith('.env.')) return true
-  if (lower.startsWith('id_rsa')) return true
+  // Keep the existing RSA prefix rule. For the other families, the public
+  // key and certificate are separate files and retain their prior access.
+  if (lower.startsWith('id_rsa') || OPENSSH_PRIVATE_KEY_NAME.test(lower)) return true
   return CREDENTIAL_SUFFIXES.some((suffix) => lower.endsWith(suffix))
 }
 

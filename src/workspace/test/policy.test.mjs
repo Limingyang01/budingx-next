@@ -63,6 +63,12 @@ test('完全权限不能越过底线：凭据特征文件在任一模式都拒�
     'config/.env',
     'id_rsa',
     'id_rsa.pub',
+    'keys/id_dsa',
+    'keys/id_ecdsa',
+    'keys/ID_ECDSA_SK',
+    'keys/id_ed25519',
+    'keys/id_ed25519_sk',
+    'keys/ssh_host_ed25519_key',
     'server.pem',
     'keys/api.key',
     'bundle.p12',
@@ -185,4 +191,7 @@ test('凭据特征名判定', () => {
   assert.equal(isCredentialLike('.env.production'), true)
   assert.equal(isCredentialLike('main.ts'), false)
   assert.equal(isCredentialLike('TLS.KEY'), true)
+  assert.equal(isCredentialLike('id_ed25519.pub'), false)
+  assert.equal(isCredentialLike('id_ecdsa_sk-cert.pub'), false)
+  assert.equal(isCredentialLike('ssh_host_ed25519_key.pub'), false)
 })

@@ -3,7 +3,10 @@
 import type { Session } from '../core/session.js'
 import { ERROR_CODES } from '../core/constants.js'
 import type { ToolHandler } from '../core/tools.js'
-import type { Plan, PlanAllowedPrompt, TodoItem } from '../core/plan.js'
+import {
+  PLAN_MAX_TARGET_PATH_LENGTH, PLAN_MAX_TARGET_PATHS, isPlanTargetPaths,
+  type Plan, type PlanAllowedPrompt, type TodoItem
+} from '../core/plan.js'
 import { createTodoStore } from './store.js'
 
 const ENTER_PARAMETERS = {
@@ -48,7 +51,7 @@ function isPlanAllowedPrompt(value: unknown): value is PlanAllowedPrompt {
 /** EnterPlanMode/ExitPlanMode：计划模式是权限档位切换，不产生工作区副作用。 */
 export function createPlanModeTools(
   session: Session,
-  writePlanText?: (text: string, goal: string, steps: string[]) => Plan
+  writePlanText?: (text: string, goal: string, steps: string[], targetPaths?: readonly string[]) => Plan
 ): ToolHandler[] {
   const todos = createTodoStore()
   session.on((event) => {
@@ -95,7 +98,13 @@ export function createPlanModeTools(
         properties: {
           text: { type: 'string', minLength: 1, maxLength: 32000 },
           goal: { type: 'string', minLength: 1 },
-          steps: { type: 'array', items: { type: 'string', minLength: 1 }, minItems: 1, maxItems: 50 }
+          steps: { type: 'array', items: { type: 'string', minLength: 1 }, minItems: 1, maxItems: 50 },
+          targetPaths: {
+            type: 'array',
+            description: '需要在批准与执行之间核验的工作区相对文件路径。路径有空格、中文或文件尚未创建时请明确列出。',
+            items: { type: 'string', minLength: 1, maxLength: PLAN_MAX_TARGET_PATH_LENGTH },
+            maxItems: PLAN_MAX_TARGET_PATHS
+          }
         },
         required: ['text', 'goal', 'steps'],
         additionalProperties: false
@@ -104,7 +113,9 @@ export function createPlanModeTools(
       capability: () => 'read',
       async execute(input, context) {
         if (session.planMode.phase !== 'research') throw failure('仅可在计划调研阶段更新草稿')
-        const { text, goal, steps } = (input ?? {}) as { text?: unknown; goal?: unknown; steps?: unknown }
+        const { text, goal, steps, targetPaths } = (input ?? {}) as {
+          text?: unknown; goal?: unknown; steps?: unknown; targetPaths?: unknown
+        }
         if (typeof text !== 'string' || !text.trim() || text.length > 32000) {
           throw failure('计划正文须为非空文本，且最多 32000 字符')
         }
@@ -112,7 +123,10 @@ export function createPlanModeTools(
           steps.length < 1 || steps.length > 50 || !steps.every((step) => typeof step === 'string' && step.trim())) {
           throw failure('计划需要非空目标及 1–50 个步骤')
         }
-        const plan = writePlanText(text.trim(), goal, steps)
+        if (targetPaths !== undefined && !isPlanTargetPaths(targetPaths)) {
+          throw failure(`targetPaths 须为最多 ${PLAN_MAX_TARGET_PATHS} 条非空相对路径`)
+        }
+        const plan = writePlanText(text.trim(), goal, steps, targetPaths)
         context.emit?.({ type: 'plan_updated', plan })
         return '会话计划已更新，可调用 ExitPlanMode 请求批准。'
       }

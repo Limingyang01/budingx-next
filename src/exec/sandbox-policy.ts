@@ -24,8 +24,15 @@ export interface SandboxLaunchRequest {
   env: NodeJS.ProcessEnv
   /** 只读模式须强制禁写，而不是依赖命令文本的分类。 */
   mode: 'read_only' | 'workspace'
+  /** Create a read-only project projection and capture its content digest for verification. */
+  verifyTestInput?: true
   /** Host policy for paths projected from this launch's working directory. */
   isWorkspacePathReadable?: (relativePath: string) => boolean
+}
+
+export interface SandboxTestSnapshot {
+  readonly digest: string
+  isCurrent(): boolean
 }
 
 /** 宿主注入的可信执行后端。verified 为宿主真实进程验收结论。 */
@@ -39,6 +46,8 @@ export interface SandboxBackend {
   keepsSupervisorStdinOpen?: boolean
   /** 在既定文件、Git 和网络隔离策略下启动进程。失败时不得退回宿主执行。 */
   start(request: SandboxLaunchRequest): ChildProcess
+  /** Only returned for a launch in an immutable project snapshot. */
+  testSnapshot?(child: ChildProcess): SandboxTestSnapshot | undefined
   /** 终止本后端启动的完整进程树；可能重复调用。 */
   terminate(child: ChildProcess): void
 }

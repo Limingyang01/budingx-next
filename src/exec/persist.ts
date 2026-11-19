@@ -4,7 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { dataRoot } from '../storage/paths.js'
-import type { CommandOutcome } from '../core/exec.js'
+import type { CommandOutcome, TestEvidence } from '../core/exec.js'
 
 /** 会话隔离的任务输出绝对路径：~/.budingx/sessions/<sessionId>/tasks/<taskId>.out。 */
 export function resolveTaskOutputPath(sessionId: string, taskId: string, home: string = homedir()): string {
@@ -27,6 +27,7 @@ export interface CommandFinishedInput {
   exitCode?: number
   outputPath?: string
   finishedAt: number
+  testEvidence?: TestEvidence
 }
 
 /** command_finished 事件构造器。 */

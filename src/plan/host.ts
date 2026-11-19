@@ -3,13 +3,17 @@
 // 工作区根、Git HEAD 与计划里显式提到的目标文件前像，避免跨外部改动误批。
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
-import { isAbsolute, relative } from 'node:path'
-import type { Plan, PlanDriftItem, PlanModeHost, PlanModeSnapshot } from '../core/plan.js'
+import { readFileSync, statSync } from 'node:fs'
+import {
+  isPlanTargetPaths,
+  type Plan, type PlanDriftItem, type PlanModeHost, type PlanModeSnapshot
+} from '../core/plan.js'
+import { MAX_READ_RANGE_BYTES } from '../workspace/constants.js'
+import { isCredentialLike } from '../workspace/policy.js'
+import type { ResolvedPath, Workspace } from '../workspace/paths.js'
 import { createPlanStore } from './store.js'
 import { parsePlan, planFilePath } from './serialize.js'
 import { validateBeforeExecute } from './validate.js'
-import type { Workspace } from '../workspace/paths.js'
 
 export type PlanModeHostOptions = {
   sessionId: string
@@ -17,23 +21,51 @@ export type PlanModeHostOptions = {
   /** 用户数据根（测试注入）；缺省 ~/.budingx。 */
   home?: string
   now?: () => number
+  canReadPath?(path: string): boolean
 }
 
-/** 计划正文里显式提到的文件：只给这些文件做前像指纹，避免扫描整仓。 */
+// Markdown code spans, link destinations, quoted paths, then unquoted path tokens.
 const FILE_REFERENCE =
-  /[\w@./-]*[\w-]+\.(?:ts|tsx|js|jsx|mjs|cjs|json|md|py|go|rs|java|kt|css|html|sh|yml|yaml)/g
+  /`+([^`\r\n]+)`+|\[[^\]\r\n]*\]\((<[^<>\r\n]+>|[^)\r\n]+)\)|"([^"\r\n]+)"|'([^'\r\n]+)'|“([^”\r\n]+)”|‘([^’\r\n]+)’|([\p{L}\p{M}\p{N}_@./\\-]+\.[\p{L}\p{N}]+)(?![\p{L}\p{M}\p{N}_@./\\-])/gu
+const FILE_SUFFIX = /\.(?:ts|tsx|js|jsx|mjs|cjs|json|md|txt|py|go|rs|java|kt|css|html|sh|yml|yaml)$/iu
+const MISSING_FILE = '(缺失)'
+const UNAVAILABLE_FILE = '(无法读取)'
 
-function toPosix(path: string): string {
-  return path.split('\\').join('/')
+function normalizePlanPath(raw: string): string | undefined {
+  const path = raw.trim().replace(/\\/g, '/')
+  if (path.startsWith('/') || /[:<>?"|*\p{Cc}]/u.test(path)) return undefined
+  const parts = path.split('/').filter((part) => part !== '' && part !== '.')
+  if (parts.length === 0 || parts.includes('..')) return undefined
+  return parts.join('/')
 }
 
-function digest(content: string | Buffer): string {
-  return createHash('sha256').update(content).digest('hex')
+function* markdownPlanPaths(text: string): Iterable<string> {
+  for (const match of text.matchAll(FILE_REFERENCE)) {
+    const [, codeSpan, link, doubleQuote, singleQuote, doubleCurlyQuote, singleCurlyQuote, bare] = match
+    let path = codeSpan ?? doubleQuote ?? singleQuote ?? doubleCurlyQuote ?? singleCurlyQuote ?? bare
+    if (link !== undefined) {
+      const destination = link.trim()
+      try {
+        const target = destination.startsWith('<')
+          ? destination.slice(1, -1)
+          : destination.replace(/\s+["'][^"']*["']$/, '')
+        path = decodeURIComponent(target.split('#', 1)[0])
+      } catch {
+        continue
+      }
+    }
+    if (FILE_SUFFIX.test(path.trim())) yield path
+  }
+}
+
+function isProtectedPlanPath(path: string): boolean {
+  return path.split('/').some((part) =>
+    ['.git', '.budingx', '.claude'].includes(part.toLowerCase()) || isCredentialLike(part))
 }
 
 /** 生产宿主的 PlanModeHost：计划文件 + 工作区/Git 快照 + 执行前校验。 */
 export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost & {
-  writePlanText(text: string, goal: string, steps: string[]): Plan
+  writePlanText(text: string, goal: string, steps: string[], targetPaths?: readonly string[]): Plan
 } {
   const planId = `plan-${options.sessionId}`
   const filePath = planFilePath(options.sessionId, planId, options.home)
@@ -65,35 +97,38 @@ export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost &
     }
   }
 
-  function fingerprint(relativePath: string): string | undefined {
-    let resolved
+  function resolveTarget(path: string): ResolvedPath | undefined {
+    if (isProtectedPlanPath(path) || options.canReadPath?.(path) === false) return undefined
     try {
-      resolved = options.workspace.resolve(relativePath)
-    } catch {
-      return undefined
-    }
-    if (!resolved.existed || resolved.isDirectory) return undefined
-    try {
-      return digest(readFileSync(resolved.real))
-    } catch {
-      return undefined
-    }
-  }
-
-  function resolveRelative(root: string, candidate: string): string | undefined {
-    try {
-      const resolved = options.workspace.resolve(candidate)
-      const relativePath = toPosix(relative(root, resolved.real))
-      if (relativePath === '' || relativePath.startsWith('..') || isAbsolute(relativePath)) return undefined
-      return relativePath
+      const target = options.workspace.resolve(path)
+      if (target.isDirectory || !target.relative || isProtectedPlanPath(target.relative) ||
+        (target.relative !== path && options.canReadPath?.(target.relative) === false)) return undefined
+      return target
     } catch {
       return undefined
     }
   }
 
-  function snapshot(planText?: string): PlanModeSnapshot {
+  function fingerprint(path: string, target: ResolvedPath): string {
+    if (!target.existed) return MISSING_FILE
+    try {
+      const status = statSync(target.real)
+      if (!status.isFile() || status.size > MAX_READ_RANGE_BYTES) return UNAVAILABLE_FILE
+      const hash = createHash('sha256')
+      // Keep the lexical key and bind symlink target identity as well as bytes.
+      if (path !== target.relative) hash.update(target.relative).update('\0')
+      return hash.update(readFileSync(target.real)).digest('hex')
+    } catch {
+      return UNAVAILABLE_FILE
+    }
+  }
+
+  function snapshot(
+    planText?: string,
+    targetPaths: readonly string[] = planText === undefined ? store.current()?.targetPaths ?? [] : []
+  ): PlanModeSnapshot {
     const root = options.workspace.root
-    const files: Record<string, string> = {}
+    const files = new Map<string, string>()
     const text = planText ?? (() => {
       try {
         return loadPlanText()
@@ -101,16 +136,19 @@ export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost &
         return ''
       }
     })()
-    for (const match of text.matchAll(FILE_REFERENCE)) {
-      const candidate = toPosix(match[0].replace(/^\.\//, ''))
-      if (candidate === '' || isAbsolute(candidate)) continue
-      const relativePath = resolveRelative(root, candidate)
-      if (relativePath === undefined) continue
-      const value = fingerprint(candidate)
-      if (value !== undefined) files[relativePath] = value
+    for (const raw of targetPaths) {
+      const path = normalizePlanPath(raw)
+      const target = path ? resolveTarget(path) : undefined
+      files.set(path ?? raw, path && target ? fingerprint(path, target) : UNAVAILABLE_FILE)
+    }
+    for (const raw of markdownPlanPaths(text)) {
+      const path = normalizePlanPath(raw)
+      if (!path || files.has(path)) continue
+      const target = resolveTarget(path)
+      if (target) files.set(path, fingerprint(path, target))
     }
     const head = gitHead(root)
-    return { root, ...(head !== undefined ? { head } : {}), files }
+    return { root, ...(head !== undefined ? { head } : {}), files: Object.fromEntries(files) }
   }
 
   function diff(baseline: PlanModeSnapshot, current: PlanModeSnapshot, strictFiles = false): PlanDriftItem[] {
@@ -127,8 +165,8 @@ export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost &
       ? new Set([...Object.keys(baseline.files), ...Object.keys(current.files)])
       : Object.keys(baseline.files)
     for (const path of [...paths].sort()) {
-      const before = baseline.files[path]
-      const after = current.files[path]
+      const before = Object.hasOwn(baseline.files, path) ? baseline.files[path] : undefined
+      const after = Object.hasOwn(current.files, path) ? current.files[path] : undefined
       if (before !== after) {
         drift.push({ item: `files:${path}`, expected: before ?? '(缺失)', actual: after ?? '(缺失)' })
       }
@@ -146,12 +184,28 @@ export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost &
   return {
     store,
     readPlanText,
-    writePlanText(text, goal, steps) {
-      return store.create(goal, steps.map((title) => ({ title })), text)
+    writePlanText(text, goal, steps, targetPaths) {
+      if (targetPaths !== undefined && !isPlanTargetPaths(targetPaths)) throw new Error('无效的计划 targetPaths')
+      const paths = [...new Set(targetPaths?.map((raw) => {
+        const path = normalizePlanPath(raw)
+        const target = path ? resolveTarget(path) : undefined
+        if (!path || !target || fingerprint(path, target) === UNAVAILABLE_FILE) {
+          throw new Error(`targetPaths 必须指向工作区内可读取的文件：${raw}`)
+        }
+        return path
+      }))]
+      return store.create(goal, steps.map((title) => ({ title })), text, targetPaths !== undefined ? paths : undefined)
     },
     snapshot,
     diff,
-    validate: (plan) => validateBeforeExecute(plan, snapshot(plan.approvedText ?? plan.draftText))
+    validate(plan) {
+      const current = snapshot(plan.approvedText ?? plan.draftText, plan.targetPaths)
+      const checked = validateBeforeExecute(plan, current)
+      if (!checked.ok) return checked
+      const drift = Object.entries(current.files).filter(([, value]) => value === UNAVAILABLE_FILE)
+        .map(([path]) => ({ item: `files:${path}`, expected: '可核验的文件', actual: UNAVAILABLE_FILE }))
+      return { ok: drift.length === 0, drift }
+    }
   }
 }
 

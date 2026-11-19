@@ -1,6 +1,6 @@
 // SP004 编码任务目标状态机契约与完成证据判定（设计 §5.2）。
 // Core 只持有契约与纯逻辑；回合接线在 Session（T13）。
-import type { CommandOutcome, CommandResult } from './exec.js'
+import type { CommandOutcome, CommandResult, TestEvidence, VerifiedTestEvidence } from './exec.js'
 import type { ToolHandler } from './tools.js'
 
 export const TASK_PHASES = [
@@ -22,9 +22,10 @@ export type CommandEvidence = {
   errorCode?: string
   outcome: CommandOutcome
   at: number
+  verification?: TestEvidence
 }
 
-type CommandEvidenceResult = Pick<CommandResult, 'outcome' | 'exitCode' | 'errorCode'>
+type CommandEvidenceResult = Pick<CommandResult, 'outcome' | 'exitCode' | 'errorCode' | 'testEvidence'>
 
 export type CodingTaskState = {
   taskId: string
@@ -57,7 +58,7 @@ export interface CodingTaskTracker {
   /** 记录一次命令执行证据（命令文本 + 结果；Ruling T1：结果本身不含命令文本）。 */
   observeCommand(command: string, result: CommandEvidenceResult, token?: number): void
   /** 完成声明是否成立（CT-07）。 */
-  canClaimDone(): { ok: boolean; reason?: string }
+  canClaimDone(isCurrent?: (evidence: VerifiedTestEvidence) => boolean): { ok: boolean; reason?: string }
 }
 
 // 测试类命令启发式（设计 §5.2；在工具 summary 中说明为启发式判定）。
@@ -82,6 +83,12 @@ export function canClaimDone(state: CodingTaskState | undefined): { ok: boolean;
     }
   }
   if (!state.testEvidence) {
+    if (last.verification?.status === 'stale') {
+      return { ok: false, reason: '测试完成时工作区内容已变化，需重新运行测试' }
+    }
+    if (last.verification?.status === 'unavailable') {
+      return { ok: false, reason: '命令没有不可写测试快照的验证，请直接运行测试命令' }
+    }
     return { ok: false, reason: '未运行测试' }
   }
   return { ok: true }
@@ -176,11 +183,12 @@ export function createCodingTaskTracker(options: CodingTaskTrackerOptions = {}):
         outcome: result.outcome,
         at: now(),
         ...(result.errorCode !== undefined ? { errorCode: result.errorCode } : {}),
-        ...(result.exitCode !== undefined ? { exitCode: result.exitCode } : {})
+        ...(result.exitCode !== undefined ? { exitCode: result.exitCode } : {}),
+        ...(result.testEvidence !== undefined ? { verification: result.testEvidence } : {})
       }
       state.iterations += 1
-      const tested = result.outcome === 'completed' && result.exitCode === 0 &&
-        isTestCommand(command) && !started.overlappingWriter
+      const tested = result.outcome === 'completed' && result.exitCode === 0 && !started.overlappingWriter &&
+        (result.testEvidence === undefined ? isTestCommand(command) : result.testEvidence.status === 'verified')
       if (tested && id > latestPassingTest) {
         latestPassingTest = id
         state.testEvidence = evidence
@@ -199,11 +207,16 @@ export function createCodingTaskTracker(options: CodingTaskTrackerOptions = {}):
         state.phase = 'fixing'
       }
     },
-    canClaimDone() {
+    canClaimDone(isCurrent) {
       if (state && [...running.values()].some((command) => command.generation === generation || command.mayWrite)) {
         return { ok: false, reason: '仍有命令在运行，等待终态后再核对完成证据' }
       }
-      return canClaimDone(state)
+      const verdict = canClaimDone(state)
+      const verification = state?.testEvidence?.verification
+      if (verdict.ok && verification?.status === 'verified' && !isCurrent?.(verification)) {
+        return { ok: false, reason: '测试快照无法证明当前工作区内容，需重新运行测试' }
+      }
+      return verdict
     }
   }
 }

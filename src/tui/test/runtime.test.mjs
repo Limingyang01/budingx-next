@@ -69,7 +69,7 @@ async function sp004Runtime(t, responses, setup = {}) {
     cwd, home: join(base, 'home'), configStore, mode: 'full_access',
     getConfig: () => ({
       profileId: profile.id, baseUrl, model: 'sp004', apiKey: 'fixture-key',
-      timeoutMs: 2000, source: 'file'
+      timeoutMs: setup.timeoutMs ?? 2000, source: 'file'
     }),
     approval: {
       async request(request) {
@@ -133,11 +133,12 @@ test('SP004 生产入口：模型写计划、显示审批、更新独立待办�
   assert.match(finalTools[2].content, /计划已批准/)
 })
 
-test('SP004 正式 TUI：计划漂移阻止写入，重新审批后只执行重新发起的写入', async (t) => {
+async function assertPlanReapproval(t, target, reference, targetPaths) {
   const draft = {
-    text: '# 审查计划\n1. 读取 target.mjs 后产生交付文件',
+    text: `# 审查计划\n1. 读取 ${reference} 后产生交付文件`,
     goal: '审查计划',
-    steps: ['读取 target.mjs 后产生交付文件']
+    steps: [`读取 ${reference} 后产生交付文件`],
+    ...(targetPaths ? { targetPaths } : {})
   }
   let cwd
   const deniedPath = 'before-reapproval.mjs'
@@ -145,7 +146,7 @@ test('SP004 正式 TUI：计划漂移阻止写入，重新审批后只执行重�
     [['EnterPlanMode', {}], ['WritePlan', draft]],
     [['ExitPlanMode', {}]],
     () => {
-      writeFileSync(join(cwd, 'target.mjs'), 'export const value = 2\n')
+      writeFileSync(join(cwd, target), 'export const value = 2\n')
       return [['Write', { path: deniedPath, content: 'export default false\n' }]]
     },
     [['ExitPlanMode', {}]],
@@ -153,7 +154,7 @@ test('SP004 正式 TUI：计划漂移阻止写入，重新审批后只执行重�
     '结束'
   ], { tty: true })
   cwd = root
-  writeFileSync(join(root, 'target.mjs'), 'export const value = 1\n')
+  writeFileSync(join(root, target), 'export const value = 1\n')
   await ui.send('制定计划并执行\r')
   await ui.waitFor((frame) => ui.gateway.pendingRequests.length === 1 && frame.includes('审查计划'))
   await ui.send('1')
@@ -165,11 +166,24 @@ test('SP004 正式 TUI：计划漂移阻止写入，重新审批后只执行重�
   const results = events.filter((event) => event.type === 'tool_result')
   assert.deepEqual(approvals.map(({ name }) => name), ['ExitPlanMode', 'ExitPlanMode'])
   assert.notEqual(approvals[0].requestId, approvals[1].requestId)
-  assert.match(results.find((result) => result.callId === 'call-3-0').content, /Plan drifted/)
+  const drift = results.find((result) => result.callId === 'call-3-0').content
+  assert.match(drift, /Plan drifted/)
+  assert.ok(drift.includes(target), drift)
   assert.equal(results.find((result) => result.callId === 'call-4-0').isError, false)
   assert.equal(existsSync(join(root, deniedPath)), false)
   assert.equal(readFileSync(join(root, 'after-reapproval.mjs'), 'utf8'), 'export default true\n')
   assert.equal(runtime.session.planMode.active, false)
+}
+
+test('SP004 正式 TUI：计划漂移阻止写入，重新审批后只执行重新发起的写入', (t) =>
+  assertPlanReapproval(t, 'target.mjs', 'target.mjs'))
+
+test('SP004 正式 TUI：计划漂移重审识别中文和含空格的目标路径', async (t) => {
+  await t.test('裸写的中文文件名', (t) => assertPlanReapproval(t, '测试.mjs', '测试.mjs'))
+  await t.test('用反引号标记的含空格路径', (t) =>
+    assertPlanReapproval(t, 'two words.mjs', '`two words.mjs`'))
+  await t.test('没有在正文重述的结构化中文路径', (t) =>
+    assertPlanReapproval(t, '中文 测试.mjs', '已声明的目标', ['中文 测试.mjs']))
 })
 
 test('SP004 生产入口：专用 worktree 隔离文件，受控提交必须等新鲜用户批准', async (t) => {
@@ -347,13 +361,26 @@ test('SP004 正式 TUI：已探测的主机隔离后端执行 Bash，仅暴露�
   }
   const { ui, cwd, runtime, events } = await sp004Runtime(t, [
     [['Bash', {
-      command: 'test -f visible.txt && test ! -e .git && test ! -e .env && test ! -e hidden.txt && printf isolated-ready'
+      command: [
+        'test -f visible.txt',
+        'test ! -e .git',
+        'test ! -e .env',
+        'test ! -e hidden.txt',
+        'test ! -e id_ed25519',
+        'test ! -e nested/id_ecdsa_sk',
+        'test -f id_ed25519.pub',
+        'printf isolated-ready'
+      ].join(' && ')
     }]],
     '隔离执行完成'
   ], { sandboxBackend: backend, tty: true })
   writeFileSync(join(cwd, 'visible.txt'), 'allowed fixture')
   writeFileSync(join(cwd, 'hidden.txt'), 'restricted fixture')
   writeFileSync(join(cwd, '.env'), 'SYNTHETIC_VALUE=fixture\n')
+  writeFileSync(join(cwd, 'id_ed25519'), 'Synthetic file, no private key\n')
+  writeFileSync(join(cwd, 'id_ed25519.pub'), 'Synthetic public fixture\n')
+  mkdirSync(join(cwd, 'nested'))
+  writeFileSync(join(cwd, 'nested', 'id_ecdsa_sk'), 'Synthetic file, no private key\n')
   mkdirSync(join(cwd, '.git'))
   runtime.policy.setRules([{ id: 'fixture-deny', action: 'deny', tool: 'Read', path: 'hidden.txt' }])
   await ui.send('验证隔离 execution\r')
@@ -363,6 +390,84 @@ test('SP004 正式 TUI：已探测的主机隔离后端执行 Bash，仅暴露�
   assert.match(result.content, /exit_code: 0/)
   assert.match(result.content, /isolated-ready/)
   assert.equal(readFileSync(join(cwd, 'visible.txt'), 'utf8'), 'allowed fixture')
+})
+
+test('SP004 正式 TUI：私有快照里的临时修改无法证明真实工作区测试通过', { timeout: 45000 }, async (t) => {
+  const { createHostSandboxFromEnvironment } = await import('../dist/exec/host-sandbox.js')
+  const backend = createHostSandboxFromEnvironment({ BUDINGX_SANDBOX: 'bubblewrap' })
+  if (!backend) {
+    t.skip('当前宿主没有通过 Bubblewrap 能力探测')
+    return
+  }
+  const command = { command: 'bash proof.test.sh' }
+  const { cwd, runtime, events, requests, ui } = await sp004Runtime(t, [
+    [['StartCodingTask', { goal: '修复合成测试' }]],
+    [['Bash', command]],
+    [['Bash', { command: "printf 'exit 0\\n' > proof.test.sh && bash proof.test.sh" }]],
+    '已经完成',
+    [['Read', { path: 'proof.test.sh' }]],
+    [['Write', { path: 'proof.test.sh', content: 'exit 0\n' }]],
+    [['Bash', command]],
+    '工作区修复后验证通过'
+  ], { sandboxBackend: backend, tty: true })
+  writeFileSync(join(cwd, 'proof.test.sh'), 'exit 7\n')
+  await ui.send('修复合成测试并验证\r')
+  await ui.waitFor(() => !runtime.session.isBusy && events.some((event) => event.type === 'turn_finalized'), 35000)
+  assert.equal(events.find((event) => event.type === 'turn_finalized').outcome, 'completed')
+  assert.equal(requests.length, 8, '快照内修改后仍需要工作区修复与复测')
+  const first = events.find((event) => event.type === 'tool_result' && event.callId === 'call-2-0')
+  assert.match(first.content, /exit_code: 7/)
+  const privateWrite = events.find((event) => event.type === 'tool_result' && event.callId === 'call-3-0')
+  assert.match(privateWrite.content, /test_evidence: unavailable/)
+  const verified = events.find((event) => event.type === 'tool_result' && event.callId === 'call-7-0')
+  assert.match(verified.content, /test_evidence: verified/)
+  assert.ok(requests[4].messages.some((message) => message.role === 'user' &&
+    typeof message.content === 'string' && message.content.includes('真实执行证据')))
+  assert.equal(readFileSync(join(cwd, 'proof.test.sh'), 'utf8'), 'exit 0\n')
+})
+
+test('SP004 正式 TUI：测试结束后发生外部写入，旧快照不能完成验收', { timeout: 45000 }, async (t) => {
+  const { createHostSandboxFromEnvironment } = await import('../dist/exec/host-sandbox.js')
+  const backend = createHostSandboxFromEnvironment({ BUDINGX_SANDBOX: 'bubblewrap' })
+  if (!backend) {
+    t.skip('当前宿主没有通过 Bubblewrap 能力探测')
+    return
+  }
+  let workspace
+  let sessionEvents
+  const command = { command: 'bash proof.test.sh' }
+  const { cwd, runtime, events, requests } = await sp004Runtime(t, [
+    [['StartCodingTask', { goal: '验证当前合成输入' }]],
+    [['Bash', command]],
+    () => {
+      writeFileSync(join(workspace, 'input.txt'), 'second\n')
+      return '已经验证完成'
+    },
+    [['Bash', { ...command, run_in_background: true }]],
+    async (request) => {
+      const result = request.messages.find((message) => message.tool_call_id === 'call-4-0')
+      const taskId = /background_task_id: (\S+)/.exec(result?.content ?? '')?.[1]
+      const deadline = Date.now() + 8000
+      while (!sessionEvents.some((event) => event.type === 'command_finished' && event.taskId === taskId) &&
+        Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      return [['TaskStatus', { task_id: taskId ?? 'missing' }]]
+    },
+    '已按当前输入重新验证'
+  ], { sandboxBackend: backend, timeoutMs: 12000 })
+  workspace = cwd
+  sessionEvents = events
+  writeFileSync(join(cwd, 'proof.test.sh'), 'test -s input.txt\n')
+  writeFileSync(join(cwd, 'input.txt'), 'first\n')
+  assert.equal((await turn(runtime.session, '验证当前合成输入')).outcome, 'completed')
+  assert.equal(requests.length, 6, '测试结果发出后改变工作区必须重新验证')
+  const results = events.filter((event) => event.type === 'tool_result' && event.callId.endsWith('-0'))
+  assert.match(results.find((event) => event.callId === 'call-2-0').content, /test_evidence: verified/)
+  assert.match(results.find((event) => event.callId === 'call-5-0').content, /test_evidence: verified/)
+  assert.equal(events.find((event) => event.type === 'command_finished' && event.callId === 'call-4-0')
+    .testEvidence.status, 'verified')
+  assert.ok(events.some((event) => event.type === 'notice' && event.code === 'coding_task'))
 })
 test('G04/G05 两端点切换模型和凭据，当前回合快照不变', async (t) => {
   const requests = []

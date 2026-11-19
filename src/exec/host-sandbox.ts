@@ -1,4 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import {
   closeSync,
   fstatSync,
@@ -15,7 +17,7 @@ import {
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path'
 import { isCredentialLike } from '../workspace/policy.js'
-import type { SandboxBackend, SandboxLaunchRequest } from './sandbox-policy.js'
+import type { SandboxBackend, SandboxLaunchRequest, SandboxTestSnapshot } from './sandbox-policy.js'
 
 const BWRAP = '/usr/bin/bwrap'
 const ISOLATED_CWD = '/workspace'
@@ -91,8 +93,11 @@ function removeSnapshot(temp: string, snapshot: string): void {
   }
 }
 
-function copyWorkspace(request: SandboxLaunchRequest, destination: string): void {
+function projectWorkspace(request: SandboxLaunchRequest, destination?: string, expectedRoot?: string) {
   const origin = realpathSync(request.cwd)
+  if (expectedRoot !== undefined && !equalPath(origin, expectedRoot)) {
+    throw new Error('Sandbox project directory changed during verification')
+  }
   const fromWorkspaceToHome = relative(origin, homedir())
   if (fromWorkspaceToHome === '' || (!isAbsolute(fromWorkspaceToHome) &&
     fromWorkspaceToHome !== '..' && !fromWorkspaceToHome.startsWith('..' + sep))) {
@@ -101,8 +106,9 @@ function copyWorkspace(request: SandboxLaunchRequest, destination: string): void
 
   let entries = 0
   let bytes = 0
-  function visit(source: string, target: string): void {
-    for (const name of readdirSync(source)) {
+  const digest = request.verifyTestInput === true ? createHash('sha256') : undefined
+  function visit(source: string, target?: string): void {
+    for (const name of readdirSync(source).sort()) {
       entries += 1
       if (entries > MAX_ENTRIES) throw new Error('Sandbox project snapshot exceeds the entry limit')
       const canonicalName = name.toLowerCase()
@@ -114,9 +120,10 @@ function copyWorkspace(request: SandboxLaunchRequest, destination: string): void
       const stat = lstatSync(path, { bigint: true })
       if (stat.isSymbolicLink() || (!stat.isDirectory() && !stat.isFile())) continue
       if (!equalPath(realpathSync(path), path)) continue
-      const copy = join(target, name)
+      const copy = target === undefined ? undefined : join(target, name)
       if (stat.isDirectory()) {
-        mkdirSync(copy)
+        digest?.update(JSON.stringify(['directory', relativePath]) + '\n')
+        if (copy !== undefined) mkdirSync(copy)
         visit(path, copy)
         continue
       }
@@ -145,13 +152,16 @@ function copyWorkspace(request: SandboxLaunchRequest, destination: string): void
           throw new Error('Sandbox project entry changed during snapshot')
         }
         bytes += size
-        writeFileSync(copy, data, { mode: Number(stat.mode & 0o777n), flag: 'wx' })
+        const mode = Number(stat.mode & 0o777n)
+        digest?.update(JSON.stringify(['file', relativePath, mode, size]) + '\n').update(data)
+        if (copy !== undefined) writeFileSync(copy, data, { mode, flag: 'wx' })
       } finally {
         closeSync(fd)
       }
     }
   }
   visit(origin, destination)
+  return { root: origin, digest: digest?.digest('hex') }
 }
 
 function sandboxArguments(): string[] {
@@ -234,6 +244,7 @@ export function createHostSandboxFromEnvironment(
     try { removeSnapshot(temp, probeRoot) } catch { /* A busy temp directory is left to the OS. */ }
   }
 
+  const testSnapshots = new WeakMap<ChildProcess, SandboxTestSnapshot>()
   return {
     id: windowsHost ? 'bubblewrap-wsl' : 'bubblewrap',
     label: windowsHost ? 'Bubblewrap (WSL)' : 'Bubblewrap',
@@ -267,19 +278,32 @@ export function createHostSandboxFromEnvironment(
         const project = join(snapshot, 'project')
         const filterPath = join(snapshot, 'socket-filter.bpf')
         mkdirSync(project)
-        copyWorkspace(request, project)
+        const projection = projectWorkspace(request, project)
         writeFileSync(filterPath, filter, { flag: 'wx', mode: 0o600 })
         const snapshotPath = translatePath(project)
         const [executable, ...prefix] = [...launcher, '/bin/sh']
         const bubblewrapArgs = [
           ...sandboxArguments(),
-          request.mode === 'read_only' ? '--ro-bind' : '--bind', snapshotPath, ISOLATED_CWD,
+          request.mode === 'read_only' || request.verifyTestInput ? '--ro-bind' : '--bind', snapshotPath, ISOLATED_CWD,
           '--chdir', ISOLATED_CWD,
           '--', request.executable, ...request.args
         ]
         const child = spawn(executable, [
           ...prefix, '-c', SUPERVISE, 'budingx-sandbox', translatePath(filterPath), BWRAP, ...bubblewrapArgs
         ], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
+        if (projection.digest !== undefined) {
+          const digest = projection.digest
+          testSnapshots.set(child, {
+            digest,
+            isCurrent() {
+              try {
+                return projectWorkspace(request, undefined, projection.root).digest === digest
+              } catch {
+                return false
+              }
+            }
+          })
+        }
         child.once('close', () => {
           try { removeSnapshot(temp, snapshot) } catch { /* Leave temp cleanup to the operating system if busy. */ }
         })
@@ -288,6 +312,9 @@ export function createHostSandboxFromEnvironment(
         removeSnapshot(temp, snapshot)
         throw error
       }
+    },
+    testSnapshot(child) {
+      return testSnapshots.get(child)
     },
     terminate(child) {
       if (child.stdin && !child.stdin.destroyed && !child.stdin.writableEnded) child.stdin.end()

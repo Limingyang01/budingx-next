@@ -28,6 +28,9 @@ export const COMMAND_OUTCOMES = [
 
 export type CommandOutcome = (typeof COMMAND_OUTCOMES)[number]
 
+export type VerifiedTestEvidence = { status: 'verified'; workspaceDigest: string }
+export type TestEvidence = VerifiedTestEvidence | { status: 'stale' | 'unavailable' }
+
 export type CommandResult = {
   outcome: CommandOutcome
   /** 进程退出码；被信号终止、未启动或仍在后台运行时为 undefined。 */
@@ -58,6 +61,8 @@ export type CommandResult = {
   /** 失败/阻断原因（可读）。 */
   reason?: string
   errorCode?: string
+  /** Host attestation only; command output cannot supply this field. */
+  testEvidence?: TestEvidence
 }
 
 export interface CommandRunContext {
@@ -67,7 +72,7 @@ export interface CommandRunContext {
   callId?: string
   mode?: 'read_only' | 'workspace'
   /** 命令真正启动后回调，携带已创建的后台任务 ID。 */
-  onStarted?(info: { taskId?: string; startedAt: number }): void
+  onStarted?(info: { taskId?: string; startedAt: number; readOnlyWorkspace?: boolean }): void
 }
 
 /** 后台任务句柄（设计 §4.4）。 */
@@ -100,6 +105,8 @@ export interface CommandRunner {
   /** 取消后台任务（终止整棵进程树）；已终态幂等返回 false。 */
   cancel(taskId: string): boolean
   list(): CommandResult[]
+  /** Recheck an attested test input before accepting a completion claim. */
+  isTestEvidenceCurrent?(evidence: VerifiedTestEvidence): boolean
   /** 会话结束时终止全部运行中后台任务（design §4.4，Session.dispose 接线）。 */
   dispose?(): void
 }

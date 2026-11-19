@@ -2,7 +2,7 @@
 // 模型只提供 command/timeout/description/run_in_background；cwd、env、隔离和策略由宿主管有。
 // 权限判定统一交给 SP003 策略：已校验只读命令归为 read（免审批），其余归为 execute。
 import { ERROR_CODES } from '../core/constants.js'
-import type { CommandResult, CommandRunner } from '../core/exec.js'
+import type { CommandResult, CommandRunner, CommandRunContext } from '../core/exec.js'
 import type { ToolCapability } from '../core/permissions.js'
 import type { ToolContext, ToolHandler } from '../core/tools.js'
 import { destructiveWarningText, detectDestructiveCommand } from './destructive.js'
@@ -126,6 +126,7 @@ function formatResult(result: CommandResult): string {
   }
   lines.push(`outcome: ${result.outcome}`)
   if (result.errorCode !== undefined) lines.push(`error_code: ${result.errorCode}`)
+  if (result.testEvidence !== undefined) lines.push(`test_evidence: ${result.testEvidence.status}`)
   if (result.stdout !== '') lines.push('--- stdout ---', result.stdout.replace(/\n$/, ''))
   if (result.stderr !== '') lines.push('--- stderr ---', result.stderr.replace(/\n$/, ''))
   if (result.persistedOutputPath !== undefined) {
@@ -185,7 +186,7 @@ export function createExecTools(options: ExecToolsOptions): ToolHandler[] {
       const guidance = gitGuidance(args.command)
       if (guidance !== undefined) throw inputError(guidance)
       if ('error' in interpreter) throw inputError(interpreter.error)
-      const emitStarted = ({ taskId, startedAt }: { taskId?: string; startedAt: number }) => {
+      const emitStarted: NonNullable<CommandRunContext['onStarted']> = ({ taskId, startedAt, readOnlyWorkspace }) => {
         context.emit?.({
           type: 'command_started',
           turnId: context.turnId ?? '',
@@ -194,6 +195,7 @@ export function createExecTools(options: ExecToolsOptions): ToolHandler[] {
           interpreter: interpreterLabel,
           cwd,
           ...(taskId !== undefined ? { taskId } : {}),
+          ...(readOnlyWorkspace === true ? { readOnlyWorkspace } : {}),
           startedAt
         })
       }
