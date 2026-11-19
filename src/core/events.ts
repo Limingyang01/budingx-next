@@ -40,6 +40,12 @@ export type NoticeCode =
   | 'plan_mode'
   /** 编码任务提示：完成声明缺少执行证据并被拒绝（SP004 §5.2，CT-07）。 */
   | 'coding_task'
+  /** 上下文预算提示：压缩后仍超出预算或压缩熔断（SP005 §4）。 */
+  | 'context_overflow'
+  /** 持久化提示：转录或记忆写入失败，但本轮业务结果已交付（SP005 §5/§7）。 */
+  | 'storage_write_failed'
+  /** 恢复提示：存在结果未知的工具步骤，需人工核对而非自动重放（SP005 §5）。 */
+  | 'recovery_needs_review'
 
 export type ErrorClass =
   | 'auth'
@@ -120,6 +126,35 @@ export type TurnFinalizedEvent = {
   error?: ErrorInfo
   usage?: Usage
   restoreText?: string
+  /**
+   * 持久化错误（SP005 §5 FR-07）：写入转录失败与模型失败是两回事，
+   * 业务结果仍然交付，这里单独记录失败位置供定位。
+   */
+  persistenceError?: { code: string; message: string }
+}
+
+/** 压缩保留项的种类（SP005 §4）：约束 / 计划 / 工具状态。 */
+export type PreservedItemKind = 'constraint' | 'plan' | 'tool_state'
+
+/**
+ * 上下文压缩事件（SP005 §4 CB-01）。
+ * 被替换的历史区间与保留项都被显式记录，便于断言与审计。
+ */
+export type ContextCompactedEvent = {
+  type: 'context_compacted'
+  turnId: string
+  /** 被替换掉的原始消息索引区间（闭区间）。 */
+  replacedRange: { from: number; to: number }
+  /** 被替换掉的消息条数。 */
+  replacedCount: number
+  /** 压缩后仍然保留的关键事实。 */
+  preserved: { kind: PreservedItemKind; id: string; text: string; reason: string }[]
+  /** 压缩前的估算长度。 */
+  estimatedBefore: number
+  /** 压缩后的估算长度。 */
+  estimatedAfter: number
+  /** 压缩后是否回到预算内。 */
+  withinBudget: boolean
 }
 
 export type SessionEvent =
@@ -235,4 +270,5 @@ export type SessionEvent =
       code: NoticeCode
       text: string
     }
+  | ContextCompactedEvent
   | TurnFinalizedEvent

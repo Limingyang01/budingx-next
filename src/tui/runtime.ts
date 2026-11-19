@@ -13,6 +13,18 @@ import { createOpenAiProvider } from '../provider/openai.js'
 import { ConfigStore } from '../storage/config-store.js'
 import { dataRoot, permissionsPath } from '../storage/paths.js'
 import { PermissionsStore, readPermissionMode, savePermissionMode } from '../storage/permissions.js'
+import {
+  createSessionStore,
+  startSession,
+  type SessionStore
+} from '../storage/session-store.js'
+import {
+  createProjectMemory,
+  createSessionMemory,
+  memoryContextText,
+  type MemoryScope
+} from '../storage/project-memory.js'
+import { estimateTokens } from '../core/context-budget.js'
 import type { ResolvedConfig } from '../storage/profiles.js'
 import {
   createPermissionPolicy,
@@ -67,6 +79,33 @@ export type AgentRuntime = {
   warnings: string[]
   /** SP004 agent-observability：正常退出时的限时追踪 flush；未启用时为 undefined。 */
   shutdownTracing?: () => Promise<void>
+  /** SP005：会话列表与恢复能力；未开启持久化时为 undefined。 */
+  sessions?: {
+    list: () => { sessionId: string; title: string; updatedAt: string; turns: number }[]
+    resume: (sessionId: string) => {
+      ok: boolean
+      message?: string
+      messages?: unknown[]
+      needsReview?: { name: string; callId: string; detail?: string }[]
+      warnings?: string[]
+    }
+  }
+  /** SP005：上下文预算构成。 */
+  context?: {
+    budget: () => {
+      estimatedTokens: number
+      maxTokens: number
+      reservedOutputTokens: number
+      triggerTokens: number
+      messages: number
+      breakdown: { kind: string; tokens: number }[]
+    }
+  }
+  /** SP005：项目与会话记忆。 */
+  memory?: {
+    read: (scope: MemoryScope) => { entries: { title: string; text: string }[]; message?: string }
+    write: (scope: MemoryScope, title: string, text: string) => { ok: boolean; message?: string }
+  }
 }
 
 /**
@@ -143,6 +182,12 @@ export type AgentRuntimeOptions = {
   persistPermissionMode?: boolean
   /** Test seam for the user data location; production uses ~/.budingx. */
   home?: string
+  /** SP005: reuse an existing session id instead of generating a new one. */
+  sessionId?: string
+  /** SP005: context budget in tokens; disabled when omitted. */
+  contextBudget?: { maxTokens: number; reservedOutputTokens?: number }
+  /** SP005: enable the session transcript (persistence) and project memory. */
+  persistence?: boolean
 }
 
 /**
@@ -185,7 +230,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         .action === 'deny'
   })
   // SP004 §4.4/§6.1：会话标识隔离后台输出目录与会话计划文件。
-  const sessionId = randomUUID()
+  const sessionId = options.sessionId ?? randomUUID()
   const tracing = setupTracing({
     sessionId,
     modelApiKey: options.getConfig().apiKey,
@@ -211,6 +256,23 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   })
   const tools: ToolHandler[] = [...workspaceTools, ...execTools]
   const denials: DenialRecord[] = []
+  // SP005 §5：会话转录与索引。持久化是可选的，未开启时行为与 SP004 一致。
+  const persistence = options.persistence ?? false
+  let sessionStore: SessionStore | undefined
+  let transcript: ReturnType<typeof startSession>['transcript'] | undefined
+  if (persistence) {
+    sessionStore = createSessionStore(options.home ? { home: options.home } : {})
+    try {
+      transcript = startSession({
+        sessionId,
+        ...(options.home ? { home: options.home } : {})
+      }).transcript
+    } catch (error) {
+      warnings.push(
+        `session transcript could not be created: ${error instanceof Error ? error.message : String(error)}`
+      )
+    }
+  }
   const session = new Session({
     id: sessionId,
     provider: provider(),
@@ -221,6 +283,17 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     disposers: [() => runner.dispose?.()],
     permissionPolicy: policy,
     ...(tracing.tracer ? { tracer: tracing.tracer } : {}),
+    ...(transcript ? { transcript } : {}),
+    ...(options.contextBudget
+      ? {
+          contextBudget: {
+            maxTokens: options.contextBudget.maxTokens,
+            ...(options.contextBudget.reservedOutputTokens !== undefined
+              ? { reservedOutputTokens: options.contextBudget.reservedOutputTokens }
+              : {})
+          }
+        }
+      : {}),
     resolveSnapshot: () => {
       const config = options.getConfig()
       const profile = options.configStore
@@ -250,9 +323,103 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
   }
 
+  // SP005 §5/§7：/sessions 与 /resume 的宿主实现。恢复只装载历史，
+  // 绝不重放工具调用；未知结果标记为需核对。
+  const sessionsSurface = sessionStore
+    ? {
+        list: () =>
+          sessionStore!.list().map((entry) => ({
+            sessionId: entry.sessionId,
+            title: entry.title,
+            updatedAt: entry.updatedAt,
+            turns: entry.turns
+          })),
+        resume: (target: string) => {
+          const restored = sessionStore!.restore(target)
+          if (restored.status !== 'restored') {
+            return { ok: false, message: restored.message ?? restored.status }
+          }
+          const restoredMessages = restored.messages as { id: string; role: string; blocks: unknown[] }[]
+          session.restoreHistory(restoredMessages as unknown as Parameters<typeof session.restoreHistory>[0])
+          return {
+            ok: true,
+            messages: restoredMessages,
+            needsReview: restored.needsReview.map((step) => ({
+              name: step.name,
+              callId: step.callId,
+              ...(step.detail ? { detail: step.detail } : {})
+            })),
+            warnings: restored.warnings
+          }
+        }
+      }
+    : undefined
+  // SP005 §4：/context 的预算构成（网格视图归 SP006）。
+  const contextSurface = options.contextBudget
+    ? {
+        budget: () => {
+          const history = session.history
+          const maxTokens = options.contextBudget!.maxTokens
+          const reservedOutputTokens = options.contextBudget!.reservedOutputTokens ?? 0
+          const target = Math.max(1, maxTokens - reservedOutputTokens)
+          const breakdown = history.map((message, index) => ({
+            kind: `${index + 1}.${message.role}`,
+            tokens: estimateTokens([message])
+          }))
+          return {
+            estimatedTokens: estimateTokens(history),
+            maxTokens,
+            reservedOutputTokens,
+            triggerTokens: Math.floor(target * 0.85),
+            messages: history.length,
+            breakdown
+          }
+        }
+      }
+    : undefined
+  // SP005 §7：/memory 的宿主实现。项目记忆按工作区根隔离，会话记忆按会话隔离。
+  const memorySurface = persistence
+    ? {
+        read: (scope: MemoryScope) => {
+          const memory = scope === 'project'
+            ? createProjectMemory({
+                projectRoot: workspace.root,
+                ...(options.home ? { home: options.home } : {})
+              })
+            : createSessionMemory({
+                sessionId,
+                ...(options.home ? { home: options.home } : {})
+              })
+          const read = memory.read()
+          return {
+            entries: read.entries.map((entry) => ({ title: entry.title, text: entry.body })),
+            ...(read.corrupt ? { message: read.corruptReason ?? 'memory file is corrupt' } : {})
+          }
+        },
+        write: (scope: MemoryScope, title: string, text: string) => {
+          const memory = scope === 'project'
+            ? createProjectMemory({
+                projectRoot: workspace.root,
+                ...(options.home ? { home: options.home } : {})
+              })
+            : createSessionMemory({
+                sessionId,
+                ...(options.home ? { home: options.home } : {})
+              })
+          const written = memory.write(title, text)
+          return written.ok
+            ? { ok: true }
+            : { ok: false, message: written.message }
+        }
+      }
+    : undefined
+
   return {
     session, workspace, policy, setPermissionMode, permissionStore, checkpoint, denials, warnings,
-    ...(tracing.shutdown ? { shutdownTracing: tracing.shutdown } : {})
+    ...(tracing.shutdown ? { shutdownTracing: tracing.shutdown } : {}),
+    ...(sessionsSurface ? { sessions: sessionsSurface } : {}),
+    ...(contextSurface ? { context: contextSurface } : {}),
+    ...(memorySurface ? { memory: memorySurface } : {})
   }
 }
 

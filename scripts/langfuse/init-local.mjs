@@ -54,20 +54,50 @@ const isWindows = process.platform === 'win32'
 const systemTool = (name) =>
   path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', name)
 
-/** 读取当前用户账户名与 SID（Windows）。失败返回 undefined。 */
-function currentUser() {
+/** 读取当前用户 SID（Windows）。失败返回 undefined。 */
+// 只取 SID：账户名经控制台代码页传输，非 ASCII 账户会被解码成乱码，
+// 用名字比对会在中文等账户名下误判（SID 始终是 ASCII）。
+export function currentUserSid() {
   try {
     const out = execFileSync(systemTool('whoami.exe'), ['/user', '/fo', 'csv', '/nh'], {
       encoding: 'utf8',
       windowsHide: true
     })
-    const account = out.match(/"([^"]+)"/)
-    const sid = out.match(/"(S-1-5-[0-9-]+)"/)
-    if (!account || !sid) return undefined
-    return { account: account[1], sid: sid[1] }
+    const sid = out.match(/"(S-1-[0-9]+(?:-[0-9]+)+)"/)
+    return sid ? sid[1] : undefined
   } catch {
     return undefined
   }
+}
+
+/** 不允许出现在私有路径 DACL 里的宽泛主体（Everyone / Authenticated Users / INTERACTIVE / BUILTIN\Users）。 */
+export const BROAD_PRINCIPAL_SIDS = ['S-1-1-0', 'S-1-5-11', 'S-1-5-4', 'S-1-5-32-545']
+
+/**
+ * 读取路径 DACL 的 SDDL 文本（Windows）。
+ * 用 icacls /save 导出：SDDL 里只有 SID 和 ACE 类型，不经过控制台代码页，
+ * 因此不会因账户名含非 ASCII 字符而乱码（原来的名字比对正是这样误判的）。
+ */
+export function readAclSddl(target) {
+  const dump = path.join(os.tmpdir(), `budingx-acl-${process.pid}-${randomUUID()}.txt`)
+  try {
+    execFileSync(systemTool('icacls.exe'), [target, '/save', dump], {
+      encoding: 'utf8',
+      windowsHide: true
+    })
+    return readFileSync(dump, 'utf16le')
+  } finally {
+    try {
+      unlinkSync(dump)
+    } catch {
+      // 清理失败不影响校验结果。
+    }
+  }
+}
+
+/** 从 SDDL 文本里取出全部 SID。 */
+export function aclSids(sddl) {
+  return sddl.match(/S-1-[0-9]+(?:-[0-9]+)+/g) ?? []
 }
 
 /**
@@ -90,25 +120,25 @@ export function restrictAndVerify(target, kind) {
     }
     return
   }
-  const user = currentUser()
-  if (!user) throw new Error('Cannot determine the current user SID; refusing to write credentials')
+  const sid = currentUserSid()
+  if (!sid) throw new Error('Cannot determine the current user SID; refusing to write credentials')
   // SID 前缀 * 让 icacls 按 SID 而非账户名授权。
-  const grant = kind === 'dir' ? `*${user.sid}:(OI)(CI)F` : `*${user.sid}:F`
+  const grant = kind === 'dir' ? `*${sid}:(OI)(CI)F` : `*${sid}:F`
   execFileSync(systemTool('icacls.exe'), [target, '/inheritance:r', '/grant:r', grant], {
     encoding: 'utf8',
     windowsHide: true
   })
-  const acl = execFileSync(systemTool('icacls.exe'), [target], { encoding: 'utf8', windowsHide: true })
-  // icacls 可能把 SID 解析为账户名显示；两者任一命中即视为授予当前用户。
-  const grantsUser =
-    acl.toLowerCase().includes(user.account.toLowerCase()) || acl.includes(user.sid)
-  if (!grantsUser) {
-    throw new Error(`Cannot verify the current user on ${target}`)
+  // 按 SID 核对：icacls 的文本输出会把账户名按控制台代码页显示，名字比对不可靠
+  // （中文账户名解码成乱码后既匹配不到名字也匹配不到 SID）。
+  const sids = aclSids(readAclSddl(target))
+  if (!sids.includes(sid)) {
+    throw new Error(`Cannot verify the current user (SID ${sid}) on ${target}`)
   }
-  for (const broad of ['Everyone', 'BUILTIN\\Users', 'Authenticated Users', 'NT AUTHORITY\\INTERACTIVE']) {
-    if (acl.includes(broad)) {
-      throw new Error(`${target} still grants access to ${broad}; refusing to write credentials`)
-    }
+  const broad = sids.filter((entry) => BROAD_PRINCIPAL_SIDS.includes(entry))
+  if (broad.length > 0) {
+    throw new Error(
+      `${target} still grants access to a broad principal (${broad.join(', ')}); refusing to write credentials`
+    )
   }
 }
 
@@ -133,8 +163,25 @@ function writePrivateFile(file, content) {
   }
 }
 
-/** 生成首次初始化的全部值。 */
-function generateValues() {
+/**
+ * 读取仓库根 `.env.e2e.local` 里的 Langfuse 凭据。
+ * 该文件是端到端测试的事实来源；存在且四个值齐全时，初始化沿用同一套
+ * 管理员账号与项目密钥，避免 local.env 另生成一套导致 UI 登录与 API 鉴权失配。
+ */
+export function e2eCredentials(root) {
+  const file = path.join(root, '.env.e2e.local')
+  if (!existsSync(file)) return null
+  const values = parseEnvFile(readFileSync(file, 'utf8'))
+  const email = values.BUDINGX_LANGFUSE_EMAIL
+  const password = values.BUDINGX_LANGFUSE_PASSWORD
+  const publicKey = values.LANGFUSE_PUBLIC_KEY
+  const secretKey = values.LANGFUSE_SECRET_KEY
+  if (!email || !password || !publicKey || !secretKey) return null
+  return { email, password, publicKey, secretKey }
+}
+
+/** 生成首次初始化的全部值；有 `.env.e2e.local` 时沿用其凭据。 */
+function generateValues(e2e = null) {
   const values = {
     LANGFUSE_IMAGE_TAG: process.env.LANGFUSE_IMAGE_TAG || '4.78.0',
     CLICKHOUSE_IMAGE_TAG: process.env.CLICKHOUSE_IMAGE_TAG || '26.3.62.3',
@@ -153,11 +200,11 @@ function generateValues() {
     LANGFUSE_INIT_ORG_NAME: 'budingX Local',
     LANGFUSE_INIT_PROJECT_ID: 'budingx-agent',
     LANGFUSE_INIT_PROJECT_NAME: 'budingX Agent',
-    LANGFUSE_INIT_PROJECT_PUBLIC_KEY: 'pk-lf-' + randomUUID(),
-    LANGFUSE_INIT_PROJECT_SECRET_KEY: 'sk-lf-' + secret(),
-    LANGFUSE_INIT_USER_EMAIL: 'admin@budingx.local',
+    LANGFUSE_INIT_PROJECT_PUBLIC_KEY: e2e ? e2e.publicKey : 'pk-lf-' + randomUUID(),
+    LANGFUSE_INIT_PROJECT_SECRET_KEY: e2e ? e2e.secretKey : 'sk-lf-' + secret(),
+    LANGFUSE_INIT_USER_EMAIL: e2e ? e2e.email : 'admin@budingx.local',
     LANGFUSE_INIT_USER_NAME: 'Local Admin',
-    LANGFUSE_INIT_USER_PASSWORD: secret()
+    LANGFUSE_INIT_USER_PASSWORD: e2e ? e2e.password : secret()
   }
   values.DATABASE_URL = `postgresql://postgres:${values.POSTGRES_PASSWORD}@postgres:5432/postgres`
   for (const kind of ['EVENT', 'MEDIA']) {
@@ -186,7 +233,7 @@ export function initLocal(root) {
       }
     }
   } else {
-    values = generateValues()
+    values = generateValues(e2eCredentials(root))
     writePrivateFile(envPath, serializeEnv(values))
   }
   const agentPath = path.join(directory, 'agent.env')

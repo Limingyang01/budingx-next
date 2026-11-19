@@ -240,6 +240,52 @@ test('工具调用片段按事件产出并保留缺省 index', async (t) => {
   assert.equal(completed.finishReason, 'tool_calls')
 })
 
+test('流式请求显式索要用量并在完成事件里带回 usage', async (t) => {
+  let body
+  const baseUrl = await withServer(t, async (req, res) => {
+    let raw = ''
+    for await (const chunk of req) raw += chunk
+    body = JSON.parse(raw)
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    res.end(
+      sse(
+        { choices: [{ delta: { content: 'ok' } }] },
+        { choices: [{ finish_reason: 'stop' }] },
+        { choices: [], usage: { prompt_tokens: 11, completion_tokens: 7 } }
+      )
+    )
+  })
+  const provider = createOpenAiProvider({ baseUrl, limits: { maxAttempts: 1 } })
+  const events = await collect(provider, { model: 'm', messages: [] })
+  assert.deepEqual(body.stream_options, { include_usage: true })
+  const completed = events.find((event) => event.type === 'message_completed')
+  assert.deepEqual(completed.usage, { inputTokens: 11, outputTokens: 7 })
+})
+
+test('端点拒绝 stream_options 时去掉该字段重试一次', async (t) => {
+  const bodies = []
+  const baseUrl = await withServer(t, async (req, res) => {
+    let raw = ''
+    for await (const chunk of req) raw += chunk
+    bodies.push(JSON.parse(raw))
+    if (bodies.length === 1) {
+      res.writeHead(400)
+      res.end('unsupported stream_options')
+      return
+    }
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    res.end(sse({ choices: [{ delta: { content: 'ok' } }, { finish_reason: 'stop' }] }))
+  })
+  const provider = createOpenAiProvider({ baseUrl, limits: { maxAttempts: 1 } })
+  const events = await collect(provider, { model: 'm', messages: [] })
+  assert.equal(bodies.length, 2)
+  assert.deepEqual(bodies[0].stream_options, { include_usage: true })
+  assert.equal('stream_options' in bodies[1], false)
+  const completed = events.find((event) => event.type === 'message_completed')
+  assert.ok(completed)
+  assert.equal(completed.usage, undefined)
+})
+
 test('probe 探测可达性并按需检查工具能力', async (t) => {
   let calls = 0
   const baseUrl = await withServer(t, async (req, res) => {

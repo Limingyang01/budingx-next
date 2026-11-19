@@ -2,11 +2,18 @@
 // 覆盖 OB-01、OB-02。用临时根目录，避免污染真实 .runtime。
 import assert from 'node:assert/strict'
 import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs'
-import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
-import { initLocal, parseEnvFile, restrictAndVerify } from './init-local.mjs'
+import {
+  BROAD_PRINCIPAL_SIDS,
+  aclSids,
+  currentUserSid,
+  initLocal,
+  parseEnvFile,
+  readAclSddl,
+  restrictAndVerify
+} from './init-local.mjs'
 
 const isWindows = process.platform === 'win32'
 
@@ -63,6 +70,31 @@ test('login.json holds the url, email and password', () => {
   assert.ok(login.password)
 })
 
+test('e2e credentials are reused so UI login and API keys match .env.e2e.local', () => {
+  const root = tempRoot()
+  writeFileSync(
+    path.join(root, '.env.e2e.local'),
+    [
+      'BUDINGX_LANGFUSE_EMAIL=e2e@budingx.local',
+      'BUDINGX_LANGFUSE_PASSWORD=e2e-password',
+      'LANGFUSE_PUBLIC_KEY=pk-lf-e2e',
+      'LANGFUSE_SECRET_KEY=sk-lf-e2e'
+    ].join('\n') + '\n'
+  )
+  const dir = initLocal(root)
+  const local = parseEnvFile(readFileSync(path.join(dir, 'local.env'), 'utf8'))
+  assert.equal(local.LANGFUSE_INIT_USER_EMAIL, 'e2e@budingx.local')
+  assert.equal(local.LANGFUSE_INIT_USER_PASSWORD, 'e2e-password')
+  assert.equal(local.LANGFUSE_INIT_PROJECT_PUBLIC_KEY, 'pk-lf-e2e')
+  assert.equal(local.LANGFUSE_INIT_PROJECT_SECRET_KEY, 'sk-lf-e2e')
+  const agent = parseEnvFile(readFileSync(path.join(dir, 'agent.env'), 'utf8'))
+  assert.equal(agent.LANGFUSE_PUBLIC_KEY, 'pk-lf-e2e')
+  assert.equal(agent.LANGFUSE_SECRET_KEY, 'sk-lf-e2e')
+  const login = JSON.parse(readFileSync(path.join(dir, 'login.json'), 'utf8'))
+  assert.equal(login.email, 'e2e@budingx.local')
+  assert.equal(login.password, 'e2e-password')
+})
+
 test('a repeat run preserves existing credentials and succeeds', () => {
   const root = tempRoot()
   const dir = initLocal(root)
@@ -92,17 +124,16 @@ test('configuration files are restricted to the current user', () => {
       assert.equal(statSync(path.join(dir, name)).mode & 0o777, 0o600)
     }
   } else {
-    // Windows：核对 DACL 授予当前用户（账户名或 SID）且不含宽泛主体。
-    const systemTool = (name) => path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', name)
-    const who = execFileSync(systemTool('whoami.exe'), ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8' })
-    const account = who.match(/"([^"]+)"/)[1]
-    const sid = who.match(/"(S-1-5-[0-9-]+)"/)[1]
+    // Windows：按 SID 核对 DACL。
+    // 不能比对账户名：icacls 的文本输出按控制台代码页编码，中文账户名解码成乱码后
+    // 既匹配不到名字也匹配不到 SID（2026-11-19 在本机复现，见 SP005 test-report §6）。
+    const sid = currentUserSid()
+    assert.ok(sid, 'must resolve the current user SID')
     for (const target of [dir, ...['local.env', 'agent.env', 'login.json'].map((n) => path.join(dir, n))]) {
-      const acl = execFileSync(systemTool('icacls.exe'), [target], { encoding: 'utf8' })
-      const grantsUser = acl.toLowerCase().includes(account.toLowerCase()) || acl.includes(sid)
-      assert.ok(grantsUser, `${target} must grant the current user`)
-      for (const broad of ['Everyone', 'BUILTIN\\Users', 'Authenticated Users']) {
-        assert.ok(!acl.includes(broad), `${target} must not grant ${broad}`)
+      const sids = aclSids(readAclSddl(target))
+      assert.ok(sids.includes(sid), `${target} must grant the current user (${sid})`)
+      for (const broad of BROAD_PRINCIPAL_SIDS) {
+        assert.ok(!sids.includes(broad), `${target} must not grant ${broad}`)
       }
     }
   }

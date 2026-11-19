@@ -30,3 +30,25 @@ export function writeJsonAtomic(file: string, value: unknown): void {
     throw error
   }
 }
+
+/**
+ * Atomic text write (SP005 design §7): temporary file, fsync, rename.
+ * Used for the Markdown memory files, where the payload is text and not JSON.
+ */
+export function writeTextAtomic(file: string, content: string): void {
+  mkdirSync(dirname(file), { recursive: true })
+  const temporary = temporaryPath(`${file}.${randomUUID()}`)
+  try {
+    const handle = openSync(temporary, 'w')
+    try {
+      writeFileSync(handle, content)
+      fsyncSync(handle)
+    } finally {
+      closeSync(handle)
+    }
+    renameSync(temporary, file)
+  } catch (error) {
+    rmSync(temporary, { force: true })
+    throw error
+  }
+}

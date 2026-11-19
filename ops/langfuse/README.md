@@ -114,3 +114,74 @@ stop 仅停止本实例容器，保留数据卷和本机凭据，不关闭 WSL �
 成功标准分为：服务健康、项目鉴权、真实模型成功、真实工具失败、平台可查询；每项分别留证，未完成项保持 UNVERIFIED。
 
 上游参考：[官方 Compose 部署](https://langfuse.com/self-hosting/deployment/docker-compose)、[初始化](https://langfuse.com/self-hosting/administration/headless-initialization)、[OTLP 端点与属性映射](https://langfuse.com/integrations/native/opentelemetry)。
+
+## 8. 无 Docker/WSL 时的兼容接收端（SP005）
+
+本机没有 Docker 也没有 WSL2 发行版时，上面的真实栈无法启动。仓库内提供一个 **Langfuse 兼容接收端** `scripts/langfuse/local-receiver.mjs`：它实现追踪上报与查询所需的最小协议，让 Agent 的 OTLP 上报、SP004 的 `query-traces.mjs` / `verify-agent.mjs` 不改一行即可工作。
+
+```bash
+npm run langfuse:init        # 首次：生成 .runtime/langfuse/{local.env,agent.env,login.json}
+npm run langfuse:receiver    # 启动：默认 http://127.0.0.1:3000（可用 --port/--storage 覆盖）
+```
+
+| 端点 | 用途 | 鉴权 |
+| --- | --- | --- |
+| `GET /api/public/health` | 存活探针 | 否 |
+| `GET /` `GET /ui` | 只读查看页：按 trace 分组、按层级展开、显示 input/output 与级别 | 否 |
+| `GET /ui/observations?limit=&traceId=&sessionId=&name=` | 查看页数据源，形状与 v2 一致（仅因服务只监听回环而免鉴权） | 否 |
+| `POST /api/public/otel/v1/traces` | 接收 OTLP JSON（与 `src/observability/exporter.ts` 同协议） | Basic（项目 public/secret key） |
+| `GET /api/public/v2/observations?traceId=&sessionId=&name=&fields=core,basic,io` | 回查观测（层级、工具名、级别、输入输出） | Basic |
+| `GET /api/public/projects` | 项目身份探针 | Basic |
+
+观测按 span 落盘到 `.runtime/langfuse/local-receiver/`，重启后保留；`--storage <dir>` 可指定别处。接收端要求上报带 `x-langfuse-ingestion-version: 4`，与 `src/observability/exporter.ts` 一致。
+
+**查看测试效果**：启动后浏览器打开 <http://127.0.0.1:3000/> 即可看到每条 trace 的观测树（`agent.run` / `model.request` / `tool.<Name>`）、级别着色、耗时与 input/output，可过滤、手动刷新或 5s 自动刷新。这是替代性查看页，不是 Langfuse 的完整 UI。页面源文件是 `scripts/langfuse/local-ui.html`，改动后运行 `npm run langfuse:ui` 重新生成 `scripts/langfuse/local-ui.mjs`（测试会校验内联脚本可解析，防止转义错误导致页面静默不执行）。
+
+**边界**：这是兼容接收端，不是 Langfuse 本体——只有只读查看页，没有 ClickHouse/PostgreSQL，没有登录、项目/用户管理、评测与数据集语义。它只能证明「上报与查询链路正确」，**不能替代**真实栈的服务健康与初始化验收；真实栈另由 `npm run langfuse:smoke` 与 `npm run langfuse:login` 验收（第 9 节）。
+
+端到端用法：
+
+- 有模型额度：`npm run langfuse:observe` → 跑 tool-success / tool-error 两个真实回合，回查并判读层级、工具名、级别，以及工具调用是否合适（次数预算、参数是否指向目标文件、有无重复调用）与模型观测是否带真实用量/耗时，报告写 `.runtime/langfuse/sp005-observation.json`。失败场景允许两种正确收尾：模型如实汇报（completed），或反复重试触发空转熔断（error + `BUDINGX_CORE_010`）；后者按 `MAX_TOOL_FAILURE_STREAK` 判次数上限，不再固定为 2。
+- 无模型额度：`node --test scripts/langfuse/sp005-observation.e2e.test.mjs` → 用本地脚本化 OpenAI 兼容端点复现同一条链路（真实 HTTP、真实解析、真实工具、真实追踪、真实接收端）。
+
+**真实模型结果（2026-11-20）**：真实栈 4.78.0 上 `npm run langfuse:observe` 两场景 `EXIT=0` —— tool-success（1 次 Read，参数 `facts.txt`，usage 1228，trace `66d417933b454d622df74c12ae762deb`）与 tool-error（5 次变路径 Read，触发 `BUDINGX_CORE_010` 熔断，usage 1362，trace `8043bca01f1f8363cada853abd4bd3bc`）。观测里可直接看到工具的 `input`/`output` 与 `model.request` 的真实 tokens；这两项能力是 SP005 期间由 Langfuse 数据暴露并补上的（provider 请求 `stream_options.include_usage`；Session 给工具观测写 payload）。
+
+## 9. 本机真实栈：WSL2 内的 Docker Engine（2026-11-19 落地）
+
+用户要求不使用 Docker Desktop，改为在 WSL2 发行版内直接跑 Docker Engine。落地步骤与后续维护事实如下（仓库只记录机制，不记录机器专属路径）。
+
+1. **发行版**：用 Ubuntu 官方 rootfs 导入到本地目录，`wsl --import <名称> <目录> <rootfs.tar.gz> --version 2`；rootfs 取自 `https://cloud-images.ubuntu.com/wsl/jammy/current/ubuntu-jammy-wsl-amd64-ubuntu22.04lts.rootfs.tar.gz`。
+2. **systemd**：在发行版内写 `/etc/wsl.conf`（`[boot] systemd=true`、`[user] default=root`），`wsl --terminate <名称>` 后重新进入，`ps -p 1 -o comm=` 应为 `systemd`。
+3. **Docker**：apt 源换国内镜像，按官方 apt 仓库安装 `docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin`，随后 `systemctl enable --now docker`（`docker version` 有 Server 段才算成功）。镜像拉取可给 `/etc/docker/daemon.json` 配 `registry-mirrors`。
+4. **保活（必做）**：WSL2 在没有 `wsl.exe` 会话时会按 `vmIdleTimeout`（默认约 60 秒）终止 VM；一旦 VM 退出，`dockerd` 与所有容器一起被 SIGTERM——表现为容器反复 “Up N seconds”、Postgres 崩溃恢复、Langfuse 迁移报 `Prisma P3009`。保活任选其一：常驻 `wsl -d <名称> -u root -- tail -f /dev/null`；或在 `%USERPROFILE%\.wslconfig` 写 `[wsl2]` 段并设 `vmIdleTimeout=-1`。
+5. **迁移失败后的清理**：`Prisma P3009` 表示库里有失败迁移记录，先 `docker compose ... down -v` 清空数据卷再 `up -d`；不要在带失败记录的库上强行 `migrate resolve` 掩盖原因。
+
+WSL 内启动（端口仍只发布到 `127.0.0.1`）：
+
+```bash
+cd /mnt/<盘符>/<仓库路径>
+docker compose -p budingx-langfuse --env-file .runtime/langfuse/local.env -f ops/langfuse/compose.yaml up -d
+docker compose -p budingx-langfuse --env-file .runtime/langfuse/local.env -f ops/langfuse/compose.yaml down
+```
+
+Windows 侧 `curl http://127.0.0.1:3000/api/public/health` 返回 `{"status":"OK","version":"<Langfuse 版本>"}`，`/api/public/projects` 用 `local.env` 里的项目 Key 可查到 `budingX Agent` 项目，即接入成功。
+
+**无模型额度也能验收接入链路**：`npm run langfuse:smoke` 用生产导出器（`src/observability/exporter.ts` 编译产物）投递一条合成 trace（`agent.run` + `model.request` + `tool.Read` 失败），再从 v2 Observations API 回查，判定根节点唯一、子节点挂根、工具失败可见、会话一致；报告写 `.runtime/langfuse/stack-smoke.json`。它证明「上报 → 索引 → 查询」链路，不替代真实模型回合的 OB 判定。
+
+**与第 8 节互斥**：兼容接收端与真实栈都默认占用 `127.0.0.1:3000`，同一时间只能起一个；真实栈可用 `LANGFUSE_WEB_PORT` 换端口并同步 `agent.env` 的 `LANGFUSE_BASE_URL`。
+
+### 凭据来源与登录自检（2026-11-19 补）
+
+UI 登不上，通常不是服务没起来，而是**账号密码不是这一套**：`local.env` 的 `LANGFUSE_INIT_USER_*` / `LANGFUSE_INIT_PROJECT_*` 只在首次初始化（数据库为空）时生效，而 `npm run langfuse:init` 早先会随机生成一套，和仓库根 `.env.e2e.local` 里的 `BUDINGX_LANGFUSE_EMAIL` / `BUDINGX_LANGFUSE_PASSWORD` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` 对不上。表现就是：用 `.env.e2e.local` 的密码登录失败，API 用它的 Key 查 `/api/public/projects` 返回 401。
+
+现行规则：
+
+- `.env.e2e.local` 是唯一事实来源；`npm run langfuse:init` 检测到它会直接复用这四个值，不再另生成（没有该文件时才随机生成）。
+- 已经生成的 `local.env` / `agent.env` / `login.json` 不会被 init 覆盖；要改就改 `local.env` 里对应的 `LANGFUSE_INIT_USER_EMAIL`、`LANGFUSE_INIT_USER_PASSWORD`、`LANGFUSE_INIT_PROJECT_PUBLIC_KEY`、`LANGFUSE_INIT_PROJECT_SECRET_KEY`，同步 `agent.env` 的两个 Key 与 `login.json`。
+- 改完必须重建数据库卷才会重新初始化：`docker compose ... down -v` 再 `up -d`（旧数据会清空，只用于本机验收）。
+- 自检两条：`npm run langfuse:login`（走 NextAuth 的 csrf → credentials → session，返回 `ok:true` 即账号密码可用）；`npm run langfuse:smoke`（验证项目 Key 能上报并回查）。
+
+```bash
+npm run langfuse:login   # { csrfOk: true, sessionEmail: ..., ok: true }
+npm run langfuse:smoke   # { sent: true, hierarchyOk: true, ... ok: true }
+```

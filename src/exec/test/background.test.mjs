@@ -207,3 +207,40 @@ test('CE-07/R-04 取消时子进程已退出但孙进程仍持有输出管 → �
   assert.equal(final.interrupted, true)
   table.dispose()
 })
+
+test('CE-07/R-05 终态后释放输出管道读端：残留孙进程不得拖住宿主事件循环', async () => {
+  const { createBackgroundTable } = await import('../../tui/dist/exec/background.js')
+  const { OutputCollector } = await import('../../tui/dist/exec/output.js')
+  const { EventEmitter } = await import('node:events')
+  const child = new EventEmitter()
+  child.pid = 4244
+  let destroyed = 0
+  child.stdout = { destroy: () => { destroyed += 1 } }
+  child.stderr = { destroy: () => { destroyed += 1 } }
+  const table = createBackgroundTable({
+    // 模拟 Windows 上 taskkill 只命中直接子进程：孙进程仍持有 stdout/stderr 写端。
+    kill: () => setImmediate(() => child.emit('exit', null))
+  })
+  const taskId = table.register(
+    {
+      command: 'bash -c "node -e \\"setTimeout(()=>{},60000)\\""',
+      interpreter: 'Bash',
+      cwd: process.cwd(),
+      timeoutMs: 60000,
+      autoBackgrounded: false,
+      backgroundedByUser: true
+    },
+    child,
+    new OutputCollector(1024, true),
+    new OutputCollector(1024, true),
+    new AbortController().signal
+  )
+  assert.equal(table.cancel(taskId), true)
+  const final = await waitFor(() => {
+    const snapshot = table.status(taskId)
+    return snapshot && snapshot.outcome === 'cancelled' ? snapshot : undefined
+  }, 3000)
+  assert.ok(final, '必须先收敛终态')
+  assert.equal(destroyed, 2, 'stdout 与 stderr 读端都必须释放')
+  table.dispose()
+})

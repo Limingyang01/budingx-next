@@ -118,6 +118,11 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
       record.killRetry = undefined
     }
     record.signal.removeEventListener('abort', record.onAbort)
+    // 终态后释放我们持有的管道读端：被终止的孙进程可能仍持有写端，残留句柄会让
+    // 宿主事件循环永不收敛（实测：node --test 的子进程因此挂住整轮 npm test）。
+    // 输出已在下方快照，此后不再读取。
+    record.child.stdout?.destroy()
+    record.child.stderr?.destroy()
     const stdoutSnap = record.stdout.snapshot(EXEC_OUTPUT_CAP)
     const stderrSnap = record.stderr.snapshot(EXEC_OUTPUT_CAP)
     const state = record.forced
