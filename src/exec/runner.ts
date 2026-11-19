@@ -3,7 +3,7 @@
 import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { realpathSync, statSync } from 'node:fs'
-import { isAbsolute, relative, sep } from 'node:path'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { ERROR_CODES } from '../core/constants.js'
 import {
   EXEC_BLOCKING_BUDGET_MS,
@@ -29,6 +29,7 @@ export interface CommandRunnerOptions {
   env?: Record<string, string>
   /** 宿主额外批准的环境变量名。 */
   allowedEnv?: readonly string[]
+  isWorkspacePathReadable?: (relativePath: string) => boolean
   /** 隔离门禁（T20）；缺省为无后端策略——普通命令一律拒绝。 */
   sandboxPolicy?: SandboxPolicy
   /** 显式放行阻塞等待族（用于确需等待的测试）。 */
@@ -135,15 +136,16 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
     ) {
       return early({ outcome: 'blocked', reason: '没有可启动进程的执行隔离后端', errorCode: ERROR_CODES.execSandboxUnavailable })
     }
-    const interpreter = selectInterpreter(interpreterTool, platform)
+    const interpreter = backend.resolveInterpreter?.(interpreterTool) ?? selectInterpreter(interpreterTool, platform)
     if ('error' in interpreter) {
       return early({ outcome: 'failed', reason: interpreter.error, errorCode: ERROR_CODES.execInterpreterUnavailable })
     }
 
     const timeoutMs = Math.min(spec.timeoutMs ?? timeouts.defaultMs, timeouts.maxMs)
     let cwd: string
+    let root: string
     try {
-      const root = realpathSync(context.cwd || options.defaultCwd)
+      root = realpathSync(context.cwd || options.defaultCwd)
       cwd = realpathSync(spec.cwd ?? root)
       if (!insideDirectory(root, cwd) || !statSync(cwd).isDirectory()) throw new Error('invalid cwd')
     } catch {
@@ -161,7 +163,11 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
         args: [...interpreter.args, spec.command],
         cwd,
         env: allowedEnvironment(options, spec, platform),
-        mode: context.mode ?? 'workspace'
+        mode: context.mode ?? 'workspace',
+        ...(options.isWorkspacePathReadable ? {
+          isWorkspacePathReadable: (path: string) =>
+            options.isWorkspacePathReadable!(relative(root, resolve(cwd, path)).split(sep).join('/'))
+        } : {})
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -169,7 +175,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
     }
     terminators.set(child, () => backend.terminate(child))
     // stdin 立即关闭：交互式子进程因 EOF 退出，不无限挂起。
-    child.stdin?.end()
+    if (backend.keepsSupervisorStdinOpen !== true) child.stdin?.end()
 
     // full 模式保留完整输出块，供落盘使用（快照仍按上限截断）。
     const stdoutCollector = new OutputCollector(EXEC_OUTPUT_CAP, true)

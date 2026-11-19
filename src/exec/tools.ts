@@ -21,6 +21,7 @@ export type ExecToolsOptions = {
   platform?: NodeJS.Platform
   /** 已验收的隔离后端标识，仅用于审批预览展示。 */
   sandboxBackendId?: string
+  sandboxInterpreter?: import('./sandbox-policy.js').SandboxBackend['resolveInterpreter']
 }
 
 const ALLOWED_FIELDS = ['command', 'timeout', 'description', 'run_in_background'] as const
@@ -147,7 +148,7 @@ export function createExecTools(options: ExecToolsOptions): ToolHandler[] {
   const currentCwd = options.getCwd ?? (() => options.defaultCwd)
 
   function makeHandler(name: ExecToolName): ToolHandler {
-    const interpreter = selectInterpreter(name, platform)
+    const interpreter = options.sandboxInterpreter?.(name) ?? selectInterpreter(name, platform)
     const interpreterLabel = 'error' in interpreter ? name : interpreter.label
 
     function previewOf(args: Args, cwd: string) {
@@ -212,8 +213,8 @@ export function createExecTools(options: ExecToolsOptions): ToolHandler[] {
           onStarted: emitStarted
         }
       )
-      // 前台终态结果作为完成证据上报（SP004 T13，CT-07）；后台任务完成另由 command_finished 事件承载。
-      if (result.outcome !== 'running') context.onCommandResult?.(args.command, result)
+      // A running handoff binds the task ID. The background terminal event records the result.
+      context.onCommandResult?.(args.command, result)
       return formatResult(result)
     }
 

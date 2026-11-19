@@ -3,7 +3,7 @@
 import type { Session } from '../core/session.js'
 import { ERROR_CODES } from '../core/constants.js'
 import type { ToolHandler } from '../core/tools.js'
-import type { Plan, TodoItem } from '../core/plan.js'
+import type { Plan, PlanAllowedPrompt, TodoItem } from '../core/plan.js'
 import { createTodoStore } from './store.js'
 
 const ENTER_PARAMETERS = {
@@ -18,7 +18,15 @@ const EXIT_PARAMETERS = {
     allowedPrompts: {
       type: 'array',
       description: '权限意图说明，仅用于展示和审查，不直接创建权限规则。',
-      items: { type: 'string' }
+      items: {
+        type: 'object',
+        properties: {
+          tool: { type: 'string', enum: ['Bash'] },
+          prompt: { type: 'string' }
+        },
+        required: ['tool', 'prompt'],
+        additionalProperties: false
+      }
     }
   },
   additionalProperties: false
@@ -28,6 +36,13 @@ function failure(message: string): Error {
   const error = new Error(message)
   ;(error as Error & { code?: string }).code = ERROR_CODES.coreToolFailed
   return error
+}
+
+function isPlanAllowedPrompt(value: unknown): value is PlanAllowedPrompt {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const { tool, prompt } = value as Partial<PlanAllowedPrompt>
+  return tool === 'Bash' && typeof prompt === 'string' &&
+    Object.keys(value).every((key) => key === 'tool' || key === 'prompt')
 }
 
 /** EnterPlanMode/ExitPlanMode：计划模式是权限档位切换，不产生工作区副作用。 */
@@ -61,12 +76,11 @@ export function createPlanModeTools(
       capability: () => 'read',
       target: () => ({ kind: 'none' }),
       execute: async (input, context) => {
-        const values = input && typeof input === 'object' ? (input as Record<string, unknown>) : {}
-        if ('allowedPrompts' in values && values.allowedPrompts !== undefined &&
-          (!Array.isArray(values.allowedPrompts) || values.allowedPrompts.some((entry) => typeof entry !== 'string'))) {
-          throw failure('allowedPrompts 必须是字符串数组')
+        const requested = (input as { allowedPrompts?: unknown } | null)?.allowedPrompts
+        if (requested !== undefined && (!Array.isArray(requested) || !requested.every(isPlanAllowedPrompt))) {
+          throw failure('allowedPrompts 必须是包含 Bash 工具和文本意图的对象数组')
         }
-        const result = await session.exitPlanMode(context)
+        const result = await session.exitPlanMode({ ...context, allowedPrompts: requested })
         if (result.ok) {
           return `计划已批准（${result.planId}），已恢复原权限档位。`
         }

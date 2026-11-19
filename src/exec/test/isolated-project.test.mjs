@@ -328,6 +328,6 @@ test('T14-3 计划批准后目标文件被外部改动：执行被拒并列出�
   assert.match(blocked.content, /Plan drifted before execution/)
   assert.match(blocked.content, /files:src\/app\.mjs/)
   assert.equal(readFileSync(join(root, 'src', 'app.mjs'), 'utf8'), external, '漂移后不得执行副作用')
-  assert.equal(session.planMode.phase, 'pending', '漂移后计划回到待审')
-  assert.equal(planMode.store.current().approval, 'pending')
+  assert.equal(session.planMode.phase, 'research', '漂移后可调研并重新提交审批')
+  assert.equal(planMode.store.current().approval, 'none')
 })

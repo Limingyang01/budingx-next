@@ -72,6 +72,12 @@ export type PlanModeState = {
   originalMode?: PermissionMode
 }
 
+/** Semantic command intent shown during plan review; it grants no permissions. */
+export type PlanAllowedPrompt = {
+  tool: 'Bash'
+  prompt: string
+}
+
 /**
  * 宿主注入的计划模式集成（设计 §6.2/§6.3）：core 负责单一状态转换与审批接线，
  * 计划持久化、计划文件读取与基线采集由宿主实现。
@@ -80,8 +86,8 @@ export type PlanModeHost = {
   store: PlanStore
   /** 读取当前会话计划文件正文；缺失或为空返回 undefined。 */
   readPlanText: () => Promise<string | undefined>
-  snapshot: () => PlanModeSnapshot
-  diff: (baseline: PlanModeSnapshot, current: PlanModeSnapshot) => PlanDriftItem[]
+  snapshot: (planText?: string) => PlanModeSnapshot
+  diff: (baseline: PlanModeSnapshot, current: PlanModeSnapshot, strictFiles?: boolean) => PlanDriftItem[]
   validate: (plan: Plan) => { ok: boolean; drift: PlanDriftItem[] }
 }
 

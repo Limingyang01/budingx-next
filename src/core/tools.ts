@@ -19,8 +19,8 @@ export type ToolContext = {
   /** Lets adapters publish out-of-band events such as command_started (SP004 T5). */
   emit?(event: SessionEvent): void
   /**
-   * Lets command adapters report a finished CommandResult so the host can
-   * record evidence for coding-task completion claims (SP004 T13, CT-07).
+   * Reports a foreground result or a running background handoff. The host
+   * uses the terminal result to track coding-task completion evidence (CT-07).
    */
   onCommandResult?(command: string, result: CommandResult): void
 }

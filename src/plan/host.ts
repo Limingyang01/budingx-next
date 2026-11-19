@@ -35,7 +35,6 @@ function digest(content: string | Buffer): string {
 export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost & {
   writePlanText(text: string, goal: string, steps: string[]): Plan
 } {
-  const root = options.workspace.root
   const planId = `plan-${options.sessionId}`
   const filePath = planFilePath(options.sessionId, planId, options.home)
 
@@ -54,7 +53,7 @@ export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost &
     }
   }
 
-  function gitHead(): string | undefined {
+  function gitHead(root: string): string | undefined {
     try {
       return execFileSync('git', ['rev-parse', 'HEAD'], {
         cwd: root,
@@ -81,7 +80,7 @@ export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost &
     }
   }
 
-  function resolveRelative(candidate: string): string | undefined {
+  function resolveRelative(root: string, candidate: string): string | undefined {
     try {
       const resolved = options.workspace.resolve(candidate)
       const relativePath = toPosix(relative(root, resolved.real))
@@ -93,6 +92,7 @@ export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost &
   }
 
   function snapshot(planText?: string): PlanModeSnapshot {
+    const root = options.workspace.root
     const files: Record<string, string> = {}
     const text = planText ?? (() => {
       try {
@@ -104,16 +104,16 @@ export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost &
     for (const match of text.matchAll(FILE_REFERENCE)) {
       const candidate = toPosix(match[0].replace(/^\.\//, ''))
       if (candidate === '' || isAbsolute(candidate)) continue
-      const relativePath = resolveRelative(candidate)
+      const relativePath = resolveRelative(root, candidate)
       if (relativePath === undefined) continue
       const value = fingerprint(candidate)
       if (value !== undefined) files[relativePath] = value
     }
-    const head = gitHead()
+    const head = gitHead(root)
     return { root, ...(head !== undefined ? { head } : {}), files }
   }
 
-  function diff(baseline: PlanModeSnapshot, current: PlanModeSnapshot): PlanDriftItem[] {
+  function diff(baseline: PlanModeSnapshot, current: PlanModeSnapshot, strictFiles = false): PlanDriftItem[] {
     const drift: PlanDriftItem[] = []
     if (baseline.root !== current.root) {
       drift.push({ item: 'root', expected: baseline.root, actual: current.root })
@@ -123,13 +123,14 @@ export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost &
     }
     // 只比较基线已知的目标文件：调研期计划正文新增引用的文件属于「新目标」，
     // 由批准指纹与执行前校验（validate）覆盖，不当作研究期漂移。
-    for (const path of Object.keys(baseline.files).sort()) {
+    const paths = strictFiles
+      ? new Set([...Object.keys(baseline.files), ...Object.keys(current.files)])
+      : Object.keys(baseline.files)
+    for (const path of [...paths].sort()) {
       const before = baseline.files[path]
       const after = current.files[path]
-      if (after === undefined) {
-        drift.push({ item: `files:${path}`, expected: before, actual: '(缺失)' })
-      } else if (before !== after) {
-        drift.push({ item: `files:${path}`, expected: before, actual: after })
+      if (before !== after) {
+        drift.push({ item: `files:${path}`, expected: before ?? '(缺失)', actual: after ?? '(缺失)' })
       }
     }
     return drift

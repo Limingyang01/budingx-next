@@ -24,6 +24,8 @@ export type CommandEvidence = {
   at: number
 }
 
+type CommandEvidenceResult = Pick<CommandResult, 'outcome' | 'exitCode' | 'errorCode'>
+
 export type CodingTaskState = {
   taskId: string
   goal: string
@@ -48,8 +50,12 @@ export interface CodingTaskTracker {
   supplement(text: string): void
   /** 用户转向：替换目标（CT-04）。 */
   redirect(goal: string): void
+  /** 文件工具写入、撤销或宿主切换工作区后，之前的命令不能证明当前内容。 */
+  invalidateWorkspace(): void
+  /** 将运行中的命令绑定到启动时的工作区版本，返回仅供会话跟踪的令牌。 */
+  beginCommand(mayWrite: boolean): number
   /** 记录一次命令执行证据（命令文本 + 结果；Ruling T1：结果本身不含命令文本）。 */
-  observeCommand(command: string, result: CommandResult): void
+  observeCommand(command: string, result: CommandEvidenceResult, token?: number): void
   /** 完成声明是否成立（CT-07）。 */
   canClaimDone(): { ok: boolean; reason?: string }
 }
@@ -99,17 +105,43 @@ export function createCodingTaskTracker(options: CodingTaskTrackerOptions = {}):
   const now = options.now ?? Date.now
   let state: CodingTaskState | undefined
   let sequence = 0
+  let generation = 0
+  let commandSequence = 0
+  let latestCommand = 0
+  let latestPassingTest = 0
+  const running = new Map<number, { generation: number; mayWrite: boolean; overlappingWriter: boolean }>()
 
   const requireTask = (): CodingTaskState => {
     if (!state) throw new Error('当前没有进行中的编码任务')
     return state
   }
 
+  function invalidateWorkspace(): void {
+    generation += 1
+    if (!state) return
+    state.lastTest = undefined
+    state.testEvidence = undefined
+    state.phase = 'editing'
+  }
+
+  function beginCommand(mayWrite: boolean): number {
+    const overlappingWriter = [...running.values()].some((command) => command.mayWrite)
+    // A workspace-capable command may change files outside the file-tool checkpoint.
+    if (mayWrite) invalidateWorkspace()
+    commandSequence += 1
+    running.set(commandSequence, { generation, mayWrite, overlappingWriter })
+    return commandSequence
+  }
+
   return {
     get: () => state,
-    reset: () => { state = undefined },
+    reset() {
+      invalidateWorkspace()
+      state = undefined
+    },
     start(goal) {
       const trimmed = requireText(goal, '编码任务目标')
+      invalidateWorkspace()
       sequence += 1
       state = {
         taskId: options.taskId?.(sequence) ?? `task-${sequence}`,
@@ -127,14 +159,18 @@ export function createCodingTaskTracker(options: CodingTaskTrackerOptions = {}):
     redirect(goal) {
       const task = requireTask()
       task.goal = requireText(goal, '新的编码任务目标')
+      invalidateWorkspace()
       task.phase = 'orienting'
       task.goalReplacedAt = now()
-      // 旧目标下的证据不能为新目标背书（CT-04）。
-      task.lastTest = undefined
-      task.testEvidence = undefined
     },
-    observeCommand(command, result) {
-      if (!state) return
+    invalidateWorkspace,
+    beginCommand,
+    observeCommand(command, result, token) {
+      if (result.outcome === 'running') return
+      const id = token ?? beginCommand(false)
+      const started = running.get(id)
+      running.delete(id)
+      if (!state || started?.generation !== generation) return
       const evidence: CommandEvidence = {
         command,
         outcome: result.outcome,
@@ -142,16 +178,20 @@ export function createCodingTaskTracker(options: CodingTaskTrackerOptions = {}):
         ...(result.errorCode !== undefined ? { errorCode: result.errorCode } : {}),
         ...(result.exitCode !== undefined ? { exitCode: result.exitCode } : {})
       }
-      state.lastTest = evidence
       state.iterations += 1
-      if (result.outcome === 'completed') {
-        if (isTestCommand(command)) {
-          state.testEvidence = evidence
-          state.phase = 'testing'
-        } else if (state.phase === 'orienting') {
-          state.phase = 'editing'
-        }
-      } else if (
+      const tested = result.outcome === 'completed' && result.exitCode === 0 &&
+        isTestCommand(command) && !started.overlappingWriter
+      if (tested && id > latestPassingTest) {
+        latestPassingTest = id
+        state.testEvidence = evidence
+      }
+      // A slow older command cannot replace a newer command outcome.
+      if (id <= latestCommand) return
+      latestCommand = id
+      state.lastTest = evidence
+      if (tested) state.phase = 'testing'
+      else if (result.outcome === 'completed' && state.phase === 'orienting') state.phase = 'editing'
+      else if (
         result.outcome === 'failed' ||
         result.outcome === 'timeout' ||
         result.outcome === 'blocked'
@@ -159,7 +199,12 @@ export function createCodingTaskTracker(options: CodingTaskTrackerOptions = {}):
         state.phase = 'fixing'
       }
     },
-    canClaimDone: () => canClaimDone(state)
+    canClaimDone() {
+      if (state && [...running.values()].some((command) => command.generation === generation || command.mayWrite)) {
+        return { ok: false, reason: '仍有命令在运行，等待终态后再核对完成证据' }
+      }
+      return canClaimDone(state)
+    }
   }
 }
 

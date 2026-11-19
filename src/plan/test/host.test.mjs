@@ -136,19 +136,22 @@ test('T15-12 计划模式工具：EnterPlanMode 进入调研、ExitPlanMode 缺�
   // 写入计划并再次退出：审批通过后恢复原档位。
   host.store.create('修复 add 的失败测试', [{ title: '修改 src/app.mjs' }])
   host.store.requestApproval('# 计划\n1. 修改 src/app.mjs\n')
-  const exited = await exit.execute({}, context)
+  const exited = await exit.execute({ allowedPrompts: [{ tool: 'Bash', prompt: '运行验证测试' }] }, context)
   assert.match(exited, /计划已批准（plan-sess-2）/)
   assert.equal(session.planMode.active, false)
   assert.equal(policy.getMode(), 'workspace_edit')
   assert.equal(requests.length, 1)
   assert.equal(requests[0].name, 'ExitPlanMode')
   assert.equal(requests[0].planId, 'plan-sess-2')
+  assert.ok(requests[0].preview.includes('Bash: 运行验证测试'))
+  assert.equal(policy.decide({ tool: 'Bash', capability: 'execute' }).action, 'ask')
 
   // 非法 allowedPrompts 在校验层被拒绝，不触发审批。
-  await assert.rejects(
-    () => exit.execute({ allowedPrompts: 'nope' }, context),
-    /allowedPrompts 必须是字符串数组/
-  )
+  for (const allowedPrompts of [
+    'nope', ['run tests'], [{ tool: 'PowerShell', prompt: 'test' }], [{ tool: 'Bash' }]
+  ]) {
+    await assert.rejects(() => exit.execute({ allowedPrompts }, context), /allowedPrompts/)
+  }
   assert.equal(requests.length, 1)
 })
 test('T15-13 生产 runtime 接线：四类工具就位、会话标识就绪，无已验证隔离后端时命令在 spawn 前被拒绝', async (t) => {

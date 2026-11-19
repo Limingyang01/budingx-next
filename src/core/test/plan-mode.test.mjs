@@ -143,7 +143,7 @@ function makePlanHost({ text = '# 计划\n1. 步骤一', files = BASE_FILES, hea
       state.planText = value
     },
     async readPlanText() {
-      return state.planText
+      return store.current()?.draftText ?? state.planText
     },
     snapshot: () => state.snapshot,
     diff(baseline, current) {
@@ -421,14 +421,16 @@ test('T11-9 研究期工作区漂移：拒绝批准且计划保持未批准', as
   session.dispose()
 })
 
-test('T11-10 批准后首次副作用前漂移：回到待审且不执行', async () => {
-  const policy = makePolicy('workspace_edit')
+test('T11-10 计划漂移阻止写入，重新审批后才能执行', async () => {
+  const policy = makePolicy('full_access')
   const host = makePlanHost()
   host.store.create('实现 X', [{ title: '步骤一' }])
   const executed = []
-  const approval = makeGateway({ outcome: 'allow', via: 'user' })
+  const approval = makeGateway(() => ({
+    outcome: 'allow', via: 'user', editedText: '# 用户已修改的计划\n1. 修改 notes.txt'
+  }))
   const { session, events } = makeSession({
-    script: [...toolTurn('WriteNotes'), ...toolTurn('WriteNotes')],
+    script: [...toolTurn('WriteNotes'), ...toolTurn('WriteNotes'), ...toolTurn('WriteNotes')],
     tools: [makeTool('WriteNotes', 'write', executed)],
     policy,
     planMode: host,
@@ -437,7 +439,7 @@ test('T11-10 批准后首次副作用前漂移：回到待审且不执行', asyn
   session.enterPlanMode()
   const result = await session.exitPlanMode()
   assert.equal(result.ok, true)
-  assert.equal(policy.getMode(), 'workspace_edit')
+  assert.equal(policy.getMode(), 'full_access')
 
   host.state.snapshot = {
     ...host.state.snapshot,
@@ -448,13 +450,87 @@ test('T11-10 批准后首次副作用前漂移：回到待审且不执行', asyn
   assert.match(blocked.content, /Plan drifted before execution/)
   assert.match(blocked.content, /files:notes\.txt/)
   assert.deepEqual(executed, [], '漂移后不得执行副作用')
-  assert.equal(host.store.current().approval, 'pending', '漂移后计划回到待审')
-  assert.equal(session.planMode.phase, 'pending')
+  assert.equal(host.store.current().approval, 'none', '漂移后撤销旧的审批证据')
+  assert.equal(host.store.current().fingerprint, undefined)
+  assert.equal(session.planMode.phase, 'research')
+  assert.equal(policy.getMode(), 'workspace_edit')
 
   const denied = await runToolTurn(session, events, 'WriteNotes')
   assert.equal(denied.isError, true)
-  assert.match(denied.content, /Plan approval pending/)
+  assert.match(denied.content, /fresh plan approval/)
   assert.deepEqual(executed, [])
+
+  const reapproved = await session.exitPlanMode()
+  assert.equal(reapproved.ok, true)
+  assert.equal(approval.requests.length, 2)
+  assert.notEqual(approval.requests[0].requestId, approval.requests[1].requestId)
+  assert.notEqual(approval.requests[0].planVersion, approval.requests[1].planVersion)
+  assert.equal(approval.requests[1].planText, '# 用户已修改的计划\n1. 修改 notes.txt')
+  assert.ok(approval.requests[1].preview.some((line) => line.includes('files:notes.txt')))
+  assert.equal(policy.getMode(), 'full_access')
+  const resumed = await runToolTurn(session, events, 'WriteNotes')
+  assert.equal(resumed.isError, false)
+  assert.deepEqual(executed, ['WriteNotes'])
+  session.dispose()
+})
+
+test('用户确认期间出现漂移不会批准新状态', async () => {
+  const policy = makePolicy('full_access')
+  const host = makePlanHost()
+  host.store.create('实现 X', [{ title: '步骤一' }])
+  const approval = makeGateway('manual')
+  const { session } = makeSession({ policy, planMode: host, approval })
+  assert.equal(session.enterPlanMode().ok, true)
+  const pending = session.exitPlanMode()
+  await waitFor(() => approval.requests.length === 1)
+  host.state.snapshot = {
+    ...host.state.snapshot,
+    files: { ...BASE_FILES, 'notes.txt': 'during-review' }
+  }
+  approval.resolve()
+  const first = await pending
+  assert.equal(first.ok, false)
+  assert.match(first.message, /漂移/)
+  assert.equal(host.store.current().fingerprint, undefined)
+  assert.equal(session.planMode.phase, 'research')
+
+  const reopened = session.exitPlanMode()
+  await waitFor(() => approval.requests.length === 2)
+  approval.resolve()
+  assert.equal((await reopened).ok, true)
+  assert.equal(policy.getMode(), 'full_access')
+  session.dispose()
+})
+
+test('单独的工具批准等待期间出现漂移仍阻止写入', async () => {
+  const policy = makePolicy('workspace_edit')
+  const host = makePlanHost()
+  host.store.create('实现 X', [{ title: '步骤一' }])
+  const executed = []
+  const approval = makeGateway((request) => {
+    if (request.name === 'WriteNotes') {
+      host.state.snapshot = {
+        ...host.state.snapshot,
+        files: { ...BASE_FILES, 'notes.txt': 'while-tool-approval-waits' }
+      }
+    }
+    return { outcome: 'allow', via: 'user' }
+  })
+  const { session, events } = makeSession({
+    policy,
+    planMode: host,
+    script: toolTurn('WriteNotes'),
+    tools: [makeTool('WriteNotes', 'write', executed)],
+    approval
+  })
+  session.enterPlanMode()
+  assert.equal((await session.exitPlanMode()).ok, true)
+  const blocked = await runToolTurn(session, events, 'WriteNotes')
+  assert.equal(approval.requests.length, 2)
+  assert.equal(blocked.isError, true)
+  assert.match(blocked.content, /files:notes\.txt/)
+  assert.deepEqual(executed, [])
+  assert.equal(session.planMode.phase, 'research')
   session.dispose()
 })
 

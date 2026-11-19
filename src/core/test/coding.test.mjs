@@ -440,3 +440,174 @@ test('T13-11 真实命令执行证据经工具回调进入跟踪器（CT-08）',
   session.dispose()
   runner.dispose?.()
 })
+
+const workspaceWrite = {
+  name: 'WorkspaceWrite',
+  describe: () => '修改源文件',
+  capability: () => 'write',
+  async execute(_input, context) {
+    context.changes?.([{
+      id: 'change-1',
+      path: 'source.mjs',
+      operation: 'update',
+      additions: 1,
+      removals: 1,
+      at: '2026-11-19T00:00:00.000Z'
+    }])
+    return '文件已变更'
+  }
+}
+
+function startAndFinishTools(getSession, { automatic = false } = {}) {
+  let origin
+  return [
+    {
+      name: 'StartTest',
+      describe: () => '后台运行测试',
+      capability: () => 'execute',
+      async execute(_input, context) {
+        origin = { turnId: context.turnId, callId: context.callId }
+        context.emit?.({
+          type: 'command_started',
+          ...origin,
+          command: 'npm test',
+          interpreter: 'bash',
+          cwd: '/workspace',
+          ...(automatic ? {} : { taskId: 'task-background' }),
+          startedAt: 100
+        })
+        return '后台任务已启动'
+      }
+    },
+    {
+      name: 'FinishTest',
+      describe: () => '接收后台测试结果',
+      async execute() {
+        getSession().commandFinished({
+          type: 'command_finished',
+          ...origin,
+          taskId: 'task-background',
+          outcome: 'completed',
+          exitCode: 0,
+          finishedAt: 101
+        })
+        return '后台测试已成功'
+      }
+    }
+  ]
+}
+
+test('SP004 证据：通过测试后写文件，必须针对修改后的代码重新测试', async (t) => {
+  const tracker = createCodingTaskTracker()
+  tracker.start('修复缺陷')
+  const { session, events, requests } = makeSession({
+    tracker,
+    tools: [workspaceWrite, makeFakeRunTool([
+      { command: 'npm test', result: passedResult },
+      { command: 'npm test', result: passedResult }
+    ])],
+    script: [
+      toolTurn('FakeRun', {}, 'test-original'),
+      toolTurn('WorkspaceWrite', {}, 'write-source'),
+      textTurn('已完成。'),
+      toolTurn('FakeRun', {}, 'test-changed'),
+      textTurn('修改后的测试已通过。')
+    ]
+  })
+  t.after(() => session.dispose())
+  session.submit('修改并测试')
+  await waitFor(() => events.some(({ type }) => type === 'turn_finalized'))
+  assert.equal(requests.length, 5)
+  assert.equal(events.find(({ type }) => type === 'turn_finalized').outcome, 'completed')
+  assert.equal(tracker.canClaimDone().ok, true)
+})
+
+test('SP004 证据：手动和自动转后台的测试成功均可作为完成证据', async (t) => {
+  for (const automatic of [false, true]) {
+    await t.test(automatic ? '自动转后台' : '直接启动后台', async (subtest) => {
+      const tracker = createCodingTaskTracker()
+      tracker.start('修复缺陷')
+      const tools = startAndFinishTools(() => session, { automatic })
+      const { session, events, requests } = makeSession({
+        tracker,
+        tools,
+        script: [
+          toolTurn('StartTest', {}, 'begin-test'),
+          toolTurn('FinishTest', {}, 'observe-test'),
+          textTurn('后台测试已通过。')
+        ]
+      })
+      subtest.after(() => session.dispose())
+      session.submit('运行后台测试')
+      await waitFor(() => events.some(({ type }) => type === 'turn_finalized'))
+      assert.equal(requests.length, 3)
+      assert.equal(tracker.canClaimDone().ok, true)
+      assert.equal(events.find(({ type }) => type === 'turn_finalized').outcome, 'completed')
+    })
+  }
+})
+
+test('SP004 证据：旧后台测试在写文件、转向或工作区切换后完成，不能恢复旧证据', async (t) => {
+  for (const mutation of ['write', 'redirect', 'switch']) {
+    await t.test(mutation, async (subtest) => {
+      const tracker = createCodingTaskTracker()
+      tracker.start('修复缺陷')
+      const tools = startAndFinishTools(() => session)
+      const { session, events, requests } = makeSession({
+        tracker,
+        tools: [...tools, workspaceWrite, createTaskRedirectTool(tracker), {
+          name: 'SwitchWorkspace',
+          describe: () => '切换工作区',
+          async execute() {
+            session.invalidateCodingEvidence()
+            return '工作区已切换'
+          }
+        }, makeFakeRunTool([{ command: 'npm test', result: passedResult }])],
+        script: [
+          toolTurn('StartTest', {}, 'begin-old-test'),
+          mutation === 'write'
+            ? toolTurn('WorkspaceWrite', {}, 'write-source')
+            : mutation === 'redirect'
+              ? toolTurn('TaskRedirect', { goal: '修改新目标' }, 'new-goal')
+              : toolTurn('SwitchWorkspace', {}, 'new-workspace'),
+          toolTurn('FinishTest', {}, 'observe-old-test'),
+          textTurn('旧后台测试通过，可以完成。'),
+          toolTurn('FakeRun', {}, 'test-current'),
+          textTurn('当前工作区的测试通过。')
+        ]
+      })
+      subtest.after(() => session.dispose())
+      session.submit('验证当前工作区')
+      await waitFor(() => events.some(({ type }) => type === 'turn_finalized'))
+      assert.equal(requests.length, 6)
+      assert.ok(events.some(({ type, callId }) => type === 'tool_call_completed' && callId === 'test-current'))
+      assert.equal(tracker.canClaimDone().ok, true)
+    })
+  }
+})
+
+test('SP004 证据：命令运行中不得声明完成，只读检查保留原有测试证据', () => {
+  const tracker = createCodingTaskTracker()
+  tracker.start('修复缺陷')
+  tracker.observeCommand('npm test', passedResult)
+  const inspection = tracker.beginCommand(false)
+  assert.equal(tracker.canClaimDone().ok, false)
+  tracker.observeCommand('git status', passedResult, inspection)
+  assert.equal(tracker.canClaimDone().ok, true)
+  const possibleWrite = tracker.beginCommand(true)
+  tracker.observeCommand('node prepare.mjs', passedResult, possibleWrite)
+  assert.equal(tracker.canClaimDone().ok, false)
+})
+
+test('SP004 证据：重叠的可写命令结束前后均不能证明一次并发测试覆盖了最终内容', () => {
+  const tracker = createCodingTaskTracker()
+  tracker.start('修复缺陷')
+  const writer = tracker.beginCommand(true)
+  const testRun = tracker.beginCommand(true)
+  tracker.observeCommand('npm test', passedResult, testRun)
+  assert.equal(tracker.canClaimDone().ok, false)
+  tracker.observeCommand('node prepare.mjs', passedResult, writer)
+  assert.equal(tracker.canClaimDone().ok, false)
+  tracker.observeCommand('npm test', passedResult, tracker.beginCommand(true))
+  assert.equal(tracker.canClaimDone().ok, true)
+})

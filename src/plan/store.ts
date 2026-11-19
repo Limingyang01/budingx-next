@@ -80,6 +80,11 @@ export function createPlanStore(options: PlanStoreOptions = {}): PlanStore {
     return plan
   }
 
+  function nextVersion(): number {
+    const timestamp = now()
+    return plan ? Math.max(timestamp, plan.updatedAt + 1) : timestamp
+  }
+
   function assertStepTitle(title: unknown): string {
     if (typeof title !== 'string' || title.trim().length === 0) {
       throw new Error('步骤标题不能为空')
@@ -104,7 +109,7 @@ export function createPlanStore(options: PlanStoreOptions = {}): PlanStore {
       for (const step of steps) {
         list.push({ id: nextPlanStepId(list), title: assertStepTitle(step?.title), status: 'pending' })
       }
-      const timestamp = now()
+      const timestamp = nextVersion()
       plan = {
         id: newId(),
         goal: goal.trim(),
@@ -153,7 +158,7 @@ export function createPlanStore(options: PlanStoreOptions = {}): PlanStore {
         next.note = patch.note
       }
       current.steps[index] = next
-      current.updatedAt = now()
+      current.updatedAt = nextVersion()
       persist()
       return current
     },
@@ -167,7 +172,7 @@ export function createPlanStore(options: PlanStoreOptions = {}): PlanStore {
         throw new Error('请求批准的展示文本不能为空')
       }
       current.approval = 'pending'
-      current.updatedAt = now()
+      current.updatedAt = nextVersion()
       persist()
       return current
     },
@@ -177,7 +182,7 @@ export function createPlanStore(options: PlanStoreOptions = {}): PlanStore {
       if (current.approval !== 'pending') {
         throw new Error('计划未处于待批状态，不能批准')
       }
-      const timestamp = now()
+      const timestamp = nextVersion()
       current.updatedAt = timestamp
       current.approval = 'approved'
       current.fingerprint = planFingerprintOf({ updatedAt: timestamp }, snapshot(approvedText))
@@ -195,7 +200,7 @@ export function createPlanStore(options: PlanStoreOptions = {}): PlanStore {
         throw new Error('计划未处于待批状态，不能拒绝')
       }
       current.approval = 'rejected'
-      current.updatedAt = now()
+      current.updatedAt = nextVersion()
       // Plan 类型没有独立拒绝字段（设计 §6.1）；反馈经 approvedText 回传展示。
       if (reason !== undefined) {
         if (typeof reason !== 'string') throw new Error('拒绝原因必须是字符串')

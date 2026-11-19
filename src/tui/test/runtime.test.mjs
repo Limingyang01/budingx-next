@@ -43,7 +43,7 @@ async function sp004Runtime(t, responses, setup = {}) {
     for await (const chunk of req) body += chunk
     requests.push(JSON.parse(body))
     const next = responses[requests.length - 1]
-    const response = typeof next === 'function' ? next(requests.at(-1)) : next
+    const response = typeof next === 'function' ? await next(requests.at(-1)) : next
     const choice = Array.isArray(response)
       ? {
           delta: {
@@ -65,18 +65,36 @@ async function sp004Runtime(t, responses, setup = {}) {
   const configStore = new ConfigStore(join(base, 'config.json'))
   configStore.save({ version: 1, models: [profile], defaultModelId: profile.id })
   const approvals = []
-  const runtime = createAgentRuntime({
+  const runtimeWithApproval = (gateway) => createAgentRuntime({
     cwd, home: join(base, 'home'), configStore, mode: 'full_access',
     getConfig: () => ({
       profileId: profile.id, baseUrl, model: 'sp004', apiKey: 'fixture-key',
       timeoutMs: 2000, source: 'file'
     }),
-    approval: { async request(request) {
-      approvals.push(request)
-      return setup.approve?.(request) ?? { outcome: 'allow', via: 'user' }
-    } },
+    approval: {
+      async request(request) {
+        approvals.push(request)
+        if (gateway) return gateway.request(request)
+        return setup.approve?.(request) ?? { outcome: 'allow', via: 'user' }
+      },
+      cancelAll: () => gateway?.cancelAll()
+    },
     sandboxBackend: setup.sandboxBackend
   })
+  let runtime
+  let ui
+  if (setup.tty) {
+    const { mountTty } = await import('./helpers/mount-tty.mjs')
+    ui = await mountTty(t, {
+      config: { profileId: profile.id, baseUrl, model: 'sp004' },
+      sessionFactory: ({ gateway }) => {
+        runtime = runtimeWithApproval(gateway)
+        return runtime.session
+      }
+    })
+  } else {
+    runtime = runtimeWithApproval()
+  }
   t.after(() => {
     runtime.session.dispose()
     server.closeAllConnections()
@@ -85,7 +103,7 @@ async function sp004Runtime(t, responses, setup = {}) {
   })
   const events = []
   runtime.session.on((event) => events.push(event))
-  return { base, cwd, requests, approvals, runtime, events }
+  return { base, cwd, requests, approvals, runtime, events, ui }
 }
 
 test('SP004 生产入口：模型写计划、显示审批、更新独立待办，工具结果以原 call ID 回填', async (t) => {
@@ -93,7 +111,7 @@ test('SP004 生产入口：模型写计划、显示审批、更新独立待办�
     [['EnterPlanMode', {}], ['WritePlan', {
       text: '# 修订计划\n1. 修改 src/app.ts', goal: '修订计划', steps: ['修改 src/app.ts']
     }]],
-    [['ExitPlanMode', {}], ['TodoWrite', { todos: [
+    [['ExitPlanMode', { allowedPrompts: [{ tool: 'Bash', prompt: '运行单元测试' }] }], ['TodoWrite', { todos: [
       { content: '补测试', status: 'in_progress', activeForm: '正在补测试' }
     ] }]],
     '计划已批准'
@@ -104,6 +122,8 @@ test('SP004 生产入口：模型写计划、显示审批、更新独立待办�
   assert.equal(approvals.length, 1)
   assert.equal(approvals[0].name, 'ExitPlanMode')
   assert.ok(approvals[0].preview.some((line) => line.includes('修订计划')))
+  assert.ok(approvals[0].preview.some((line) => line.includes('Bash') && line.includes('运行单元测试')))
+  assert.deepEqual(runtime.policy.listRules(), [])
   const todos = events.find((event) => event.type === 'todos_updated')
   assert.equal(todos.items[0].activeForm, '正在补测试')
   const finalTools = requests[2].messages.filter((message) => message.role === 'tool')
@@ -111,6 +131,45 @@ test('SP004 生产入口：模型写计划、显示审批、更新独立待办�
     ['call-1-0', 'call-1-1', 'call-2-0', 'call-2-1'])
   assert.match(finalTools[1].content, /会话计划已更新/)
   assert.match(finalTools[2].content, /计划已批准/)
+})
+
+test('SP004 正式 TUI：计划漂移阻止写入，重新审批后只执行重新发起的写入', async (t) => {
+  const draft = {
+    text: '# 审查计划\n1. 读取 target.mjs 后产生交付文件',
+    goal: '审查计划',
+    steps: ['读取 target.mjs 后产生交付文件']
+  }
+  let cwd
+  const deniedPath = 'before-reapproval.mjs'
+  const { runtime, approvals, events, ui, cwd: root } = await sp004Runtime(t, [
+    [['EnterPlanMode', {}], ['WritePlan', draft]],
+    [['ExitPlanMode', {}]],
+    () => {
+      writeFileSync(join(cwd, 'target.mjs'), 'export const value = 2\n')
+      return [['Write', { path: deniedPath, content: 'export default false\n' }]]
+    },
+    [['ExitPlanMode', {}]],
+    [['Write', { path: 'after-reapproval.mjs', content: 'export default true\n' }]],
+    '结束'
+  ], { tty: true })
+  cwd = root
+  writeFileSync(join(root, 'target.mjs'), 'export const value = 1\n')
+  await ui.send('制定计划并执行\r')
+  await ui.waitFor((frame) => ui.gateway.pendingRequests.length === 1 && frame.includes('审查计划'))
+  await ui.send('1')
+  await ui.waitFor((frame) => approvals.length === 2 && ui.gateway.pendingRequests.length === 1 &&
+    frame.includes('审查计划'), 5000)
+  await ui.send('1')
+  await ui.waitFor(() => !runtime.session.isBusy)
+  assert.equal(events.find((event) => event.type === 'turn_finalized').outcome, 'completed')
+  const results = events.filter((event) => event.type === 'tool_result')
+  assert.deepEqual(approvals.map(({ name }) => name), ['ExitPlanMode', 'ExitPlanMode'])
+  assert.notEqual(approvals[0].requestId, approvals[1].requestId)
+  assert.match(results.find((result) => result.callId === 'call-3-0').content, /Plan drifted/)
+  assert.equal(results.find((result) => result.callId === 'call-4-0').isError, false)
+  assert.equal(existsSync(join(root, deniedPath)), false)
+  assert.equal(readFileSync(join(root, 'after-reapproval.mjs'), 'utf8'), 'export default true\n')
+  assert.equal(runtime.session.planMode.active, false)
 })
 
 test('SP004 生产入口：专用 worktree 隔离文件，受控提交必须等新鲜用户批准', async (t) => {
@@ -171,6 +230,67 @@ test('SP004 生产入口：失败命令不算完成证据，测试成功后才�
     typeof message.content === 'string' && message.content.includes('真实执行证据')))
 })
 
+test('SP004 正式 TUI：测试通过后的文件写入使旧证据失效', async (t) => {
+  let starts = 0
+  const backend = createHostProcessFixture({
+    spawn(_executable, _args, options) {
+      starts += 1
+      return spawn(process.execPath, ['--test', 'proof.test.mjs'], options)
+    }
+  })
+  const { runtime, cwd, requests, events } = await sp004Runtime(t, [
+    [['StartCodingTask', { goal: '更新 fixture' }]],
+    [['Bash', { command: 'node --test proof.test.mjs' }]],
+    [['Write', { path: 'new-file.mjs', content: 'export const value = 2\n' }]],
+    '已经完成',
+    [['Bash', { command: 'node --test proof.test.mjs' }]],
+    '写入后已重新测试'
+  ], { sandboxBackend: backend })
+  writeFileSync(join(cwd, 'proof.test.mjs'), "import { test } from 'node:test'\ntest('fixture', () => {})\n")
+  assert.equal((await turn(runtime.session, '更新 fixture 并测试')).outcome, 'completed')
+  assert.equal(starts, 2)
+  assert.equal(events.find((event) => event.type === 'tool_result' && event.callId === 'call-3-0').isError, false)
+  assert.equal(readFileSync(join(cwd, 'new-file.mjs'), 'utf8'), 'export const value = 2\n')
+  assert.ok(requests[4].messages.some((message) => message.role === 'user' &&
+    typeof message.content === 'string' && message.content.includes('真实执行证据')))
+})
+
+test('SP004 正式 TUI：成功的后台测试可直接作为完成证据', { timeout: 12000 }, async (t) => {
+  let starts = 0
+  let runtimeEvents
+  const backend = createHostProcessFixture({
+    spawn(_executable, _args, options) {
+      starts += 1
+      return spawn(process.execPath, ['--test', 'proof.test.mjs'], options)
+    }
+  })
+  const { runtime, cwd, requests, events } = await sp004Runtime(t, [
+    [['StartCodingTask', { goal: '在后台验证 fixture' }]],
+    [['Bash', { command: 'node --test proof.test.mjs', run_in_background: true }]],
+    async (request) => {
+      const launch = request.messages.find((message) => message.role === 'tool' &&
+        message.tool_call_id === 'call-2-0')
+      const taskId = /background_task_id: (\S+)/.exec(launch?.content ?? '')?.[1]
+      const deadline = Date.now() + 3000
+      while (!runtimeEvents.some((event) => event.type === 'command_finished' && event.taskId === taskId) &&
+        Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      return [['TaskStatus', { task_id: taskId ?? 'missing' }]]
+    },
+    '后台测试完成'
+  ], { sandboxBackend: backend })
+  runtimeEvents = events
+  writeFileSync(join(cwd, 'proof.test.mjs'), "import { test } from 'node:test'\ntest('fixture', () => {})\n")
+  assert.equal((await turn(runtime.session, '在后台验证 fixture')).outcome, 'completed')
+  const terminal = events.find((event) => event.type === 'command_finished')
+  assert.equal(terminal.callId, 'call-2-0')
+  assert.equal(terminal.exitCode, 0)
+  assert.equal(starts, 1)
+  assert.equal(requests.length, 4)
+  assert.ok(!events.some((event) => event.type === 'notice' && event.code === 'coding_task'))
+})
+
 test('SP004 生产入口：后台任务可查询、取消并发出关联原调用的终态', { timeout: 12000 }, async (t) => {
   const backend = createHostProcessFixture({
     spawn(_executable, _args, options) {
@@ -216,6 +336,33 @@ test('SP004 生产入口：缺隔离后端时编码任务报告阻塞并结束�
   assert.equal(result.outcome, 'error')
   assert.equal(result.error?.code, 'BUDINGX_EXEC_005')
   assert.equal(requests.length, 3)
+})
+
+test('SP004 正式 TUI：已探测的主机隔离后端执行 Bash，仅暴露允许的项目输入', { timeout: 40000 }, async (t) => {
+  const { createHostSandboxFromEnvironment } = await import('../dist/exec/host-sandbox.js')
+  const backend = createHostSandboxFromEnvironment({ BUDINGX_SANDBOX: 'bubblewrap' })
+  if (!backend) {
+    t.skip('当前宿主没有通过 Bubblewrap 能力探测')
+    return
+  }
+  const { ui, cwd, runtime, events } = await sp004Runtime(t, [
+    [['Bash', {
+      command: 'test -f visible.txt && test ! -e .git && test ! -e .env && test ! -e hidden.txt && printf isolated-ready'
+    }]],
+    '隔离执行完成'
+  ], { sandboxBackend: backend, tty: true })
+  writeFileSync(join(cwd, 'visible.txt'), 'allowed fixture')
+  writeFileSync(join(cwd, 'hidden.txt'), 'restricted fixture')
+  writeFileSync(join(cwd, '.env'), 'SYNTHETIC_VALUE=fixture\n')
+  mkdirSync(join(cwd, '.git'))
+  runtime.policy.setRules([{ id: 'fixture-deny', action: 'deny', tool: 'Read', path: 'hidden.txt' }])
+  await ui.send('验证隔离 execution\r')
+  await ui.waitFor(() => events.some((event) => event.type === 'turn_finalized'), 20000)
+  const result = events.find((event) => event.type === 'tool_result')
+  assert.equal(result.isError, false, result.content)
+  assert.match(result.content, /exit_code: 0/)
+  assert.match(result.content, /isolated-ready/)
+  assert.equal(readFileSync(join(cwd, 'visible.txt'), 'utf8'), 'allowed fixture')
 })
 test('G04/G05 两端点切换模型和凭据，当前回合快照不变', async (t) => {
   const requests = []

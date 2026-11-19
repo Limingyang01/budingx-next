@@ -7,6 +7,7 @@ import { ConfigStore } from '../storage/config-store.js'
 import { CredentialStore } from '../storage/credentials.js'
 import { mergeSources, profileCredentialBinding, profileCredentialRef, startupProfile, type ResolvedConfig } from '../storage/profiles.js'
 import { MODES_EN, MODES_ZH } from '../workspace/policy.js'
+import { createHostSandboxFromEnvironment } from '../exec/host-sandbox.js'
 import type { PermissionMode } from '../core/permissions.js'
 import { App } from './app.js'
 import { createAgentRuntime, workspacePromptOptions, type AgentRuntime } from './runtime.js'
@@ -26,10 +27,13 @@ function permissionContext(
     store: runtime.permissionStore,
     workspace: runtime.workspace,
     checkpointChanges: () => runtime.checkpoint.changes(),
-    undo: (path?: string) =>
-      path
+    undo: (path?: string) => {
+      const result = path
         ? runtime.checkpoint.undoPath(runtime.workspace, path)
-        : runtime.checkpoint.undoTurn(runtime.workspace),
+        : runtime.checkpoint.undoTurn(runtime.workspace)
+      if (result.paths.length > 0) runtime.session.invalidateCodingEvidence()
+      return result
+    },
     denials: () => runtime.denials,
     modes: { order: MODE_ORDER, zh: MODES_ZH, en: MODES_EN }
   }
@@ -178,12 +182,17 @@ async function runPipe(config: ResolvedConfig, stores: Stores): Promise<number> 
 async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<void> {
   const gateway = new InkApprovalGateway()
   let current = config
+  const sandboxBackend = createHostSandboxFromEnvironment()
+  if (process.env.BUDINGX_SANDBOX && !sandboxBackend) {
+    process.stderr.write('Warning: requested command isolation did not pass verification; shell commands are unavailable.\n')
+  }
   const runtime = createAgentRuntime({
     cwd: process.cwd(),
     getConfig: () => current,
     approval: gateway,
     configStore: stores.configStore,
-    persistPermissionMode: true
+    persistPermissionMode: true,
+    sandboxBackend
   })
   for (const warning of runtime.warnings) {
     process.stderr.write(`Warning: ${warning}\n`)

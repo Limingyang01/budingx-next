@@ -307,6 +307,7 @@ SP004 接入宿主显式配置的隔离后端，产品不在本轮自研通用 O
 - 网络默认关闭。配置域名策略时，只有后端能强制执行该策略才允许联网，否则拒绝该执行请求。用户确认和完全权限均不得降级隔离。拒绝使用明确的结构化错误，TUI 说明缺失能力。
 - 无已验证后端时只开放 §4.5 的宿主托管操作，普通 Bash/PowerShell 命令不可用。T0 记录 Windows/Linux 的实际后端及能力探测，T20 通过实际进程证据前，隔离和任意命令闭环记为 UNVERIFIED。普通临时目录、worktree 和字符串扫描本身均不提供进程隔离。
 - 启动前的限制与运行时的策略分别记录。拒绝、取消、超时及进程退出事件携带同一请求身份，最终结果只产生一次。
+- 交互 CLI 通过 `BUDINGX_SANDBOX=bubblewrap` 启用宿主探测。支持 Linux Bubblewrap 以及 Windows 上带 Bubblewrap 的 WSL 2。后端在隔离域的私有项目快照执行 Bash，过滤 Git 元数据、凭据、链接与宿主策略禁止读取的路径。命令产生的文件留在快照内，持久修改走正式文件工具。缺少必要能力时保持拒绝，Windows 原生 PowerShell 仍未接入隔离后端。
 
 ### 4.8 命令内受限编辑（CE-20，v1.1 新增）
 
@@ -386,6 +387,8 @@ export interface CodingTaskTracker {
 | 至少一次测试类命令成功（exit=0） | 通过 |
 
 **测试类命令判定**：命令文本匹配 `test|spec|jest|vitest|mocha|pytest|go test|cargo test|npm run (test|check)|npm test|pnpm test|make test|tox|unittest` 等模式。判定是**启发式**，在文档与工具 summary 中说明。
+
+前台与后台结果进入同一个完成证据判断。每次执行的证据关联任务身份和工作区代次。工作区写入、撤销、切换或任务转向会使旧代次失效，过期任务的后台结果不会成为当前代码的完成证据。
 
 ### 5.3 用户转向（CT-03 / CT-04）
 
@@ -505,11 +508,11 @@ export interface TodoStore {
 | 待批 | 拒绝或取消 | 返回原工具调用的拒绝反馈或取消结果，保持调研。用户显式退出调研时恢复原权限档位。 |
 | 待批 | 其他写入、执行或 Git 写请求 | 挂起原回合；并发入口拒绝，避免等待审批时启动副作用。 |
 
-`EnterPlanMode` 模型请求为空对象。`ExitPlanMode` 使用会话计划文件，模型调用无需携带计划正文。接收可选 `allowedPrompts` 作为展示和审查的权限意图，字段不会直接创建权限规则；本仓未接受的额外审批字段登记为协议差异。经确认的宿主编辑正文属于审批输入。参考源为 `src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts` 与相应审批组件。本轮保留原权限档位恢复与反馈流程，参考仓额外权限档位不进入本轮。
+`EnterPlanMode` 模型请求为空对象。`ExitPlanMode` 使用会话计划文件。可选 `allowedPrompts` 为 `{ tool: 'Bash', prompt: string }[]`，权限意图随审批展示。命令仍由执行权限和隔离后端独立判定。用户在审批中编辑后的正文参与本次版本校验。参考源为 `src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts` 与相应审批组件。
 
 ### 6.3 批准与执行前校验（TP-04 / TP-05）
 
-复用 `ApprovalGateway` 传递 planId、版本、call ID、编辑正文或反馈。计划指纹绑定工作区根、Git HEAD、计划版本及明确的目标文件前像。已批准计划首次产生副作用前重查；工作区、HEAD、目标或计划发生漂移时返回结构化原因并回到待审。计划批准和单次工具批准分别耗用，迟到、重复或已取消的审批结果不改变状态。
+复用 `ApprovalGateway` 传递 planId、版本、call ID、编辑正文或反馈。计划指纹绑定工作区根、Git HEAD、计划版本及明确的目标文件前像。首次副作用前重查，单次工具审批等待结束后也须复核。漂移时拒绝本次动作，返回调研并保留已审正文。后续调用 `ExitPlanMode` 发起新审批。批准后可重新发起执行。计划批准和单次工具批准分别耗用，迟到、重复或已取消的审批结果不改变状态。
 
 ### 6.4 追问（TP-06 / TP-07 / TP-08 / CT-05 / CT-06）
 

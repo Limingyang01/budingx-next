@@ -43,6 +43,7 @@ import type {
 import type {
   PendingQuestion,
   Plan,
+  PlanAllowedPrompt,
   PlanDriftItem,
   PlanModeExitResult,
   PlanModeHost,
@@ -150,6 +151,7 @@ export class Session {
   private readonly listeners = new Set<(event: SessionEvent) => void>()
   private readonly toolPreviewListeners = new Set<(names: readonly string[]) => void>()
   private readonly tools: ToolHandler[]
+  private readonly runningCommands = new Map<string, { token: number; command: string; taskId?: string }>()
   private readonly queue: QueuedInput[] = []
   private activeTurn?: ActiveTurn
   private approvalForMemory?: { id: string; target: PermissionRequest }
@@ -167,9 +169,10 @@ export class Session {
     phase: PlanModePhase
     originalMode: PermissionMode
     baseline: PlanModeSnapshot
+    reapprovalDrift?: readonly PlanDriftItem[]
   }
   /** 已批准计划是否已在首次副作用前重查（§6.3）。 */
-  private approvedPlanCheck?: { planId: string; rechecked: boolean }
+  private approvedPlanCheck?: { planId: string; version: number; rechecked: boolean }
   /** 追问挂起（§6.4）：复用 awaiting_approval 状态，配 question_* 事件。 */
   private pendingQuestionState?: {
     question: PendingQuestion
@@ -280,7 +283,11 @@ export class Session {
    * 退出计划模式并提交计划审批（§6.2/§6.3）：读取会话计划文件、
    * 校验研究基线未漂移，再经 ApprovalGateway 取得批准或拒绝。
    */
-  async exitPlanMode(context: { turnId?: string; callId?: string } = {}): Promise<PlanModeExitResult> {
+  async exitPlanMode(context: {
+    turnId?: string
+    callId?: string
+    allowedPrompts?: readonly PlanAllowedPrompt[]
+  } = {}): Promise<PlanModeExitResult> {
     const host = this.options.planMode
     const policy = this.options.permissionPolicy
     const state = this.planModeState
@@ -288,17 +295,22 @@ export class Session {
     if (!state) return { ok: false, message: '当前不在计划模式' }
     if (state.phase === 'pending') return { ok: false, message: '计划审批仍在等待处理，请先批准或拒绝' }
     const text = (await host.readPlanText().catch(() => undefined))?.trim()
+    if (this.planModeState !== state || state.phase !== 'research') {
+      return { ok: false, message: '计划审批状态已变化，请重试' }
+    }
     if (!text) return { ok: false, message: '会话计划文件缺失或为空：请先写入计划再退出计划模式' }
     const plan = host.store.current()
     if (!plan) return { ok: false, message: '当前没有计划：请先写入会话计划文件' }
     if (plan.approval === 'approved') {
       return { ok: false, message: '旧计划已获批准：请用 WritePlan 写入新草稿再申请审批' }
     }
-    const drift = host.diff(state.baseline, host.snapshot())
+    const reviewSnapshot = host.snapshot(text)
+    const drift = host.diff(state.baseline, reviewSnapshot)
     if (drift.length > 0) {
+      this.reopenPlanForApproval(plan, text, drift)
       return {
         ok: false,
-        message: `工作区在研究期间发生漂移，计划未获批准：${describeDrift(drift)}`,
+        message: `工作区在研究期间发生漂移，计划未获批准。重新调研后调用 ExitPlanMode：${describeDrift(drift)}`,
         drift
       }
     }
@@ -306,21 +318,28 @@ export class Session {
     state.phase = 'pending'
     this.emit({ type: 'plan_mode_changed', active: true, phase: 'pending', originalMode: state.originalMode })
     const pending = host.store.current() ?? plan
+    const pendingVersion = pending.updatedAt
     this.emit({ type: 'plan_updated', plan: pending })
     const turn = this.activeTurn
     const inTurn = !!turn && (context.turnId === undefined || context.turnId === turn.id)
     const turnId = context.turnId ?? turn?.id ?? 'plan-mode'
     const callId = context.callId ?? 'exit-plan-mode'
     const requestId = randomUUID()
+    const intents = context.allowedPrompts?.map(({ tool, prompt }) => `${tool}: ${prompt}`) ?? []
+    const reapproval = state.reapprovalDrift?.map((item) => describeDrift([item])) ?? []
     const request: ApprovalRequest = {
       requestId,
       turnId,
       callId,
       name: 'ExitPlanMode',
       summary: `批准计划：${pending.goal}`,
-      preview: text.split('\n').slice(0, 40),
+      preview: [
+        ...(reapproval.length ? ['重新审批的漂移项', ...reapproval, ''] : []),
+        ...(intents.length ? ['权限意图（仅供审查，不授予权限）', ...intents, ''] : []),
+        ...text.split('\n').slice(0, 40)
+      ],
       planId: pending.id,
-      planVersion: pending.updatedAt,
+      planVersion: pendingVersion,
       planText: text
     }
     this.emit({
@@ -344,8 +363,23 @@ export class Session {
       outcome: decision.outcome,
       via: decision.via
     })
+    if (this.planModeState !== state) {
+      return { ok: false, message: '此计划审批已经失效', cancelled: true }
+    }
+    const current = host.store.current()
+    if (!current || current.id !== pending.id || current.updatedAt !== pendingVersion ||
+      current.approval !== 'pending') {
+      state.phase = 'research'
+      state.reapprovalDrift = [{
+        item: 'version', expected: String(pendingVersion), actual: String(current?.updatedAt ?? '(缺失)')
+      }]
+      this.emit({ type: 'plan_mode_changed', active: true, phase: 'research', originalMode: state.originalMode })
+      return { ok: false, message: '计划版本已变化，需重新请求审批' }
+    }
     if (decision.outcome === 'cancelled') {
       state.phase = 'research'
+      host.store.reject()
+      this.emit({ type: 'plan_updated', plan: host.store.current() ?? pending })
       this.emit({
         type: 'plan_mode_changed',
         active: true,
@@ -371,6 +405,15 @@ export class Session {
       const feedback = decision.feedback?.trim() ? `：${decision.feedback.trim()}` : ''
       return { ok: false, message: `计划未获批准${feedback}` }
     }
+    const reviewDrift = host.diff(reviewSnapshot, host.snapshot(text), true)
+    if (reviewDrift.length > 0) {
+      this.reopenPlanForApproval(pending, text, reviewDrift)
+      return {
+        ok: false,
+        message: `审批期间检测到工作区漂移。重新调研后调用 ExitPlanMode：${describeDrift(reviewDrift)}`,
+        drift: reviewDrift
+      }
+    }
     let approved: Plan
     try {
       approved = host.store.approve(decision.editedText?.trim() ? decision.editedText : text)
@@ -389,13 +432,7 @@ export class Session {
     }
     const check = host.validate(approved)
     if (!check.ok) {
-      state.phase = 'research'
-      this.emit({
-        type: 'plan_mode_changed',
-        active: true,
-        phase: 'research',
-        originalMode: state.originalMode
-      })
+      this.reopenPlanForApproval(approved, approved.approvedText ?? text, check.drift)
       return {
         ok: false,
         message: `计划批准后校验失败：${describeDrift(check.drift)}`,
@@ -404,7 +441,7 @@ export class Session {
     }
     policy.setMode(state.originalMode)
     this.planModeState = undefined
-    this.approvedPlanCheck = { planId: approved.id, rechecked: false }
+    this.approvedPlanCheck = { planId: approved.id, version: approved.updatedAt, rechecked: false }
     this.emit({ type: 'plan_updated', plan: approved })
     this.emit({ type: 'plan_mode_changed', active: false, originalMode: state.originalMode })
     return {
@@ -527,30 +564,45 @@ export class Session {
     })
   }
 
-  /** 已批准计划在执行前漂移：重建计划并回到待批（§6.3）。 */
-  private async reopenPlanForApproval(plan: Plan, drift: PlanDriftItem[]): Promise<void> {
+  /** 撤销旧计划证据并回到调研，等待新的 ExitPlanMode 审批。 */
+  private reopenPlanForApproval(plan: Plan | undefined, text: string, drift: PlanDriftItem[]): void {
     const host = this.options.planMode
     if (!host) return
     const originalMode =
       this.planModeState?.originalMode ?? this.options.permissionPolicy?.getMode() ?? 'read_only'
-    const text = (await host.readPlanText().catch(() => undefined))?.trim() || plan.goal
-    let next: Plan = plan
-    try {
-      next = host.store.create(plan.goal, plan.steps.map((step) => ({ title: step.title })))
-      host.store.requestApproval(text)
-    } catch {
-      // Without a writable plan store we still keep the session in pending.
-    }
-    this.planModeState = { phase: 'pending', originalMode, baseline: host.snapshot() }
     this.approvedPlanCheck = undefined
-    this.emit({ type: 'plan_updated', plan: host.store.current() ?? next })
-    this.emit({ type: 'plan_mode_changed', active: true, phase: 'pending', originalMode })
+    this.planModeState = {
+      phase: 'research',
+      originalMode,
+      baseline: host.snapshot(text),
+      reapprovalDrift: drift
+    }
+    this.options.permissionPolicy?.setMode('workspace_edit')
+    this.emit({ type: 'plan_mode_changed', active: true, phase: 'research', originalMode })
+    if (plan) {
+      const draft = host.store.create(plan.goal, plan.steps.map((step) => ({ title: step.title })), text)
+      this.emit({ type: 'plan_updated', plan: draft })
+    }
     this.emit({
       type: 'notice',
       level: 'warning',
       code: 'plan_mode',
-      text: `计划执行前校验发现漂移，需重新批准：${describeDrift(drift)}`
+      text: `计划校验发现漂移，重新调研后调用 ExitPlanMode 申请审批：${describeDrift(drift)}`
     })
+  }
+
+  private recheckApprovedPlan(): PlanDriftItem[] {
+    const approval = this.approvedPlanCheck
+    const host = this.options.planMode
+    if (!approval || approval.rechecked || !host) return []
+    const plan = host.store.current()
+    const drift = plan?.id === approval.planId && plan.updatedAt === approval.version
+      ? host.validate(plan).drift
+      : [{ item: 'version', expected: String(approval.version), actual: String(plan?.updatedAt ?? '(缺失)') }]
+    if (drift.length > 0) {
+      this.reopenPlanForApproval(plan, plan?.approvedText ?? plan?.draftText ?? plan?.goal ?? '', drift)
+    }
+    return drift
   }
 
   /** In-process display subscription. The public session event stream is unchanged. */
@@ -565,7 +617,20 @@ export class Session {
   }
 
   commandFinished(event: Extract<SessionEvent, { type: 'command_finished' }>): void {
+    if (event.turnId && event.callId && event.outcome !== 'running') {
+      const key = `${event.turnId}:${event.callId}`
+      const command = this.runningCommands.get(key)
+      if (command && (command.taskId === undefined || command.taskId === event.taskId)) {
+        this.runningCommands.delete(key)
+        this.options.codingTask?.observeCommand(command.command, event, command.token)
+      }
+    }
     this.emit(event)
+  }
+
+  /** Host-owned writes (e.g. undo) and workspace switches invalidate test evidence. */
+  invalidateCodingEvidence(): void {
+    this.options.codingTask?.invalidateWorkspace()
   }
 
   /** Submit user input. While a turn is running the input is queued. */
@@ -652,6 +717,7 @@ export class Session {
     }
     this.listeners.clear()
     this.toolPreviewListeners.clear()
+    this.runningCommands.clear()
   }
 
   private emit(event: SessionEvent): void {
@@ -1016,30 +1082,16 @@ export class Session {
           })
           continue
         }
-        // §6.3：已批准计划在首次副作用前重查目标与前像；漂移则回到待审，
-        // 本次调用不执行任何副作用，也不消耗一次工具批准。
-        if (
-          this.approvedPlanCheck &&
-          !this.approvedPlanCheck.rechecked &&
-          capability !== 'read'
-        ) {
-          const host = this.options.planMode
-          const plan = host?.store.current()
-          if (host && plan) {
-            const check = host.validate(plan)
-            if (!check.ok) {
-              await this.reopenPlanForApproval(plan, check.drift)
-              this.pushToolResult(
-                turn,
-                call.id,
-                `Plan drifted before execution: ${describeDrift(check.drift)}`,
-                true,
-                ERROR_CODES.permissionDenied
-              )
-              continue
-            }
-          }
-          this.approvedPlanCheck.rechecked = true
+        const drift = capability === 'read' ? [] : this.recheckApprovedPlan()
+        if (drift.length > 0) {
+          this.pushToolResult(
+            turn,
+            call.id,
+            `Plan drifted before execution; review and call ExitPlanMode again: ${describeDrift(drift)}`,
+            true,
+            ERROR_CODES.permissionDenied
+          )
+          continue
         }
         if (this.planModeState) {
           if (this.planModeState.phase === 'pending' && capability !== 'read') {
@@ -1059,6 +1111,16 @@ export class Session {
                 at: new Date().toISOString()
               }
             })
+            continue
+          }
+          if (this.planModeState.reapprovalDrift && capability !== 'read') {
+            this.pushToolResult(
+              turn,
+              call.id,
+              'Plan drift requires fresh plan approval; call ExitPlanMode before any side effects',
+              true,
+              ERROR_CODES.permissionDenied
+            )
             continue
           }
           // 调研期：底层已准许的只读照常执行，其余非只读一律一次性批准。
@@ -1159,16 +1221,37 @@ export class Session {
       let isError = false
       let errorCode: string | undefined
       let startedAt: number | undefined
+      const tracker = this.options.codingTask
+      const commandKey = `${turn.id}:${call.id}`
       try {
         const toolContext: ToolContext = {
           signal: turn.controller.signal,
-          changes: (records) => this.emit({ type: 'change_set', changes: records }),
+          changes: (records) => {
+            if (records.length > 0) this.invalidateCodingEvidence()
+            this.emit({ type: 'change_set', changes: records })
+          },
           turnId: turn.id,
           callId: call.id,
-          emit: (event) => this.emit(event),
+          emit: (event) => {
+            if (tracker && event.type === 'command_started' && !this.runningCommands.has(commandKey)) {
+              const capability = permissionRequest?.capability ?? handler.capability?.(input)
+              this.runningCommands.set(commandKey, {
+                token: tracker.beginCommand(capability !== 'read'),
+                command: event.command,
+                taskId: event.taskId
+              })
+            }
+            this.emit(event)
+          },
           onCommandResult: (command: string, result: CommandResult) => {
-            this.options.codingTask?.observeCommand(command, result)
-            if (result.outcome !== 'completed' && result.outcome !== 'running') {
+            const running = this.runningCommands.get(commandKey)
+            if (result.outcome === 'running') {
+              if (running && result.taskId !== undefined) running.taskId = result.taskId
+              return
+            }
+            this.runningCommands.delete(commandKey)
+            tracker?.observeCommand(command, result, running?.token)
+            if (result.outcome !== 'completed') {
               isError = true
               errorCode = result.errorCode ?? ERROR_CODES.coreToolFailed
             }
@@ -1178,10 +1261,35 @@ export class Session {
           this.pushToolResult(turn, call.id, 'Permission changed before execution', true, ERROR_CODES.permissionDenied)
           continue
         }
+        const planApproval = permissionRequest && permissionRequest.capability !== 'read'
+          ? this.approvedPlanCheck
+          : undefined
+        if (planApproval) {
+          // A per-tool approval can wait long enough for the reviewed state to change.
+          const drift = needsApproval ? this.recheckApprovedPlan() : []
+          if (drift.length > 0) {
+            this.pushToolResult(
+              turn,
+              call.id,
+              `Plan drifted before execution; review and call ExitPlanMode again: ${describeDrift(drift)}`,
+              true,
+              ERROR_CODES.permissionDenied
+            )
+            continue
+          }
+        }
         startedAt = performance.now()
         content = await (prepared ? prepared.execute(toolContext) : handler.execute(input, toolContext))
+        if (!isError && planApproval && this.approvedPlanCheck === planApproval) {
+          planApproval.rechecked = true
+        }
         if (!isError && remember && permissionRequest) policy?.remember(permissionRequest)
       } catch (error) {
+        const running = this.runningCommands.get(commandKey)
+        if (running) {
+          this.runningCommands.delete(commandKey)
+          tracker?.observeCommand(running.command, { outcome: 'failed' }, running.token)
+        }
         content = error instanceof Error ? error.message : 'Tool execution failed'
         isError = true
         // Stable machine readable codes from WorkspaceError survive to the

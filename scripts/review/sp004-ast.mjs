@@ -30,6 +30,7 @@ const REFERENCE_ALLOWLIST = [
   { ours: 'src/core/tools.ts', theirs: ['src/Tool.ts'] },
   { ours: 'src/exec/background.ts', theirs: ['src/tools/BashTool', 'src/tasks'] },
   { ours: 'src/exec/destructive.ts', theirs: ['src/tools/BashTool'] },
+  { ours: 'src/exec/host-sandbox.ts', theirs: ['src/utils/sandbox/sandbox-adapter.ts'] },
   { ours: 'src/exec/index.ts', theirs: [], note: '模块导出面（barrel），仅 re-export，无可比较实现' },
   { ours: 'src/exec/interpreter.ts', theirs: ['src/tools/BashTool'] },
   { ours: 'src/exec/output.ts', theirs: ['src/tools/BashTool'] },
@@ -53,6 +54,7 @@ const REFERENCE_ALLOWLIST = [
   { ours: 'src/plan/validate.ts', theirs: ['src/tools/EnterPlanModeTool'] },
   { ours: 'src/tui/app.tsx', theirs: ['src/components', 'src/screens'] },
   { ours: 'src/tui/approval.ts', theirs: ['src/components/permissions'] },
+  { ours: 'src/tui/cli.ts', theirs: ['src/entrypoints/cli.tsx', 'src/entrypoints/tui.ts'] },
   { ours: 'src/tui/git-tools.ts', theirs: ['src/tools/EnterWorktreeTool', 'src/tools/ExitWorktreeTool', 'src/components/WorktreeExitDialog.tsx'] },
   {
     ours: 'src/tui/render/cards.ts',

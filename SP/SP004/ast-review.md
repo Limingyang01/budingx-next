@@ -49,3 +49,7 @@
 - 公共协议字段（命令/计划/待办/追问的卡片状态、Git 只读状态字段、事件名）来自 SP004 需求与设计规定，属必要重合，不构成代码复制。
 - 参考提交包含 `ExitPlanModePermissionRequest` 及多题 `AskUserQuestionPermissionRequest`。卡片的参考范围同时纳入 `BashModeProgress` 和 `TaskListV2`。对照范围以 `REFERENCE_ALLOWLIST` 为准。
 - 未验证边界：AST 分值不证明来源，只作为人工复核触发线；本复核不代表法律洁净室认证。真实终端下的视觉位图/双尺寸单元格差分仍为 UNVERIFIED（需两侧真实交互终端截屏，本环境无头）。
+
+## 第二轮复审修复复验
+
+参考提交仍为 `b5c9be8d15e5dab153fe1607c0d653d464bdb3e5`。CLI 及新增 Bubblewrap 接入文件已补入映射。复验覆盖 42 个源码文件、176 个本仓函数或组件、5,611 个参考函数或组件及 19,600 组函数对。4 项自检通过，命中 0。

@@ -3,6 +3,7 @@
 // 本模块是纯决策层：拒绝路径在 spawn 之前完成，不产生任何进程。
 import { ERROR_CODES } from '../core/constants.js'
 import type { ChildProcess } from 'node:child_process'
+import type { InterpreterChoice, InterpreterError, InterpreterTool } from './interpreter.js'
 
 /** 能力声明层：受控策略覆盖项目读写视图、凭据/用户数据保护与网络目的地。 */
 export interface SandboxCapabilities {
@@ -23,6 +24,8 @@ export interface SandboxLaunchRequest {
   env: NodeJS.ProcessEnv
   /** 只读模式须强制禁写，而不是依赖命令文本的分类。 */
   mode: 'read_only' | 'workspace'
+  /** Host policy for paths projected from this launch's working directory. */
+  isWorkspacePathReadable?: (relativePath: string) => boolean
 }
 
 /** 宿主注入的可信执行后端。verified 为宿主真实进程验收结论。 */
@@ -31,6 +34,9 @@ export interface SandboxBackend {
   label: string
   verified: boolean
   capabilities: SandboxCapabilities
+  resolveInterpreter?(tool: InterpreterTool): InterpreterChoice | InterpreterError
+  /** Keep the supervisor's stdin lifecycle pipe open. The command itself gets EOF. */
+  keepsSupervisorStdinOpen?: boolean
   /** 在既定文件、Git 和网络隔离策略下启动进程。失败时不得退回宿主执行。 */
   start(request: SandboxLaunchRequest): ChildProcess
   /** 终止本后端启动的完整进程树；可能重复调用。 */

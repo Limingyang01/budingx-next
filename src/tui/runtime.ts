@@ -149,6 +149,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   const runner = createCommandRunner({
     defaultCwd: workspace.root,
     sandboxPolicy: createSandboxPolicy({ backend: options.sandboxBackend }),
+    isWorkspacePathReadable: (path) =>
+      policy.decide({ tool: 'Read', capability: 'read', path }).action === 'allow',
     onCommandFinished: (event) => session.commandFinished(event),
     sessionId,
     ...(options.home ? { home: options.home } : {})
@@ -158,14 +160,17 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     defaultCwd: workspace.root,
     getCwd: () => workspace.root,
     sandboxBackendId: options.sandboxBackend?.id,
+    sandboxInterpreter: options.sandboxBackend?.resolveInterpreter,
     platform: process.platform
   })
   const gitTools = createGitTools({
     cwd: () => workspace.root,
     checkpoint: () => activeTools.checkpoint,
     switchWorkspace(path) {
+      if (path === currentWorkspace.root) return
       currentWorkspace = path === originalWorkspace.root ? originalWorkspace : createWorkspace(path)
       activeTools = toolsFor(currentWorkspace)
+      session.invalidateCodingEvidence()
     },
     home: options.home
   })
