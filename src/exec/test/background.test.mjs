@@ -148,8 +148,8 @@ test('CE-07/R-03 取消重试：首次终止未生效时自动重发，直到进
       backgroundedByUser: true
     },
     child,
-    new OutputCollector(1024, true),
-    new OutputCollector(1024, true),
+    new OutputCollector(1024),
+    new OutputCollector(1024),
     new AbortController().signal
   )
   assert.equal(table.cancel(taskId), true)
@@ -183,8 +183,8 @@ test('CE-07/R-04 取消时子进程已退出但孙进程仍持有输出管 → �
       backgroundedByUser: true
     },
     child,
-    new OutputCollector(1024, true),
-    new OutputCollector(1024, true),
+    new OutputCollector(1024),
+    new OutputCollector(1024),
     new AbortController().signal
   )
   assert.equal(table.cancel(taskId), true)

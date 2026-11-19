@@ -213,7 +213,7 @@ export interface CommandRunner {
 | 输出上限 | `EXEC_OUTPUT_CAP = 32768` 字节（与 `TOOL_OUTPUT_CAP` 同量级）；stdout/stderr **分别**按上限截断，合并文本再截断到同一上限 |
 | 截断标注 | 截断时在文本末尾追加 `\n… [输出已截断：显示 N 字节 / 共 M 字节]` |
 | 超大输出落盘 | 输出超过 `EXEC_PERSIST_THRESHOLD`（默认 1 MB；参考 F-04 的阈值为 64 MB，本仓取更小以免占用磁盘）时，**完整输出落盘**到会话隔离目录，并回传 `persistedOutputPath` + `persistedOutputSize`（F-04）；模型可按需读取 |
-| 交互式命令 | 显式失败：`CommandResult.outcome = 'failed'`，`reason` 指出「命令需要交互式输入，本产品不提供 TTY」。**判定方式**：命令文本命中已知交互族（`vim`/`nano`/`emacs`/`less`/`more`/`top`/`htop`/`ssh`/`psql`/`mysql`/`python`（无 `-c`）…），或请求 `interactive: true` 时 stdin 立即关闭 → 子进程因 EOF 退出 → 归类为 `failed` 并标注「疑似交互式」。**不无限挂起**。 |
+| 交互式命令 | 已知交互式命令、裸 Python 和显式解释器交互参数会产生 `failed`。能够识别的 Python `-m unittest` 调用按普通非交互命令处理，走原有权限与隔离判定。 |
 | 阻塞等待类（CE-13） | 命令文本命中 `sleep`/`ping`/`timeout`/`wait` 等纯等待族时**拦截并拒绝**，返回 `outcome='blocked'`、`reason` 指引改用 `runInBackground`。可被 `allowBlocking` 显式放行（用于确实需要等待的测试）。 |
 
 ### 4.4 后台任务（CE-06 / CE-07 / CE-16 / CE-17）
@@ -260,8 +260,8 @@ export type BackgroundTask = {
 3. **输出落盘（v1.1 新增，对齐 F-03）**：后台任务的完整输出**写入文件**，路径规则：
    - 根目录：`~/.budingx/sessions/<sessionId>/tasks/<taskId>.out`
    - 同会话内唯一；与会话隔离；**不写入用户项目目录**。
-   - 内存中同时保留截断快照（`EXEC_OUTPUT_CAP`），供 `status()` 快速返回。
-   - 输出超过 `EXEC_PERSIST_THRESHOLD` 的前台命令同样落盘，回传 `persistedOutputPath`/`persistedOutputSize`（F-04）。
+   - 前后台均在进程运行时写入会话临时输出文件。内存仅保留有上限的首尾预览和计数，供 `status()` 快速返回。自动转后台继续使用同一文件。
+   - 后台和超过 `EXEC_PERSIST_THRESHOLD` 的前台命令在写入完成后回传 `persistedOutputPath` 与 `persistedOutputSize`。小型前台命令清理临时文件。工具结果为终态与文件路径预留空间，再拼接输出预览。
 4. **完成通知**：后台任务结束时产生 `command_finished` 事件（含 `taskId`、状态、退出码、输出路径）；后续回合的模型上下文附带「某后台任务已完成」提示，使模型能在不轮询的情况下获知结果（参考 F-02 的 "you will be notified when it completes" 体验）。
 5. **状态查询**：`status(taskId)` 返回当前快照（状态 + 内存快照 + 输出路径 + 退出码）。
 6. **取消**：`cancel(taskId)`：终止整棵进程树，状态置 `cancelled`；重复取消幂等返回 `false`（已终态）。
@@ -388,7 +388,7 @@ export interface CodingTaskTracker {
 
 **测试类命令判定**：命令文本匹配 `test|spec|jest|vitest|mocha|pytest|go test|cargo test|npm run (test|check)|npm test|pnpm test|make test|tox|unittest` 等模式。判定是**启发式**，在文档与工具 summary 中说明。
 
-前台与后台结果进入同一个完成证据判断。每次执行的证据关联任务身份和工作区代次。工作区写入、撤销、切换或任务转向会使旧代次失效，过期任务的后台结果不会成为当前代码的完成证据。Bubblewrap 的验证路径将项目输入只读挂载，结束和完成判定时复核允许进入快照的工作区输入。修改私有可写快照的命令仍可用于调研，其退出码不构成真实工作区测试证据。
+前台与后台结果进入同一个完成证据判断。每次执行的证据关联任务身份和工作区代次。工作区写入、撤销、切换或任务转向会使旧代次失效，过期任务的后台结果不会成为当前代码的完成证据。Bubblewrap 的验证路径将项目输入只读挂载，结束和完成判定时复核允许进入快照的工作区输入。进程须成功退出，且受支持的测试摘要显示实际通过的测试数量大于零。零测试、全部跳过、缺少可识别摘要及可写快照的成功退出都不会产生完成证据。
 
 ### 5.3 用户转向（CT-03 / CT-04）
 

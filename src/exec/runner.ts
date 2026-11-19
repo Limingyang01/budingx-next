@@ -23,7 +23,8 @@ import { isBlockingWaitCommand, isInteractiveCommand } from './readonly-commands
 import { createSandboxPolicy, type SandboxPolicy } from './sandbox-policy.js'
 import { OutputCollector, capMergedText, formatStream } from './output.js'
 import { createBackgroundTable } from './background.js'
-import { persistOutput, resolveTaskOutputPath, type CommandFinishedEvent } from './persist.js'
+import { createOutputSpool, resolveTaskOutputPath, type CommandFinishedEvent } from './persist.js'
+import { createTestSummaryParser } from './test-summary.js'
 
 export interface CommandRunnerOptions {
   /** 缺省工作目录（会话项目根）。 */
@@ -106,7 +107,6 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
   const terminate = (child: ChildProcess) => terminators.get(child)?.()
   const background = createBackgroundTable({
     kill: terminate,
-    persist: options.sessionId !== undefined ? { sessionId: options.sessionId, home: options.home } : undefined,
     onFinished: options.onCommandFinished
   })
 
@@ -206,6 +206,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
       const message = error instanceof Error ? error.message : String(error)
       return early({ outcome: 'failed', reason: `隔离后端启动失败：${message}`, errorCode: ERROR_CODES.coreToolFailed })
     }
+    const testSummary = verifyTestInput ? createTestSummaryParser(spec.command) : undefined
     const verifyResult = attestsHostInput && (verifyTestInput || isTestCommand(spec.command))
       ? (): TestEvidence => {
           try {
@@ -213,7 +214,11 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
             const snapshot = backend.testSnapshot?.(child)
             if (!snapshot) return { status: 'unavailable' }
             if (!snapshot.isCurrent()) return { status: 'stale' }
-            const evidence: VerifiedTestEvidence = Object.freeze({ status: 'verified', workspaceDigest: snapshot.digest })
+            const summary = testSummary?.result()
+            if (!summary) return { status: 'no_tests' }
+            const evidence: VerifiedTestEvidence = Object.freeze({
+              status: 'verified', workspaceDigest: snapshot.digest, executedTests: summary.executed
+            })
             verifiedEvidence.set(evidence, () => snapshot.isCurrent())
             return evidence
           } catch {
@@ -225,16 +230,41 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
     // stdin 立即关闭：交互式子进程因 EOF 退出，不无限挂起。
     if (backend.keepsSupervisorStdinOpen !== true) child.stdin?.end()
 
-    // full 模式保留完整输出块，供落盘使用（快照仍按上限截断）。
-    const stdoutCollector = new OutputCollector(EXEC_OUTPUT_CAP, true)
-    const stderrCollector = new OutputCollector(EXEC_OUTPUT_CAP, true)
-    child.stdout?.on('data', (chunk: Buffer) => stdoutCollector.push(chunk))
-    child.stderr?.on('data', (chunk: Buffer) => stderrCollector.push(chunk))
+    const id = `task-${randomUUID()}`
+    const outputPath = options.sessionId !== undefined
+      ? resolveTaskOutputPath(options.sessionId, id, options.home)
+      : undefined
+    const spool = outputPath === undefined ? undefined : createOutputSpool(outputPath, (paused) => {
+      for (const source of [child.stdout, child.stderr]) {
+        if (!source || source.destroyed) continue
+        if (paused) source.pause()
+        else source.resume()
+      }
+    })
+    const stdoutCollector = new OutputCollector(EXEC_OUTPUT_CAP)
+    const stderrCollector = new OutputCollector(EXEC_OUTPUT_CAP)
+    const capture = (channel: 'stdout' | 'stderr', collector: OutputCollector) => (chunk: Buffer) => {
+      testSummary?.push(channel, chunk)
+      collector.push(chunk)
+      spool?.push(chunk)
+    }
+    const onStdout = capture('stdout', stdoutCollector)
+    const onStderr = capture('stderr', stderrCollector)
+    child.stdout?.on('data', onStdout)
+    child.stderr?.on('data', onStderr)
+    async function finishOutput(keep: boolean) {
+      child.stdout?.off('data', onStdout)
+      child.stderr?.off('data', onStderr)
+      child.stdout?.destroy()
+      child.stderr?.destroy()
+      return await spool?.finish(keep)
+    }
 
     // 后台路径：同一启动门禁后立即返回 running + taskId，终态经 status/list 查询（design §4.4）。
     if (spec.runInBackground === true) {
       const taskId = background.register(
         {
+          taskId: id,
           command: spec.command,
           interpreter: interpreter.label,
           cwd,
@@ -242,6 +272,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
           startedAt: started,
           turnId: context.turnId,
           callId: context.callId,
+          finishOutput,
           verifyResult,
           autoBackgrounded: false,
           backgroundedByUser: true
@@ -283,6 +314,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
         context.signal.removeEventListener('abort', onAbort)
         const taskId = background.register(
           {
+            taskId: id,
             command: spec.command,
             interpreter: interpreter.label,
             cwd,
@@ -290,6 +322,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
             startedAt: started,
             turnId: context.turnId,
             callId: context.callId,
+            finishOutput,
             verifyResult,
             autoBackgrounded: true,
             backgroundedByUser: false
@@ -299,10 +332,6 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
           stderrCollector,
           context.signal
         )
-        const outputPath =
-          options.sessionId !== undefined
-            ? resolveTaskOutputPath(options.sessionId, taskId, options.home)
-            : undefined
         resolve(
           early({
             outcome: 'running',
@@ -310,7 +339,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
             autoBackgrounded: true,
             reason:
               `命令超过阻塞预算（${blockingBudgetMs}ms）已自动转入后台` +
-              (outputPath !== undefined ? `，输出将写入：${outputPath}` : '')
+              (spool !== undefined ? `，最终输出将写入：${outputPath}` : '')
           })
         )
       }, blockingBudgetMs)
@@ -329,20 +358,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
         const output = capMergedText(stdoutSnap.text + stderrSnap.text, mergedBytes, EXEC_OUTPUT_CAP)
         const truncated = stdoutSnap.truncated || stderrSnap.truncated || mergedBytes > EXEC_OUTPUT_CAP
         const outcome = forced ? forced.outcome : exitCode === 0 ? 'completed' : 'failed'
-        // T18：超大前台输出落盘到会话隔离路径（best-effort，不影响命令结果）。
-        let persistedOutputPath: string | undefined
-        let persistedOutputSize: number | undefined
-        if (options.sessionId !== undefined && mergedBytes > persistThreshold) {
-          try {
-            const content = Buffer.concat([stdoutCollector.fullContent(), stderrCollector.fullContent()]).toString('utf8')
-            const path = resolveTaskOutputPath(options.sessionId, `task-${randomUUID()}`, options.home)
-            const persisted = await persistOutput(path, content)
-            persistedOutputPath = persisted.path
-            persistedOutputSize = persisted.size
-          } catch {
-            // 落盘失败不改变命令终态。
-          }
-        }
+        const persisted = await finishOutput(mergedBytes > persistThreshold)
         const testEvidence = outcome === 'completed' ? verifyResult?.() : undefined
         resolve({
           outcome,
@@ -359,17 +375,18 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
           errorCode: forced?.outcome === 'timeout'
             ? ERROR_CODES.execTimeout
             : forced?.outcome === 'cancelled' ? ERROR_CODES.execCancelled : undefined,
-          persistedOutputPath,
-          persistedOutputSize,
+          persistedOutputPath: persisted?.path,
+          persistedOutputSize: persisted?.size,
           ...(testEvidence !== undefined ? { testEvidence } : {})
         })
       }
-      child.on('error', (error) => {
+      child.on('error', async (error) => {
         if (settled) return
         settled = true
         clearTimeout(timer)
         clearTimeout(budgetTimer)
         context.signal.removeEventListener('abort', onAbort)
+        await finishOutput(false)
         resolve(early({ outcome: 'failed', reason: `进程启动失败：${error.message}` }))
       })
       child.on('exit', () => {

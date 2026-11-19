@@ -190,12 +190,27 @@ export function isBlockingWaitCommand(command: string): boolean {
 
 const INTERACTIVE_PROGRAMS = new Set(['vim', 'vi', 'nano', 'emacs', 'less', 'more', 'top', 'htop', 'ssh', 'psql', 'mysql'])
 
-/** 交互式族：需要 TTY 的命令明确失败，不挂起；python 无 -c 视为交互式。 */
+function pythonNeedsTty(args: readonly string[]): boolean {
+  for (let index = 0; index < args.length; index += 1) {
+    const option = args[index]
+    if (option === '-c') return false
+    if (option === '-m') return args[index + 1] !== 'unittest'
+    if (option.startsWith('-W') || option.startsWith('-X')) {
+      if (option.length === 2) index += 1
+      continue
+    }
+    // Match only known interpreter switches. A bundled -i still requests a REPL.
+    if (!/^-[bBdEIOPqRsSuvx]+$/.test(option)) return true
+  }
+  return true
+}
+
+/** 交互式族：需要 TTY 的命令明确失败，不挂起。 */
 export function isInteractiveCommand(command: string): boolean {
   const tokens = tokenizeCommand(command)
   if (tokens === undefined || tokens.length === 0) return false
   const program = tokens[0].toLowerCase()
   if (INTERACTIVE_PROGRAMS.has(program)) return true
-  if (program === 'python' || program === 'python3') return !tokens.includes('-c')
+  if (program === 'python' || program === 'python3') return pythonNeedsTty(tokens.slice(1))
   return false
 }

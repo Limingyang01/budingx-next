@@ -1,6 +1,7 @@
 // SP004 T18 · 后台输出落盘与完成通知（design §4.4，CE-17）。
 // 数据只写 ~/.budingx 会话隔离路径，不写用户项目目录。
-import { mkdir, writeFile } from 'node:fs/promises'
+import { createWriteStream, mkdirSync } from 'node:fs'
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { dataRoot } from '../storage/paths.js'
@@ -17,6 +18,61 @@ export async function persistOutput(path: string, content: string): Promise<{ pa
   const buf = Buffer.from(content, 'utf8')
   await writeFile(path, buf)
   return { path, size: buf.length }
+}
+
+export type PersistedOutput = { path: string; size: number }
+
+/** One spool for the entire process, including a foreground-to-background handoff. */
+export function createOutputSpool(path: string, backpressure: (paused: boolean) => void) {
+  const partial = `${path}.partial`
+  let stream
+  try {
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
+    stream = createWriteStream(partial, { flags: 'wx', mode: 0o600, highWaterMark: 64 * 1024 })
+  } catch {
+    return undefined
+  }
+  let ownsFile = false
+  let failed = false
+  let paused = false
+  let closed = false
+  const setPaused = (next: boolean) => {
+    if (next === paused) return
+    paused = next
+    backpressure(next)
+  }
+  stream.on('open', () => { ownsFile = true })
+  stream.on('drain', () => setPaused(false))
+  stream.on('error', () => {
+    failed = true
+    setPaused(false)
+  })
+  const close = new Promise<void>((resolve) => stream.once('close', () => {
+    closed = true
+    setPaused(false)
+    resolve()
+  }))
+
+  return {
+    push(chunk: Buffer): void {
+      if (!failed && !closed && !stream.writableEnded && !stream.write(chunk)) setPaused(true)
+    },
+    async finish(keep: boolean): Promise<PersistedOutput | undefined> {
+      if (!stream.destroyed) stream.end()
+      await close
+      if (!ownsFile) return undefined
+      if (keep && !failed) {
+        try {
+          await rename(partial, path)
+          return { path, size: stream.bytesWritten }
+        } catch {
+          // Retention failed; keep the bounded live summary and discard this partial.
+        }
+      }
+      await rm(partial, { force: true }).catch(() => {})
+      return undefined
+    }
+  }
 }
 
 export interface CommandFinishedInput {

@@ -70,6 +70,10 @@ export function isTestCommand(command: string): boolean {
   return TEST_COMMAND_PATTERN.test(command)
 }
 
+function hasVerifiedTests(evidence: TestEvidence): evidence is VerifiedTestEvidence {
+  return evidence.status === 'verified' && Number.isSafeInteger(evidence.executedTests) && evidence.executedTests > 0
+}
+
 /** 完成声明判定表（设计 §5.2，纯函数）。 */
 export function canClaimDone(state: CodingTaskState | undefined): { ok: boolean; reason?: string } {
   if (!state || !state.lastTest) {
@@ -82,12 +86,16 @@ export function canClaimDone(state: CodingTaskState | undefined): { ok: boolean;
       reason: `最近一次命令未成功（exit=${last.exitCode ?? '无'}），需继续修复`
     }
   }
-  if (!state.testEvidence) {
+  const verification = state.testEvidence?.verification
+  if (!state.testEvidence || (verification !== undefined && !hasVerifiedTests(verification))) {
     if (last.verification?.status === 'stale') {
       return { ok: false, reason: '测试完成时工作区内容已变化，需重新运行测试' }
     }
     if (last.verification?.status === 'unavailable') {
       return { ok: false, reason: '命令没有不可写测试快照的验证，请直接运行测试命令' }
+    }
+    if (last.verification?.status === 'no_tests') {
+      return { ok: false, reason: '测试输出没有确认任何通过的用例，需运行受支持的测试并保留计数摘要' }
     }
     return { ok: false, reason: '未运行测试' }
   }
@@ -115,7 +123,7 @@ export function createCodingTaskTracker(options: CodingTaskTrackerOptions = {}):
   let generation = 0
   let commandSequence = 0
   let latestCommand = 0
-  let latestPassingTest = 0
+  let latestTestEvidence = 0
   const running = new Map<number, { generation: number; mayWrite: boolean; overlappingWriter: boolean }>()
 
   const requireTask = (): CodingTaskState => {
@@ -188,10 +196,13 @@ export function createCodingTaskTracker(options: CodingTaskTrackerOptions = {}):
       }
       state.iterations += 1
       const tested = result.outcome === 'completed' && result.exitCode === 0 && !started.overlappingWriter &&
-        (result.testEvidence === undefined ? isTestCommand(command) : result.testEvidence.status === 'verified')
-      if (tested && id > latestPassingTest) {
-        latestPassingTest = id
+        (result.testEvidence === undefined ? isTestCommand(command) : hasVerifiedTests(result.testEvidence))
+      if (tested && id > latestTestEvidence) {
+        latestTestEvidence = id
         state.testEvidence = evidence
+      } else if (id > latestTestEvidence && result.testEvidence !== undefined && result.testEvidence.status !== 'unavailable') {
+        latestTestEvidence = id
+        state.testEvidence = undefined
       }
       // A slow older command cannot replace a newer command outcome.
       if (id <= latestCommand) return

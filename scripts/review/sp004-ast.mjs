@@ -39,6 +39,7 @@ const REFERENCE_ALLOWLIST = [
   { ours: 'src/exec/runner.ts', theirs: ['src/tools/BashTool', 'src/utils/Shell.ts'] },
   { ours: 'src/exec/sandbox-policy.ts', theirs: ['src/utils/sandbox'] },
   { ours: 'src/exec/sed-edit.ts', theirs: ['src/tools/FileEditTool'] },
+  { ours: 'src/exec/test-summary.ts', theirs: ['src/tools/BashTool/BashToolResultMessage.tsx', 'src/utils/Shell.ts'] },
   { ours: 'src/exec/tools.ts', theirs: ['src/tools/BashTool'] },
   { ours: 'src/git/attribution.ts', theirs: [], note: '参考仓未实现 Git 工具层（Git 由用户 shell 直接执行），无比较对象' },
   { ours: 'src/git/commit.ts', theirs: [], note: '参考仓未实现 Git 工具层（Git 由用户 shell 直接执行），无比较对象' },

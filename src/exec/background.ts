@@ -10,7 +10,7 @@ import {
   type TestEvidence
 } from '../core/exec.js'
 import { OutputCollector, capMergedText, formatStream } from './output.js'
-import { buildCommandFinishedEvent, persistOutput, resolveTaskOutputPath } from './persist.js'
+import { buildCommandFinishedEvent, type PersistedOutput } from './persist.js'
 
 interface BackgroundRecord {
   task: BackgroundTask
@@ -26,6 +26,7 @@ interface BackgroundRecord {
   reason?: string
   callId?: string
   turnId?: string
+  finishOutput?: (keep: boolean) => Promise<PersistedOutput | undefined>
   verifyResult?: () => TestEvidence
   testEvidence?: TestEvidence
   /** 终止重试计时器（T4 稳定性：首次终止未生效时重发，进程退出即清理）。 */
@@ -39,13 +40,12 @@ const KILL_RETRY_MAX_MS = 10000
 export interface BackgroundTableOptions {
   /** 由启动该任务的隔离后端终止进程树。 */
   kill: (child: ChildProcess) => void
-  /** 输出落盘的会话隔离配置（T18；缺省时不落盘）。 */
-  persist?: { sessionId: string; home?: string }
   /** 后台任务完成事件（T18；command_finished）。 */
   onFinished?: (event: ReturnType<typeof buildCommandFinishedEvent>) => void
 }
 
 export interface BackgroundRegistration {
+  taskId?: string
   command: string
   interpreter: string
   cwd: string
@@ -53,6 +53,7 @@ export interface BackgroundRegistration {
   startedAt?: number
   callId?: string
   turnId?: string
+  finishOutput?: (keep: boolean) => Promise<PersistedOutput | undefined>
   verifyResult?: () => TestEvidence
   autoBackgrounded: boolean
   backgroundedByUser: boolean
@@ -74,9 +75,10 @@ export interface BackgroundTable {
 }
 
 export function createBackgroundTable(options: BackgroundTableOptions): BackgroundTable {
-  const records = new Map<string, BackgroundRecord>()
+  const records = new Map<string, BackgroundRecord | CommandResult>()
 
-  function snapshot(record: BackgroundRecord): CommandResult {
+  function snapshot(record: BackgroundRecord | CommandResult): CommandResult {
+    if ('outcome' in record) return { ...record }
     const stdoutSnap = record.stdout.snapshot(EXEC_OUTPUT_CAP)
     const stderrSnap = record.stderr.snapshot(EXEC_OUTPUT_CAP)
     const mergedBytes = stdoutSnap.bytes + stderrSnap.bytes
@@ -108,6 +110,7 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
     if (record.settled || record.forced) return
     record.forced = { outcome, reason }
     options.kill(record.child)
+    if (record.settled) return
     // 首次终止可能未命中（Windows 高并发下 taskkill 偶发失败）：周期性重发，
     // 直到进程退出触发 finalize 或到达总时限；不改变已确定的终态语义。
     const deadline = Date.now() + KILL_RETRY_MAX_MS
@@ -132,8 +135,6 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
       record.killRetry = undefined
     }
     record.signal.removeEventListener('abort', record.onAbort)
-    const stdoutSnap = record.stdout.snapshot(EXEC_OUTPUT_CAP)
-    const stderrSnap = record.stderr.snapshot(EXEC_OUTPUT_CAP)
     const state = record.forced
       ? record.forced.outcome
       : errorReason !== undefined
@@ -143,33 +144,17 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
           : 'failed'
     // 被信号终止/强制结束时不伪造退出码。
     const finalExitCode = record.forced || errorReason !== undefined ? undefined : exitCode
-    // T18：完整输出落盘到会话隔离路径（best-effort，不影响命令结果）。
-    let outputPath: string | undefined
-    let outputSize: number | undefined
-    if (options.persist) {
-      try {
-        const content = Buffer.concat([record.stdout.fullContent(), record.stderr.fullContent()]).toString('utf8')
-        const path = resolveTaskOutputPath(options.persist.sessionId, record.task.taskId, options.persist.home)
-        const persisted = await persistOutput(path, content)
-        outputPath = persisted.path
-        outputSize = persisted.size
-      } catch {
-        // 落盘失败不改变命令终态；状态快照仍可查询。
-      }
-    }
+    const persisted = await record.finishOutput?.(true)
     // 终态字段原子发布：落盘完成前 status 仍报 running，避免读到缺输出路径的半终态。
     record.finishedAt = finishedAt
     record.task.state = state
     record.task.exitCode = finalExitCode
-    record.task.stdout = formatStream(stdoutSnap)
-    record.task.stderr = formatStream(stderrSnap)
-    record.task.truncated =
-      stdoutSnap.truncated || stderrSnap.truncated || stdoutSnap.bytes + stderrSnap.bytes > EXEC_OUTPUT_CAP
-    record.task.outputPath = outputPath
-    record.task.outputSize = outputSize
+    record.task.outputPath = persisted?.path
+    record.task.outputSize = persisted?.size
     if (errorReason !== undefined) record.reason = errorReason
     record.testEvidence = state === 'completed' ? record.verifyResult?.() : undefined
-    record.verifyResult = undefined
+    // The table retains only the bounded terminal result, not the child or collectors.
+    records.set(record.task.taskId, snapshot(record))
     options.onFinished?.(
       buildCommandFinishedEvent({
         taskId: record.task.taskId,
@@ -177,7 +162,7 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
         turnId: record.turnId,
         outcome: state,
         exitCode: finalExitCode,
-        outputPath,
+        outputPath: persisted?.path,
         finishedAt,
         ...(record.testEvidence !== undefined ? { testEvidence: record.testEvidence } : {})
       })
@@ -191,7 +176,7 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
     stderr: OutputCollector,
     signal: AbortSignal
   ): string {
-    const taskId = `task-${randomUUID()}`
+    const taskId = meta.taskId ?? `task-${randomUUID()}`
     const task: BackgroundTask = {
       taskId,
       command: meta.command,
@@ -213,6 +198,7 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
       signal,
       callId: meta.callId,
       turnId: meta.turnId,
+      finishOutput: meta.finishOutput,
       verifyResult: meta.verifyResult,
       onAbort: () => force(record, 'cancelled', '命令已取消'),
       timer: setTimeout(
@@ -228,22 +214,22 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
       if (record.forced !== undefined && !record.settled) void finalize(record, undefined)
     })
     child.on('close', (code) => void finalize(record, code ?? undefined))
+    records.set(taskId, record)
     if (signal.aborted) record.onAbort()
     else signal.addEventListener('abort', record.onAbort, { once: true })
-    records.set(taskId, record)
     return taskId
   }
 
   function cancel(taskId: string): boolean {
     const record = records.get(taskId)
-    if (!record || record.task.state !== 'running') return false
+    if (!record || 'outcome' in record || record.settled || record.forced) return false
     force(record, 'cancelled', '命令已取消')
     return true
   }
 
   function dispose(): void {
     for (const record of records.values()) {
-      if (record.task.state === 'running') force(record, 'cancelled', '会话已结束，后台任务被终止')
+      if (!('outcome' in record)) force(record, 'cancelled', '会话已结束，后台任务被终止')
     }
   }
 

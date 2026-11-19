@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { execFileSync, spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
-import { permissionModePath } from '../dist/storage/paths.js'
+import { dataRoot, permissionModePath } from '../dist/storage/paths.js'
 import { ConfigStore } from '../dist/storage/config-store.js'
 import { CredentialStore } from '../dist/storage/credentials.js'
 import { createProfile, profileHost } from '../dist/storage/profiles.js'
@@ -340,6 +340,59 @@ test('SP004 生产入口：后台任务可查询、取消并发出关联原调�
   assert.equal(terminal.outcome, 'cancelled')
 })
 
+test('SP004 正式 TUI：前后台命令结束前输出已流式落盘，终态回执保留文件路径', { timeout: 30000 }, async (t) => {
+  let launch = 0
+  const batchBytes = 1280 * 1024
+  const program = [
+    "const { existsSync } = require('node:fs')",
+    'const [gate, marker, byteCount] = process.argv.slice(1)',
+    'process.stdout.write(Buffer.alloc(Number(byteCount), marker))',
+    "process.stderr.write('stderr-' + marker + '\\n')",
+    'const end = Date.now() + 18000',
+    'const wait = setInterval(() => {',
+    '  if (existsSync(gate)) clearInterval(wait)',
+    '  else if (Date.now() >= end) { clearInterval(wait); process.exitCode = 5 }',
+    '}, 20)'
+  ].join('\n')
+  const backend = createHostProcessFixture({
+    spawn(_executable, _args, options) {
+      const marker = ++launch === 1 ? 'F' : 'B'
+      return spawn(process.execPath, [
+        '-e', program, `release-${marker}`, marker, String(batchBytes)
+      ], options)
+    }
+  })
+  const { ui, base, cwd, runtime, events } = await sp004Runtime(t, [
+    [['Bash', { command: 'node stream-fixture.mjs' }]],
+    [['Bash', { command: 'node stream-fixture.mjs', run_in_background: true }]],
+    '报告已保存'
+  ], { sandboxBackend: backend, tty: true })
+  const tasks = join(dataRoot(join(base, 'home')), 'sessions', runtime.session.id, 'tasks')
+  const hasLiveOutput = () => existsSync(tasks) && readdirSync(tasks).some((name) =>
+    name.endsWith('.out.partial') && (statSync(join(tasks, name), { throwIfNoEntry: false })?.size ?? 0) >= batchBytes)
+  await ui.send('运行前后台输出回归\r')
+  await ui.waitFor(() => launch === 1 && hasLiveOutput(), 7000)
+  assert.equal(events.some((event) => event.type === 'tool_result' && event.callId === 'call-1-0'), false)
+  writeFileSync(join(cwd, 'release-F'), '')
+  await ui.waitFor(() => launch === 2 && hasLiveOutput(), 7000)
+  assert.equal(events.some((event) => event.type === 'command_finished' && event.callId === 'call-2-0'), false)
+  writeFileSync(join(cwd, 'release-B'), '')
+  await ui.waitFor(() => events.some((event) => event.type === 'command_finished' && event.callId === 'call-2-0'), 7000)
+  const foreground = events.find((event) => event.type === 'tool_result' && event.callId === 'call-1-0')
+  const foregroundPath = /^persisted_output_path: (.+)$/m.exec(foreground?.content ?? '')?.[1]
+  const background = events.find((event) => event.type === 'command_finished' && event.callId === 'call-2-0')
+  assert.ok(foregroundPath, foreground?.content.slice(0, 350))
+  assert.equal(foreground.isError, false)
+  assert.match(foreground.content, /输出已截断/)
+  assert.equal(background.outcome, 'completed')
+  for (const [path, marker] of [[foregroundPath, 'F'], [background.outputPath, 'B']]) {
+    const artifact = readFileSync(path)
+    assert.equal(artifact.length, batchBytes + Buffer.byteLength(`stderr-${marker}\n`))
+    assert.ok(artifact.includes(Buffer.from(`stderr-${marker}\n`)))
+  }
+  assert.equal(readdirSync(tasks).some((name) => name.endsWith('.out.partial')), false)
+})
+
 test('SP004 生产入口：缺隔离后端时编码任务报告阻塞并结束回合', async (t) => {
   const { runtime, requests } = await sp004Runtime(t, [
     [['StartCodingTask', { goal: '修复 fixture' }]],
@@ -392,6 +445,12 @@ test('SP004 正式 TUI：已探测的主机隔离后端执行 Bash，仅暴露�
   assert.equal(readFileSync(join(cwd, 'visible.txt'), 'utf8'), 'allowed fixture')
 })
 
+const passingShellSuite = [
+  'set -eu',
+  'test -s input.txt',
+  "printf 'TAP version 13\\nok 1 - fixture input\\n1..1\\n# tests 1\\n# pass 1\\n# fail 0\\n# skipped 0\\n'"
+].join('\n') + '\n'
+
 test('SP004 正式 TUI：私有快照里的临时修改无法证明真实工作区测试通过', { timeout: 45000 }, async (t) => {
   const { createHostSandboxFromEnvironment } = await import('../dist/exec/host-sandbox.js')
   const backend = createHostSandboxFromEnvironment({ BUDINGX_SANDBOX: 'bubblewrap' })
@@ -406,11 +465,12 @@ test('SP004 正式 TUI：私有快照里的临时修改无法证明真实工作�
     [['Bash', { command: "printf 'exit 0\\n' > proof.test.sh && bash proof.test.sh" }]],
     '已经完成',
     [['Read', { path: 'proof.test.sh' }]],
-    [['Write', { path: 'proof.test.sh', content: 'exit 0\n' }]],
+    [['Write', { path: 'proof.test.sh', content: passingShellSuite }]],
     [['Bash', command]],
     '工作区修复后验证通过'
   ], { sandboxBackend: backend, tty: true })
   writeFileSync(join(cwd, 'proof.test.sh'), 'exit 7\n')
+  writeFileSync(join(cwd, 'input.txt'), 'test input\n')
   await ui.send('修复合成测试并验证\r')
   await ui.waitFor(() => !runtime.session.isBusy && events.some((event) => event.type === 'turn_finalized'), 35000)
   assert.equal(events.find((event) => event.type === 'turn_finalized').outcome, 'completed')
@@ -423,7 +483,7 @@ test('SP004 正式 TUI：私有快照里的临时修改无法证明真实工作�
   assert.match(verified.content, /test_evidence: verified/)
   assert.ok(requests[4].messages.some((message) => message.role === 'user' &&
     typeof message.content === 'string' && message.content.includes('真实执行证据')))
-  assert.equal(readFileSync(join(cwd, 'proof.test.sh'), 'utf8'), 'exit 0\n')
+  assert.equal(readFileSync(join(cwd, 'proof.test.sh'), 'utf8'), passingShellSuite)
 })
 
 test('SP004 正式 TUI：测试结束后发生外部写入，旧快照不能完成验收', { timeout: 45000 }, async (t) => {
@@ -458,7 +518,7 @@ test('SP004 正式 TUI：测试结束后发生外部写入，旧快照不能完�
   ], { sandboxBackend: backend, timeoutMs: 12000 })
   workspace = cwd
   sessionEvents = events
-  writeFileSync(join(cwd, 'proof.test.sh'), 'test -s input.txt\n')
+  writeFileSync(join(cwd, 'proof.test.sh'), passingShellSuite)
   writeFileSync(join(cwd, 'input.txt'), 'first\n')
   assert.equal((await turn(runtime.session, '验证当前合成输入')).outcome, 'completed')
   assert.equal(requests.length, 6, '测试结果发出后改变工作区必须重新验证')
@@ -468,6 +528,48 @@ test('SP004 正式 TUI：测试结束后发生外部写入，旧快照不能完�
   assert.equal(events.find((event) => event.type === 'command_finished' && event.callId === 'call-4-0')
     .testEvidence.status, 'verified')
   assert.ok(events.some((event) => event.type === 'notice' && event.code === 'coding_task'))
+})
+
+test('SP004 正式 TUI：零测试不会结束回合，非交互 unittest 执行到实际测试后才能完成', { timeout: 50000 }, async (t) => {
+  const { createHostSandboxFromEnvironment } = await import('../dist/exec/host-sandbox.js')
+  const backend = createHostSandboxFromEnvironment({ BUDINGX_SANDBOX: 'bubblewrap' })
+  if (!backend) {
+    t.skip('当前宿主没有通过 Bubblewrap 能力探测')
+    return
+  }
+  const testFile = [
+    'import unittest',
+    '',
+    'class FixtureTest(unittest.TestCase):',
+    '    def test_fixture(self):',
+    '        self.assertEqual(2 + 2, 4)'
+  ].join('\n') + '\n'
+  const { cwd, runtime, events, requests, ui } = await sp004Runtime(t, [
+    [['StartCodingTask', { goal: '验证 Python fixture' }]],
+    [['Bash', { command: 'bash proof.test.sh' }]],
+    '已经完成',
+    [['Write', { path: 'test_fixture.py', content: testFile }]],
+    [['Bash', { command: 'python3 -m unittest discover' }]],
+    '已运行一个测试并通过'
+  ], { sandboxBackend: backend, tty: true })
+  writeFileSync(join(cwd, 'proof.test.sh'), 'python3 run_suite.py\n')
+  writeFileSync(join(cwd, 'run_suite.py'), [
+    'import sys, unittest',
+    "suite = unittest.defaultTestLoader.discover('.')",
+    'result = unittest.TextTestRunner().run(suite)',
+    'sys.exit(0 if result.wasSuccessful() else 1)'
+  ].join('\n') + '\n')
+  await ui.send('运行 Python fixture 测试\r')
+  await ui.waitFor(() => !runtime.session.isBusy && events.some((event) => event.type === 'turn_finalized'), 35000)
+  assert.equal(events.find((event) => event.type === 'turn_finalized').outcome, 'completed')
+  const zero = events.find((event) => event.type === 'tool_result' && event.callId === 'call-2-0')
+  const positive = events.find((event) => event.type === 'tool_result' && event.callId === 'call-5-0')
+  assert.match(zero.content, /exit_code: 0/)
+  assert.match(zero.content, /Ran 0 tests/)
+  assert.match(zero.content, /test_evidence: no_tests/)
+  assert.equal(requests.length, 6, 'must add and run an actual test after the zero-test command')
+  assert.match(positive.content, /Ran 1 test/)
+  assert.match(positive.content, /test_evidence: verified/)
 })
 test('G04/G05 两端点切换模型和凭据，当前回合快照不变', async (t) => {
   const requests = []

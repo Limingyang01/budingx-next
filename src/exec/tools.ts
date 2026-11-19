@@ -1,7 +1,7 @@
 // SP004 T5 · Bash / PowerShell 工具适配器（design §4.5–§4.9）。
 // 模型只提供 command/timeout/description/run_in_background；cwd、env、隔离和策略由宿主管有。
 // 权限判定统一交给 SP003 策略：已校验只读命令归为 read（免审批），其余归为 execute。
-import { ERROR_CODES } from '../core/constants.js'
+import { ERROR_CODES, TOOL_OUTPUT_CAP } from '../core/constants.js'
 import type { CommandResult, CommandRunner, CommandRunContext } from '../core/exec.js'
 import type { ToolCapability } from '../core/permissions.js'
 import type { ToolContext, ToolHandler } from '../core/tools.js'
@@ -115,6 +115,15 @@ function gitGuidance(command: string): string | undefined {
   return '该 Git 命令不在只读白名单内，不能用通用命令入口执行；写操作请使用受控 Git 入口（未经授权不会改动仓库）'
 }
 
+function fitOutputPreview(text: string, limit: number): string {
+  if (text.length <= limit) return text
+  const marker = '\n… [输出已截断]\n'
+  if (limit <= marker.length) return text.slice(0, limit)
+  const available = limit - marker.length
+  const head = Math.ceil(available / 2)
+  return text.slice(0, head) + marker + text.slice(text.length - (available - head))
+}
+
 function formatResult(result: CommandResult): string {
   const lines: string[] = []
   if (result.outcome === 'running') {
@@ -126,9 +135,10 @@ function formatResult(result: CommandResult): string {
   }
   lines.push(`outcome: ${result.outcome}`)
   if (result.errorCode !== undefined) lines.push(`error_code: ${result.errorCode}`)
-  if (result.testEvidence !== undefined) lines.push(`test_evidence: ${result.testEvidence.status}`)
-  if (result.stdout !== '') lines.push('--- stdout ---', result.stdout.replace(/\n$/, ''))
-  if (result.stderr !== '') lines.push('--- stderr ---', result.stderr.replace(/\n$/, ''))
+  if (result.testEvidence !== undefined) {
+    lines.push(`test_evidence: ${result.testEvidence.status}`)
+    if (result.testEvidence.status === 'verified') lines.push(`tests_executed: ${result.testEvidence.executedTests}`)
+  }
   if (result.persistedOutputPath !== undefined) {
     lines.push(
       `persisted_output_path: ${result.persistedOutputPath}`,
@@ -141,6 +151,20 @@ function formatResult(result: CommandResult): string {
     // 显式后台：回执说明如何查询进度与取消（design §4.4）。
     lines.push('--- note ---', '命令已在后台执行；可用任务 ID 查询进度或取消。')
   }
+  const stdout = result.stdout.replace(/\n$/, '')
+  const stderr = result.stderr.replace(/\n$/, '')
+  const stdoutHeader = '\n--- stdout ---\n'
+  const stderrHeader = '\n--- stderr ---\n'
+  const metadata = lines.join('\n')
+  // Reserve the receipt before previewing either stream, so Session never drops a
+  // valid artifact link or changes a successful exit into a tool truncation error.
+  const previewBudget = Math.max(0, TOOL_OUTPUT_CAP - metadata.length -
+    (stdout ? stdoutHeader.length : 0) - (stderr ? stderrHeader.length : 0))
+  const stdoutBudget = Math.min(stdout.length,
+    Math.max(Math.floor(previewBudget / 2), previewBudget - stderr.length))
+  if (stdout && stdoutBudget > 0) lines.push('--- stdout ---', fitOutputPreview(stdout, stdoutBudget))
+  const stderrBudget = previewBudget - stdoutBudget
+  if (stderr && stderrBudget > 0) lines.push('--- stderr ---', fitOutputPreview(stderr, stderrBudget))
   return lines.join('\n')
 }
 

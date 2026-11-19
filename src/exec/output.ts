@@ -2,34 +2,33 @@
 // stdout/stderr 分别按上限截断（保留首尾），合并文本再截断到同一上限；
 // 截断标注固定为 `\n… [输出已截断：显示 N 字节 / 共 M 字节]`。
 
-/** 按字节保留首尾的输出收集器：内存占用与上限同阶，总字节数始终精确。
- * full=true 时额外保留完整输出（供落盘，T18）；快照仍按上限截断。 */
+/** 在固定缓冲中保留首尾且计数所有字节。原始块直接交给输出文件。 */
 export class OutputCollector {
-  private head: Buffer[] = []
+  private readonly head: Buffer
+  private readonly tail: Buffer
   private headBytes = 0
-  private tail: Buffer = Buffer.alloc(0)
+  private tailBytes = 0
   private total = 0
-  private chunks: Buffer[] | undefined
 
-  constructor(private readonly retainCap: number, full = false) {
-    if (full) this.chunks = []
+  constructor(private readonly retainCap: number) {
+    this.head = Buffer.alloc(retainCap)
+    this.tail = Buffer.alloc(retainCap)
   }
 
   push(chunk: Buffer): void {
     this.total += chunk.length
-    this.chunks?.push(chunk)
-    if (this.headBytes < this.retainCap) {
-      const room = this.retainCap - this.headBytes
-      if (chunk.length <= room) {
-        this.head.push(chunk)
-        this.headBytes += chunk.length
-      } else {
-        this.head.push(chunk.subarray(0, room))
-        this.headBytes = this.retainCap
-      }
+    const headSize = Math.min(this.retainCap - this.headBytes, chunk.length)
+    if (headSize > 0) {
+      chunk.copy(this.head, this.headBytes, 0, headSize)
+      this.headBytes += headSize
     }
-    const merged = Buffer.concat([this.tail, chunk])
-    this.tail = merged.length > this.retainCap ? merged.subarray(merged.length - this.retainCap) : merged
+    const start = Math.max(0, chunk.length - this.retainCap)
+    const tailSize = chunk.length - start
+    const discard = Math.max(0, this.tailBytes + tailSize - this.retainCap)
+    if (discard > 0) this.tail.copyWithin(0, discard, this.tailBytes)
+    this.tailBytes -= discard
+    chunk.copy(this.tail, this.tailBytes, start)
+    this.tailBytes += tailSize
   }
 
   get bytes(): number {
@@ -38,19 +37,14 @@ export class OutputCollector {
 
   /** 返回保留文本（未加截断标注）、是否截断与原始总字节数。 */
   snapshot(cap: number): { text: string; truncated: boolean; bytes: number } {
-    if (this.total <= cap) {
-      return { text: Buffer.concat(this.head).toString('utf8'), truncated: false, bytes: this.total }
+    const limit = Math.min(cap, this.retainCap)
+    if (this.total <= limit) {
+      return { text: this.head.toString('utf8', 0, this.headBytes), truncated: false, bytes: this.total }
     }
-    const half = Math.floor(cap / 2)
-    const headPart = Buffer.concat(this.head).subarray(0, half)
-    const tailPart = this.tail.subarray(Math.max(0, this.tail.length - half))
-    return { text: headPart.toString('utf8') + tailPart.toString('utf8'), truncated: true, bytes: this.total }
-  }
-
-  /** 完整输出（仅 full 模式保留全部块；非 full 模式返回已保留的首尾近似）。 */
-  fullContent(): Buffer {
-    if (this.chunks) return Buffer.concat(this.chunks)
-    return Buffer.concat([...this.head, this.tail])
+    const half = Math.floor(limit / 2)
+    const head = this.head.toString('utf8', 0, half)
+    const tail = this.tail.toString('utf8', this.tailBytes - (limit - half), this.tailBytes)
+    return { text: head + tail, truncated: true, bytes: this.total }
   }
 }
 

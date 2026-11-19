@@ -28,8 +28,8 @@ export const COMMAND_OUTCOMES = [
 
 export type CommandOutcome = (typeof COMMAND_OUTCOMES)[number]
 
-export type VerifiedTestEvidence = { status: 'verified'; workspaceDigest: string }
-export type TestEvidence = VerifiedTestEvidence | { status: 'stale' | 'unavailable' }
+export type VerifiedTestEvidence = { status: 'verified'; workspaceDigest: string; executedTests: number }
+export type TestEvidence = VerifiedTestEvidence | { status: 'stale' | 'unavailable' | 'no_tests' }
 
 export type CommandResult = {
   outcome: CommandOutcome

@@ -3,9 +3,10 @@
 import { createHostProcessFixture } from './helpers/host-process.mjs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, existsSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 
 /** Windows 下刚退出的 shell 可能短暂占用临时目录：清理带重试并最终忽略失败。 */
 async function cleanupDir(dir) {
@@ -20,11 +21,13 @@ async function cleanupDir(dir) {
 }
 import { createCommandRunner } from '../../tui/dist/exec/runner.js'
 import {
+  createOutputSpool,
   resolveTaskOutputPath,
   persistOutput,
   buildCommandFinishedEvent
 } from '../../tui/dist/exec/persist.js'
 import { createSandboxPolicy } from '../../tui/dist/exec/sandbox-policy.js'
+import { OutputCollector } from '../../tui/dist/exec/output.js'
 
 const verifiedBackend = createHostProcessFixture()
 
@@ -119,6 +122,7 @@ test('T18-2 超大前台输出落盘并回传路径与字节数（真实进程�
     )
     assert.equal(small.outcome, 'completed')
     assert.equal(small.persistedOutputPath, undefined)
+    assert.deepEqual(readdirSync(dirname(result.persistedOutputPath)), [basename(result.persistedOutputPath)])
   } finally {
     runner.dispose()
     await cleanupDir(home)
@@ -191,5 +195,92 @@ test('T18-4 任务完成产生 command_finished 事件（真实进程）', async
   } finally {
     runner.dispose()
     await cleanupDir(home)
+  }
+})
+
+test('SP004 输出快照只持有有界副本，不引用大输入块的底层缓冲', () => {
+  const cap = 32768
+  const collector = new OutputCollector(cap)
+  const incoming = Buffer.alloc(2 * 1024 * 1024, 'x')
+  collector.push(incoming)
+  incoming.fill('y')
+  const snapshot = collector.snapshot(cap)
+  assert.equal(snapshot.bytes, incoming.length)
+  assert.equal(snapshot.truncated, true)
+  assert.ok(snapshot.text === 'x'.repeat(cap), '快照不应随已回收输入缓冲的修改而改变')
+  const backingStores = new Set(Object.values(collector).flat().filter(Buffer.isBuffer).map((buffer) => buffer.buffer))
+  assert.ok([...backingStores].reduce((total, buffer) => total + buffer.byteLength, 0) <= 2 * cap)
+})
+
+test('SP004 流式落盘临时文件冲突时恢复读取，并保留原文件', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'budingx-stream-collision-'))
+  try {
+    const path = join(home, 'owned.out')
+    const partial = `${path}.partial`
+    writeFileSync(partial, 'existing owner')
+    const pauses = []
+    const spool = createOutputSpool(path, (paused) => pauses.push(paused))
+    spool.push(Buffer.alloc(64 * 1024))
+    assert.equal(await spool.finish(true), undefined)
+    assert.equal(readFileSync(partial, 'utf8'), 'existing owner')
+    assert.equal(existsSync(path), false)
+    assert.deepEqual(pauses, [true, false])
+  } finally {
+    await cleanupDir(home)
+  }
+})
+
+test('SP004 前台、显式后台及自动后台均在进程退出前流式落盘', async (t) => {
+  for (const mode of ['foreground', 'background', 'auto-background']) {
+    await t.test(mode, async () => {
+      const home = mkdtempSync(join(tmpdir(), 'budingx-stream-output-'))
+      let child
+      const size = 64 * 1024
+      const fixture = createHostProcessFixture({
+        spawn: (_program, _args, options) => {
+          child = spawn(process.execPath, ['-e',
+            `process.stdout.write(Buffer.alloc(${size}, 65)); process.stdin.resume()`], options)
+          return child
+        }
+      })
+      const backend = { ...fixture, keepsSupervisorStdinOpen: true }
+      const runner = makeRunner(home, {
+        sandboxPolicy: createSandboxPolicy({ backend }),
+        persistThreshold: 1024,
+        ...(mode === 'auto-background' ? { blockingBudgetMs: 100 } : {})
+      })
+      const running = runner.run({ command: 'node fixture.js', runInBackground: mode === 'background' },
+        { signal: new AbortController().signal, cwd: home })
+      try {
+        const directory = join(home, '.budingx', 'sessions', 'session-a', 'tasks')
+        const deadline = Date.now() + 3000
+        let partial
+        do {
+          if (existsSync(directory)) {
+            partial = readdirSync(directory).map((name) => join(directory, name))
+              .find((path) => path.endsWith('.partial') && statSync(path).size === size)
+          }
+          if (!partial) await new Promise((resolve) => setTimeout(resolve, 20))
+        } while (!partial && Date.now() < deadline)
+        assert.ok(partial, '子进程正在等待时，完整原始数据已进入临时输出流文件')
+        assert.equal(child.exitCode, null)
+        assert.equal(readFileSync(partial, 'utf8'), 'A'.repeat(size))
+        child.stdin.end()
+        const result = await running
+        const done = result.outcome === 'running' ? await waitForDone(runner, result.taskId) : result
+        assert.equal(done.outcome, 'completed')
+        assert.equal(done.bytes, size)
+        assert.equal(done.truncated, true)
+        assert.equal(done.persistedOutputSize, size)
+        assert.equal(done.persistedOutputPath + '.partial', partial)
+        assert.equal(existsSync(partial), false)
+        assert.equal(readFileSync(done.persistedOutputPath, 'utf8'), 'A'.repeat(size))
+      } finally {
+        child?.stdin.end()
+        runner.dispose()
+        await running
+        await cleanupDir(home)
+      }
+    })
   }
 })

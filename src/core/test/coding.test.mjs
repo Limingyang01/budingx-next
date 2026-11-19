@@ -615,13 +615,18 @@ test('SP004 证据：重叠的可写命令结束前后均不能证明一次并�
 test('SP004 证据：未验明和已过期的快照均不能证明任务完成', () => {
   const tracker = createCodingTaskTracker()
   tracker.start('修复缺陷')
-  for (const status of ['unavailable', 'stale']) {
+  for (const status of ['unavailable', 'stale', 'no_tests']) {
     tracker.observeCommand('bash proof.test.sh', { ...passedResult, testEvidence: { status } })
     assert.equal(tracker.canClaimDone().ok, false)
   }
-  const attestation = { status: 'verified', workspaceDigest: 'fixture-digest' }
+  const zeroAttestation = { status: 'verified', workspaceDigest: 'fixture-digest', executedTests: 0 }
+  tracker.observeCommand('bash proof.test.sh', { ...passedResult, testEvidence: zeroAttestation })
+  assert.equal(tracker.canClaimDone(() => true).ok, false)
+  const attestation = { ...zeroAttestation, executedTests: 2 }
   tracker.observeCommand('bash proof.test.sh', { ...passedResult, testEvidence: attestation })
   assert.equal(tracker.canClaimDone().ok, false)
   assert.equal(tracker.canClaimDone(() => false).ok, false)
   assert.equal(tracker.canClaimDone((evidence) => evidence === attestation).ok, true)
+  tracker.observeCommand('bash proof.test.sh', { ...passedResult, testEvidence: { status: 'no_tests' } })
+  assert.equal(tracker.canClaimDone(() => true).ok, false)
 })

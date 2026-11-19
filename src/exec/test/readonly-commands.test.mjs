@@ -47,3 +47,25 @@ test('T21-14 阻塞等待族与交互式族识别', () => {
   assert.equal(isInteractiveCommand('python'), true)
   assert.equal(isInteractiveCommand('python -c "print(1)"'), false)
 })
+
+test('Python unittest 批处理命令不需要 TTY，也不获得只读豁免', () => {
+  for (const command of [
+    'python3 -m unittest discover',
+    'python -B -W ignore -m unittest "tests/测试 文件.py"',
+    'python3 -m unittest --help'
+  ]) {
+    assert.equal(isInteractiveCommand(command), false, command)
+    assert.equal(isReadOnlyCommand(command), false, command)
+  }
+  for (const command of [
+    'python3',
+    'python3 -m',
+    'python3 -m pydoc -b',
+    'python3 -i -m unittest discover',
+    'python3 -Bi -m unittest discover',
+    'python3 -i -c "print(1)"',
+    'python3 script.py -m unittest'
+  ]) {
+    assert.equal(isInteractiveCommand(command), true, command)
+  }
+})

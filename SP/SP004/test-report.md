@@ -1,6 +1,6 @@
 # SP004 验收与验证报告 · 真实编码任务
 
-状态：**第三轮复审修复待用户确认**。分支 `feature/SP004/real-coding-task`，复审产品基线 `f8b6f09`，参考 TUI `b5c9be8`。本次交付范围为 SP004 功能分支。
+状态：**第四轮复审修复待用户确认**。分支 `feature/SP004/real-coding-task`，复审产品基线 `47b2814`，参考 TUI `b5c9be8`。本次交付范围为 SP004 功能分支。
 
 ## 0. 本轮执行证据
 
@@ -9,18 +9,21 @@
 | 检查 | 命令 | 结果 |
 | --- | --- | --- |
 | 构建 | `npm run build` | 通过（tsc，无错误） |
-| 单元/功能 | `npm run test:unit` | **609/609 通过**（`npm test` 内运行） |
+| 单元/功能 | `npm run test:unit` | **623/623 通过**（`npm test` 内运行） |
 | 模块边界 | `npm run test:checks` | 「模块边界检查通过」 |
 | 规格自洽 | `npm run spec:check` | 「OK: 路线图、能力清单与任务清单自洽」（能力 91 项） |
 | 技能入口 | `npm run skills:check` | 「Skill entries are current」 |
 | 发布脚本 | `npm run test:release` | 17/17 通过 |
 | 合入门禁脚本 | `npm run merge:test` | 5/5 通过 |
-| 全量 | `npm test`（启用 `BUDINGX_TEST_BUBBLEWRAP=1`） | **652 通过 / 0 失败 / 0 跳过**（skills 10 + spec 11 + unit 609 + release 17 + merge 5） |
+| 全量 | `npm test`（启用 `BUDINGX_TEST_BUBBLEWRAP=1`） | **666 通过 / 0 失败 / 0 跳过**（skills 10 + spec 11 + unit 623 + release 17 + merge 5） |
 | 交叉验证门禁 | `npm run merge:gate` | 本次只推送功能分支，未执行 master 合入门禁 |
-| 来源 AST 复核 | `node scripts/review/sp004-ast.mjs --worktree --reference <参考仓> --reference-revision b5c9be8 --base master` | 改动 42/42 映射，函数对 19,834 组，命中 0，自检 4/4 通过（详见 [ast-review.md](ast-review.md)） |
+| 来源 AST 复核 | `node scripts/review/sp004-ast.mjs --worktree --reference <参考仓> --reference-revision b5c9be8 --base master` | 改动 43/43 映射，函数对 20,133 组，命中 0，自检 4/4 通过（详见 [ast-review.md](ast-review.md)） |
 
 本轮复审回归覆盖：
 
+- 正式 Ink 与本地 HTTP 回归使用真实 WSL Bubblewrap 跑 Python。零测试的包装器以 `0` 退出时，结果为 `test_evidence: no_tests`，会话要求继续验证。补入一个真实测试后，直接调用 `python3 -m unittest discover` 能运行并产生完成证据。
+- 前后台真实子进程在各自退出前即可观察到会话临时输出文件。终态验证完整字节数、stderr、文件路径和临时文件清理。长输出回执保留退出状态及路径，内存只保留截断预览。
+- Runner 使用同一有界摘要解析处理前台、显式后台和自动转后台。识别 Node/TAP、unittest、pytest、Jest、Vitest、Mocha 和 Cargo 中明确的通过数。零个、全部跳过、计数矛盾或无法确认数量（例如 Go 的默认摘要）时仍需补充证据。
 - 正式交互 CLI 读取宿主开关并探测隔离能力。正式 runtime、Ink 与本地 HTTP 联合用例使用同一后端工厂，验证 Bash 读取允许的项目输入，并隔离 `.git`、OpenSSH 默认私钥、凭据和明确禁止读取的文件。使用合成内容验证 Ed25519、安全密钥变体及可见的公钥文件。
 - `BUDINGX_TEST_BUBBLEWRAP=1` 时运行 `node --test src/exec/test/host-sandbox.test.mjs`。真实 WSL 后端验证网络命名空间、seccomp 阻断 VM 通信套接字、私有读写视图、只读拒绝写入及取消后的进程树清理。
 - Ink 流程通过键盘分别批准首次计划和漂移后的新请求。覆盖裸写中文、Markdown 反引号标记的含空格路径和通过 `WritePlan.targetPaths` 明确声明的中文路径。被拦截的原动作不执行，重新发起的动作在审批后完成。
@@ -71,19 +74,19 @@ AC 区间：CE-01…20（20）、CT-01…09（9）、GW-01…09（9）、TP-01�
 | CE-02 | T2/T3 | `exec/interpreter.test.mjs`(11)、`exec/runner.test.mjs`(13) | L1 | PASS |
 | CE-03 | T2 | `exec/interpreter.test.mjs`(11) | L0 | PASS |
 | CE-04 | T3 | `exec/runner.test.mjs`(13) | L1 | PASS |
-| CE-05 | T3 | `exec/runner.test.mjs`(13)、`exec/output`（经 runner 用例） | L1 | PASS |
+| CE-05 | T3 | `exec/test/persist.test.mjs` 验证有界缓冲与背压，`tui/test/runtime.test.mjs` 验证长输出截断仍保留成功状态与路径 | L1+L2 | PASS |
 | CE-06 | T4 | `exec/background.test.mjs`(7) | L1 | PASS |
 | CE-07 | T4 | `exec/background.test.mjs`(7)（含 R-03/R-04 终止重试与 exit 兜底） | L1 | PASS |
 | CE-08 | T5 | `exec/tools.test.mjs`(16)、`exec/isolated-project.test.mjs`(2) | L1 | PASS |
 | CE-09 | T5 | `exec/tools.test.mjs`(16)、`exec/readonly-commands.test.mjs`(5) | L1 | PASS |
 | CE-10 | T5 | `exec/tools.test.mjs`(16) | L1 | PASS |
 | CE-11 | T5 | `exec/tools.test.mjs`(16)、`exec/sandbox-policy.test.mjs`(7) | L1 | PASS（Windows WSL 2 Bash 与缺后端拒绝） |
-| CE-12 | T2/T3 | `exec/interpreter.test.mjs`(11)、`exec/runner.test.mjs`(13) | L1 | PASS |
+| CE-12 | T2/T3 | `exec/test/readonly-commands.test.mjs` 验证 Python 真正交互形态，`tui/test/runtime.test.mjs` 验证 WSL 直接运行 `python3 -m unittest discover` | L0+L1+L2 | PASS |
 | CE-13 | T2/T3 | `exec/interpreter.test.mjs`(11)、`exec/runner.test.mjs`(13) | L1 | PASS |
 | CE-14 | T4 | `exec/background.test.mjs`(7) | L1 | PASS |
 | CE-15 | T3 | `exec/runner.test.mjs`(13) | L1 | PASS |
 | CE-16 | T19 | `exec/auto-background.test.mjs`(3) | L1 | PASS |
-| CE-17 | T18/T22 | `exec/persist.test.mjs`(6) | L1 | PASS |
+| CE-17 | T18/T22 | `exec/test/persist.test.mjs` 验证前台、后台与自动转后台的流式落盘，`tui/test/runtime.test.mjs` 验证两条正式入口的写入时机和终态文件 | L1+L2 | PASS |
 | CE-18 | T20 | `exec/destructive.test.mjs`(4)、`tui/sp004-cards.test.mjs`(10) | L1+L2 | PASS |
 | CE-19 | T20 | `exec/sandbox-policy.test.mjs`(7) | L1 | PASS（Windows WSL 2 Bash）；其他平台见 §5 |
 | CE-20 | T21 | `exec/sed-edit.test.mjs`(9) | L0 | PASS |
@@ -93,7 +96,7 @@ AC 区间：CE-01…20（20）、CT-01…09（9）、GW-01…09（9）、TP-01�
 | CT-04 | T13 | `core/coding.test.mjs`(18) | L0 | PASS |
 | CT-05 | T12 | `core/question.test.mjs`(7)、`tui/sp004-cards.test.mjs`(10) | L0+L2 | PASS |
 | CT-06 | T12 | `core/question.test.mjs`(7) | L2 | PASS |
-| CT-07 | T13 | `core/coding.test.mjs` 与 `tui/test/runtime.test.mjs` 验证前后台同一证据门禁、快照只读及内容校验、写入失效、命令失败及后端缺失时退出 | L0+L1 | PASS（正式入口，后端使用测试替身） |
+| CT-07 | T13 | `exec/test/test-summary.test.mjs`、`exec/test/snapshot-evidence.test.mjs` 和 `tui/test/runtime.test.mjs` 验证实际测试数量、前后台同一证据门禁、快照只读及工作区内容失效 | L0+L1+L2 | PASS（正式入口与真实 WSL Bubblewrap） |
 | CT-08 | T13/T14 | `core/coding.test.mjs`(18)、`exec/isolated-project.test.mjs`(2) | L0+L2 | PASS |
 | CT-09 | T4/T12 | `exec/background.test.mjs`(7)、`core/question.test.mjs`(7) | L1 | PASS |
 | GW-01 | T6/T23 | `git/status.test.mjs`(7)、`git/status-extended.test.mjs`(4) | L1 | PASS |
