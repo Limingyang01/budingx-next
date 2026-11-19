@@ -452,3 +452,39 @@ test('a model failure before any assistant message yields an empty output array'
   assert.ok(output)
   assert.deepEqual(output.value, [])
 })
+
+test('tool observation carries input and output payloads so calls can be judged', async () => {
+  const tracer = recordingTracer()
+  const { session } = makeSession({
+    tracer,
+    script: [
+      [
+        {
+          type: 'tool_call_delta',
+          index: 0,
+          callId: 'call-1',
+          nameDelta: 'Read',
+          argsDelta: '{"file_path":"facts.txt"}'
+        }
+      ],
+      [{ type: 'message_completed', finishReason: 'stop' }]
+    ],
+    tools: [toolHandler()]
+  })
+  await submitAndWait(session, 'hello')
+
+  const tool = begins(tracer, 'tool.Read')[0]
+  const payloads = tracer.calls.filter(
+    (call) => call.op === 'setPayload' && call.handle === tool.handle
+  )
+  const input = payloads.find((call) => call.key === 'input')
+  const output = payloads.find((call) => call.key === 'output')
+  assert.ok(input, 'tool input payload is required to judge arguments')
+  assert.equal(input.value.file_path, 'facts.txt')
+  assert.ok(output, 'tool output payload is required to judge the result')
+  assert.equal(output.value, 'file body')
+  // 顺序固定：先写回结果，再结束观测。
+  const endIndex = tracer.calls.indexOf(ends(tracer, tool.handle)[0])
+  assert.ok(tracer.calls.indexOf(output) < endIndex)
+  assert.equal(ends(tracer, tool.handle)[0].outcome, 'success')
+})

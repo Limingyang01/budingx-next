@@ -137,12 +137,14 @@ npm run langfuse:receiver    # 启动：默认 http://127.0.0.1:3000（可用 --
 
 **查看测试效果**：启动后浏览器打开 <http://127.0.0.1:3000/> 即可看到每条 trace 的观测树（`agent.run` / `model.request` / `tool.<Name>`）、级别着色、耗时与 input/output，可过滤、手动刷新或 5s 自动刷新。这是替代性查看页，不是 Langfuse 的完整 UI。页面源文件是 `scripts/langfuse/local-ui.html`，改动后运行 `npm run langfuse:ui` 重新生成 `scripts/langfuse/local-ui.mjs`（测试会校验内联脚本可解析，防止转义错误导致页面静默不执行）。
 
-**边界**：这是兼容接收端，不是 Langfuse 本体——只有只读查看页，没有 ClickHouse/PostgreSQL，没有登录、项目/用户管理、评测与数据集语义。它只能证明「上报与查询链路正确」，**不能替代**真实栈的服务健康与初始化验收；真实栈项保持 UNVERIFIED。
+**边界**：这是兼容接收端，不是 Langfuse 本体——只有只读查看页，没有 ClickHouse/PostgreSQL，没有登录、项目/用户管理、评测与数据集语义。它只能证明「上报与查询链路正确」，**不能替代**真实栈的服务健康与初始化验收；真实栈另由 `npm run langfuse:smoke` 与 `npm run langfuse:login` 验收（第 9 节）。
 
 端到端用法：
 
-- 有模型额度：`npm run langfuse:observe` → 跑 tool-success / tool-error 两个真实回合，回查并判读层级、工具名与级别，报告写 `.runtime/langfuse/sp005-observation.json`。
+- 有模型额度：`npm run langfuse:observe` → 跑 tool-success / tool-error 两个真实回合，回查并判读层级、工具名、级别，以及工具调用是否合适（次数预算、参数是否指向目标文件、有无重复调用）与模型观测是否带真实用量/耗时，报告写 `.runtime/langfuse/sp005-observation.json`。失败场景允许两种正确收尾：模型如实汇报（completed），或反复重试触发空转熔断（error + `BUDINGX_CORE_010`）；后者按 `MAX_TOOL_FAILURE_STREAK` 判次数上限，不再固定为 2。
 - 无模型额度：`node --test scripts/langfuse/sp005-observation.e2e.test.mjs` → 用本地脚本化 OpenAI 兼容端点复现同一条链路（真实 HTTP、真实解析、真实工具、真实追踪、真实接收端）。
+
+**真实模型结果（2026-11-20）**：真实栈 4.78.0 上 `npm run langfuse:observe` 两场景 `EXIT=0` —— tool-success（1 次 Read，参数 `facts.txt`，usage 1228，trace `66d417933b454d622df74c12ae762deb`）与 tool-error（5 次变路径 Read，触发 `BUDINGX_CORE_010` 熔断，usage 1362，trace `8043bca01f1f8363cada853abd4bd3bc`）。观测里可直接看到工具的 `input`/`output` 与 `model.request` 的真实 tokens；这两项能力是 SP005 期间由 Langfuse 数据暴露并补上的（provider 请求 `stream_options.include_usage`；Session 给工具观测写 payload）。
 
 ## 9. 本机真实栈：WSL2 内的 Docker Engine（2026-11-19 落地）
 

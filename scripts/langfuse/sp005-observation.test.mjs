@@ -5,7 +5,8 @@ import {
   judgeToolNames,
   judgeLevels,
   judgeToolCalls,
-  judgeModelObservations
+  judgeModelObservations,
+  judgeScenarioOutcome
 } from './sp005-observation.mjs'
 
 function observation(overrides) {
@@ -156,3 +157,33 @@ test('OB-03 缺少工具观测判定失败', () => {
   assert.equal(result.ok, false)
   assert.match(result.problems[0], /observation missing/)
 });
+
+test('FR-05 失败场景接受显式熔断停机，但拒绝其它错误码', () => {
+  const failed = [{ name: 'Read', isError: true }]
+  assert.equal(
+    judgeScenarioOutcome('tool-error', failed, { outcome: 'completed' }),
+    true
+  )
+  assert.equal(
+    judgeScenarioOutcome('tool-error', failed, {
+      outcome: 'error',
+      error: { code: 'BUDINGX_CORE_010' }
+    }),
+    true
+  )
+  assert.equal(
+    judgeScenarioOutcome('tool-error', failed, {
+      outcome: 'error',
+      error: { code: 'BUDINGX_PROVIDER_010' }
+    }),
+    false
+  )
+  assert.equal(judgeScenarioOutcome('tool-error', [], { outcome: 'completed' }), false)
+})
+
+test('成功场景必须有成功的工具结果并以 completed 收尾', () => {
+  const ok = [{ name: 'Read', isError: false }]
+  assert.equal(judgeScenarioOutcome('tool-success', ok, { outcome: 'completed' }), true)
+  assert.equal(judgeScenarioOutcome('tool-success', ok, { outcome: 'error' }), false)
+  assert.equal(judgeScenarioOutcome('tool-success', [], { outcome: 'completed' }), false)
+})

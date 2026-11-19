@@ -1,6 +1,6 @@
 # SP005 · 验收报告（long-session-reliability）
 
-状态：**代码层验收全绿**；真实模型三场景与真实 Langfuse 服务端 UNVERIFIED（恢复条件见 §5）。
+状态：**代码层验收全绿**；真实模型 tool-success / tool-error 两场景已在真实 Langfuse 4.78.0 上回查 PASS（2026-11-20）；真实模型长会话压缩与 TUI 观感 UNVERIFIED（恢复条件见 §5）。
 
 ## 1. 环境与基线
 
@@ -11,25 +11,25 @@
 | 实施基线 | master `17afe34` |
 | Node | 见 `node -v`（package.json 要求 >=22.18） |
 | 平台 | Windows 10 家庭版 19045.6466 + MSYS bash；WSL2 发行版 `Ubuntu22`（内核 6.18.58.1-1）内 Docker Engine 29.10.0 |
-| 观测栈 | 双轨：真实 Langfuse 4.78.0（WSL2 内 Docker compose，六容器，127.0.0.1:3000）与仓内兼容接收端 `scripts/langfuse/local-receiver.mjs`（无 Docker 的机器与 CI 用，互斥占 3000） |
-| 模型 | DeepSeek 兼容端点（`BUDINGX_BASE_URL`/`BUDINGX_MODEL` 来自 `.env.e2e.local`） |
+| 观测栈 | 双轨：真实 Langfuse 4.78.0（WSL2 内 Docker compose，六容器，127.0.0.1:3000；真实模型回合用它）与仓内兼容接收端 `scripts/langfuse/local-receiver.mjs`（无 Docker 的机器与 CI 用，互斥占 3000） |
+| 模型 | MiniMax `MiniMax-M3.1-Flash`（`BUDINGX_BASE_URL`/`BUDINGX_MODEL` 来自 `.env.e2e.local`），真实回合经由 OpenAI 兼容流式端点 |
 
 ## 2. 执行命令与计数
 
 | 命令 | 结果 |
 | --- | --- |
 | `npm run build` | PASS（tsc，无错误） |
-| `node --test src/*/test/*.test.mjs` | **713 / 713 pass** |
+| `node --test src/*/test/*.test.mjs` | **716 / 716 pass** |
 | `node --test src/core/test/context-budget.e2e.test.mjs` | 3 / 3 pass（真实 HTTP 请求体） |
 | `node --test src/storage/test/session-recovery.e2e.test.mjs` | 4 / 4 pass（真实子进程） |
-| `node --test scripts/langfuse/*.test.mjs` | 本轮新增 26 / 26 pass（含接收端查看页、真实栈冒烟 5、登录凭据自检 3）；`npm run test:langfuse` 合计 **73 / 73** |
+| `node --test scripts/langfuse/*.test.mjs` | 本轮新增 32 / 32 pass（含接收端查看页、真实栈冒烟 5、登录凭据自检 3、工具调用质量判读 4、场景收尾判读 2）；`npm run test:langfuse` 合计 **79 / 79** |
 | `node --test scripts/langfuse/stack-smoke.test.mjs` | 5 / 5 pass（OB-02/03 真实栈判读） |
 | `npm run langfuse:smoke` | PASS（真实栈 4.78.0 回查 3 条 observation，四项判定全 true） |
 | `npm run test:checks` | PASS（模块边界：core 不 import storage） |
-| `npm test` | PASS（skills + spec + unit + checks + langfuse + release + merge） |
+| `npm test` | PASS（**838 通过 / 0 失败**：skills 10 + spec 11 + unit 716 + langfuse 79 + release 17 + merge 5，日志 `.runtime/npm-test-full9.log`） |
 | `npm run merge:gate` | GREEN |
 
-本轮新增用例合计 **96** 例：
+本轮新增用例合计 **101** 例：
 
 | 文件 | 数量 | 覆盖 |
 | --- | --- | --- |
@@ -43,11 +43,13 @@
 | `src/storage/test/project-memory.test.mjs` | 12 | PM-01…PM-08 |
 | `src/tui/test/sp005-commands.test.mjs` | 14 | CB-05、SR-05/06、PM-01/06/08 命令面 |
 | `scripts/langfuse/local-receiver.test.mjs` | 3 | OB-01…OB-04 接收端 |
-| `scripts/langfuse/sp005-observation.test.mjs` | 10 | OB-02/03 判读纯函数 |
+| `scripts/langfuse/sp005-observation.test.mjs` | 16 | OB-02/03 判读纯函数 + OB-03 工具调用质量（次数/参数/重复）+ FR-05 失败场景收尾 |
 | `scripts/langfuse/sp005-observation.e2e.test.mjs` | 3 | OB-02/03 + FR-09（真实 HTTP + 追踪 + 接收端） |
 | `scripts/langfuse/stack-smoke.test.mjs` | 5 | OB-02/03 真实栈判读（层级/失败可见/会话一致） |
 | `scripts/langfuse/init-local.test.mjs` | 10 | OB-01 配置初始化与 `.env.e2e.local` 凭据对齐 |
 | `scripts/langfuse/login-check.test.mjs` | 3 | OB-01 UI 登录凭据自检（csrf → credentials → session） |
+| `src/provider/test/openai.test.mjs` | +2 | OB-03 流式请求索要用量、usage 帧解析与 400 回退 |
+| `src/core/test/observability.test.mjs` | +1 | OB-03 工具观测写 input/output payload |
 
 ## 3. AC 回填
 
@@ -98,7 +100,7 @@
 
 ## 4. 真实模型观测证据（关键发现）
 
-两次真实模型运行（本地接收端 v2 回查）：
+2026-11-19 首次真实模型运行（额度未恢复前的唯一一次）：
 
 | 场景 | observation 数 | 结论 |
 | --- | --- | --- |
@@ -107,9 +109,24 @@
 
 这直接回答了用户「工具的调用是否合适」的问题：**不合适**——模型会对同一个不可满足的读取反复换路径尝试，把回合预算耗尽。修复方式与验证见设计 §8。
 
-修复后再次运行时 provider 返回 HTTP 402 `insufficient_balance_error`（Token Plan 用量上限），因此改为本地脚本化 OpenAI 兼容端点复现同一链路（真实 HTTP、真实解析、真实工具、真实追踪、真实接收端），3 例全绿。
+额度恢复后（2026-11-20）在真实 Langfuse 4.78.0 上复跑 `npm run langfuse:observe`：
 
-额度未恢复期间，监测平台已搭到就绪态：`npm run langfuse:init` / `npm run langfuse:receiver` / `npm run langfuse:observe`（端点与边界见 `ops/langfuse/README.md` 第 8 节）；真实模型场景保留 UNVERIFIED，等额度恢复后一次跑完。
+| 运行 | tool-success | tool-error | 结论 |
+| --- | --- | --- | --- |
+| 修复前 | obs=4，calls=1，usage=0 | obs=10，calls=6，usage=0，终态 error `BUDINGX_CORE_010` | 层级/级别/工具名全对；但模型观测没有用量、工具观测没有 input/output |
+| 只修观测后 | obs=4，calls=1，usage=1241 | obs=8，calls=5，usage=1411 | 用量与工具参数可见；判读仍把熔断停机当失败（判读错误） |
+| 定稿 | obs=4，calls=1，usage=1228，trace `66d417933b454d622df74c12ae762deb` | obs=8，calls=5，usage=1362，trace `8043bca01f1f8363cada853abd4bd3bc` | 两场景 `EXIT=0`；次数/参数/重复/用量四项判读全 PASS |
+
+定稿运行的 Langfuse 细节：tool-success 的 `tool.Read` 显示 `in: {"path":"facts.txt"}`、`out: "1→alpha\\n2→beta\\n3→gamma\\n4→"`，两个 `model.request` 分别 653 / 588 tokens；tool-error 的 5 次 Read 依次尝试 `missing-sp005.txt`、`data/`、`text/`、`docs/`、`./` 变体，第 5 次触发 `MAX_TOOL_FAILURE_STREAK`（5）熔断，回合以 error + `BUDINGX_CORE_010` 显式停机，而不是继续空转到迭代上限。
+
+复跑第一次暴露并修复的两个产品缺陷：
+
+1. **provider 不索要也不解析用量**：`src/provider/openai.ts` 流式请求现在带 `stream_options:{include_usage:true}`，解析流末尾 usage 帧并随 `message_completed` 返回；对因此回 400 的端点自动去掉字段重试一次。对应 2 例单测。
+2. **工具观测缺 input/output**：`src/core/session.ts` 在 dispatch 时写 `input`，在 `pushToolResult` 时先写 `output` 再结束观测。对应 1 例单测。
+
+判读本身也修正为与产品设计一致：tool-error 允许「completed（如实汇报）」或「error + `BUDINGX_CORE_010`（熔断停机）」，其它错误码仍判失败；次数上限改为读取 `MAX_TOOL_FAILURE_STREAK` 常量，避免判读与产品阈值漂移。
+
+额度未恢复期间，以本地脚本化 OpenAI 兼容端点复现同一条链路（真实 HTTP、真实解析、真实工具、真实追踪、真实接收端），3 例全绿。
 
 ### 4.1 真实 Langfuse 栈接入证据（2026-11-19）
 
@@ -128,7 +145,7 @@ WSL2 的 `vmIdleTimeout` 会在无会话时终止 VM 并 SIGTERM 掉容器，曾
 
 | 项 | 状态 | 恢复条件 | 动作 |
 | --- | --- | --- | --- |
-| 真实模型三场景（成功/工具失败/长会话压缩） | UNVERIFIED | provider Token Plan 额度恢复（用户 2026-11-19：先搭好监测平台，到时再跑真实模型测试） | `npm run langfuse:observe`，回填 §4 |
+| 真实模型长会话压缩（超预算后的压缩回合） | UNVERIFIED | 需要真实模型填满上下文预算才算自然触发；当前以 `context-budget.e2e.test.mjs` 的真实 HTTP 请求体证明压缩结果 | 在 `sp005-observation.mjs` 增加长会话填充场景后重跑，回填 §4 |
 | TUI 长会话视觉观感 | UNVERIFIED | SP006 可视化验收 | 终端快照 + 按键回放 |
 
 ## 6. 风险与剩余

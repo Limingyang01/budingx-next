@@ -1,7 +1,7 @@
 // OpenAI compatible provider client (SP002 design §3.4, AC PS-03 … PS-06).
 // Generic by design: base URL + key + model name, no vendor specific paths.
 import { ERROR_CODES } from '../core/constants.js'
-import type { ErrorClass } from '../core/events.js'
+import type { ErrorClass, Usage } from '../core/events.js'
 import type {
   ChatRequest,
   FinishReason,
@@ -203,6 +203,10 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
       messages: request.messages,
       stream: request.stream !== false
     }
+    // 观测用量：OpenAI 兼容端点默认不在流式响应里回 usage，需要显式请求。
+    // 不支持的端点会在下面按 400 回退一次，不影响正常对话。
+    const wantUsage = body.stream === true
+    if (wantUsage) body.stream_options = { include_usage: true }
     const miniMax = miniMaxModel(options.baseUrl, request.model)
     if (miniMax) body.reasoning_split = true
     if (request.maxTokens !== undefined) {
@@ -218,8 +222,8 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
 
     let response: Response
     const connectTimer = setTimeout(() => controller.abort(), limits.connectTimeoutMs)
-    try {
-      response = await fetchImpl(`${options.baseUrl}/chat/completions`, {
+    const send = (): Promise<Response> =>
+      fetchImpl(`${options.baseUrl}/chat/completions`, {
         method: 'POST',
         redirect: 'error',
         signal: combined,
@@ -230,6 +234,14 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
         },
         body: JSON.stringify(body)
       })
+    try {
+      response = await send()
+      // 少数端点在见到 stream_options 时直接 400；去掉该字段重试一次。
+      if (wantUsage && response.status === 400) {
+        await response.body?.cancel().catch(() => {})
+        delete body.stream_options
+        response = await send()
+      }
     } catch (error) {
       clearTimeout(connectTimer)
       if (request.signal?.aborted) {
@@ -300,6 +312,8 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
     let total = 0
     let received = false
     let finishReason: FinishReason | undefined
+    // SP004/SP005 观测：真实端点建议在流末尾单独回一条 usage 帧。
+    let usage: Usage | undefined
     let done = false
     const pending: ProviderEvent[] = []
 
@@ -310,6 +324,10 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
       }
       let payload: {
         error?: unknown
+        usage?: {
+          prompt_tokens?: number
+          completion_tokens?: number
+        } | null
         choices?: {
           delta?: {
             content?: unknown
@@ -334,6 +352,12 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
       }
       if (!payload || payload.error) {
         throw providerError('bad_request', 'Provider reported an error', { secrets })
+      }
+      if (payload.usage && (payload.usage.prompt_tokens !== undefined || payload.usage.completion_tokens !== undefined)) {
+        usage = {
+          inputTokens: payload.usage.prompt_tokens,
+          outputTokens: payload.usage.completion_tokens
+        }
       }
       const choice = payload.choices?.[0]
       const delta = choice?.delta
@@ -493,7 +517,8 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
     }
     yield {
       type: 'message_completed',
-      finishReason: finishReason ?? 'stop'
+      finishReason: finishReason ?? 'stop',
+      ...(usage ? { usage } : {})
     }
   }
 

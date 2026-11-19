@@ -1322,6 +1322,7 @@ export class Session {
       }
       const input = parseToolArguments(call)
       const handler = this.tools.find((tool) => tool.name === call.name)
+      // 观测要能回答「工具被用什么参数调用」，否则无法判断调用是否合适。
       const toolTrace = this.traceBegin(
         `tool.${call.name}`,
         {
@@ -1332,6 +1333,7 @@ export class Session {
         },
         turn.traceRoot
       )
+      this.tracePayload(toolTrace, 'input', input)
       this.emit({
         type: 'tool_call_completed',
         turnId: turn.id,
@@ -1644,6 +1646,7 @@ export class Session {
     toolTrace?: TraceHandle
   ): void {
     if (toolTrace) {
+      this.tracePayload(toolTrace, 'output', content)
       this.traceEnd(toolTrace, isError ? 'error' : 'success')
     }
     const message: Message = {

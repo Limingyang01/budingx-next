@@ -18,7 +18,7 @@
 
 ## 未实现
 
-**SP004 已发布**。普通命令仍需要已验证的执行隔离后端，默认在启动前被拒绝。完成证据闸门和 worktree 工具面尚未接入生产 runtime。仍全部未实现的有：Computer Use、团队、浏览器和调度；Desktop、VS Code、远程/H5 和 IM 已移出当前 SP。SP005 的转录持久化与恢复已在功能分支 `feature/SP005/long-session-reliability` 完成实施、代码层验收与门禁 GREEN，**未合入 master**（合入待用户决定）。
+**SP004 已发布**。普通命令仍需要已验证的执行隔离后端，默认在启动前被拒绝。完成证据闸门和 worktree 工具面尚未接入生产 runtime。仍全部未实现的有：Computer Use、团队、浏览器和调度；Desktop、VS Code、远程/H5 和 IM 已移出当前 SP。SP005 的转录持久化与恢复已在功能分支 `feature/SP005/long-session-reliability` 完成实施、代码层验收与门禁 GREEN，并已推送远端；真实模型端到端两场景经本地 Langfuse 4.78.0 回查 PASS（tool-success / tool-error + 熔断停机）。**未合入 master**（合入待用户决定）。
 
 首发使用 Node.js >=22.18、TypeScript 和 Node test runner，当前真实命令见 package.json 与 [开发指南](development.md)。禁止引入 Bun；不能把旧项目版本 0.5.0、旧测试成绩或 Git 发布状态当作本仓事实。
 

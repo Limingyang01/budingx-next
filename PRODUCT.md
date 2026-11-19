@@ -44,7 +44,7 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | 迭代  | 目标                    | 主要功能目录                                                                                               | 状态 |
 | ----- | ----------------------- | ---------------------------------------------------------------------------------------------------------- | ---- |
 | SP004（0.4.0） | 计划、待办、命令与追问；普通命令要求已验证的执行隔离，提交限专用 worktree | 命令执行、后台任务、受控 Git 提交、计划模式与追问、四类会话卡片 | 已发布 |
-| SP005 | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         | 功能分支已实现、代码层验收全绿（未合入 master、未发布） |
+| SP005 | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         | 功能分支已实现并推送，代码层验收全绿、真实模型端到端两场景 PASS（未合入 master、未发布） |
 | SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 规划中 |
 | SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | 规划中 |
 | SP008 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | 规划中（契约轮，轻量测试客户端验证） |
@@ -262,7 +262,7 @@ budingx --prompt "Hello" --timeout 120000
 - 配置文件与凭据文件分离；密钥不作为普通共享明文配置保存，也不出现在日志与 UI 回显中。
 - 仓库与文档不包含真实密钥、真实会话与用户身份信息。
 - **会话与记忆（SP005）**：会话转录与记忆写在 `~/.budingx/sessions/` 与 `~/.budingx/memory/` 下，目录与文件只对当前用户可读写；写入采用原子方式，失败时保留原内容；损坏文件被隔离并保留备份而不是删除；程序不读取、不回退 `~/.claude`。恢复会话只装载历史，不重放工具调用，结果未知的调用标记为「需核对」。
-- **本机 Langfuse 观测（可选，默认关闭）**：未显式启用时无任何 Langfuse 网络请求；启用后默认只采结构化元数据，正文须再显式开启并经脱敏与长度裁剪。凭据与验收报告只落 Git 忽略的开发目录。启用方式见 [ops/langfuse/README.md](ops/langfuse/README.md)。
+- **本机 Langfuse 观测（可选，默认关闭）**：未显式启用时无任何 Langfuse 网络请求；启用后默认只采结构化元数据，正文须再显式开启并经脱敏与长度裁剪。凭据与验收报告只落 Git 忽略的开发目录。启用方式见 [ops/langfuse/README.md](ops/langfuse/README.md)。模型观测会带上真实 token 用量，工具观测会带上输入参数与结果（受正文开关控制），因此可以直接在 Langfuse 里判断工具调用是否合适。
 
 ---
 

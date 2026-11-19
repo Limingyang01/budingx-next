@@ -18,6 +18,7 @@ import { createWorkspaceTools } from '../../src/tui/dist/workspace/tools.js'
 import { createWorkspace } from '../../src/tui/dist/workspace/paths.js'
 import { setupTracing } from '../../src/tui/dist/tui/runtime.js'
 import { createSessionStore, startSession } from '../../src/tui/dist/storage/session-store.js'
+import { ERROR_CODES, MAX_TOOL_FAILURE_STREAK } from '../../src/tui/dist/core/constants.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const RUNTIME_DIR = path.join(ROOT, '.runtime', 'langfuse')
@@ -47,6 +48,28 @@ export function judgeHierarchy(observations, expectedSessionId) {
     return { ok: false, reason: 'session id must be identical across observations' }
   }
   return { ok: true, rootLevel: root.level, rootOutcome: root.metadata?.outcome ?? null }
+}
+
+/**
+ * 判定场景的本地预期结果。
+ *
+ * tool-error 场景允许两种正确收尾：模型读到错误后如实汇报（completed），
+ * 或反复换路径重试触发 SP005 空转熔断（error + coreToolLoopDetected）。
+ * 后者是设计内的显式停机，比无限重试更可取，但不能是其它错误码。
+ * @param scenario 'tool-success' | 'tool-error'
+ * @param toolResults 本回合的 tool_result 事件
+ * @param finalEvent turn_finalized 事件
+ */
+export function judgeScenarioOutcome(scenario, toolResults, finalEvent) {
+  const failed = toolResults.some((t) => t.isError)
+  const succeeded = toolResults.some((t) => !t.isError)
+  if (scenario === 'tool-error') {
+    const stoppedByBreaker =
+      finalEvent.outcome === 'error' &&
+      finalEvent.error?.code === ERROR_CODES.coreToolLoopDetected
+    return failed && (finalEvent.outcome === 'completed' || stoppedByBreaker)
+  }
+  return succeeded && finalEvent.outcome === 'completed'
 }
 
 /**
@@ -189,10 +212,7 @@ async function runScenario(scenario, modelConfig, langfuseEnv, workspace) {
 
   const toolResults = events.filter((e) => e.type === 'tool_result')
   const receipt = receipts.find((r) => r.turnId === finalEvent.turnId) ?? receipts[0]
-  const localExpectationMet =
-    scenario === 'tool-error'
-      ? toolResults.some((t) => t.isError) && finalEvent.outcome !== 'error'
-      : toolResults.some((t) => !t.isError) && finalEvent.outcome === 'completed'
+  const localExpectationMet = judgeScenarioOutcome(scenario, toolResults, finalEvent)
   return {
     scenario,
     sessionId,
@@ -274,9 +294,11 @@ async function main() {
       { name: 'tool.Read', level: scenario === 'tool-error' ? 'ERROR' : 'DEFAULT' }
     ])
     // 工具调用质量：恰好一次 Read，参数指向该场景的目标文件，且没有重复调用。
+    // 失败场景允许模型换路径重试，但不得超过熔断阈值；
+    // 超过阈值说明空转熔断本身失效，这是产品缺陷而不是模型自由发挥。
     const toolCalls = judgeToolCalls(observations, {
       name: 'Read',
-      maxCalls: 2,
+      maxCalls: scenario === 'tool-error' ? MAX_TOOL_FAILURE_STREAK : 2,
       argsMustInclude: scenario === 'tool-error' ? 'missing-sp005.txt' : 'facts.txt'
     })
     const modelObservations = judgeModelObservations(observations)
