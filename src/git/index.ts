@@ -7,6 +7,7 @@ export type {
   IncludeChange
 } from './attribution.js'
 export {
+  commitFilesFromCheckpoints,
   commitWithAuthorization,
   createCommitAuthorization,
   patchDigestOf
@@ -27,6 +28,7 @@ export {
   enterWorktree,
   exitWorktree,
   isValidWorktreeName,
+  prepareWorktreeRemoval,
   realPathOf,
   repoSlug,
   validateWorktreeSlug

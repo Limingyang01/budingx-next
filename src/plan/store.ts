@@ -52,7 +52,7 @@ export function planFingerprintOf(plan: Pick<Plan, 'updatedAt'>, snapshot: PlanS
 
 export type PlanStoreOptions = {
   /** 批准时读取当前工作区快照；缺省为无工作区绑定（仅内存测试）。 */
-  snapshot?: () => PlanSnapshot
+  snapshot?: (planText?: string) => PlanSnapshot
   now?: () => number
   id?: () => string
   /** 提供时计划持久化为该 `.md` 文件：创建即落盘，重开同一路径可读回（TP-10）。 */
@@ -90,7 +90,7 @@ export function createPlanStore(options: PlanStoreOptions = {}): PlanStore {
   const store: PlanStore = {
     current: () => plan,
 
-    create(goal, steps) {
+    create(goal, steps, draftText) {
       if (typeof goal !== 'string' || goal.trim().length === 0) {
         throw new Error('计划目标不能为空')
       }
@@ -110,6 +110,7 @@ export function createPlanStore(options: PlanStoreOptions = {}): PlanStore {
         goal: goal.trim(),
         steps: list,
         approval: 'none',
+        ...(draftText !== undefined ? { draftText } : {}),
         createdAt: timestamp,
         updatedAt: timestamp
       }
@@ -179,7 +180,7 @@ export function createPlanStore(options: PlanStoreOptions = {}): PlanStore {
       const timestamp = now()
       current.updatedAt = timestamp
       current.approval = 'approved'
-      current.fingerprint = planFingerprintOf({ updatedAt: timestamp }, snapshot())
+      current.fingerprint = planFingerprintOf({ updatedAt: timestamp }, snapshot(approvedText))
       if (approvedText !== undefined) {
         if (typeof approvedText !== 'string') throw new Error('approvedText 必须是字符串')
         current.approvedText = approvedText

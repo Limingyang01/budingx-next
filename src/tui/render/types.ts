@@ -86,6 +86,7 @@ export type TodoItemCard = {
 }
 
 export type TodoCard = {
+  source?: 'tool'
   items: readonly TodoItemCard[]
   updatedAt: number
   /** 每条待办进入 completed 的时间（TTL 用）。 */

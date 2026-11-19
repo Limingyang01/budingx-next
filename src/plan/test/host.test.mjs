@@ -173,7 +173,9 @@ test('T15-13 生产 runtime 接线：四类工具就位、会话标识就绪，�
   const names = runtime.session.tools.map((tool) => tool.name)
   for (const name of [
     'Read', 'Write', 'Edit', 'Glob', 'Grep',
-    'Bash', 'PowerShell', 'AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode'
+    'Bash', 'PowerShell', 'AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode', 'WritePlan',
+    'TodoWrite', 'EnterWorktree', 'ExitWorktree', 'GitCommit', 'TaskStatus', 'TaskCancel',
+    'StartCodingTask', 'TaskRedirect'
   ]) {
     assert.ok(names.includes(name), `缺少工具：${name}`)
   }

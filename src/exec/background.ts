@@ -2,6 +2,7 @@
 // 内存任务表 + 状态快照 + 进程树取消；真实进程由 runner 注入，core 只持有契约。
 import { randomUUID } from 'node:crypto'
 import type { ChildProcess } from 'node:child_process'
+import { ERROR_CODES } from '../core/constants.js'
 import {
   EXEC_OUTPUT_CAP,
   type BackgroundTask,
@@ -22,6 +23,8 @@ interface BackgroundRecord {
   finishedAt?: number
   forced?: { outcome: 'timeout' | 'cancelled'; reason: string }
   reason?: string
+  callId?: string
+  turnId?: string
   /** 终止重试计时器（T4 稳定性：首次终止未生效时重发，进程退出即清理）。 */
   killRetry?: NodeJS.Timeout
 }
@@ -31,7 +34,7 @@ const KILL_RETRY_INTERVAL_MS = 1000
 const KILL_RETRY_MAX_MS = 10000
 
 export interface BackgroundTableOptions {
-  /** 终止整棵进程树（runner 注入，Windows taskkill /T /F + 兜底）。 */
+  /** 由启动该任务的隔离后端终止进程树。 */
   kill: (child: ChildProcess) => void
   /** 输出落盘的会话隔离配置（T18；缺省时不落盘）。 */
   persist?: { sessionId: string; home?: string }
@@ -44,6 +47,9 @@ export interface BackgroundRegistration {
   interpreter: string
   cwd: string
   timeoutMs: number
+  startedAt?: number
+  callId?: string
+  turnId?: string
   autoBackgrounded: boolean
   backgroundedByUser: boolean
 }
@@ -83,6 +89,9 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
       taskId: record.task.taskId,
       interrupted: record.forced !== undefined || undefined,
       reason: record.forced?.reason ?? record.reason,
+      errorCode: record.forced?.outcome === 'timeout'
+        ? ERROR_CODES.execTimeout
+        : record.forced?.outcome === 'cancelled' ? ERROR_CODES.execCancelled : undefined,
       autoBackgrounded: record.task.autoBackgrounded || undefined,
       backgroundedByUser: record.task.backgroundedByUser || undefined,
       persistedOutputPath: record.task.outputPath,
@@ -157,6 +166,8 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
     options.onFinished?.(
       buildCommandFinishedEvent({
         taskId: record.task.taskId,
+        callId: record.callId,
+        turnId: record.turnId,
         outcome: state,
         exitCode: finalExitCode,
         outputPath,
@@ -178,7 +189,7 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
       command: meta.command,
       interpreter: meta.interpreter,
       cwd: meta.cwd,
-      startedAt: Date.now(),
+      startedAt: meta.startedAt ?? Date.now(),
       state: 'running',
       stdout: '',
       stderr: '',
@@ -192,10 +203,12 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
       stdout,
       stderr,
       signal,
+      callId: meta.callId,
+      turnId: meta.turnId,
       onAbort: () => force(record, 'cancelled', '命令已取消'),
       timer: setTimeout(
         () => force(record, 'timeout', `命令执行超过 ${meta.timeoutMs}ms 超时限制，已终止进程树`),
-        meta.timeoutMs
+        Math.max(0, meta.timeoutMs - (Date.now() - task.startedAt))
       ),
       settled: false
     }

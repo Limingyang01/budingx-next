@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import {
   enterWorktree,
   exitWorktree,
+  prepareWorktreeRemoval,
   repoSlug,
   validateWorktreeSlug
 } from '../../tui/dist/git/worktree.js'
@@ -46,13 +47,8 @@ function makeRepo() {
   }
 }
 
-function authorizationOf(entered, discardChanges) {
-  return {
-    id: 'auth-1',
-    worktree: entered.path,
-    branch: entered.branch,
-    discardChanges
-  }
+async function authorizationOf(entered, discardChanges) {
+  return (await prepareWorktreeRemoval(entered, discardChanges)).authorization
 }
 
 test('T23-5 slug 校验：总长 ≤64、分段非空合法、禁 . 与 ..（GW-07）', async () => {
@@ -104,13 +100,14 @@ test('T23-7 remove 有未提交文件且缺 discard_changes：拒绝并列出残
   try {
     const entered = await enterWorktree({ cwd: repo, name: 'dirty', root })
     writeFileSync(join(entered.path, 'dirty.txt'), 'dirty\n', 'utf8')
+    const authorization = await authorizationOf(entered, true)
     await assert.rejects(
       () =>
         exitWorktree({
           ...entered,
           originalCwd: repo,
           action: 'remove',
-          authorization: authorizationOf(entered, true)
+          authorization
         }),
       (error) => {
         assert.match(error.message, /残留/)
@@ -132,13 +129,14 @@ test('T23-8 remove 有未合并提交：缺弃置意图拒绝，完整授权后�
     git(entered.path, ['add', '-A'])
     git(entered.path, ['commit', '-q', '-m', 'feature work'])
 
+    const authorization = await authorizationOf(entered, true)
     await assert.rejects(
       () =>
         exitWorktree({
           ...entered,
           originalCwd: repo,
           action: 'remove',
-          authorization: authorizationOf(entered, true)
+          authorization
         }),
       /未合并提交 1 个/
     )
@@ -149,7 +147,7 @@ test('T23-8 remove 有未合并提交：缺弃置意图拒绝，完整授权后�
       originalCwd: repo,
       action: 'remove',
       discard_changes: true,
-      authorization: authorizationOf(entered, true)
+      authorization: await authorizationOf(entered, true)
     })
     assert.equal(result.action, 'remove')
     assert.equal(result.discardedFiles, 0)
@@ -179,6 +177,7 @@ test('T23-10 身份无法复核：拒绝删除并列出可确认残留（GW-06�
   const { repo, root, cleanup } = makeRepo()
   try {
     const entered = await enterWorktree({ cwd: repo, name: 'vanished', root })
+    const authorization = await authorizationOf(entered, true)
     rmSync(entered.path, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
     git(repo, ['worktree', 'prune'])
     await assert.rejects(
@@ -188,7 +187,7 @@ test('T23-10 身份无法复核：拒绝删除并列出可确认残留（GW-06�
           originalCwd: repo,
           action: 'remove',
           discard_changes: true,
-          authorization: authorizationOf(entered, true)
+          authorization
         }),
       (error) => {
         assert.match(error.message, /无法复核/)
@@ -198,6 +197,26 @@ test('T23-10 身份无法复核：拒绝删除并列出可确认残留（GW-06�
         return true
       }
     )
+  } finally {
+    cleanup()
+  }
+})
+
+test('T23-11 删除审批后同一未提交文件的内容变化，拒绝并保留工作树', async () => {
+  const { repo, root, cleanup } = makeRepo()
+  try {
+    const entered = await enterWorktree({ cwd: repo, name: 'drift', root })
+    const file = join(entered.path, 'dirty.txt')
+    writeFileSync(file, 'approved residue\n')
+    const { authorization, preview } = await prepareWorktreeRemoval(entered, true)
+    assert.ok(preview.some((line) => line.includes('dirty.txt')))
+    writeFileSync(file, 'new user work after approval\n')
+    await assert.rejects(
+      () => exitWorktree({ ...entered, action: 'remove', discard_changes: true, authorization }),
+      /漂移/
+    )
+    assert.ok(existsSync(file))
+    assert.ok(git(repo, ['branch', '--list', entered.branch]).trim())
   } finally {
     cleanup()
   }

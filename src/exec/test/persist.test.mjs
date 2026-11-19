@@ -1,5 +1,6 @@
 // SP004 T18 · 后台输出落盘与完成通知（design §4.4，CE-17）。
 // 真实进程证据：输出写入 ~/.budingx 会话隔离路径，不写用户项目目录。
+import { createHostProcessFixture } from './helpers/host-process.mjs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs'
@@ -25,19 +26,7 @@ import {
 } from '../../tui/dist/exec/persist.js'
 import { createSandboxPolicy } from '../../tui/dist/exec/sandbox-policy.js'
 
-const verifiedBackend = {
-  id: 'synthetic-backend',
-  label: '合成验收后端',
-  verified: true,
-  capabilities: {
-    allowWrite: [],
-    denyWrite: [],
-    allowRead: [],
-    denyRead: [],
-    networkDomains: [],
-    canEnforceNetwork: true
-  }
-}
+const verifiedBackend = createHostProcessFixture()
 
 function makeRunner(home, extra = {}) {
   return createCommandRunner({

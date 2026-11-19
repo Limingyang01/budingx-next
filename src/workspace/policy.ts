@@ -35,6 +35,8 @@ export type PermissionPolicyOptions = {
   autoAcceptWorkspaceEdits?: boolean
   /** Only for tests: replaces the home-derived user data root. */
   dataRootOverride?: string
+  /** Only a worktree registered by the host is a workspace inside the data root. */
+  managedWorktree?: () => string | undefined
 }
 
 export type BudingPermissionPolicy = PermissionPolicy & {
@@ -124,6 +126,7 @@ export function createPermissionPolicy(
   let mode: PermissionMode = options.mode ?? 'read_only'
   const listeners: ((mode: PermissionMode) => void)[] = []
   const memory = new Set<string>()
+  const scopedMemoryKey = (request: PermissionRequest) => JSON.stringify([workspace.root, memoryKey(request)])
 
   function resolveTarget(request: PermissionRequest): { real?: string; denied?: PermissionVerdict } {
     if (!request.path) return {}
@@ -150,8 +153,13 @@ export function createPermissionPolicy(
 
   function floorVerdict(request: PermissionRequest, real: string): PermissionVerdict | undefined {
     // B-1: the product user data root is never a tool target.
-    if (isInsideRoot(userRoot, real)) {
+    const worktree = options.managedWorktree?.()
+    const insideManagedWorktree = worktree === workspace.root && isInsideRoot(worktree, real)
+    if (isInsideRoot(userRoot, real) && !insideManagedWorktree) {
       return { action: 'deny', reason: 'The budingx user data directory is off-limits', ruleId: 'floor:data' }
+    }
+    if (insideManagedWorktree && /(^|[\\/])\.git([\\/]|$)/i.test(relative(worktree, real))) {
+      return { action: 'deny', reason: 'Managed worktree Git metadata is off-limits', ruleId: 'floor:git' }
     }
     // B-2: credential-shaped file names.
     if (isCredentialLike(basename(request.path ?? '')) || isCredentialLike(basename(real))) {
@@ -226,7 +234,7 @@ export function createPermissionPolicy(
           return { action: 'deny', reason: 'The read-only mode does not allow running commands' }
         }
         if (mode === 'workspace_edit') {
-          if (memory.has(memoryKey(request))) {
+          if (memory.has(scopedMemoryKey(request))) {
             return { action: 'allow', reason: 'Allowed for this session' }
           }
           return { action: 'ask', reason: `Running ${request.tool} needs confirmation` }
@@ -242,7 +250,7 @@ export function createPermissionPolicy(
         }
         // Session memory from "allow for this session" (AC PC-06) only
         // short-circuits the ask path; it never lifts read_only.
-        if (memory.has(memoryKey(request))) {
+        if (memory.has(scopedMemoryKey(request))) {
           return { action: 'allow', reason: 'Allowed for this session' }
         }
         return { action: 'ask', reason: `Writing ${request.path ?? request.tool} needs confirmation` }
@@ -251,7 +259,7 @@ export function createPermissionPolicy(
     },
     canRemember,
     remember(request: PermissionRequest): void {
-      if (canRemember(request)) memory.add(memoryKey(request))
+      if (canRemember(request)) memory.add(scopedMemoryKey(request))
     },
     getMode: () => mode,
     setMode(next: PermissionMode): void {

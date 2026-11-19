@@ -1,6 +1,6 @@
 # SP004 真实编码任务 · 实施计划
 
-版本：v1.3｜状态：**文档修订待用户确认，实施暂停**｜依据：[design.zh.md](design.zh.md) v1.3｜分支：`feature/SP004/real-coding-task`｜文档起点 `363d1eb`，核对的本地 master `5b0e7cc`｜命令默认从仓库根执行
+版本：v1.3｜状态：**审查修复已验证，待用户复审功能分支**｜依据：[design.zh.md](design.zh.md) v1.3｜分支：`feature/SP004/real-coding-task`｜文档起点 `363d1eb`，核对的本地 master `5b0e7cc`｜命令默认从仓库根执行
 
 > **执行方式**：按 `superpowers:executing-plans` 或 `superpowers:subagent-driven-development` 逐任务执行；步骤用 `- [ ]` 复选框跟踪。
 >
@@ -26,6 +26,10 @@
 - 设计：[design.zh.md](design.zh.md) v1.3
 - 需求：[command-execution](../command-execution/requirements.md) v0.3、[coding-task-loop](../coding-task-loop/requirements.md) v0.3、[git-worktree-safety](../git-worktree-safety/requirements.md) v0.3、[task-planning](../task-planning/requirements.md) v0.3
 - 路线图 **r9** SP004、能力矩阵 **v4**（含「TUI 还原度（结构等价）」行）、排查文档 r1 §4 SP004、参考仓行为事实盘点（只读对照）、**[TUI 还原度基线](../../../docs/tui-fidelity-gap-baseline.md) 与路线图 r9「TUI 还原度要求」节**
+
+## 2026-11-19 审查修订
+
+T15 与 T17 的旧完成事实保留为历史。本次把 WritePlan、TodoWrite、Git 与后台任务工具以及编码任务跟踪接入生产 TUI。真实进程必须由宿主验证的隔离后端启动并终止；AST 按固定提交读取。验收以[修订报告](../test-report.md)为准。用户要求验证后只推送 SP004 功能分支，等待复审。
 
 ## Global Constraints
 

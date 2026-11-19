@@ -2,7 +2,7 @@
 // Host agnostic: no UI types, JSON serializable.
 import type { PermissionMode } from './permissions.js'
 import type { CommandOutcome } from './exec.js'
-import type { Plan, PendingQuestion, PlanModePhase, QuestionAnswers, QuestionAnnotations } from './plan.js'
+import type { Plan, PendingQuestion, PlanModePhase, QuestionAnswers, QuestionAnnotations, TodoItem } from './plan.js'
 
 export type SessionState =
   | 'idle'
@@ -199,6 +199,7 @@ export type SessionEvent =
       finishedAt: number
     }
   | { type: 'plan_updated'; plan: Plan }
+  | { type: 'todos_updated'; items: readonly TodoItem[]; updatedAt: number }
   | {
       /**
        * 计划模式单一状态转换（SP004 设计 §6.2）。active=false 表示已离开

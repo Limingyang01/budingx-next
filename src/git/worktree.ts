@@ -3,10 +3,11 @@
 // 失败必须保持原 cwd 不变且不留半成品；名称与路径都做越界校验。
 // 删除一律需要宿主单次授权，并先列出可确认的残留（未提交文件/未合并提交）。
 import { execFile } from 'node:child_process'
-import { existsSync, mkdirSync, realpathSync, rmSync } from 'node:fs'
-import { basename, dirname, join, resolve } from 'node:path'
+import { createHash, randomUUID } from 'node:crypto'
+import { existsSync, lstatSync, mkdirSync, realpathSync } from 'node:fs'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { dataRoot } from '../storage/paths.js'
-import { readGitStatus } from './status.js'
+import { gitEnvironment, readGitStatus } from './status.js'
 
 export type WorktreeSession = {
   /** 隔离目录绝对路径。 */
@@ -34,6 +35,8 @@ export type WorktreeRemovalAuthorization = {
   /** 是否允许丢弃未提交改动与未合并提交。 */
   discardChanges: boolean
 }
+
+const removalSnapshots = new WeakMap<WorktreeRemovalAuthorization, string>()
 
 export type WorktreeExitResult = {
   cwd: string
@@ -127,7 +130,12 @@ function runGit(args: string[], cwd: string): Promise<RunResult> {
     execFile(
       'git',
       ['--no-optional-locks', ...args],
-      { cwd, maxBuffer: 8 * 1024 * 1024, windowsHide: true },
+      {
+        cwd,
+        maxBuffer: 8 * 1024 * 1024,
+        windowsHide: true,
+        env: gitEnvironment()
+      },
       (error, stdout, stderr) => {
         if (error === null) {
           resolvePromise({ ok: true, stdout, stderr })
@@ -200,7 +208,9 @@ export async function enterWorktree(input: EnterWorktreeInput): Promise<Worktree
   // 已存在：只接受能核对身份的复用（真实路径 + 同仓库 + 专用分支）。
   if (existsSync(targetPath)) {
     const entry = await findWorktreeEntry(cwd, targetPath)
-    if (entry !== undefined && entry.branch === `${baseBranch}-budingx/${flattenSlug(name)}`) {
+    const real = realPathOf(targetPath)
+    if (real !== undefined && comparablePath(real) === comparablePath(targetPath) &&
+        entry !== undefined && entry.branch === `${baseBranch}-budingx/${flattenSlug(name)}`) {
       return { path: targetPath, branch: entry.branch, baseBranch, originalCwd: cwd }
     }
     throw new Error(`目标路径已存在且无法确认为本会话创建的 worktree：${targetPath}`)
@@ -212,36 +222,86 @@ export async function enterWorktree(input: EnterWorktreeInput): Promise<Worktree
   }
 
   mkdirSync(dirname(targetPath), { recursive: true })
+  if (comparablePath(realpathSync(dirname(targetPath))) !== comparablePath(dirname(targetPath))) {
+    throw new Error(`目标 worktree 的父目录经过链接，拒绝创建：${targetPath}`)
+  }
   const added = await runGit(['worktree', 'add', targetPath, '-b', branch], cwd)
   if (!added.ok) {
-    // 只清理本轮自己创建的路径，不触碰未知路径。
-    if (existsSync(targetPath)) {
-      try {
-        rmSync(targetPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 })
-      } catch {
-        // 清理失败时保留现场，错误信息里带上路径。
-      }
-    }
-    throw new Error(`创建 worktree 失败：${added.stderr.trim() || added.stdout.trim()}`)
+    throw new Error(`创建 worktree 失败：${added.stderr.trim() || added.stdout.trim()}；请检查路径 ${targetPath}`)
   }
   return { path: targetPath, branch, baseBranch, originalCwd: cwd }
 }
 
-/** 统计 worktree 内未提交文件数（含暂存、未暂存、未跟踪；重命名按一条记录计）。 */
-async function countPendingFiles(worktreePath: string): Promise<number> {
-  const statusRun = await runGit(['status', '--porcelain=v1', '-z'], worktreePath)
-  if (!statusRun.ok) return 0
-  return statusRun.stdout.split('\0').filter((entry) => entry !== '').length
+async function removalSnapshot(current: WorktreeSession) {
+  const repoCwd = current.originalCwd ?? current.path
+  const real = realPathOf(current.path)
+  const entry = await findWorktreeEntry(repoCwd, current.path)
+  if (real === undefined || comparablePath(real) !== comparablePath(current.path) ||
+      entry?.branch !== current.branch || !current.branch.startsWith(`${current.baseBranch}-budingx/`)) {
+    throw new Error(`无法复核 worktree 身份，拒绝删除；可确认残留：路径 ${current.path}、分支 ${current.branch}`)
+  }
+
+  const head = await runGit(['rev-parse', '--verify', `refs/heads/${current.branch}`], repoCwd)
+  const base = await runGit(['rev-parse', '--verify', `refs/heads/${current.baseBranch}`], repoCwd)
+  const commonDir = await runGit(['rev-parse', '--path-format=absolute', '--git-common-dir'], repoCwd)
+  const status = await runGit(['status', '--porcelain=v1', '--untracked-files=all', '--no-renames', '-z'], real)
+  const ignored = await runGit(['ls-files', '--others', '--ignored', '--exclude-standard', '-z'], real)
+  const staged = await runGit(['diff', '--cached', '--raw', '--no-abbrev', '--no-renames', '-z'], real)
+  if (![head, base, commonDir, status, ignored, staged].every((result) => result.ok)) {
+    throw new Error(`无法复核 worktree 当前状态，拒绝删除；可确认残留：路径 ${current.path}、分支 ${current.branch}`)
+  }
+  const headId = head.stdout.trim()
+  const baseId = base.stdout.trim()
+  const counts = await runGit(['rev-list', '--count', `${baseId}..${headId}`], repoCwd)
+  const discardedCommits = Number(counts.stdout.trim())
+  if (!counts.ok || !Number.isSafeInteger(discardedCommits) || discardedCommits < 0) {
+    throw new Error('无法复核未合并提交数量，拒绝删除')
+  }
+  const split = (text: string) => text.split('\0').filter(Boolean)
+  const changedPaths = split(status.stdout).map((entry) => entry.slice(3))
+  const ignoredPaths = split(ignored.stdout)
+  const paths = [...new Set([...changedPaths, ...ignoredPaths])].sort()
+  const fingerprint = createHash('sha256')
+  fingerprint.update(JSON.stringify([
+    comparablePath(real), commonDir.stdout.trim(), current.branch, current.baseBranch,
+    headId, baseId, status.stdout, ignored.stdout, staged.stdout
+  ]))
+  for (const path of paths) {
+    const rel = relative(real, resolve(real, path))
+    if (rel === '' || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+      throw new Error('无法复核 worktree 残留文件路径，拒绝删除')
+    }
+    const stat = lstatSync(join(real, path), { bigint: true, throwIfNoEntry: false })
+    fingerprint.update(JSON.stringify([
+      path, stat?.ino.toString(), stat?.size.toString(), stat?.mode.toString(),
+      stat?.mtimeNs.toString(), stat?.ctimeNs.toString()
+    ]))
+  }
+  return { fingerprint: fingerprint.digest('hex'), paths, ignoredPaths, discardedCommits, headId, repoCwd }
 }
 
-/** 统计专用分支相对基准分支的未合并提交数。 */
-async function countUnmergedCommits(repoCwd: string, baseBranch: string, branch: string): Promise<number> {
-  const countRun = await runGit(['rev-list', '--count', `refs/heads/${baseBranch}..refs/heads/${branch}`], repoCwd)
-  if (!countRun.ok) {
-    throw new Error(`无法复核未合并提交数量：${countRun.stderr.trim() || 'git rev-list 失败'}`)
+export async function prepareWorktreeRemoval(
+  worktree: WorktreeSession,
+  discardChanges: boolean
+): Promise<{ authorization: WorktreeRemovalAuthorization; preview: readonly string[] }> {
+  const snapshot = await removalSnapshot(worktree)
+  if (!discardChanges && (snapshot.paths.length > 0 || snapshot.discardedCommits > 0)) {
+    throw new Error(`worktree 存在可确认的残留：未提交文件 ${snapshot.paths.length} 个、未合并提交 ${snapshot.discardedCommits} 个；删除需要明确弃置意图`)
   }
-  const parsed = Number.parseInt(countRun.stdout.trim(), 10)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+  const authorization = Object.freeze({
+    id: randomUUID(), worktree: worktree.path, branch: worktree.branch, discardChanges
+  })
+  removalSnapshots.set(authorization, snapshot.fingerprint)
+  return {
+    authorization,
+    preview: [
+      `删除工作树：${worktree.path}`,
+      `删除分支：${worktree.branch}（${snapshot.headId}）`,
+      `未提交文件 ${snapshot.paths.length} 个（含忽略文件 ${snapshot.ignoredPaths.length} 个）`,
+      `未合并提交 ${snapshot.discardedCommits} 个`,
+      ...snapshot.paths.map((path) => JSON.stringify(path))
+    ]
+  }
 }
 
 /**
@@ -262,16 +322,13 @@ export async function exitWorktree(current: ExitWorktreeInput): Promise<Worktree
     throw new Error(`授权与目标 worktree 不匹配，拒绝删除：授权 ${authorization.worktree}@${authorization.branch}`)
   }
 
-  const repoCwd = current.originalCwd ?? current.path
-  const entry = await findWorktreeEntry(repoCwd, current.path)
-  if (entry === undefined || entry.branch !== current.branch) {
-    throw new Error(
-      `无法复核 worktree 身份，拒绝删除；可确认残留：路径 ${current.path}、分支 ${current.branch}`
-    )
-  }
-
-  const discardedFiles = await countPendingFiles(current.path)
-  const discardedCommits = await countUnmergedCommits(repoCwd, current.baseBranch, current.branch)
+  const fingerprint = removalSnapshots.get(authorization)
+  if (fingerprint === undefined) throw new Error('缺少宿主签发的一次性删除授权，或授权已用完')
+  removalSnapshots.delete(authorization)
+  const snapshot = await removalSnapshot(current)
+  if (snapshot.fingerprint !== fingerprint) throw new Error('删除审批后工作树残留或分支已漂移，请重新审批')
+  const { discardedCommits, headId, repoCwd } = snapshot
+  const discardedFiles = snapshot.paths.length
   const hasResidue = discardedFiles > 0 || discardedCommits > 0
   if (hasResidue && !(current.discard_changes === true && authorization.discardChanges === true)) {
     throw new Error(
@@ -280,11 +337,13 @@ export async function exitWorktree(current: ExitWorktreeInput): Promise<Worktree
     )
   }
 
-  const removed = await runGit(['worktree', 'remove', '--force', current.path], repoCwd)
+  const removed = await runGit([
+    'worktree', 'remove', ...(discardedFiles > 0 ? ['--force'] : []), '--', current.path
+  ], repoCwd)
   if (!removed.ok) {
     throw new Error(`删除 worktree 失败：${removed.stderr.trim() || removed.stdout.trim()}；可确认残留：路径 ${current.path}`)
   }
-  const deleted = await runGit(['branch', '-D', current.branch], repoCwd)
+  const deleted = await runGit(['update-ref', '-d', `refs/heads/${current.branch}`, headId], repoCwd)
   if (!deleted.ok) {
     throw new Error(`删除专用分支失败：${deleted.stderr.trim() || deleted.stdout.trim()}；可确认残留：分支 ${current.branch}`)
   }

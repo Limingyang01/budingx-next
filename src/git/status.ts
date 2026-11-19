@@ -25,7 +25,7 @@ export type GitStatus = {
 }
 
 export type ReadGitStatusOptions = {
-  /** 子进程环境（测试注入；缺省继承 process.env）。 */
+  /** 子进程环境（测试注入；生产过滤继承的 Git 控制变量）。 */
   env?: Record<string, string | undefined>
   /** git 可执行文件（测试注入；缺省 `git`）。 */
   gitCommand?: string
@@ -36,6 +36,13 @@ type RunResult = {
   notFound: boolean
   stdout: string
   stderr: string
+}
+
+/** Git 子进程从指定 cwd 定位仓库与索引。 */
+export function gitEnvironment(): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_'))
+  )
 }
 
 function runGit(
@@ -49,7 +56,7 @@ function runGit(
       command,
       // `--no-optional-locks`：不与检查点操作争抢索引锁（design §7.1 / F-17）。
       ['--no-optional-locks', ...args],
-      { cwd, env: env ?? process.env, maxBuffer: 8 * 1024 * 1024, windowsHide: true },
+      { cwd, env: env ?? gitEnvironment(), maxBuffer: 8 * 1024 * 1024, windowsHide: true },
       (error, stdout, stderr) => {
         if (error === null) {
           resolve({ ok: true, notFound: false, stdout, stderr })

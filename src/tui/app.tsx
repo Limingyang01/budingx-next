@@ -611,23 +611,26 @@ export function App({
       const current = question.questions[index]
       if (current === undefined) return
       const optionCount = current.options.length + 1
-      const answerFor = (merged: Record<string, string[]>): Record<string, string> => {
+      const commit = (
+        selections: Record<string, string[]>,
+        customAnswers: Record<string, string>
+      ): boolean => {
         const answers: Record<string, string> = {}
-        for (const item of question.questions) {
-          const values = merged[item.question] ?? []
-          const other = questionOther[item.question] ?? ''
-          if (values.length > 0) answers[item.question] = values.join(', ')
-          else if (other !== '') answers[item.question] = other
-        }
-        return answers
-      }
-      const commit = (merged: Record<string, string[]>) => {
         if (index + 1 < question.questions.length) {
           setQuestionIndex(index + 1)
           setQuestionCursor(0)
-          return
+          setHint('')
+          return true
         }
-        session.answerQuestion(question.questionId, answerFor(merged))
+        for (const item of question.questions) {
+          const values = selections[item.question] ?? []
+          const other = customAnswers[item.question]
+          if (values.length > 0) answers[item.question] = values.join(', ')
+          else if (other !== undefined) answers[item.question] = other
+        }
+        const result = session.answerQuestion(question.questionId, answers)
+        setHint(result.ok ? '' : (result.reason ?? pick('无法提交答案', 'Could not submit answers')))
+        return result.ok
       }
       if (key.upArrow || (key.tab && key.shift)) {
         setQuestionCursor((cursor) => (cursor + optionCount - 1) % optionCount)
@@ -669,10 +672,13 @@ export function App({
             return
           }
           const merged = { ...questionSelections, [keyText]: [] }
-          setQuestionOther({ ...questionOther, [keyText]: custom })
-          editor.setText('')
-          setInput('')
-          commit(merged)
+          const customAnswers = { ...questionOther, [keyText]: custom }
+          setQuestionSelections(merged)
+          setQuestionOther(customAnswers)
+          if (commit(merged, customAnswers)) {
+            editor.setText('')
+            setInput('')
+          }
           return
         }
         const label = current.options[questionCursor].label
@@ -683,22 +689,35 @@ export function App({
             ] }
           : { ...questionSelections, [keyText]: [label] }
         setQuestionSelections(merged)
-        commit(merged)
+        commit(merged, questionOther)
         return
       }
     }
-    if (planEditing !== null && !typing) {
+    if (planEditing !== null) {
       if (key.escape) {
         setPlanEditing(null)
         editor.setText('')
         setInput('')
         return
       }
-      if (key.return) {
-        gateway.resolve(planEditing.requestId, 'allow', 'user', undefined, editor.text.trim())
+      if (key.return && !key.shift) {
+        const edited = editor.text.trim()
+        if (edited === '') {
+          setHint(pick('计划正文不能为空', 'Plan text cannot be empty'))
+          return
+        }
+        gateway.resolve(planEditing.requestId, 'allow', 'user', undefined, edited)
         setPlanEditing(null)
+        editor.setText('')
+        setInput('')
+        setHint('')
         return
       }
+      if (applyKey(editor, text, key, { busy: session.isBusy }).handled) {
+        setInput(editor.text)
+        bumpEditor()
+      }
+      return
     }
     const approval = frame.approval
     const previewLength = approval?.preview?.length ?? 0
@@ -721,9 +740,11 @@ export function App({
       return
     }
     if (approval !== undefined && approval.planId !== undefined && !typing && editor.isEmpty && text === 'e') {
-      const seed = frame.plan !== undefined
-        ? [frame.plan.goal, ...frame.plan.steps.map((step) => `${step.id} ${step.title}`)].join('；')
-        : ''
+      const seed = gateway.pendingRequests.find((request) => request.requestId === approval.requestId)?.planText
+      if (seed === undefined) {
+        setHint(pick('计划审批已失效', 'Plan approval is no longer available'))
+        return
+      }
       editor.setText(seed)
       setInput(editor.text)
       bumpEditor()

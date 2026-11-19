@@ -1,5 +1,6 @@
 // SP004 T19 · 前台阻塞预算自动转后台（design §4.4，CE-16）。
 // 真实进程证据：测试注入缩短预算（生产默认 EXEC_BLOCKING_BUDGET_MS=15000）。
+import { createHostProcessFixture } from './helpers/host-process.mjs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -20,19 +21,7 @@ async function cleanupDir(dir) {
 import { createCommandRunner } from '../../tui/dist/exec/runner.js'
 import { createSandboxPolicy } from '../../tui/dist/exec/sandbox-policy.js'
 
-const verifiedBackend = {
-  id: 'synthetic-backend',
-  label: '合成验收后端',
-  verified: true,
-  capabilities: {
-    allowWrite: [],
-    denyWrite: [],
-    allowRead: [],
-    denyRead: [],
-    networkDomains: [],
-    canEnforceNetwork: true
-  }
-}
+const verifiedBackend = createHostProcessFixture()
 
 function makeRunner(home, extra = {}) {
   return createCommandRunner({

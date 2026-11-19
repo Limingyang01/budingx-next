@@ -1,4 +1,5 @@
 // SP004 T1 · 编码任务完成证据判定（设计 §5.2 判定表，纯函数）。
+import { createHostProcessFixture } from '../../exec/test/helpers/host-process.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { TASK_PHASES, isTestCommand, canClaimDone } from '../../tui/dist/core/coding.js'
@@ -405,19 +406,7 @@ test('T13-11 真实命令执行证据经工具回调进入跟踪器（CT-08）',
   const { createExecTools } = await import('../../tui/dist/exec/tools.js')
   const { createCommandRunner } = await import('../../tui/dist/exec/runner.js')
   const { createSandboxPolicy } = await import('../../tui/dist/exec/sandbox-policy.js')
-  const verifiedBackend = {
-    id: 'synthetic-backend',
-    label: '合成验收后端',
-    verified: true,
-    capabilities: {
-      allowWrite: [],
-      denyWrite: [],
-      allowRead: [],
-      denyRead: [],
-      networkDomains: [],
-      canEnforceNetwork: true
-    }
-  }
+  const verifiedBackend = createHostProcessFixture()
   const runner = createCommandRunner({
     defaultCwd: process.cwd(),
     sandboxPolicy: createSandboxPolicy({ backend: verifiedBackend })

@@ -2,6 +2,7 @@
 // 证据层级 L2：真实 Ink 帧 + 真实 workspace 文件 + 真实子进程，唯一假件是模型脚本。
 // 场景：临时项目内置一个失败测试，模型走「定位→修改→运行测试→读失败→修复→复测通过」，
 // 完成声明必须携带真实测试证据；全程用户预置的无关文件逐字节不变。
+import { createHostProcessFixture } from '../../exec/test/helpers/host-process.mjs'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -25,19 +26,7 @@ const SNAPSHOT = {
 }
 
 // 合成验收后端：隔离决策层与真实进程解耦，行为与 T20 验收一致。
-const verifiedBackend = {
-  id: 'synthetic-backend',
-  label: '合成验收后端',
-  verified: true,
-  capabilities: {
-    allowWrite: [],
-    denyWrite: [],
-    allowRead: [],
-    denyRead: [],
-    networkDomains: [],
-    canEnforceNetwork: true
-  }
-}
+const verifiedBackend = createHostProcessFixture()
 
 function scriptProvider(script) {
   return {

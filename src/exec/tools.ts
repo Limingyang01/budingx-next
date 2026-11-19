@@ -15,6 +15,8 @@ export type ExecToolsOptions = {
   runner: CommandRunner
   /** 工作区根：命令的缺省工作目录（宿主管有，模型不可指定）。 */
   defaultCwd: string
+  /** 当前工作目录由宿主更新，例如进入或退出专用 worktree。 */
+  getCwd?: () => string
   /** 平台注入（测试用）；缺省 process.platform。 */
   platform?: NodeJS.Platform
   /** 已验收的隔离后端标识，仅用于审批预览展示。 */
@@ -121,6 +123,8 @@ function formatResult(result: CommandResult): string {
   } else if (result.exitCode !== undefined) {
     lines.push(`exit_code: ${result.exitCode}`)
   }
+  lines.push(`outcome: ${result.outcome}`)
+  if (result.errorCode !== undefined) lines.push(`error_code: ${result.errorCode}`)
   if (result.stdout !== '') lines.push('--- stdout ---', result.stdout.replace(/\n$/, ''))
   if (result.stderr !== '') lines.push('--- stderr ---', result.stderr.replace(/\n$/, ''))
   if (result.persistedOutputPath !== undefined) {
@@ -135,23 +139,23 @@ function formatResult(result: CommandResult): string {
     // 显式后台：回执说明如何查询进度与取消（design §4.4）。
     lines.push('--- note ---', '命令已在后台执行；可用任务 ID 查询进度或取消。')
   }
-  if (lines.length === 0) lines.push('exit_code: 0')
   return lines.join('\n')
 }
 
 export function createExecTools(options: ExecToolsOptions): ToolHandler[] {
   const platform = options.platform ?? process.platform
+  const currentCwd = options.getCwd ?? (() => options.defaultCwd)
 
   function makeHandler(name: ExecToolName): ToolHandler {
     const interpreter = selectInterpreter(name, platform)
     const interpreterLabel = 'error' in interpreter ? name : interpreter.label
 
-    function previewOf(args: Args) {
+    function previewOf(args: Args, cwd: string) {
       const destructive = detectDestructiveCommand(args.command)
       const lines = [
         `命令：${args.command}`,
         `解释器：${interpreterLabel}`,
-        `工作目录：${options.defaultCwd}`,
+        `工作目录：${cwd}`,
         `超时：${args.timeoutMs ?? 120000}ms`,
         `执行方式：${args.runInBackground === true ? '后台' : '前台（超 15s 自动转后台）'}`,
         `隔离后端：${options.sandboxBackendId ?? '未启用（仅宿主托管操作）'}`
@@ -172,19 +176,22 @@ export function createExecTools(options: ExecToolsOptions): ToolHandler[] {
       return { preview: lines }
     }
 
-    async function runCommand(args: Args, context: ToolContext): Promise<string> {
+    const readOnly = (args: Args) =>
+      name === 'Bash' && args.runInBackground !== true && isReadOnlyCommand(args.command)
+
+    async function runCommand(args: Args, cwd: string, context: ToolContext): Promise<string> {
+      if (cwd !== currentCwd()) throw inputError('工作目录在审批期间发生变化，请重新申请执行')
       const guidance = gitGuidance(args.command)
       if (guidance !== undefined) throw inputError(guidance)
       if ('error' in interpreter) throw inputError(interpreter.error)
-      const startedAt = Date.now()
-      const emitStarted = (taskId?: string) => {
+      const emitStarted = ({ taskId, startedAt }: { taskId?: string; startedAt: number }) => {
         context.emit?.({
           type: 'command_started',
           turnId: context.turnId ?? '',
           callId: context.callId ?? '',
           command: args.command,
           interpreter: interpreterLabel,
-          cwd: options.defaultCwd,
+          cwd,
           ...(taskId !== undefined ? { taskId } : {}),
           startedAt
         })
@@ -196,7 +203,14 @@ export function createExecTools(options: ExecToolsOptions): ToolHandler[] {
           ...(args.timeoutMs !== undefined ? { timeoutMs: args.timeoutMs } : {}),
           ...(args.runInBackground !== undefined ? { runInBackground: args.runInBackground } : {})
         },
-        { signal: context.signal, cwd: options.defaultCwd, onStarted: (info) => emitStarted(info.taskId) }
+        {
+          signal: context.signal,
+          cwd,
+          turnId: context.turnId,
+          callId: context.callId,
+          mode: readOnly(args) ? 'read_only' : 'workspace',
+          onStarted: emitStarted
+        }
       )
       // 前台终态结果作为完成证据上报（SP004 T13，CT-07）；后台任务完成另由 command_finished 事件承载。
       if (result.outcome !== 'running') context.onCommandResult?.(args.command, result)
@@ -232,7 +246,7 @@ export function createExecTools(options: ExecToolsOptions): ToolHandler[] {
           }
         })()
         if (args === undefined) return 'execute'
-        if (name === 'Bash' && args.runInBackground !== true && isReadOnlyCommand(args.command)) {
+        if (readOnly(args)) {
           return 'read'
         }
         return 'execute'
@@ -242,16 +256,45 @@ export function createExecTools(options: ExecToolsOptions): ToolHandler[] {
       },
       prepareApproval(input: unknown) {
         const args = readArgs(input)
+        const cwd = currentCwd()
         return {
-          ...previewOf(args),
-          execute: (context: ToolContext) => runCommand(args, context)
+          ...previewOf(args, cwd),
+          execute: (context: ToolContext) => runCommand(args, cwd, context)
         }
       },
       async execute(input: unknown, context: ToolContext): Promise<string> {
-        return await runCommand(readArgs(input), context)
+        return await runCommand(readArgs(input), currentCwd(), context)
       }
     }
   }
 
   return [makeHandler('Bash'), makeHandler('PowerShell')]
+}
+
+export function createBackgroundTaskTools(runner: CommandRunner): ToolHandler[] {
+  const parameters = {
+    type: 'object',
+    properties: { task_id: { type: 'string' } },
+    required: ['task_id'],
+    additionalProperties: false
+  }
+  return (['TaskStatus', 'TaskCancel'] as const).map((name) => ({
+    name,
+    parameters,
+    summary: name === 'TaskStatus' ? '查询本会话后台命令的状态与输出。' : '取消本会话仍在运行的后台命令。',
+    describe: () => name,
+    // Both operations address a session-owned handle and do not write to the workspace.
+    capability: () => 'read',
+    async execute(input: unknown) {
+      const values = input as { task_id?: unknown } | null
+      const id = values?.task_id
+      if (typeof id !== 'string' || id.trim() === '' || Object.keys(values ?? {}).length !== 1) {
+        throw inputError('需要提供本会话的后台 task_id')
+      }
+      const result = runner.status(id)
+      if (result === undefined) throw inputError('本会话没有该后台任务')
+      if (name === 'TaskStatus') return formatResult(result)
+      return runner.cancel(id) ? '已请求取消后台任务。' : '后台任务已结束。'
+    }
+  }))
 }

@@ -4,9 +4,14 @@
 // 条件更新 ref 要求旧值等于已审 HEAD；存在钩子/签名策略时拒绝（无法保留语义）。
 import { execFile } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import {
+  closeSync, existsSync, lstatSync, mkdtempSync, openSync, readFileSync,
+  realpathSync, renameSync, rmSync, writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import type { ChangeRecord } from '../workspace/checkpoint.js'
+import { gitEnvironment } from './status.js'
 
 /** 待提交文件：content=null 表示删除（工作区须已移除该文件）。 */
 export type CommitFile = {
@@ -35,10 +40,10 @@ export type CommitAuthorization = {
   message: string
   patchDigest: string
   expectedTree: string
-  filePaths: string[]
+  filePaths: readonly string[]
   createdAt: number
   /** 已使用或已释放；不可复用。 */
-  consumed: boolean
+  readonly consumed: boolean
 }
 
 export type CommitSnapshot = {
@@ -55,6 +60,9 @@ export type CommitResult = {
 
 type GitResult = { stdout: string; stderr: string; status: number }
 
+const issuedAuthorizations = new WeakSet<CommitAuthorization>()
+const usedAuthorizations = new WeakSet<CommitAuthorization>()
+
 function runGit(
   cwd: string,
   args: string[],
@@ -63,12 +71,16 @@ function runGit(
   return new Promise((resolvePromise, rejectPromise) => {
     const child = execFile(
       'git',
-      args,
+      ['--no-optional-locks', ...args],
       {
         cwd,
         windowsHide: true,
         maxBuffer: 32 * 1024 * 1024,
-        env: { ...process.env, ...options.env }
+        env: {
+          ...gitEnvironment(),
+          GIT_LITERAL_PATHSPECS: '1',
+          ...options.env
+        }
       },
       (error, stdout, stderr) => {
         if (error && options.allowFailure !== true) {
@@ -97,10 +109,12 @@ function normalizeFilePath(raw: string): string {
     throw new Error(`非法提交路径（必须是 worktree 内的相对路径）：${JSON.stringify(raw)}`)
   }
   const segments = normalized.split('/')
-  if (segments.some((segment) => segment === '' || segment === '.' || segment === '..')) {
+  if (segments.some((segment) => segment === '' || segment === '.' || segment === '..' || segment.includes('\0'))) {
     throw new Error(`非法提交路径（禁止空段/./..）：${JSON.stringify(raw)}`)
   }
-  if (segments[0] === '.git') throw new Error(`非法提交路径（不允许 Git 元数据）：${JSON.stringify(raw)}`)
+  if (segments.some((segment) => segment.toLowerCase() === '.git')) {
+    throw new Error(`非法提交路径（不允许 Git 元数据）：${JSON.stringify(raw)}`)
+  }
   return segments.join('/')
 }
 
@@ -134,6 +148,7 @@ export function patchDigestOf(files: CommitFile[]): string {
 type RepoIdentity = {
   worktree: string
   repository: string
+  indexPath: string
   head: string
   branch: string
 }
@@ -158,7 +173,7 @@ async function readIdentity(worktreeInput: string): Promise<RepoIdentity> {
   if (!branch.includes('-budingx/')) {
     throw new Error(`必须在产品管理的专用分支上提交（形如 <base>-budingx/<name>）：当前分支 ${branch}`)
   }
-  return { worktree, repository, head, branch }
+  return { worktree, repository, indexPath: join(realDir(gitDir), 'index'), head, branch }
 }
 
 async function assertCommitPreconditions(identity: RepoIdentity): Promise<void> {
@@ -173,7 +188,7 @@ async function assertCommitPreconditions(identity: RepoIdentity): Promise<void> 
   const hooksPath = (await runGit(identity.worktree, ['config', '--get', 'core.hooksPath'], { allowFailure: true }))
     .stdout.trim()
   if (hooksPath !== '') throw new Error(`该仓库启用了自定义提交钩子路径（core.hooksPath=${hooksPath}），受控提交无法保留钩子语义`)
-  for (const hook of ['pre-commit', 'prepare-commit-msg', 'commit-msg']) {
+  for (const hook of ['pre-commit', 'prepare-commit-msg', 'commit-msg', 'post-commit']) {
     if (existsSync(join(identity.repository, 'hooks', hook))) {
       throw new Error(`该仓库存在适用的提交钩子（${hook}），受控提交无法保留钩子语义，已拒绝`)
     }
@@ -186,8 +201,66 @@ async function assertCommitPreconditions(identity: RepoIdentity): Promise<void> 
   if (userName === '' || userEmail === '') throw new Error('异常 Git 配置：缺少 user.name/user.email，无法受控提交')
 }
 
-/** 用临时索引从已审 HEAD 构造受控 tree（不触碰专用 worktree 的真实索引）。 */
-async function computeTree(worktree: string, head: string, files: CommitFile[]): Promise<string> {
+async function readTreeEntry(worktree: string, head: string, path: string): Promise<{ mode: string; oid: string } | undefined> {
+  const entry = (await runGit(worktree, ['ls-tree', '-z', head, '--', path])).stdout
+  if (entry === '') return undefined
+  const match = /^(100644|100755) blob ([0-9a-f]+)\t/.exec(entry)
+  if (!match) throw new Error(`受控提交只接受普通文件：${path}`)
+  return { mode: match[1]!, oid: match[2]! }
+}
+
+async function hashWorktreeContent(worktree: string, file: { path: string; content: string }, write = false): Promise<string> {
+  const attributes = (await runGit(worktree, ['check-attr', '-z', 'filter', '--', file.path])).stdout.split('\0')
+  if (attributes.length !== 4 || !['unspecified', 'unset'].includes(attributes[2]!)) {
+    throw new Error(`受控提交不执行自定义 Git 文件过滤器：${file.path}`)
+  }
+  const result = await runGit(
+    worktree,
+    [
+      '-c', 'filter.unset.process=', '-c', 'filter.unset.clean=',
+      '-c', 'filter.unspecified.process=', '-c', 'filter.unspecified.clean=',
+      'hash-object', ...(write ? ['-w'] : []), `--path=${file.path}`, '--stdin'
+    ],
+    { input: file.content }
+  )
+  return result.stdout.trim()
+}
+
+/** 从 HEAD 和未撤销的 checkpoint 证明文件改动由本次托管编辑产生。 */
+export async function commitFilesFromCheckpoints(
+  worktree: string,
+  head: string,
+  records: readonly ChangeRecord[]
+): Promise<CommitFile[]> {
+  const changes = new Map<string, { before?: string; after: string }>()
+  for (const record of records) {
+    if (record.undone) continue
+    const path = normalizeFilePath(record.path)
+    const previous = changes.get(path)
+    if (previous && previous.after !== record.before) {
+      throw new Error(`文件包含无法归属的中间改动：${path}`)
+    }
+    if (previous) previous.after = record.after
+    else changes.set(path, { before: record.before, after: record.after })
+  }
+
+  const files: CommitFile[] = []
+  for (const [path, change] of changes) {
+    const base = await readTreeEntry(worktree, head, path)
+    const before = change.before === undefined
+      ? undefined
+      : await hashWorktreeContent(worktree, { path, content: change.before })
+    if (base?.oid !== before) throw new Error(`工作区文件包含审批前的用户改动或基线漂移：${path}`)
+    if (change.before !== change.after &&
+        await hashWorktreeContent(worktree, { path, content: change.after }) !== base?.oid) {
+      files.push({ path, content: change.after })
+    }
+  }
+  return files
+}
+
+/** 用临时索引从已审 HEAD 构造受控 tree 与对应索引。 */
+async function computeTree(worktree: string, head: string, files: CommitFile[]): Promise<{ tree: string; index: Buffer }> {
   const tempDir = mkdtempSync(join(tmpdir(), 'budingx-index-'))
   const indexPath = join(tempDir, 'index')
   const env = { GIT_INDEX_FILE: indexPath }
@@ -195,30 +268,23 @@ async function computeTree(worktree: string, head: string, files: CommitFile[]):
     await runGit(worktree, ['read-tree', head], { env })
     for (const file of files) {
       if (file.content === null) {
-        await runGit(worktree, ['update-index', '--force-remove', '--', file.path], { env, allowFailure: true })
+        await runGit(worktree, ['update-index', '--force-remove', '--', file.path], { env })
         continue
       }
-      const blob = (await runGit(worktree, ['hash-object', '-w', '--stdin'], { env, input: file.content })).stdout.trim()
-      await runGit(worktree, ['update-index', '--add', '--cacheinfo', `100644,${blob},${file.path}`], { env })
+      const blob = await hashWorktreeContent(worktree, { path: file.path, content: file.content }, true)
+      const mode = (await readTreeEntry(worktree, head, file.path))?.mode ?? '100644'
+      await runGit(worktree, ['update-index', '--add', '--cacheinfo', `${mode},${blob},${file.path}`], { env })
     }
-    return (await runGit(worktree, ['write-tree'], { env })).stdout.trim()
+    const tree = (await runGit(worktree, ['write-tree'], { env })).stdout.trim()
+    return { tree, index: readFileSync(indexPath) }
   } finally {
     rmSync(tempDir, { recursive: true, force: true })
   }
 }
 
 async function changedPaths(worktree: string): Promise<string[]> {
-  const raw = (await runGit(worktree, ['status', '--porcelain=v1', '-z'])).stdout
-  const records = raw.split('\0')
-  const paths: string[] = []
-  for (let index = 0; index < records.length; index += 1) {
-    const record = records[index]
-    if (record === '' || record.length < 4) continue
-    const code = record.slice(0, 2)
-    if (code.includes('R') || code.includes('C')) index += 1 // 跳过重命名/复制来源路径
-    paths.push(record.slice(3).replace(/\\/g, '/'))
-  }
-  return paths
+  const raw = (await runGit(worktree, ['status', '--porcelain=v1', '--untracked-files=all', '--no-renames', '-z'])).stdout
+  return raw.split('\0').filter(Boolean).map((record) => record.slice(3).replace(/\\/g, '/'))
 }
 
 async function assertWorktreeMatchesPatch(identity: RepoIdentity, files: CommitFile[]): Promise<void> {
@@ -230,33 +296,21 @@ async function assertWorktreeMatchesPatch(identity: RepoIdentity, files: CommitF
   }
   for (const file of files) {
     const absolute = join(identity.worktree, file.path)
+    const info = lstatSync(absolute, { throwIfNoEntry: false })
     if (file.content === null) {
-      if (existsSync(absolute)) throw new Error(`审批为删除的文件仍存在，内容已漂移：${file.path}`)
+      if (info !== undefined) throw new Error(`审批为删除的文件仍存在，内容已漂移：${file.path}`)
       continue
     }
-    if (existsSync(absolute)) {
-      const actual = readFileSync(absolute, 'utf8')
-      if (actual !== file.content) throw new Error(`审批内容与工作区实际内容不一致（内容漂移）：${file.path}`)
+    if (!info?.isFile()) throw new Error(`审批文件已缺失或不再是普通文件（内容漂移）：${file.path}`)
+    const real = realpathSync.native(absolute)
+    const rel = relative(identity.worktree, real)
+    if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel) ||
+        rel.split(sep).join('/') !== file.path) {
+      throw new Error(`审批文件的真实路径已漂移：${file.path}`)
     }
+    const actual = readFileSync(real)
+    if (!actual.equals(Buffer.from(file.content))) throw new Error(`审批内容与工作区实际内容不一致（内容漂移）：${file.path}`)
   }
-}
-
-function assertAuthorizationShape(value: unknown): asserts value is CommitAuthorization {
-  const auth = value as CommitAuthorization | null
-  const valid =
-    typeof auth === 'object' &&
-    auth !== null &&
-    typeof auth.id === 'string' &&
-    typeof auth.repository === 'string' &&
-    typeof auth.worktree === 'string' &&
-    typeof auth.branch === 'string' &&
-    typeof auth.head === 'string' &&
-    typeof auth.message === 'string' &&
-    typeof auth.patchDigest === 'string' &&
-    typeof auth.expectedTree === 'string' &&
-    Array.isArray(auth.filePaths) &&
-    typeof auth.consumed === 'boolean'
-  if (!valid) throw new Error('未授权的提交请求：缺少有效的一次性授权')
 }
 
 /** 审批快照：校验专用 worktree/分支/HEAD/索引/钩子/归属，产出一次性授权与预览行。 */
@@ -275,7 +329,7 @@ export async function createCommitAuthorization(request: CommitRequest): Promise
   }
   await assertCommitPreconditions(identity)
   await assertWorktreeMatchesPatch(identity, files)
-  const expectedTree = await computeTree(identity.worktree, identity.head, files)
+  const { tree: expectedTree } = await computeTree(identity.worktree, identity.head, files)
   const patchDigest = patchDigestOf(files)
   const authorization: CommitAuthorization = {
     id: randomUUID(),
@@ -288,8 +342,13 @@ export async function createCommitAuthorization(request: CommitRequest): Promise
     expectedTree,
     filePaths: files.map((file) => file.path),
     createdAt: Date.now(),
-    consumed: false
+    get consumed() { return usedAuthorizations.has(this) }
   }
+  Object.freeze(authorization.filePaths)
+  Object.freeze(authorization)
+  const patch = (await runGit(identity.worktree, [
+    'diff-tree', '-p', '--no-ext-diff', '--no-textconv', '--no-renames', identity.head, expectedTree
+  ])).stdout.trimEnd()
   const preview = [
     `目标分支：${authorization.branch}`,
     `基准 HEAD：${authorization.head}`,
@@ -297,8 +356,10 @@ export async function createCommitAuthorization(request: CommitRequest): Promise
     `补丁摘要：${patchDigest.slice(0, 16)}…`,
     `预计 tree：${expectedTree}`,
     '文件：',
-    ...files.map((file) => `  ${file.content === null ? 'D' : 'M'} ${file.path}`)
+    ...files.map((file) => `  ${file.content === null ? 'D' : 'M'} ${file.path}`),
+    ...patch.split('\n')
   ]
+  issuedAuthorizations.add(authorization)
   return { authorization, preview }
 }
 
@@ -307,38 +368,39 @@ export async function commitWithAuthorization(
   authorization: CommitAuthorization,
   files: CommitFile[]
 ): Promise<CommitResult> {
-  assertAuthorizationShape(authorization)
+  if (!issuedAuthorizations.has(authorization)) {
+    throw new Error('未授权的提交请求：缺少宿主签发的一次性授权')
+  }
   if (authorization.consumed) throw new Error('该提交授权已使用或已释放，不能重复提交')
+  usedAuthorizations.add(authorization)
+  const normalized = normalizeFiles(files ?? [])
+  const identity = await readIdentity(authorization.worktree)
+  if (identity.repository !== authorization.repository) throw new Error('审批后仓库身份已漂移，拒绝提交')
+  if (identity.branch !== authorization.branch) throw new Error('审批后专用分支已漂移，拒绝提交')
+  if (identity.head !== authorization.head) throw new Error('审批后 HEAD 已漂移，拒绝提交')
+  if (patchDigestOf(normalized) !== authorization.patchDigest) {
+    throw new Error('审批内容漂移：补丁摘要不一致，拒绝提交')
+  }
+
+  // 按 Git 的索引锁约定阻止并发暂存。提交对象和新索引都准备好后才推进 ref。
+  const lockPath = `${identity.indexPath}.lock`
+  const lockFd = openSync(lockPath, 'wx')
+  let openLock = true
+  let publishedIndex = false
   try {
-    const normalized = normalizeFiles(files ?? [])
-    const identity = await readIdentity(authorization.worktree)
-    if (identity.repository !== authorization.repository) {
-      throw new Error(`仓库身份不一致（审批 ${authorization.repository}，当前 ${identity.repository}），拒绝提交`)
-    }
-    if (identity.branch !== authorization.branch) {
-      throw new Error(`审查后分支已漂移（审批 ${authorization.branch}，当前 ${identity.branch}），拒绝提交`)
-    }
-    if (identity.head !== authorization.head) {
-      throw new Error(`审查后 HEAD 已漂移（审批 ${authorization.head}，当前 ${identity.head}），拒绝提交`)
-    }
     await assertCommitPreconditions(identity)
-    if (patchDigestOf(normalized) !== authorization.patchDigest) {
-      throw new Error('审批内容漂移：补丁摘要不一致，拒绝提交')
-    }
-    if (
-      normalized.length !== authorization.filePaths.length ||
-      normalized.some((file, index) => file.path !== authorization.filePaths[index])
-    ) {
-      throw new Error('审批文件清单与提交文件不一致，拒绝提交')
-    }
-    const tree = await computeTree(identity.worktree, identity.head, normalized)
+    const { tree, index } = await computeTree(identity.worktree, identity.head, normalized)
     if (tree !== authorization.expectedTree) {
       throw new Error(`待提交树与审批 tree 不一致（审批 ${authorization.expectedTree}，实际 ${tree}），拒绝提交`)
     }
     const sha = (
       await runGit(identity.worktree, ['commit-tree', tree, '-p', identity.head, '-m', authorization.message])
     ).stdout.trim()
-    if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error(`受控提交未返回有效 SHA：${sha}`)
+    if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(sha)) throw new Error(`受控提交未返回有效 SHA：${sha}`)
+    writeFileSync(lockFd, index)
+    closeSync(lockFd)
+    openLock = false
+    await assertWorktreeMatchesPatch(identity, normalized)
     // 条件更新：旧值必须等于已审 HEAD，防止并发 ref 变更被覆盖。
     const updated = await runGit(
       identity.worktree,
@@ -350,10 +412,20 @@ export async function commitWithAuthorization(
         `专用分支 ref 在提交期间被并发修改，条件更新失败：${updated.stderr.trim() || 'old value mismatch'}`
       )
     }
-    authorization.consumed = true
+    try {
+      renameSync(lockPath, identity.indexPath)
+      publishedIndex = true
+    } catch (error) {
+      const ref = `refs/heads/${identity.branch}`
+      const rollback = await runGit(identity.worktree, ['update-ref', ref, identity.head, sha], { allowFailure: true })
+      if (rollback.status !== 0) {
+        throw new Error(`提交 ${sha} 已生成，但索引同步与条件回退失败；请检查专用 worktree：${identity.worktree}`, { cause: error })
+      }
+      throw new Error('专用 worktree 索引同步失败，分支已恢复至审批前 HEAD', { cause: error })
+    }
     return { sha, tree, branch: authorization.branch, files: normalized.map((file) => file.path) }
-  } catch (error) {
-    authorization.consumed = true
-    throw error
+  } finally {
+    if (openLock) closeSync(lockFd)
+    if (!publishedIndex) rmSync(lockPath, { force: true })
   }
 }

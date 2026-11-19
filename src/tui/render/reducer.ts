@@ -238,7 +238,26 @@ export function reduceFrame(
                 : 'idle',
         updatedAt: plan.updatedAt
       }
-      next.todos = todosFromPlan(next.plan, frame.todos)
+      if (frame.todos?.source !== 'tool') next.todos = todosFromPlan(next.plan, frame.todos)
+      return next
+    }
+    case 'todos_updated': {
+      const completedAt: Record<string, number> = {}
+      const occurrences = new Map<string, number>()
+      const items = event.items.map((item) => {
+        const count = (occurrences.get(item.content) ?? 0) + 1
+        occurrences.set(item.content, count)
+        const id = JSON.stringify([item.content, count])
+        if (item.status === 'completed') {
+          completedAt[id] = frame.todos?.completedAt[id] ?? event.updatedAt
+        }
+        return {
+          id,
+          content: item.status === 'in_progress' ? item.activeForm : item.content,
+          status: item.status
+        }
+      })
+      next.todos = { source: 'tool', items, updatedAt: event.updatedAt, completedAt }
       return next
     }
     case 'plan_mode_changed': {

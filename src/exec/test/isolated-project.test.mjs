@@ -3,6 +3,7 @@
 // 场景一：在预置了用户改动与草稿的隔离仓库内完成「读→改→跑测试→完成声明」，
 //         归属分析必须只把 Agent 的文件纳入提交范围，用户文件逐字节不变。
 // 场景二：计划批准后目标文件被外部改动，首个副作用调用必须被拒并列出漂移项。
+import { createHostProcessFixture } from './helpers/host-process.mjs'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { execFileSync } from 'node:child_process'
@@ -30,19 +31,7 @@ const SNAPSHOT = {
   capabilities: { tools: true }
 }
 
-const verifiedBackend = {
-  id: 'synthetic-backend',
-  label: '合成验收后端',
-  verified: true,
-  capabilities: {
-    allowWrite: [],
-    denyWrite: [],
-    allowRead: [],
-    denyRead: [],
-    networkDomains: [],
-    canEnforceNetwork: true
-  }
-}
+const verifiedBackend = createHostProcessFixture()
 
 const BUGGY = 'export function add(a, b) {\n  return a * b\n}\n'
 const FIXED = 'export function add(a, b) {\n  return a + b\n}\n'

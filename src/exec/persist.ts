@@ -21,29 +21,17 @@ export async function persistOutput(path: string, content: string): Promise<{ pa
 
 export interface CommandFinishedInput {
   taskId: string
+  callId?: string
+  turnId?: string
   outcome: CommandOutcome
   exitCode?: number
   outputPath?: string
   finishedAt: number
 }
 
-/** command_finished 事件构造器（纯函数；turnId/callId 由工具适配层补充）。 */
-export function buildCommandFinishedEvent(input: CommandFinishedInput): {
-  type: 'command_finished'
-  taskId: string
-  outcome: CommandOutcome
-  exitCode?: number
-  outputPath?: string
-  finishedAt: number
-} {
-  return {
-    type: 'command_finished',
-    taskId: input.taskId,
-    outcome: input.outcome,
-    exitCode: input.exitCode,
-    outputPath: input.outputPath,
-    finishedAt: input.finishedAt
-  }
+/** command_finished 事件构造器。 */
+export function buildCommandFinishedEvent(input: CommandFinishedInput): { type: 'command_finished' } & CommandFinishedInput {
+  return { type: 'command_finished', ...input }
 }
 
 /** command_finished 事件形状（T18）。 */

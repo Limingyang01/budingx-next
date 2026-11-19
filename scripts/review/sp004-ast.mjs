@@ -9,7 +9,6 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readFileSync, existsSync } from 'node:fs'
-import { relative, resolve } from 'node:path'
 import ts from 'typescript'
 
 const TEXT_NODE_MIN = 30
@@ -24,7 +23,7 @@ const REFERENCE_ALLOWLIST = [
   { ours: 'src/core/constants.ts', theirs: [], note: '纯常量/错误码表，参考仓无同名协议模块且不参与相似实现比较' },
   { ours: 'src/core/events.ts', theirs: ['src/QueryEngine.ts'] },
   { ours: 'src/core/exec.ts', theirs: ['src/tools/BashTool'] },
-  { ours: 'src/core/permissions.ts', theirs: ['src/components/permissions', 'src/hooks/useCanUseTool.ts'] },
+  { ours: 'src/core/permissions.ts', theirs: ['src/components/permissions', 'src/hooks/useCanUseTool.tsx'] },
   { ours: 'src/core/plan.ts', theirs: ['src/tools/EnterPlanModeTool', 'src/tools/ExitPlanModeTool'] },
   { ours: 'src/core/questions.ts', theirs: ['src/tools/AskUserQuestionTool'] },
   { ours: 'src/core/session.ts', theirs: ['src/QueryEngine.ts'] },
@@ -36,7 +35,7 @@ const REFERENCE_ALLOWLIST = [
   { ours: 'src/exec/output.ts', theirs: ['src/tools/BashTool'] },
   { ours: 'src/exec/persist.ts', theirs: [], note: '本仓会话输出落盘实现（设计 §4.4 规定路径），参考仓使用不同机制' },
   { ours: 'src/exec/readonly-commands.ts', theirs: ['src/tools/BashTool'] },
-  { ours: 'src/exec/runner.ts', theirs: ['src/tools/BashTool', 'src/utils/Shell'] },
+  { ours: 'src/exec/runner.ts', theirs: ['src/tools/BashTool', 'src/utils/Shell.ts'] },
   { ours: 'src/exec/sandbox-policy.ts', theirs: ['src/utils/sandbox'] },
   { ours: 'src/exec/sed-edit.ts', theirs: ['src/tools/FileEditTool'] },
   { ours: 'src/exec/tools.ts', theirs: ['src/tools/BashTool'] },
@@ -54,11 +53,20 @@ const REFERENCE_ALLOWLIST = [
   { ours: 'src/plan/validate.ts', theirs: ['src/tools/EnterPlanModeTool'] },
   { ours: 'src/tui/app.tsx', theirs: ['src/components', 'src/screens'] },
   { ours: 'src/tui/approval.ts', theirs: ['src/components/permissions'] },
-  { ours: 'src/tui/render/cards.ts', theirs: ['src/components/TaskListV2.tsx', 'src/components/BashModeProgress.tsx'] },
+  { ours: 'src/tui/git-tools.ts', theirs: ['src/tools/EnterWorktreeTool', 'src/tools/ExitWorktreeTool', 'src/components/WorktreeExitDialog.tsx'] },
+  {
+    ours: 'src/tui/render/cards.ts',
+    theirs: [
+      'src/components/TaskListV2.tsx',
+      'src/components/BashModeProgress.tsx',
+      'src/components/permissions/AskUserQuestionPermissionRequest',
+      'src/components/permissions/ExitPlanModePermissionRequest'
+    ]
+  },
   { ours: 'src/tui/render/reducer.ts', theirs: ['src/components'] },
   { ours: 'src/tui/render/types.ts', theirs: ['src/components'] },
   { ours: 'src/tui/runtime.ts', theirs: ['src/bootstrap', 'src/application'] },
-  { ours: 'src/workspace/policy.ts', theirs: ['src/components/permissions', 'src/hooks/useCanUseTool.ts'] }
+  { ours: 'src/workspace/policy.ts', theirs: ['src/components/permissions', 'src/hooks/useCanUseTool.tsx'] }
 ]
 
 // 人工处置：命中项的复核结论（按「本仓路径::单元名」）。
@@ -78,25 +86,77 @@ function parseArgs(argv) {
     if (value === '--reference') args.reference = argv[++index]
     else if (value === '--reference-revision') args.referenceRevision = argv[++index]
     else if (value === '--base') args.base = argv[++index]
+    else if (value === '--worktree') args.worktree = true
     else if (value === '--help' || value === '-h') args.help = true
     else throw new Error(`未知参数：${value}`)
   }
   return args
 }
 
-function git(cwd, args) {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+function git(cwd, args, input) {
+  return execFileSync('git', ['--no-replace-objects', ...args], {
+    cwd,
+    input,
+    stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+    maxBuffer: 64 * 1024 * 1024
+  })
 }
 
-function parseSource(path) {
-  const text = readFileSync(path, 'utf8')
-  return ts.createSourceFile(
+function gitCommit(cwd, revision) {
+  if (typeof revision !== 'string' || revision === '') throw new Error('缺少 Git revision')
+  return git(cwd, ['rev-parse', '--verify', '--end-of-options', `${revision}^{commit}`]).toString().trim()
+}
+
+function gitSourceFiles(cwd, commit, targets) {
+  if (targets.length === 0) return new Map()
+  const tree = git(cwd, ['--literal-pathspecs', 'ls-tree', '-r', '--full-tree', '-z', commit, '--', ...targets])
+  const files = new Map()
+  for (const record of tree.toString().split('\0').filter(Boolean)) {
+    const tab = record.indexOf('\t')
+    const [mode, type, oid] = record.slice(0, tab).split(' ')
+    const path = record.slice(tab + 1)
+    if (type === 'blob' && ['100644', '100755'].includes(mode) && /\.tsx?$/.test(path) && !path.endsWith('.d.ts')) {
+      files.set(path, oid)
+    }
+  }
+  return files
+}
+
+function gitBlobs(cwd, files) {
+  const oids = [...new Set(files.values())]
+  if (oids.length === 0) return new Map()
+  const output = git(cwd, ['cat-file', '--batch'], oids.join('\n') + '\n')
+  const blobs = new Map()
+  let offset = 0
+  for (const oid of oids) {
+    const end = output.indexOf(10, offset)
+    if (end < 0) throw new Error(`Git blob 响应缺失：${oid}`)
+    const [actual, type, length] = output.toString('ascii', offset, end).split(' ')
+    const size = Number(length)
+    const next = end + 1 + size
+    if (actual !== oid || type !== 'blob' || !Number.isSafeInteger(size) || size < 0 || output[next] !== 10) {
+      throw new Error(`Git blob 响应无效：${oid}`)
+    }
+    blobs.set(oid, output.toString('utf8', end + 1, next))
+    offset = next + 1
+  }
+  return blobs
+}
+
+function parseSource(path, text) {
+  const source = ts.createSourceFile(
     path,
     text,
     ts.ScriptTarget.Latest,
     true,
     path.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
   )
+  const diagnostic = source.parseDiagnostics[0]
+  if (diagnostic) {
+    const position = source.getLineAndCharacterOfPosition(diagnostic.start ?? 0)
+    throw new Error(`语法解析失败：${path}:${position.line + 1} TS${diagnostic.code}`)
+  }
+  return source
 }
 
 const TRIVIAL_KINDS = new Set([
@@ -197,8 +257,8 @@ function ownName(node, sf) {
   return `anonymous@${position.line + 1}`
 }
 
-function collectUnits(filePath) {
-  const sf = parseSource(filePath)
+function collectUnits(filePath, text) {
+  const sf = parseSource(filePath, text)
   const units = []
   const visit = (node) => {
     if (isFunctionLike(node)) {
@@ -248,57 +308,50 @@ function findHit(ours, theirs) {
   }
 }
 
-function referenceFiles(referenceRoot, target) {
-  const absolute = resolve(referenceRoot, target)
-  if (!existsSync(absolute)) return []
-  if (ts.sys.fileExists(absolute)) return absolute.endsWith('.d.ts') ? [] : [absolute]
-  const files = ts.sys.readDirectory(absolute, ['.ts', '.tsx'], undefined, undefined)
-  return files.filter((file) => !file.endsWith('.d.ts'))
-}
-
 function selfTest() {
   const cases = []
-  const created = []
-  const writeSnippet = (name, text) => {
-    const path = resolve(process.cwd(), `.sp004-ast-selftest-${name}.ts`)
-    ts.sys.writeFile(path, text)
-    created.push(path)
-    return path
-  }
-  const clean = () => {
-    for (const file of created) ts.sys.deleteFile?.(file)
-  }
 
   const base = `export function collect(items: string[]): string[] {\n  const output: string[] = []\n  for (const item of items) {\n    if (item.length > 2) {\n      const trimmed = item.trim()\n      if (trimmed.startsWith('#')) continue\n      output.push(trimmed)\n    }\n  }\n  return output\n}\n`
   const copy = `export function gather(values: string[]): string[] {\n  const result: string[] = []\n  for (const value of values) {\n    if (value.length > 2) {\n      const normalized = value.trim()\n      if (normalized.startsWith('#')) continue\n      result.push(normalized)\n    }\n  }\n  return result\n}\n`
   const different = `export async function runProcess(command: string, timeoutMs: number): Promise<number> {\n  const started = Date.now()\n  await new Promise((resolve) => setTimeout(resolve, 1))\n  if (Date.now() - started > timeoutMs) throw new Error('timeout')\n  return command.length\n}\n`
 
-  const pathA = writeSnippet('a', base)
-  const pathB = writeSnippet('b', copy + different)
-  const unitsA = collectUnits(pathA)
-  const unitsB = collectUnits(pathB)
+  const unitsA = collectUnits('a.ts', base)
+  const unitsB = collectUnits('b.ts', copy + different)
   const same = findHit(unitsA[0], unitsB.find((unit) => unit.name === 'gather'))
   const other = findHit(unitsA[0], unitsB.find((unit) => unit.name === 'runProcess'))
   cases.push({ name: '相似片段命中', ok: Boolean(same && same.metric === 'subtree' && same.shared.nodes >= TEXT_NODE_MIN) })
   cases.push({ name: '无关实现不命中', ok: other === undefined })
-  const shortUnits = collectUnits(writeSnippet('c', 'export const add = (a: number, b: number) => a + b\n'))
+  const shortUnits = collectUnits('c.ts', 'export const add = (a: number, b: number) => a + b\n')
   cases.push({
     name: '样板（<60 节点短函数）排除',
     ok: shortUnits.every((unit) => findHit(unit, unitsA[0]) === undefined)
   })
-  clean()
+  let invalidSourceRejected = false
+  try {
+    collectUnits('invalid.ts', 'export function invalid( {')
+  } catch (error) {
+    invalidSourceRejected = /invalid\.ts:1 TS\d+/.test(error.message)
+  }
+  cases.push({ name: '无效 TypeScript 阻断', ok: invalidSourceRejected })
   return cases
 }
 
-function ourChangedFiles(base) {
-  const output = git(process.cwd(), ['diff', '--name-only', `${base}...HEAD`, '--', 'src/**/*.ts', 'src/**/*.tsx'])
-  return output.split(/\r?\n/).filter((line) => line.length > 0)
+function ourChangedFiles(cwd, base, head, worktree) {
+  const sourceGlobs = ['src/**/*.ts', 'src/**/*.tsx']
+  const revisions = worktree ? [base] : [base, head]
+  const output = git(cwd, ['diff', '--diff-filter=ACMRT', '--name-only', '-z', ...revisions, '--', ...sourceGlobs])
+  const changed = new Set(output.toString().split('\0').filter(Boolean))
+  if (worktree) {
+    const untracked = git(cwd, ['ls-files', '--others', '--exclude-standard', '-z', '--', ...sourceGlobs])
+    for (const file of untracked.toString().split('\0').filter(Boolean)) changed.add(file)
+  }
+  return [...changed].sort()
 }
 
 function run() {
   const args = parseArgs(process.argv.slice(2))
   if (args.help) {
-    console.log('用法：node scripts/review/sp004-ast.mjs --reference <参考仓> --reference-revision <rev> --base <功能基线>')
+    console.log('用法：node scripts/review/sp004-ast.mjs --reference <参考仓> --reference-revision <rev> --base <功能基线> [--worktree]')
     return 0
   }
   if (!args.reference || !existsSync(args.reference)) throw new Error(`参考仓不存在：${args.reference ?? '(未提供)'}`)
@@ -307,41 +360,56 @@ function run() {
   const selfChecks = selfTest()
   for (const check of selfChecks) if (!check.ok) failures.push(`自检失败：${check.name}`)
 
-  const referenceRevision = git(args.reference, ['rev-parse', '--short=7', args.referenceRevision])
-  const baseCommit = git(process.cwd(), ['merge-base', args.base, 'HEAD'])
-  const changed = ourChangedFiles(baseCommit)
+  const cwd = process.cwd()
+  const referenceRevision = gitCommit(args.reference, args.referenceRevision)
+  const head = gitCommit(cwd, 'HEAD')
+  const baseCommit = git(cwd, ['merge-base', gitCommit(cwd, args.base), head]).toString().trim()
+  const changed = ourChangedFiles(cwd, baseCommit, head, args.worktree)
+  if (changed.length === 0) failures.push('没有可审核的 SP004 源码变更')
   const mapped = changed.map((file) => ({ file, rule: REFERENCE_ALLOWLIST.find((entry) => file === entry.ours) }))
   const uncovered = mapped.filter((entry) => entry.rule === undefined).map((entry) => entry.file)
   for (const file of uncovered) failures.push(`未覆盖路径（无映射）：${file}`)
 
+  const compared = mapped.filter((entry) => entry.rule !== undefined)
+  const referenceTargets = [...new Set(compared.flatMap(({ rule }) => rule.theirs))]
+  const referenceTree = gitSourceFiles(args.reference, referenceRevision, referenceTargets)
+  const referenceBlobs = gitBlobs(args.reference, referenceTree)
+  const referenceUnits = new Map()
+  for (const [path, oid] of referenceTree) {
+    referenceUnits.set(path, collectUnits(path, referenceBlobs.get(oid)))
+  }
+
+  const ownTree = args.worktree ? new Map() : gitSourceFiles(cwd, head, changed)
+  const ownBlobs = gitBlobs(cwd, ownTree)
   const referenceByOurs = new Map()
   const noCounterpart = []
-  const missingReference = []
-  for (const rule of REFERENCE_ALLOWLIST) {
+  for (const { rule } of compared) {
     if (rule.theirs.length === 0) {
       noCounterpart.push({ file: rule.ours, note: rule.note ?? '参考仓无对应模块' })
       continue
     }
     const units = []
-    let found = 0
     for (const target of rule.theirs) {
-      for (const file of referenceFiles(args.reference, target)) {
-        found += 1
-        for (const unit of collectUnits(file)) units.push(unit)
-      }
+      const paths = [...referenceTree.keys()].filter((path) => path === target || path.startsWith(`${target}/`))
+      if (paths.length === 0) failures.push(`参考侧路径缺失：${rule.ours} → ${target}`)
+      for (const path of paths) units.push(...referenceUnits.get(path))
     }
-    if (found === 0) missingReference.push(`${rule.ours}→${rule.theirs.join('|')}`)
+    if (units.length === 0) failures.push(`参考侧没有可比较单元：${rule.ours}`)
     referenceByOurs.set(rule.ours, units)
   }
 
   let comparisonPairs = 0
   let oursUnitCount = 0
   const hits = []
-  for (const entry of mapped) {
-    if (!entry.rule || !existsSync(entry.file)) continue
+  for (const entry of compared) {
+    const content = args.worktree ? readFileSync(entry.file, 'utf8') : ownBlobs.get(ownTree.get(entry.file))
+    if (content === undefined) {
+      failures.push(`缺少本仓 Git blob：${entry.file}`)
+      continue
+    }
+    const oursUnits = collectUnits(entry.file, content)
     const candidates = referenceByOurs.get(entry.file) ?? []
     if (candidates.length === 0) continue
-    const oursUnits = collectUnits(entry.file)
     oursUnitCount += oursUnits.length
     comparisonPairs += oursUnits.length * candidates.length
     for (const ours of oursUnits) {
@@ -363,7 +431,7 @@ function run() {
         oursRange: `${ours.startLine}-${ours.endLine}`,
         oursName: ours.name,
         oursNodes: ours.nodeCount,
-        refFile: relative(args.reference, best.ref.file).replace(/\\/g, '/'),
+        refFile: best.ref.file,
         refRange: `${best.ref.startLine}-${best.ref.endLine}`,
         refNodes: best.ref.nodeCount,
         metric: best.hit.metric,
@@ -376,9 +444,11 @@ function run() {
 
   const unresolved = hits.filter((hit) => hit.disposition === 'UNRESOLVED')
   for (const hit of unresolved) failures.push(`未处理的命中：${hit.oursFile}::${hit.oursName}（${hit.metric}）`)
+  if (comparisonPairs === 0) failures.push('没有实际比较的函数对')
 
   console.log('SP004 AST 复核（设计 §9.8）')
-  console.log(`参考仓：${args.reference} @ ${referenceRevision}`)
+  console.log(`参考提交：${referenceRevision}`)
+  console.log(`本仓输入：${args.worktree ? '工作树（含未跟踪源码）' : head}`)
   console.log(`功能基线：${baseCommit.slice(0, 7)}，改动文件 ${changed.length} 个，映射 ${changed.length - uncovered.length} 个`)
   console.log('自检：')
   for (const check of selfChecks) console.log(`  ${check.ok ? 'PASS' : 'FAIL'} ${check.name}`)
@@ -386,7 +456,6 @@ function run() {
     console.log('无对应参考模块（已审查，无比较对象）：')
     for (const entry of noCounterpart) console.log(`  ${entry.file}：${entry.note}`)
   }
-  if (missingReference.length > 0) console.log(`参考侧路径缺失：${missingReference.join('、')}`)
   console.log(`比较规模：本仓单元 ${oursUnitCount} 个，参考单元 ${[...referenceByOurs.values()].reduce((sum, units) => sum + units.length, 0)} 个，函数对 ${comparisonPairs} 组`)
   console.log('命中：')
   if (hits.length === 0) console.log('  无（未发现达到阈值的函数对）')

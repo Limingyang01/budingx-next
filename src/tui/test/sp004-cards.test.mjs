@@ -17,6 +17,7 @@ import {
 import { InkApprovalGateway } from '../dist/tui/approval.js'
 import { Session } from '../dist/core/session.js'
 import { createAskUserQuestionTool } from '../dist/core/questions.js'
+import { createPlanStore } from '../dist/plan/store.js'
 
 const options = { width: 72, english: false }
 const reduce = (frame, event) => reduceFrame(frame, event, options)
@@ -374,6 +375,27 @@ test('T15-8 VIS-04 追问交互：空格选择推进两题，最后一题回车�
   await ui.waitFor((_last, frames) => frames.join('\n').includes('✓ 选择哪条路线？ → A 路线'), 5000)
 })
 
+test('VIS-04 最后一题 Other 一次提交自定义答案并保留此前答案', async (t) => {
+  const { ui, events } = await mountQuestion(t, twoQuestions)
+  await ui.send('\r')
+  await ui.waitFor((_last, frames) => frames.join('\n').includes('◆ 提问 2/2'), 5000)
+  await ui.send('\x1b[A')
+  await ui.send('只验证单元测试')
+  await ui.send('\r')
+
+  await ui.waitFor(() => !ui.session.isBusy, 2000)
+  const answered = events.filter((event) => event.type === 'question_answered')
+  assert.equal(answered.length, 1)
+  assert.deepEqual(answered[0].answers, {
+    '选择哪条路线？': 'A 路线',
+    '是否包含测试？': '只验证单元测试'
+  })
+  const results = events.filter((event) => event.type === 'tool_result')
+  assert.equal(results.length, 1)
+  assert.equal(results[0].callId, 'call-q1')
+  assert.match(results[0].content, /只验证单元测试/)
+})
+
 test('T15-9 VIS-04 追问取消：Esc 发 question_cancelled 并以同一 call ID 返回取消结果', async (t) => {
   const { ui, events } = await mountQuestion(t, twoQuestions)
   await ui.send('\x1b')
@@ -384,6 +406,43 @@ test('T15-9 VIS-04 追问取消：Esc 发 question_cancelled 并以同一 call I
   assert.equal(results[0].callId, 'call-q1')
   assert.match(results[0].content, /cancelled/i)
   assert.equal(ui.session.pendingQuestion, undefined)
+})
+
+test('VIS-02 从审批进入编辑时保留完整多行草稿，不受预览行数限制', async (t) => {
+  const f = makeFixture(t)
+  const draft = ['# 原始计划', ...Array.from({ length: 42 }, (_, index) => `正文第 ${index + 1} 行`)].join('\n')
+  const store = createPlanStore()
+  store.create('整理测试', [{ title: '核对回归' }])
+  const { provider } = scriptProvider([])
+  const ui = await mountTty(t, {
+    provider,
+    config: { model: 'test-model' },
+    sessionFactory: ({ gateway }) => new Session({
+      provider,
+      approval: gateway,
+      resolveSnapshot: () => SNAPSHOT,
+      tools: [],
+      permissionPolicy: f.policy,
+      planMode: {
+        store,
+        readPlanText: async () => draft,
+        snapshot: () => ({ root: f.root, files: {} }),
+        diff: () => [],
+        validate: () => ({ ok: true })
+      }
+    })
+  })
+
+  assert.equal(ui.session.enterPlanMode().ok, true)
+  const approving = ui.session.exitPlanMode()
+  await ui.waitFor((frame) => frame.includes('e 编辑正文') && ui.gateway.pendingRequests.length === 1)
+  await ui.send('e')
+  await ui.waitFor((_last, frames) => frames.join('\n').includes('编辑计划正文后 Enter 批准'))
+  await ui.send('（核准）')
+  await ui.send('\r')
+
+  assert.equal((await approving).ok, true)
+  assert.equal(store.current()?.approvedText, draft + '（核准）')
 })
 
 test('T15-10 计划审批事件进入 TUI ApprovalCard：携带 planId/planVersion 供编辑正文', () => {

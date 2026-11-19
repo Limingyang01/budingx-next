@@ -1,5 +1,6 @@
 // SP004 T5 · Bash/PowerShell 工具适配器与同一权限入口（design §4.5–§4.9）。
 // 证据层级 L0（纯逻辑）+ L1（真实进程）；Session 集成用脚本化 provider。
+import { createHostProcessFixture } from './helpers/host-process.mjs'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -12,19 +13,7 @@ import { createWorkspace } from '../../tui/dist/workspace/paths.js'
 import { createPermissionPolicy } from '../../tui/dist/workspace/policy.js'
 import { Session } from '../../tui/dist/core/session.js'
 
-const verifiedBackend = {
-  id: 'synthetic-backend',
-  label: '合成验收后端',
-  verified: true,
-  capabilities: {
-    allowWrite: [],
-    denyWrite: [],
-    allowRead: [],
-    denyRead: [],
-    networkDomains: [],
-    canEnforceNetwork: true
-  }
-}
+const verifiedBackend = createHostProcessFixture()
 
 function makeRunner(extra = {}) {
   return createCommandRunner({
@@ -60,11 +49,14 @@ function ctx(events = []) {
 
 function withSpawnCounter(runnerOptions = {}) {
   const spawned = []
-  const runner = makeRunner({
+  const backend = createHostProcessFixture({
     spawn: (...args) => {
       spawned.push(args[0])
       return spawnRef(...args)
-    },
+    }
+  })
+  const runner = makeRunner({
+    sandboxPolicy: createSandboxPolicy({ backend }),
     ...runnerOptions
   })
   return { runner, spawned }
@@ -454,4 +446,40 @@ test('T5-16 Session.dispose 终止仍在运行的后台任务', async () => {
     snapshot = runner.status(match[1])
   }
   assert.equal(snapshot?.outcome, 'cancelled', 'Session.dispose 必须终止后台任务')
+})
+
+test('命令被隔离门禁拒绝时，Session 回填原调用的失败结果与错误码', async (t) => {
+  const runner = createCommandRunner({ defaultCwd: process.cwd() })
+  const { bash } = makeTools(runner)
+  const provider = scriptProvider([
+    [
+      {
+        type: 'tool_call_delta',
+        index: 0,
+        callId: 'blocked-command',
+        nameDelta: 'Bash',
+        argsDelta: JSON.stringify({ command: 'node --version' })
+      },
+      { type: 'message_completed', finishReason: 'tool_calls' }
+    ],
+    [{ type: 'message_completed', finishReason: 'stop' }]
+  ])
+  const events = []
+  const session = new Session({
+    provider,
+    approval: { async request() { return { outcome: 'allow', via: 'user' } } },
+    resolveSnapshot: () => SNAPSHOT,
+    tools: [bash],
+    onEvent: (event) => events.push(event)
+  })
+  t.after(() => session.dispose())
+  session.submit('执行版本检查')
+  await waitFor(() => events.some((event) => event.type === 'tool_result'))
+  const results = events.filter((event) => event.type === 'tool_result')
+  assert.equal(results.length, 1)
+  assert.equal(results[0].callId, 'blocked-command')
+  assert.equal(results[0].isError, true)
+  assert.match(results[0].content, /error_code: BUDINGX_EXEC_005/)
+  assert.match(results[0].content, /outcome: blocked/)
+  assert.doesNotMatch(results[0].content, /exit_code: 0/)
 })

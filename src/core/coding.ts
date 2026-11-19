@@ -19,6 +19,7 @@ export type TaskPhase = (typeof TASK_PHASES)[number]
 export type CommandEvidence = {
   command: string
   exitCode?: number
+  errorCode?: string
   outcome: CommandOutcome
   at: number
 }
@@ -40,6 +41,7 @@ export type CodingTaskState = {
 }
 
 export interface CodingTaskTracker {
+  reset?(): void
   get(): CodingTaskState | undefined
   start(goal: string): CodingTaskState
   /** 用户补充：纳入当前目标，不替换。 */
@@ -105,6 +107,7 @@ export function createCodingTaskTracker(options: CodingTaskTrackerOptions = {}):
 
   return {
     get: () => state,
+    reset: () => { state = undefined },
     start(goal) {
       const trimmed = requireText(goal, '编码任务目标')
       sequence += 1
@@ -136,6 +139,7 @@ export function createCodingTaskTracker(options: CodingTaskTrackerOptions = {}):
         command,
         outcome: result.outcome,
         at: now(),
+        ...(result.errorCode !== undefined ? { errorCode: result.errorCode } : {}),
         ...(result.exitCode !== undefined ? { exitCode: result.exitCode } : {})
       }
       state.lastTest = evidence

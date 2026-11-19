@@ -5,9 +5,9 @@ import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { isAbsolute, relative } from 'node:path'
-import type { PlanDriftItem, PlanModeHost, PlanModeSnapshot } from '../core/plan.js'
+import type { Plan, PlanDriftItem, PlanModeHost, PlanModeSnapshot } from '../core/plan.js'
 import { createPlanStore } from './store.js'
-import { planFilePath } from './serialize.js'
+import { parsePlan, planFilePath } from './serialize.js'
 import { validateBeforeExecute } from './validate.js'
 import type { Workspace } from '../workspace/paths.js'
 
@@ -32,14 +32,22 @@ function digest(content: string | Buffer): string {
 }
 
 /** 生产宿主的 PlanModeHost：计划文件 + 工作区/Git 快照 + 执行前校验。 */
-export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost {
+export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost & {
+  writePlanText(text: string, goal: string, steps: string[]): Plan
+} {
   const root = options.workspace.root
   const planId = `plan-${options.sessionId}`
   const filePath = planFilePath(options.sessionId, planId, options.home)
 
+  function loadPlanText(): string {
+    const text = readFileSync(filePath, 'utf8')
+    if (/^---\r?\n/.test(text)) return parsePlan(text).draftText ?? text
+    return text
+  }
+
   function readPlanText(): Promise<string | undefined> {
     try {
-      return Promise.resolve(readFileSync(filePath, 'utf8'))
+      return Promise.resolve(loadPlanText())
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return Promise.resolve(undefined)
       return Promise.reject(error)
@@ -84,11 +92,11 @@ export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost {
     }
   }
 
-  function snapshot(): PlanModeSnapshot {
+  function snapshot(planText?: string): PlanModeSnapshot {
     const files: Record<string, string> = {}
-    const text = (() => {
+    const text = planText ?? (() => {
       try {
-        return readFileSync(filePath, 'utf8')
+        return loadPlanText()
       } catch {
         return ''
       }
@@ -137,9 +145,12 @@ export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost {
   return {
     store,
     readPlanText,
+    writePlanText(text, goal, steps) {
+      return store.create(goal, steps.map((title) => ({ title })), text)
+    },
     snapshot,
     diff,
-    validate: (plan) => validateBeforeExecute(plan, snapshot())
+    validate: (plan) => validateBeforeExecute(plan, snapshot(plan.approvedText ?? plan.draftText))
   }
 }
 

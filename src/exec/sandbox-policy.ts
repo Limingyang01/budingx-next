@@ -2,6 +2,7 @@
 // 隔离后端由宿主显式配置并经真实进程验收；模型无法选取、关闭或声明隔离能力。
 // 本模块是纯决策层：拒绝路径在 spawn 之前完成，不产生任何进程。
 import { ERROR_CODES } from '../core/constants.js'
+import type { ChildProcess } from 'node:child_process'
 
 /** 能力声明层：受控策略覆盖项目读写视图、凭据/用户数据保护与网络目的地。 */
 export interface SandboxCapabilities {
@@ -11,8 +12,17 @@ export interface SandboxCapabilities {
   denyRead: readonly string[]
   /** 允许的网络域名；空数组 = 默认断网。 */
   networkDomains: readonly string[]
-  /** 后端能否强制执行网络域名策略；不能则配置域名时拒绝执行。 */
+  /** 后端能否强制断网或限制网络目的地。 */
   canEnforceNetwork: boolean
+}
+
+export interface SandboxLaunchRequest {
+  executable: string
+  args: readonly string[]
+  cwd: string
+  env: NodeJS.ProcessEnv
+  /** 只读模式须强制禁写，而不是依赖命令文本的分类。 */
+  mode: 'read_only' | 'workspace'
 }
 
 /** 宿主注入的可信执行后端。verified 为宿主真实进程验收结论。 */
@@ -21,6 +31,10 @@ export interface SandboxBackend {
   label: string
   verified: boolean
   capabilities: SandboxCapabilities
+  /** 在既定文件、Git 和网络隔离策略下启动进程。失败时不得退回宿主执行。 */
+  start(request: SandboxLaunchRequest): ChildProcess
+  /** 终止本后端启动的完整进程树；可能重复调用。 */
+  terminate(child: ChildProcess): void
 }
 
 export interface SandboxRequest {
@@ -61,7 +75,12 @@ export function createSandboxPolicy(options: { backend?: SandboxBackend } = {}):
           }
         }
       }
-      if (backend === undefined || !backend.verified) {
+      if (
+        backend?.verified !== true ||
+        typeof backend.start !== 'function' ||
+        typeof backend.terminate !== 'function' ||
+        backend.capabilities === undefined
+      ) {
         return {
           action: 'deny',
           code: ERROR_CODES.execSandboxUnavailable,
@@ -69,11 +88,11 @@ export function createSandboxPolicy(options: { backend?: SandboxBackend } = {}):
         }
       }
       const capabilities = backend.capabilities
-      if (capabilities.networkDomains.length > 0 && !capabilities.canEnforceNetwork) {
+      if (!capabilities.canEnforceNetwork) {
         return {
           action: 'deny',
           code: ERROR_CODES.execSandboxUnavailable,
-          reason: '隔离后端无法强制执行网络域名策略，拒绝该执行请求（网络默认关闭）'
+          reason: '隔离后端无法强制断网或限制网络目的地，拒绝执行'
         }
       }
       return { action: 'allow', backendId: backend.id }

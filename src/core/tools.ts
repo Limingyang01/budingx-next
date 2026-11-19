@@ -37,6 +37,8 @@ export type ToolHandler = {
   summary?: string
   describe(input: unknown): string
   requiresApproval?(input: unknown): boolean
+  /** Requires fresh approval from the user even when the current mode allows writes. */
+  requiresExplicitApproval?(input: unknown): boolean
   /**
    * Classification used by the permission policy: read tools never write,
    * write tools mutate the workspace. Defaults to 'read' when absent so
@@ -45,7 +47,7 @@ export type ToolHandler = {
   capability?(input: unknown): ToolCapability
   /** Target of the call, resolved enough for policy decisions. */
   target?(input: unknown): { path?: string; kind: 'file' | 'directory' | 'search' | 'none' }
-  prepareApproval?(input: unknown): PreparedTool
+  prepareApproval?(input: unknown): PreparedTool | Promise<PreparedTool>
   execute(input: unknown, context: ToolContext): Promise<string>
 }
 
@@ -59,6 +61,8 @@ export type ApprovalRequest = {
   /** 计划模式待批时携带计划标识与版本（SP004 设计 §6.3）。 */
   planId?: string
   planVersion?: number
+  /** 完整待批正文，仅由审批网关持有。界面预览另行限长。 */
+  planText?: string
 }
 
 export type ApprovalDecision = {

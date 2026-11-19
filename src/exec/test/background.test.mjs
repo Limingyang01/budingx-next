@@ -1,22 +1,11 @@
 // SP004 T4 · 后台任务与进程树取消 RED→GREEN。证据层级 L1（真实进程）。
+import { createHostProcessFixture } from './helpers/host-process.mjs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createCommandRunner } from '../../tui/dist/exec/runner.js'
 import { createSandboxPolicy } from '../../tui/dist/exec/sandbox-policy.js'
 
-const verifiedBackend = {
-  id: 'synthetic-backend',
-  label: '合成验收后端',
-  verified: true,
-  capabilities: {
-    allowWrite: [],
-    denyWrite: [],
-    allowRead: [],
-    denyRead: [],
-    networkDomains: [],
-    canEnforceNetwork: false
-  }
-}
+const verifiedBackend = createHostProcessFixture()
 
 function makeRunner(extra = {}) {
   return createCommandRunner({

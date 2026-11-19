@@ -291,6 +291,9 @@ export class Session {
     if (!text) return { ok: false, message: '会话计划文件缺失或为空：请先写入计划再退出计划模式' }
     const plan = host.store.current()
     if (!plan) return { ok: false, message: '当前没有计划：请先写入会话计划文件' }
+    if (plan.approval === 'approved') {
+      return { ok: false, message: '旧计划已获批准：请用 WritePlan 写入新草稿再申请审批' }
+    }
     const drift = host.diff(state.baseline, host.snapshot())
     if (drift.length > 0) {
       return {
@@ -317,7 +320,8 @@ export class Session {
       summary: `批准计划：${pending.goal}`,
       preview: text.split('\n').slice(0, 40),
       planId: pending.id,
-      planVersion: pending.updatedAt
+      planVersion: pending.updatedAt,
+      planText: text
     }
     this.emit({
       type: 'approval_requested',
@@ -558,6 +562,10 @@ export class Session {
   on(handler: (event: SessionEvent) => void): () => void {
     this.listeners.add(handler)
     return () => this.listeners.delete(handler)
+  }
+
+  commandFinished(event: Extract<SessionEvent, { type: 'command_finished' }>): void {
+    this.emit(event)
   }
 
   /** Submit user input. While a turn is running the input is queued. */
@@ -876,7 +884,18 @@ export class Session {
         }
         // CT-07：完成声明必须附带真实证据；无证据时回喂原因并继续迭代。
         const claim = this.options.codingTask?.canClaimDone()
-        if (claim && !claim.ok && this.options.codingTask?.get()) {
+        const codingTask = this.options.codingTask?.get()
+        if (claim && !claim.ok && codingTask) {
+          if (codingTask.lastTest?.errorCode === ERROR_CODES.execSandboxUnavailable) {
+            outcome = 'error'
+            error = {
+              class: 'tool_unsupported',
+              code: ERROR_CODES.execSandboxUnavailable,
+              message: '当前没有已验证的执行隔离后端，无法运行测试或证明编码任务完成。',
+              retryable: false
+            }
+            break
+          }
           const reason = claim.reason ?? '未运行测试'
           this.emit({
             type: 'notice',
@@ -965,7 +984,8 @@ export class Session {
       // SP003: with a policy the verdict decides; without one the SP002
       // requiresApproval hook keeps its exact behaviour.
       const policy = this.options.permissionPolicy
-      let needsApproval = handler.requiresApproval?.(input) ?? false
+      const explicitApproval = handler.requiresExplicitApproval?.(input) ?? false
+      let needsApproval = explicitApproval || (handler.requiresApproval?.(input) ?? false)
       let permissionRequest: PermissionRequest | undefined
       // 计划模式的一次性批准：即使宿主勾选“本会话允许”，也不写入记忆（§6.2）。
       let planModeSingleUse = false
@@ -1047,13 +1067,13 @@ export class Session {
             planModeSingleUse = true
           }
         }
-        needsApproval = verdict.action === 'ask'
+        needsApproval = explicitApproval || verdict.action === 'ask'
       }
       let prepared: PreparedTool | undefined
       let remember = false
       if (needsApproval) {
         try {
-          prepared = handler.prepareApproval?.(input)
+          prepared = await handler.prepareApproval?.(input)
         } catch (error) {
           this.pushToolResult(
             turn,
@@ -1076,7 +1096,9 @@ export class Session {
           summary: handler.describe(input),
           ...(prepared ? { preview: prepared.preview } : {})
         }
-        if (permissionRequest) this.approvalForMemory = { id: requestId, target: permissionRequest }
+        if (permissionRequest && !explicitApproval) {
+          this.approvalForMemory = { id: requestId, target: permissionRequest }
+        }
         this.emit({
           type: 'approval_requested',
           turnId: turn.id,
@@ -1099,7 +1121,10 @@ export class Session {
           outcome: decision.outcome,
           via: decision.via
         })
-        if (decision.outcome !== 'allow' && decision.outcome !== 'allow_session') {
+        const accepted = explicitApproval
+          ? decision.outcome === 'allow' && decision.via === 'user'
+          : decision.outcome === 'allow' || decision.outcome === 'allow_session'
+        if (!accepted) {
           const feedback =
             decision.feedback && decision.feedback.trim()
               ? `\nUser feedback: ${decision.feedback.trim()}`
@@ -1141,12 +1166,13 @@ export class Session {
           turnId: turn.id,
           callId: call.id,
           emit: (event) => this.emit(event),
-          ...(this.options.codingTask
-            ? {
-                onCommandResult: (command: string, result: CommandResult) =>
-                  this.options.codingTask?.observeCommand(command, result)
-              }
-            : {})
+          onCommandResult: (command: string, result: CommandResult) => {
+            this.options.codingTask?.observeCommand(command, result)
+            if (result.outcome !== 'completed' && result.outcome !== 'running') {
+              isError = true
+              errorCode = result.errorCode ?? ERROR_CODES.coreToolFailed
+            }
+          }
         }
         if (permissionRequest && policy?.decide(permissionRequest).action === 'deny') {
           this.pushToolResult(turn, call.id, 'Permission changed before execution', true, ERROR_CODES.permissionDenied)
@@ -1154,7 +1180,7 @@ export class Session {
         }
         startedAt = performance.now()
         content = await (prepared ? prepared.execute(toolContext) : handler.execute(input, toolContext))
-        if (remember && permissionRequest) policy?.remember(permissionRequest)
+        if (!isError && remember && permissionRequest) policy?.remember(permissionRequest)
       } catch (error) {
         content = error instanceof Error ? error.message : 'Tool execution failed'
         isError = true

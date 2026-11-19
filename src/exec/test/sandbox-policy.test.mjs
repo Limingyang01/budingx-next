@@ -11,6 +11,8 @@ function backend(overrides = {}) {
     id: 'synthetic-backend',
     label: '合成验收后端',
     verified: true,
+    start() { throw new Error('策略测试不得启动进程') },
+    terminate() {},
     capabilities: {
       allowWrite: ['D:/fixture/project'],
       denyWrite: ['D:/fixture/project/.git'],
@@ -51,6 +53,11 @@ test('配置网络域名但后端不能强制执行 → 拒绝该执行请求', 
   assert.match(decision.reason, /网络/)
 })
 
+test('没有配置域名时也必须由后端保证断网', () => {
+  const policy = createSandboxPolicy({ backend: backend({ capabilities: { canEnforceNetwork: false } }) })
+  assert.equal(policy.decide({ tool: 'Bash', command: 'node --version' }).action, 'deny')
+})
+
 test('已验收后端 + 默认断网 → 放行并携带后端身份', () => {
   const policy = createSandboxPolicy({ backend: backend() })
   const decision = policy.decide({ tool: 'Bash', command: 'node -e "process.exit(0)"' })
@@ -85,6 +92,6 @@ test('判定为纯同步决策：拒绝路径不产生任何进程（零 spawn �
   const policy = createSandboxPolicy({})
   const decision = policy.decide({ tool: 'Bash', command: 'rm -rf /' })
   assert.equal(decision.action, 'deny')
-  // 策略对象只暴露 decide/backend，没有执行入口；spawn 计数断言在 T3 runner 测试中以注入 spawn 完成。
+  // 策略对象只暴露 decide/backend，没有执行入口；Runner 测试通过后端启动计数验证。
   assert.deepEqual(Object.keys(policy).sort(), ['backend', 'decide'])
 })

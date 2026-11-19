@@ -1,7 +1,7 @@
 // Exec module entry (SP004 design §3): 真实进程执行、后台任务、托管编辑与隔离决策。
 export { createCommandRunner } from './runner.js'
 export type { CommandRunnerOptions } from './runner.js'
-export { createExecTools } from './tools.js'
+export { createBackgroundTaskTools, createExecTools } from './tools.js'
 export type { ExecToolName, ExecToolsOptions } from './tools.js'
 export { createBackgroundTable } from './background.js'
 export type { BackgroundRegistration, BackgroundTable, BackgroundTableOptions } from './background.js'
@@ -32,6 +32,7 @@ export type {
   SandboxBackend,
   SandboxCapabilities,
   SandboxDecision,
+  SandboxLaunchRequest,
   SandboxPolicy,
   SandboxRequest
 } from './sandbox-policy.js'

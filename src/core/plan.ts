@@ -28,6 +28,8 @@ export type Plan = {
   approval: PlanApproval
   /** 批准时的计划指纹，用于执行前校验（TP-05）。 */
   fingerprint?: string
+  /** Draft Markdown written by the session's planning tool. */
+  draftText?: string
   /** 批准时可携带用户编辑后的计划正文（对齐 F-13 的 planWasEdited）。 */
   approvedText?: string
   createdAt: number
@@ -39,7 +41,7 @@ export const PLAN_MAX_STEPS = 50
 
 export interface PlanStore {
   current(): Plan | undefined
-  create(goal: string, steps: { title: string }[]): Plan
+  create(goal: string, steps: { title: string }[], draftText?: string): Plan
   update(stepId: string, patch: Partial<PlanStep>): Plan
   /** 请求批准：进入 pending。 */
   requestApproval(planText: string): Plan

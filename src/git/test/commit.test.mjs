@@ -7,6 +7,7 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  commitFilesFromCheckpoints,
   commitWithAuthorization,
   createCommitAuthorization,
   patchDigestOf
@@ -131,6 +132,7 @@ test('T9-3 授权后仅对专用分支提交审批补丁并返回 SHA 与文件�
     assert.equal(git(root, 'rev-parse', wt.branch), result.sha)
     assert.equal(git(root, 'rev-parse', `${result.sha}^`), baseHead)
     assert.equal(git(root, 'log', '-1', '--format=%s', result.sha), 'feat: controlled commit')
+    assert.equal(statusOf(wt.path), '')
     // 主 checkout 分支未动。
     assert.equal(git(root, 'rev-parse', 'master'), baseHead)
   })
@@ -263,7 +265,30 @@ test('T9-8 重复授权不写 ref', async () => {
   })
 })
 
-test('T9-9 待提交树与审批 tree 不一致 → 拒绝', async () => {
+test('T9-12 实际文件在审批后变动或消失，拒绝提交且保留文件和索引', async () => {
+  await withRepo(async (root) => {
+    const wt = await makeWorktree(root)
+    const file = join(wt.path, 'a.txt')
+    const files = [{ path: 'a.txt', content: 'approved\n' }]
+    const head = git(wt.path, 'rev-parse', 'HEAD')
+    for (const remove of [false, true]) {
+      writeFileSync(file, files[0].content)
+      const { authorization } = await createCommitAuthorization({
+        worktree: wt.path, branch: wt.branch, head, message: 'feat: approved only', files
+      })
+      if (remove) rmSync(file)
+      else writeFileSync(file, 'changed after approval\n')
+      const before = statusOf(wt.path)
+      await assert.rejects(() => commitWithAuthorization(authorization, files), /漂移/)
+      assert.equal(statusOf(wt.path), before)
+      assert.equal(git(wt.path, 'rev-parse', 'HEAD'), head)
+      assert.equal(git(wt.path, 'diff', '--cached', '--name-only'), '')
+      assert.equal(authorization.consumed, true)
+    }
+  })
+})
+
+test('T9-9 复制或篡改宿主授权 → 拒绝', async () => {
   await withRepo(async (root) => {
     const wt = await makeWorktree(root)
     writeFileSync(join(wt.path, 'a.txt'), 'A\n')
@@ -277,8 +302,56 @@ test('T9-9 待提交树与审批 tree 不一致 → 拒绝', async () => {
     })
     const tampered = { ...authorization, expectedTree: '0'.repeat(40) }
     const before = git(root, 'rev-parse', wt.branch)
-    await assert.rejects(() => commitWithAuthorization(tampered, files), /树|tree/)
+    await assert.rejects(() => commitWithAuthorization(tampered, files), /未授权/)
     assert.equal(git(root, 'rev-parse', wt.branch), before)
+  })
+})
+
+test('T9-13 checkpoint 必须从 HEAD 开始且改动连续', async () => {
+  await withRepo(async (root) => {
+    const wt = await makeWorktree(root)
+    const head = git(wt.path, 'rev-parse', 'HEAD')
+    const change = (before, after) => ({ path: 'base.txt', before, after, undone: false })
+    const first = change('base\n', 'agent update\n')
+    const last = change('agent update\n', 'final\n')
+    assert.deepEqual(
+      await commitFilesFromCheckpoints(wt.path, head, [first, last]),
+      [{ path: 'base.txt', content: 'final\n' }]
+    )
+    await assert.rejects(
+      () => commitFilesFromCheckpoints(wt.path, head, [change('user modified before first edit\n', 'final\n')]),
+      /用户改动或基线漂移/
+    )
+    await assert.rejects(
+      () => commitFilesFromCheckpoints(wt.path, head, [first, change('user modified between edits\n', 'final\n')]),
+      /无法归属/
+    )
+  })
+})
+
+test('T9-14 保留 Git 规范化行尾，提交后专用工作树干净', async () => {
+  await withRepo(async (root) => {
+    git(root, 'config', 'core.autocrlf', 'true')
+    writeFileSync(join(root, '.gitattributes'), 'base.txt text eol=crlf\n')
+    git(root, 'add', '.gitattributes')
+    git(root, 'commit', '-qm', 'checkout base with CRLF')
+    const wt = await makeWorktree(root)
+    const head = git(wt.path, 'rev-parse', 'HEAD')
+    const file = join(wt.path, 'base.txt')
+    const before = readFileSync(file, 'utf8')
+    const after = 'modified\r\n'
+    assert.equal(before, 'base\r\n')
+    writeFileSync(file, after)
+    const files = await commitFilesFromCheckpoints(wt.path, head, [
+      { path: 'base.txt', before, after, undone: false }
+    ])
+    const { authorization } = await createCommitAuthorization({
+      worktree: wt.path, branch: wt.branch, head, message: 'feat: normalized text', files
+    })
+    const result = await commitWithAuthorization(authorization, files)
+    assert.equal(execFileSync('git', ['-C', wt.path, 'show', `${result.sha}:base.txt`], { encoding: 'utf8' }), 'modified\n')
+    assert.equal(readFileSync(file, 'utf8'), after)
+    assert.equal(statusOf(wt.path), '')
   })
 })
 

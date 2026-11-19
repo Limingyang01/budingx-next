@@ -1,8 +1,10 @@
 // SP004 T3 · 前台命令执行器（design §4.1–§4.3）。
 // core 只持有契约；真实进程由本模块注入。拒绝路径（缺隔离/交互式/阻塞/硬上限/预取消）零 spawn。
-import { spawn as nodeSpawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { realpathSync, statSync } from 'node:fs'
+import { isAbsolute, relative, sep } from 'node:path'
+import { ERROR_CODES } from '../core/constants.js'
 import {
   EXEC_BLOCKING_BUDGET_MS,
   EXEC_OUTPUT_CAP,
@@ -10,6 +12,7 @@ import {
   resolveTimeoutConfig,
   type CommandResult,
   type CommandRunner,
+  type CommandRunContext,
   type CommandSpec
 } from '../core/exec.js'
 import { selectInterpreter } from './interpreter.js'
@@ -22,12 +25,12 @@ import { persistOutput, resolveTaskOutputPath, type CommandFinishedEvent } from 
 export interface CommandRunnerOptions {
   /** 缺省工作目录（会话项目根）。 */
   defaultCwd: string
-  /** 宿主基线追加环境（与 process.env、spec.env 依次合并）。 */
+  /** 宿主可覆盖白名单内的变量。 */
   env?: Record<string, string>
+  /** 宿主额外批准的环境变量名。 */
+  allowedEnv?: readonly string[]
   /** 隔离门禁（T20）；缺省为无后端策略——普通命令一律拒绝。 */
   sandboxPolicy?: SandboxPolicy
-  /** 注入 spawn（测试计数/替换）；缺省真实 child_process.spawn。 */
-  spawn?: typeof nodeSpawn
   /** 显式放行阻塞等待族（用于确需等待的测试）。 */
   allowBlocking?: boolean
   /** 平台注入（测试用）；缺省 process.platform。 */
@@ -44,54 +47,42 @@ export interface CommandRunnerOptions {
   onCommandFinished?: (event: CommandFinishedEvent) => void
 }
 
-/** 终止整棵进程树：Windows taskkill /T /F，POSIX 进程组 SIGKILL；均带 child.kill 兜底。 */
-function killTree(child: ChildProcess, spawnFn: typeof nodeSpawn, platform: NodeJS.Platform): void {
-  if (child.pid === undefined) return
-  const fallback = () => {
-    try {
-      child.kill('SIGKILL')
-    } catch {
-      // 已退出
+const BASE_ENV = ['PATH', 'PATHEXT', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'TEMP', 'TMP', 'TMPDIR', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ']
+
+function allowedEnvironment(options: CommandRunnerOptions, spec: CommandSpec, platform: NodeJS.Platform): NodeJS.ProcessEnv {
+  const canonicalName = (name: string) => platform === 'win32' ? name.toUpperCase() : name
+  const allowed = new Set([...BASE_ENV, ...(options.allowedEnv ?? [])].map(canonicalName))
+  const env: NodeJS.ProcessEnv = Object.create(null)
+  for (const source of [process.env, options.env ?? {}, spec.env ?? {}]) {
+    for (const [name, value] of Object.entries(source)) {
+      const key = canonicalName(name)
+      if (allowed.has(key) && value !== undefined) env[key] = value
     }
   }
-  if (platform === 'win32') {
-    // 必须先让 taskkill 完成进程树枚举与终止，再兜底杀直接子进程；
-    // 若先 child.kill 杀死父进程，taskkill 将无法定位孤儿子进程。
-    try {
-      const killer = spawnFn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true })
-      killer.on('error', fallback)
-      killer.on('close', fallback)
-    } catch {
-      fallback()
-    }
-    return
-  }
-  try {
-    process.kill(-child.pid, 'SIGKILL')
-  } catch {
-    fallback()
-  }
+  return env
+}
+
+function insideDirectory(root: string, path: string): boolean {
+  const delta = relative(root, path)
+  return delta !== '..' && !delta.startsWith(`..${sep}`) && !isAbsolute(delta)
 }
 
 export function createCommandRunner(options: CommandRunnerOptions): CommandRunner {
-  const spawnFn = options.spawn ?? nodeSpawn
   const sandboxPolicy = options.sandboxPolicy ?? createSandboxPolicy()
   const platform = options.platform ?? process.platform
   const timeouts = resolveTimeoutConfig(process.env)
   const persistThreshold = options.persistThreshold ?? EXEC_PERSIST_THRESHOLD
+  const terminators = new WeakMap<ChildProcess, () => void>()
+  const terminate = (child: ChildProcess) => terminators.get(child)?.()
   const background = createBackgroundTable({
-    kill: (child) => killTree(child, spawnFn, platform),
+    kill: terminate,
     persist: options.sessionId !== undefined ? { sessionId: options.sessionId, home: options.home } : undefined,
     onFinished: options.onCommandFinished
   })
 
   async function run(
     spec: CommandSpec,
-    context: {
-      signal: AbortSignal
-      cwd: string
-      onStarted?(info: { taskId?: string; startedAt: number }): void
-    }
+    context: CommandRunContext
   ): Promise<CommandResult> {
     const started = Date.now()
     const base = (): CommandResult => ({
@@ -107,43 +98,76 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
 
     // 拒绝路径全部在 spawn 之前（零 spawn）。
     if (context.signal.aborted) {
-      return early({ outcome: 'cancelled', interrupted: true, reason: '命令已取消' })
+      return early({ outcome: 'cancelled', interrupted: true, reason: '命令已取消', errorCode: ERROR_CODES.execCancelled })
     }
     if (spec.timeoutMs !== undefined && spec.timeoutMs > timeouts.hardMs) {
       return early({
         outcome: 'blocked',
+        errorCode: ERROR_CODES.execHardTimeoutExceeded,
         reason: `超时请求 ${spec.timeoutMs}ms 超过硬上限（${timeouts.hardMs}ms），拒绝启动`
       })
     }
     if (isInteractiveCommand(spec.command)) {
-      return early({ outcome: 'failed', reason: '命令需要交互式输入，本产品不提供 TTY' })
+      return early({
+        outcome: 'failed',
+        errorCode: ERROR_CODES.execInteractiveUnsupported,
+        reason: '命令需要交互式输入，本产品不提供 TTY'
+      })
     }
-    if (isBlockingWaitCommand(spec.command) && options.allowBlocking !== true) {
+    if (isBlockingWaitCommand(spec.command) && !spec.runInBackground && options.allowBlocking !== true) {
       return early({
         outcome: 'blocked',
+        errorCode: ERROR_CODES.execBlockingCommand,
         reason: '该命令属于阻塞等待族，前台执行会长时间占用回合；请改用 runInBackground 后台执行'
       })
     }
     const interpreterTool = spec.interpreter ?? 'Bash'
     const decision = sandboxPolicy.decide({ tool: interpreterTool, command: spec.command })
     if (decision.action === 'deny') {
-      return early({ outcome: 'blocked', reason: decision.reason })
+      return early({ outcome: 'blocked', reason: decision.reason, errorCode: decision.code })
+    }
+    const backend = sandboxPolicy.backend()
+    if (
+      backend?.verified !== true ||
+      backend.id !== decision.backendId ||
+      typeof backend.start !== 'function' ||
+      typeof backend.terminate !== 'function'
+    ) {
+      return early({ outcome: 'blocked', reason: '没有可启动进程的执行隔离后端', errorCode: ERROR_CODES.execSandboxUnavailable })
     }
     const interpreter = selectInterpreter(interpreterTool, platform)
     if ('error' in interpreter) {
-      return early({ outcome: 'failed', reason: interpreter.error })
+      return early({ outcome: 'failed', reason: interpreter.error, errorCode: ERROR_CODES.execInterpreterUnavailable })
     }
 
     const timeoutMs = Math.min(spec.timeoutMs ?? timeouts.defaultMs, timeouts.maxMs)
-    const cwd = spec.cwd ?? context.cwd ?? options.defaultCwd
-    const child = spawnFn(interpreter.shell, [...interpreter.args, spec.command], {
-      cwd,
-      env: { ...process.env, ...options.env, ...spec.env },
-      shell: false,
-      windowsHide: true,
-      detached: platform !== 'win32',
-      stdio: ['pipe', 'pipe', 'pipe']
-    })
+    let cwd: string
+    try {
+      const root = realpathSync(context.cwd || options.defaultCwd)
+      cwd = realpathSync(spec.cwd ?? root)
+      if (!insideDirectory(root, cwd) || !statSync(cwd).isDirectory()) throw new Error('invalid cwd')
+    } catch {
+      return early({ outcome: 'blocked', reason: '工作目录不在当前工作区内或不可访问', errorCode: ERROR_CODES.permissionDenied })
+    }
+    const denied = backend.capabilities.denyRead.some((path) => insideDirectory(path, cwd))
+    const allowed = backend.capabilities.allowRead
+    if (denied || (allowed.length > 0 && !allowed.some((path) => insideDirectory(path, cwd)))) {
+      return early({ outcome: 'blocked', reason: '工作目录超出隔离后端允许读取的范围', errorCode: ERROR_CODES.permissionDenied })
+    }
+    let child: ChildProcess
+    try {
+      child = backend.start({
+        executable: interpreter.shell,
+        args: [...interpreter.args, spec.command],
+        cwd,
+        env: allowedEnvironment(options, spec, platform),
+        mode: context.mode ?? 'workspace'
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return early({ outcome: 'failed', reason: `隔离后端启动失败：${message}`, errorCode: ERROR_CODES.coreToolFailed })
+    }
+    terminators.set(child, () => backend.terminate(child))
     // stdin 立即关闭：交互式子进程因 EOF 退出，不无限挂起。
     child.stdin?.end()
 
@@ -161,6 +185,9 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
           interpreter: interpreter.label,
           cwd,
           timeoutMs,
+          startedAt: started,
+          turnId: context.turnId,
+          callId: context.callId,
           autoBackgrounded: false,
           backgroundedByUser: true
         },
@@ -182,11 +209,11 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
       let forced: { outcome: 'timeout' | 'cancelled'; reason: string } | undefined
       const timer = setTimeout(() => {
         forced = { outcome: 'timeout', reason: `命令执行超过 ${timeoutMs}ms 超时限制，已终止进程树` }
-        killTree(child, spawnFn, platform)
+        terminate(child)
       }, timeoutMs)
       const onAbort = () => {
         forced = { outcome: 'cancelled', reason: '命令已取消' }
-        killTree(child, spawnFn, platform)
+        terminate(child)
       }
       if (context.signal.aborted) onAbort()
       else context.signal.addEventListener('abort', onAbort, { once: true })
@@ -195,7 +222,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
       // 复用同一子进程与收集器（register 不重复挂 data 监听）；超时/取消仍由后台表接管。
       const blockingBudgetMs = options.blockingBudgetMs ?? EXEC_BLOCKING_BUDGET_MS
       const budgetTimer = setTimeout(() => {
-        if (settled) return
+        if (settled || forced !== undefined) return
         settled = true
         clearTimeout(timer)
         context.signal.removeEventListener('abort', onAbort)
@@ -205,6 +232,9 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
             interpreter: interpreter.label,
             cwd,
             timeoutMs,
+            startedAt: started,
+            turnId: context.turnId,
+            callId: context.callId,
             autoBackgrounded: true,
             backgroundedByUser: false
           },
@@ -269,6 +299,9 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
           durationMs: Date.now() - started,
           interrupted: forced !== undefined || undefined,
           reason: forced?.reason,
+          errorCode: forced?.outcome === 'timeout'
+            ? ERROR_CODES.execTimeout
+            : forced?.outcome === 'cancelled' ? ERROR_CODES.execCancelled : undefined,
           persistedOutputPath,
           persistedOutputSize
         })

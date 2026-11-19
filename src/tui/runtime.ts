@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto'
+import { createCodingTaskTracker, createTaskRedirectTool } from '../core/coding.js'
+import { ERROR_CODES } from '../core/constants.js'
 import { createAskUserQuestionTool } from '../core/questions.js'
 import { Session, type SubmitOptions } from '../core/session.js'
 import type { ApprovalGateway, ToolHandler } from '../core/tools.js'
 import type { DenialRecord } from '../core/events.js'
 import type { PermissionMode } from '../core/permissions.js'
 import { createCommandRunner } from '../exec/runner.js'
-import { createSandboxPolicy } from '../exec/sandbox-policy.js'
-import { createExecTools } from '../exec/tools.js'
+import { createSandboxPolicy, type SandboxBackend } from '../exec/sandbox-policy.js'
+import { createBackgroundTaskTools, createExecTools } from '../exec/tools.js'
 import { createPlanModeHost } from '../plan/host.js'
 import { createPlanModeTools } from '../plan/tools.js'
 import { createOpenAiProvider } from '../provider/openai.js'
@@ -21,6 +23,7 @@ import {
 } from '../workspace/policy.js'
 import { createWorkspaceTools, resolveFileReferences, type CheckpointStore } from '../workspace/index.js'
 import { createWorkspace, type Workspace } from '../workspace/paths.js'
+import { createGitTools } from './git-tools.js'
 
 export function workspacePromptOptions(
   text: string,
@@ -69,6 +72,7 @@ export type AgentRuntimeOptions = {
   persistPermissionMode?: boolean
   /** Test seam for the user data location; production uses ~/.budingx. */
   home?: string
+  sandboxBackend?: SandboxBackend
 }
 
 /**
@@ -88,7 +92,14 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       }
     })
   }
-  const workspace = createWorkspace(options.cwd)
+  const originalWorkspace = createWorkspace(options.cwd)
+  let currentWorkspace = originalWorkspace
+  const workspace: Workspace = {
+    get root() { return currentWorkspace.root },
+    resolve: (path) => currentWorkspace.resolve(path),
+    isInside: (path) => currentWorkspace.isInside(path),
+    realOf: (path) => currentWorkspace.realOf(path)
+  }
   const permissionStore = new PermissionsStore(
     options.home ? permissionsPath(options.home) : undefined
   )
@@ -96,6 +107,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   const warnings = load.corrupt && load.corruptReason ? [load.corruptReason] : []
   const policy = createPermissionPolicy({
     workspace,
+    managedWorktree: () => currentWorkspace === originalWorkspace ? undefined : currentWorkspace.root,
     rules: load.file.rules as PermissionRule[],
     autoAcceptWorkspaceEdits: options.persistPermissionMode,
     mode: options.mode ?? (options.persistPermissionMode && !load.corrupt
@@ -105,11 +117,28 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   })
   // Search results honour Read deny rules (SP003 T18i): a file the policy
   // refuses to read must not leak through Glob/Grep listings either.
-  const { tools: workspaceTools, checkpoint } = createWorkspaceTools(workspace, {
-    readDenied: (relativePath) =>
+  const workspaceToolOptions = {
+    readDenied: (relativePath: string) =>
       policy.decide({ tool: 'Read', capability: 'read', path: relativePath })
         .action === 'deny'
-  })
+  }
+  const contexts = new Map<string, ReturnType<typeof createWorkspaceTools>>()
+  function toolsFor(target: Workspace) {
+    let scope = contexts.get(target.root)
+    if (!scope) {
+      scope = createWorkspaceTools(target, workspaceToolOptions)
+      contexts.set(target.root, scope)
+    }
+    return scope
+  }
+  let activeTools = toolsFor(originalWorkspace)
+  const workspaceTools = activeTools.tools.map((handler, index): ToolHandler => ({
+    ...handler,
+    execute: (input, context) => activeTools.tools[index].execute(input, context),
+    ...(handler.prepareApproval ? {
+      prepareApproval: (input: unknown) => activeTools.tools[index].prepareApproval!(input)
+    } : {})
+  }))
   // SP004 §4.4/§6.1：会话标识隔离后台输出目录与会话计划文件。
   const sessionId = randomUUID()
   const planMode = createPlanModeHost({
@@ -117,20 +146,54 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     workspace,
     ...(options.home ? { home: options.home } : {})
   })
-  // SP004 §4.7：隔离后端由宿主注入；本仓尚无已验证后端，因此 fail closed——
-  // 普通命令在 spawn 之前即被拒绝（设计允许的宿主托管能力不受影响）。
   const runner = createCommandRunner({
     defaultCwd: workspace.root,
-    sandboxPolicy: createSandboxPolicy({}),
+    sandboxPolicy: createSandboxPolicy({ backend: options.sandboxBackend }),
+    onCommandFinished: (event) => session.commandFinished(event),
     sessionId,
     ...(options.home ? { home: options.home } : {})
   })
   const execTools = createExecTools({
     runner,
     defaultCwd: workspace.root,
+    getCwd: () => workspace.root,
+    sandboxBackendId: options.sandboxBackend?.id,
     platform: process.platform
   })
-  const tools: ToolHandler[] = [...workspaceTools, ...execTools]
+  const gitTools = createGitTools({
+    cwd: () => workspace.root,
+    checkpoint: () => activeTools.checkpoint,
+    switchWorkspace(path) {
+      currentWorkspace = path === originalWorkspace.root ? originalWorkspace : createWorkspace(path)
+      activeTools = toolsFor(currentWorkspace)
+    },
+    home: options.home
+  })
+  const codingTask = createCodingTaskTracker()
+  const tools: ToolHandler[] = [
+    ...workspaceTools,
+    ...execTools,
+    ...gitTools,
+    ...createBackgroundTaskTools(runner),
+    {
+      name: 'StartCodingTask',
+      summary: 'Track a user-requested coding task and require test evidence before reporting completion',
+      parameters: {
+        type: 'object',
+        properties: { goal: { type: 'string', minLength: 1 } },
+        required: ['goal'],
+        additionalProperties: false
+      },
+      describe: () => '开始跟踪编码任务',
+      async execute(input) {
+        const goal = (input as { goal?: unknown } | null)?.goal
+        if (typeof goal !== 'string' || !goal.trim()) throw new Error('Coding task goal is required')
+        if (codingTask.get()) throw new Error('A coding task is already active; use TaskRedirect to change its goal')
+        return JSON.stringify(codingTask.start(goal))
+      }
+    },
+    createTaskRedirectTool(codingTask)
+  ]
   const denials: DenialRecord[] = []
   const session = new Session({
     id: sessionId,
@@ -139,6 +202,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     approval: options.approval,
     tools,
     planMode,
+    codingTask,
     disposers: [() => runner.dispose?.()],
     permissionPolicy: policy,
     resolveSnapshot: () => {
@@ -155,9 +219,12 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
   })
   // 追问与计划模式工具需要 Session 实例本身，因此在构造后追加（数组引用共享）。
-  tools.push(createAskUserQuestionTool(session), ...createPlanModeTools(session))
+  tools.push(createAskUserQuestionTool(session), ...createPlanModeTools(session, planMode.writePlanText))
   session.on((event) => {
     if (event.type === 'denial_recorded') denials.push(event.denial)
+    if (event.type === 'conversation_cleared' ||
+      (event.type === 'turn_finalized' && (event.outcome === 'completed' ||
+        event.error?.code === ERROR_CODES.execSandboxUnavailable))) codingTask.reset?.()
   })
   function setPermissionMode(mode: PermissionMode): boolean {
     policy.setMode(mode)
@@ -170,7 +237,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
   }
 
-  return { session, workspace, policy, setPermissionMode, permissionStore, checkpoint, denials, warnings }
+  return {
+    session, workspace, policy, setPermissionMode, permissionStore, denials, warnings,
+    get checkpoint() { return activeTools.checkpoint }
+  }
 }
 
 export function createConfiguredSession(

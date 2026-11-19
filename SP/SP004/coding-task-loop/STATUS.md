@@ -1,6 +1,6 @@
 # 编码任务循环 状态
 
-状态：**实施与验证完成，待合入 master**（T12–T14 完成；CT-01…09 已回填）。
+状态：**审查修复已验证，等待用户复审 SP004 功能分支**。
 
 ## 当前范围与依据
 
@@ -10,11 +10,11 @@
 
 ## 进度与验收
 
-需求、设计、计划 v1.3 已确认放行（用户 2026-11-18「继续开发SP004」）。T12–T14 全部完成并逐任务红绿取证：`npm test` 607/607 通过（unit 564），`npm run test:checks`、`spec:check`、`skills:check` 通过。CT-01…09 逐条映射到实际用例与计数，见[验收报告](../test-report.md) §4。完成证据闸门逻辑已实现并有用例，但未接入生产 runtime（会让无隔离后端的 CLI 会话空转到 maxIterations，T15 实测并回退），启用状态 UNVERIFIED。
+正式 TUI 注册编码任务启动与转向，使用测试证据闸门。HTTP fixture 覆盖先失败再成功及缺后端终止的分支；真实 Provider 和平台隔离 UNVERIFIED。 证据见[验收报告](../test-report.md)。
 
 ## 2026-11-19 实施完成提交
 
-- 30 个本地提交（HEAD `1f166fb`），分支 `feature/SP004/real-coding-task`；未合入 master，等待 `npm run merge:gate` GREEN 后按 buding-merge 规程合入并推送。
+- `feature/SP004/real-coding-task` 为本次唯一推送目标，master 等待用户复审。
 - 每个任务的 RED/GREEN 证据、缺陷定位与 Ruling 记在[实施计划](../design/plan.zh.md)对应任务的「完成事实」与本地执行台账 `.superpowers/sdd/plan.zh/progress.md`（不跟踪进仓）。
 
 ## 2026-11-18 还原度对齐提交

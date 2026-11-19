@@ -57,6 +57,17 @@ export type CommandResult = {
   noOutputExpected?: boolean
   /** 失败/阻断原因（可读）。 */
   reason?: string
+  errorCode?: string
+}
+
+export interface CommandRunContext {
+  signal: AbortSignal
+  cwd: string
+  turnId?: string
+  callId?: string
+  mode?: 'read_only' | 'workspace'
+  /** 命令真正启动后回调，携带已创建的后台任务 ID。 */
+  onStarted?(info: { taskId?: string; startedAt: number }): void
 }
 
 /** 后台任务句柄（设计 §4.4）。 */
@@ -83,15 +94,7 @@ export type BackgroundTask = {
 
 /** 核心只持有契约；真实执行由 src/exec 注入。 */
 export interface CommandRunner {
-  run(
-    spec: CommandSpec,
-    context: {
-      signal: AbortSignal
-      cwd: string
-      /** 命令真正启动后回调（含后台任务 ID），供宿主发 command_started（SP004 T5）。 */
-      onStarted?(info: { taskId?: string; startedAt: number }): void
-    }
-  ): Promise<CommandResult>
+  run(spec: CommandSpec, context: CommandRunContext): Promise<CommandResult>
   /** 查询后台任务状态与输出。 */
   status(taskId: string): CommandResult | undefined
   /** 取消后台任务（终止整棵进程树）；已终态幂等返回 false。 */

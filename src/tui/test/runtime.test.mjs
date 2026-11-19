@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync, spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:http'
@@ -12,6 +13,7 @@ import { createProfile, profileHost } from '../dist/storage/profiles.js'
 import { saveModel } from '../dist/tui/model-management.js'
 import { createAgentRuntime, createConfiguredSession } from '../dist/tui/runtime.js'
 import { runCommand } from '../dist/tui/commands.js'
+import { createHostProcessFixture } from '../../exec/test/helpers/host-process.mjs'
 function stores() {
   const root = mkdtempSync(join(tmpdir(), 'budingx-runtime-'))
   return {
@@ -30,6 +32,191 @@ function turn(session, text) {
     session.submit(text)
   })
 }
+
+async function sp004Runtime(t, responses, setup = {}) {
+  const base = mkdtempSync(join(tmpdir(), 'budingx-production-flow-'))
+  const cwd = join(base, 'repo')
+  mkdirSync(cwd)
+  const requests = []
+  const server = createServer(async (req, res) => {
+    let body = ''
+    for await (const chunk of req) body += chunk
+    requests.push(JSON.parse(body))
+    const next = responses[requests.length - 1]
+    const response = typeof next === 'function' ? next(requests.at(-1)) : next
+    const choice = Array.isArray(response)
+      ? {
+          delta: {
+            tool_calls: response.map(([name, input], index) => ({
+              index, id: `call-${requests.length}-${index}`, type: 'function',
+              function: { name, arguments: JSON.stringify(input) }
+            }))
+          },
+          finish_reason: 'tool_calls'
+        }
+      : { delta: { content: response ?? '结束' }, finish_reason: 'stop' }
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    res.end(`data: ${JSON.stringify({ choices: [choice] })}\n\ndata: [DONE]\n\n`)
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const baseUrl = `http://127.0.0.1:${server.address().port}/v1`
+  const profile = createProfile({ label: 'SP004', baseUrl, model: 'sp004', tools: true })
+  const configStore = new ConfigStore(join(base, 'config.json'))
+  configStore.save({ version: 1, models: [profile], defaultModelId: profile.id })
+  const approvals = []
+  const runtime = createAgentRuntime({
+    cwd, home: join(base, 'home'), configStore, mode: 'full_access',
+    getConfig: () => ({
+      profileId: profile.id, baseUrl, model: 'sp004', apiKey: 'fixture-key',
+      timeoutMs: 2000, source: 'file'
+    }),
+    approval: { async request(request) {
+      approvals.push(request)
+      return setup.approve?.(request) ?? { outcome: 'allow', via: 'user' }
+    } },
+    sandboxBackend: setup.sandboxBackend
+  })
+  t.after(() => {
+    runtime.session.dispose()
+    server.closeAllConnections()
+    server.close()
+    rmSync(base, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  })
+  const events = []
+  runtime.session.on((event) => events.push(event))
+  return { base, cwd, requests, approvals, runtime, events }
+}
+
+test('SP004 生产入口：模型写计划、显示审批、更新独立待办，工具结果以原 call ID 回填', async (t) => {
+  const { runtime, requests, approvals, events } = await sp004Runtime(t, [
+    [['EnterPlanMode', {}], ['WritePlan', {
+      text: '# 修订计划\n1. 修改 src/app.ts', goal: '修订计划', steps: ['修改 src/app.ts']
+    }]],
+    [['ExitPlanMode', {}], ['TodoWrite', { todos: [
+      { content: '补测试', status: 'in_progress', activeForm: '正在补测试' }
+    ] }]],
+    '计划已批准'
+  ])
+  assert.equal((await turn(runtime.session, '拟定计划')).outcome, 'completed')
+  assert.equal(runtime.session.planMode.active, false,
+    events.filter((event) => event.type === 'tool_result').map((event) => event.content).join('\n'))
+  assert.equal(approvals.length, 1)
+  assert.equal(approvals[0].name, 'ExitPlanMode')
+  assert.ok(approvals[0].preview.some((line) => line.includes('修订计划')))
+  const todos = events.find((event) => event.type === 'todos_updated')
+  assert.equal(todos.items[0].activeForm, '正在补测试')
+  const finalTools = requests[2].messages.filter((message) => message.role === 'tool')
+  assert.deepEqual(finalTools.map((message) => message.tool_call_id),
+    ['call-1-0', 'call-1-1', 'call-2-0', 'call-2-1'])
+  assert.match(finalTools[1].content, /会话计划已更新/)
+  assert.match(finalTools[2].content, /计划已批准/)
+})
+
+test('SP004 生产入口：专用 worktree 隔离文件，受控提交必须等新鲜用户批准', async (t) => {
+  const { runtime, cwd, approvals, events } = await sp004Runtime(t, [
+    [['EnterWorktree', { name: 'review' }]],
+    [['Write', { path: 'added.txt', content: 'worktree only\n' }]],
+    [['GitCommit', { message: 'fixture commit' }]],
+    [['GitCommit', { message: 'fixture commit' }]],
+    [['ExitWorktree', { action: 'keep' }]],
+    '已完成'
+  ], { approve: (request) => request.callId === 'call-3-0'
+    ? { outcome: 'allow_session', via: 'user' }
+    : { outcome: 'allow', via: 'user' } })
+  const git = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim()
+  git('init', '-q', '-b', 'master')
+  git('config', 'user.name', 'SP004 Fixture')
+  git('config', 'user.email', 'sp004@example.test')
+  git('config', 'commit.gpgsign', 'false')
+  git('config', 'core.autocrlf', 'false')
+  git('commit', '--allow-empty', '-qm', 'base')
+  const baseHead = git('rev-parse', 'HEAD')
+  assert.equal((await turn(runtime.session, '在专用工作树增加文件并提交')).outcome, 'completed')
+  assert.deepEqual(approvals.map((request) => request.name), ['EnterWorktree', 'GitCommit', 'GitCommit'])
+  assert.ok(approvals[2].preview.some((line) => line.includes('added.txt')))
+  const results = events.filter((event) => event.type === 'tool_result')
+  assert.deepEqual(results.map((result) => result.isError), [false, false, true, false, false],
+    results.map((result) => result.content).join('\n'))
+  const commit = JSON.parse(results[3].content)
+  assert.equal(git('show', `${commit.sha}:added.txt`), 'worktree only')
+  assert.equal(git('rev-parse', 'HEAD'), baseHead)
+  assert.equal(existsSync(join(cwd, 'added.txt')), false)
+  assert.equal(runtime.workspace.root.toLowerCase(), cwd.toLowerCase())
+})
+
+test('SP004 生产入口：失败命令不算完成证据，测试成功后才能结束编码任务', async (t) => {
+  const starts = []
+  const backend = createHostProcessFixture({
+    spawn(_executable, args, options) {
+      starts.push(args.at(-1))
+      return spawn(process.execPath, ['-e', starts.length === 1 ? 'process.exitCode = 3' : 'process.exitCode = 0'], options)
+    }
+  })
+  const { runtime, requests, events } = await sp004Runtime(t, [
+    [['StartCodingTask', { goal: '修复 fixture' }]],
+    [['Bash', { command: 'node --test fixture.test.mjs' }]],
+    '已经修复',
+    [['Bash', { command: 'node --test fixture.test.mjs' }]],
+    'fixture 通过'
+  ], { sandboxBackend: backend })
+  assert.equal((await turn(runtime.session, '修复 fixture')).outcome, 'completed')
+  assert.equal(starts.length, 2)
+  const outcomes = events.filter((event) => event.type === 'tool_result')
+  assert.equal(outcomes[1].isError, true)
+  assert.match(outcomes[1].content, /exit_code: 3/)
+  assert.equal(outcomes[2].isError, false)
+  assert.match(outcomes[2].content, /exit_code: 0/)
+  assert.ok(requests[3].messages.some((message) => message.role === 'user' &&
+    typeof message.content === 'string' && message.content.includes('真实执行证据')))
+})
+
+test('SP004 生产入口：后台任务可查询、取消并发出关联原调用的终态', { timeout: 12000 }, async (t) => {
+  const backend = createHostProcessFixture({
+    spawn(_executable, _args, options) {
+      return spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], options)
+    }
+  })
+  let taskId
+  const { runtime, events } = await sp004Runtime(t, [
+    [['Bash', { command: 'node fixture.mjs', run_in_background: true }]],
+    (request) => {
+      const started = request.messages.find((message) => message.role === 'tool')
+      taskId = /background_task_id: (\S+)/.exec(started?.content ?? '')?.[1]
+      return [['TaskStatus', { task_id: taskId }], ['TaskCancel', { task_id: taskId }]]
+    },
+    '已取消'
+  ], { sandboxBackend: backend })
+  let off
+  const finished = new Promise((resolve) => {
+    off = runtime.session.on((event) => {
+      if (event.type === 'command_finished') resolve(event)
+    })
+  })
+  t.after(() => off())
+  assert.equal((await turn(runtime.session, '运行、查看并取消 fixture')).outcome, 'completed')
+  assert.ok(taskId)
+  const results = events.filter((event) => event.type === 'tool_result')
+  assert.deepEqual(results.map((result) => result.isError), [false, false, false])
+  assert.match(results[1].content, /outcome: running/)
+  assert.match(results[2].content, /已请求取消/)
+  const terminal = await finished
+  assert.equal(terminal.taskId, taskId)
+  assert.equal(terminal.callId, 'call-1-0')
+  assert.equal(terminal.outcome, 'cancelled')
+})
+
+test('SP004 生产入口：缺隔离后端时编码任务报告阻塞并结束回合', async (t) => {
+  const { runtime, requests } = await sp004Runtime(t, [
+    [['StartCodingTask', { goal: '修复 fixture' }]],
+    [['Bash', { command: 'node --test fixture.test.mjs' }]],
+    '测试无法运行'
+  ])
+  const result = await turn(runtime.session, '修复 fixture')
+  assert.equal(result.outcome, 'error')
+  assert.equal(result.error?.code, 'BUDINGX_EXEC_005')
+  assert.equal(requests.length, 3)
+})
 test('G04/G05 两端点切换模型和凭据，当前回合快照不变', async (t) => {
   const requests = []
   let release

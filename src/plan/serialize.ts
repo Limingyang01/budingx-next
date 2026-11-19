@@ -43,6 +43,7 @@ export function serializePlan(plan: Plan): string {
     `updatedAt: ${plan.updatedAt}`
   ]
   if (plan.fingerprint !== undefined) lines.push(`fingerprint: ${scalar(plan.fingerprint)}`)
+  if (plan.draftText !== undefined) lines.push(`draftText: ${scalar(plan.draftText)}`)
   if (plan.approvedText !== undefined) lines.push(`approvedText: ${scalar(plan.approvedText)}`)
   lines.push('steps:')
   for (const step of plan.steps) lines.push(...stepLines(step))
@@ -149,6 +150,7 @@ export function parsePlan(text: string): Plan {
     updatedAt
   }
   if (typeof meta.fingerprint === 'string') plan.fingerprint = meta.fingerprint
+  if (typeof meta.draftText === 'string') plan.draftText = meta.draftText
   if (typeof meta.approvedText === 'string') plan.approvedText = meta.approvedText
   return plan
 }

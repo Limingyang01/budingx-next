@@ -1,6 +1,6 @@
 # 命令执行 状态
 
-状态：**实施与验证完成，待合入 master**（T1–T5、T18–T21 完成；CE-01…20 已回填）。
+状态：**审查修复已验证，等待用户复审 SP004 功能分支**。
 
 ## 当前范围与依据
 
@@ -10,11 +10,11 @@
 
 ## 进度与验收
 
-需求、设计、计划 v1.3 已确认放行（用户 2026-11-18「继续开发SP004」）。T1–T5、T18–T21 全部完成并逐任务红绿取证：`npm test` 607/607 通过（unit 564），`npm run test:checks`、`spec:check`、`skills:check` 通过。CE-01…20 逐条映射到实际用例与计数，见[验收报告](../test-report.md) §4。命令执行在无已验证隔离后端时于 spawn 前拒绝（fail-closed），真实平台后端 UNVERIFIED（恢复条件见验收报告 §5）。
+正式 TUI 接入后台任务查询、取消及终态事件。进程只能由可信后端启动与终止。自动化覆盖后端委托、环境白名单、无后端拒绝和命令失败语义；真实平台隔离 UNVERIFIED。 证据见[验收报告](../test-report.md)。
 
 ## 2026-11-19 实施完成提交
 
-- 30 个本地提交（HEAD `1f166fb`），分支 `feature/SP004/real-coding-task`；未合入 master，等待 `npm run merge:gate` GREEN 后按 buding-merge 规程合入并推送。
+- `feature/SP004/real-coding-task` 为本次唯一推送目标，master 等待用户复审。
 - 每个任务的 RED/GREEN 证据、缺陷定位与 Ruling 记在[实施计划](../design/plan.zh.md)对应任务的「完成事实」与本地执行台账 `.superpowers/sdd/plan.zh/progress.md`（不跟踪进仓）。
 
 ## 2026-11-18 还原度对齐提交
