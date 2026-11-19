@@ -21,6 +21,13 @@ import {
 } from '../workspace/policy.js'
 import { createWorkspaceTools, resolveFileReferences, type CheckpointStore } from '../workspace/index.js'
 import { createWorkspace, type Workspace } from '../workspace/paths.js'
+import type { Tracer } from '../core/observability.js'
+import {
+  loadTracingEnvironment,
+  isValidBaseUrl,
+  TracingRuntime,
+  type ReceiptReporter
+} from '../observability/index.js'
 
 export function workspacePromptOptions(
   text: string,
@@ -58,6 +65,73 @@ export type AgentRuntime = {
   denials: DenialRecord[]
   /** Startup warnings, e.g. a corrupt permissions file. */
   warnings: string[]
+  /** SP004 agent-observability：正常退出时的限时追踪 flush；未启用时为 undefined。 */
+  shutdownTracing?: () => Promise<void>
+}
+
+/**
+ * SP004 agent-observability §4.9：追踪装配。TUI 与无界面验收脚本共用。
+ * 任何失败都降级为「不注入 tracer」，绝不阻断启动；诊断不含密钥。
+ */
+export function setupTracing(options: {
+  sessionId: string
+  env?: NodeJS.ProcessEnv
+  modelApiKey?: string
+  report?: (message: string) => void
+  onReceipt?: ReceiptReporter
+}): { tracer?: Tracer; shutdown?: () => Promise<void>; diagnostics: string[] } {
+  const env = options.env ?? process.env
+  const diagnostics: string[] = []
+  const report = (message: string): void => {
+    diagnostics.push(message)
+    try {
+      options.report?.(message)
+    } catch {
+      /* 诊断不得中断启动 */
+    }
+  }
+  const merged = loadTracingEnvironment(env, env.BUDINGX_LANGFUSE_ENV_FILE, report)
+  if (merged.BUDINGX_LANGFUSE_ENABLED !== '1') {
+    report('Langfuse tracing: disabled')
+    return { diagnostics }
+  }
+  if (!merged.LANGFUSE_PUBLIC_KEY || !merged.LANGFUSE_SECRET_KEY) {
+    report('Langfuse tracing: disabled (missing project keys)')
+    return { diagnostics }
+  }
+  const baseUrl = merged.LANGFUSE_BASE_URL || 'http://localhost:3000'
+  if (!isValidBaseUrl(baseUrl)) {
+    report('Langfuse tracing: disabled (invalid base url)')
+    return { diagnostics }
+  }
+  const captureContent = merged.BUDINGX_LANGFUSE_CAPTURE_CONTENT === '1'
+  const knownSecrets = [merged.LANGFUSE_SECRET_KEY, options.modelApiKey ?? ''].filter(
+    (secret) => secret.length >= 8
+  )
+  const runtime = new TracingRuntime({
+    config: {
+      enabled: true,
+      baseUrl,
+      publicKey: merged.LANGFUSE_PUBLIC_KEY,
+      secretKey: merged.LANGFUSE_SECRET_KEY,
+      captureContent,
+      knownSecrets
+    },
+    sessionId: options.sessionId,
+    ...(options.onReceipt ? { report: options.onReceipt } : {})
+  })
+  report('Langfuse tracing: enabled')
+  report(`Langfuse content capture: ${captureContent ? 'on' : 'off'}`)
+  try {
+    report(`Langfuse base url: ${new URL(baseUrl).host}`)
+  } catch {
+    /* URL 已校验 */
+  }
+  return {
+    tracer: runtime,
+    shutdown: () => runtime.shutdown(),
+    diagnostics
+  }
 }
 
 export type AgentRuntimeOptions = {
@@ -112,6 +186,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   })
   // SP004 §4.4/§6.1：会话标识隔离后台输出目录与会话计划文件。
   const sessionId = randomUUID()
+  const tracing = setupTracing({
+    sessionId,
+    modelApiKey: options.getConfig().apiKey,
+    report: (message) => warnings.push(message)
+  })
   const planMode = createPlanModeHost({
     sessionId,
     workspace,
@@ -141,6 +220,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     planMode,
     disposers: [() => runner.dispose?.()],
     permissionPolicy: policy,
+    ...(tracing.tracer ? { tracer: tracing.tracer } : {}),
     resolveSnapshot: () => {
       const config = options.getConfig()
       const profile = options.configStore
@@ -170,7 +250,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
   }
 
-  return { session, workspace, policy, setPermissionMode, permissionStore, checkpoint, denials, warnings }
+  return {
+    session, workspace, policy, setPermissionMode, permissionStore, checkpoint, denials, warnings,
+    ...(tracing.shutdown ? { shutdownTracing: tracing.shutdown } : {})
+  }
 }
 
 export function createConfiguredSession(

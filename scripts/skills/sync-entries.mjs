@@ -16,6 +16,7 @@ export const BUDING_SKILLS = [
   'buding-merge',
   'buding-npm-release',
   'buding-version-prepare',
+  'buding-langfuse',
 ]
 export const SUPERPOWERS_SKILLS = [
   'brainstorming',
