@@ -16,12 +16,12 @@ test('createBugFixture writes a buggy module and a failing test', () => {
 
 test('summarizeEvents extracts tools, edits, commands and outcome', () => {
   const events = [
-    { type: 'tool_call_completed', name: 'Read' },
-    { type: 'tool_call_completed', name: 'Read' },
-    { type: 'tool_call_completed', name: 'Edit' },
+    { type: 'tool_call_completed', callId: 'c1', name: 'Read' },
+    { type: 'tool_call_completed', callId: 'c2', name: 'Read' },
+    { type: 'tool_call_completed', callId: 'c3', name: 'Edit' },
     { type: 'change_set', changes: [{ path: 'math.js' }] },
-    { type: 'tool_call_completed', name: 'Bash' },
-    { type: 'command_finished', outcome: 'failed' },
+    { type: 'tool_call_completed', callId: 'c4', name: 'Bash' },
+    { type: 'tool_result', callId: 'c4', isError: true },
     { type: 'text_delta', text: 'fixed' },
     { type: 'turn_finalized', outcome: 'error', error: { code: 'BUDINGX_EXEC_005' } }
   ]
@@ -36,7 +36,18 @@ test('summarizeEvents extracts tools, edits, commands and outcome', () => {
   assert.equal(s.answer, 'fixed')
 })
 
-test('summarizeEvents reports success when a command completed', () => {
+test('summarizeEvents detects a successful foreground command via tool_result', () => {
+  const s = summarizeEvents([
+    { type: 'tool_call_completed', callId: 'c1', name: 'Bash' },
+    { type: 'tool_result', callId: 'c1', isError: false },
+    { type: 'turn_finalized', outcome: 'completed' }
+  ])
+  assert.equal(s.commandSucceeded, true)
+  assert.deepEqual(s.commandOutcomes, ['completed'])
+  assert.equal(s.outcome, 'completed')
+})
+
+test('summarizeEvents reports success when a background command completed', () => {
   const s = summarizeEvents([
     { type: 'command_finished', outcome: 'completed' },
     { type: 'turn_finalized', outcome: 'completed' }

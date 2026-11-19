@@ -34,19 +34,30 @@ export function createBugFixture(dir) {
 
 /** 从事件流提炼能力摘要（纯函数）。 */
 export function summarizeEvents(events) {
-  const tools = events.filter((e) => e.type === 'tool_call_completed').map((e) => e.name)
+  const toolCalls = events.filter((e) => e.type === 'tool_call_completed')
+  const nameByCallId = new Map(toolCalls.map((e) => [e.callId, e.name]))
+  const tools = toolCalls.map((e) => e.name)
   const edits = events.filter((e) => e.type === 'change_set').flatMap((e) => e.changes.map((c) => c.path))
-  const commands = events.filter((e) => e.type === 'command_finished')
   const finalized = events.find((e) => e.type === 'turn_finalized')
   const answer = events.filter((e) => e.type === 'text_delta').map((e) => e.text).join('')
   const toolCounts = {}
   for (const name of tools) toolCounts[name] = (toolCounts[name] ?? 0) + 1
+  // 前台命令工具的实际结果走 tool_result（按 callId 配对）；后台任务走 command_finished。
+  const COMMAND_TOOLS = new Set(['Bash', 'PowerShell'])
+  const commandResults = events.filter(
+    (e) => e.type === 'tool_result' && COMMAND_TOOLS.has(nameByCallId.get(e.callId))
+  )
+  const bgCommands = events.filter((e) => e.type === 'command_finished')
   return {
     toolCounts,
     toolTotal: tools.length,
     editedFiles: [...new Set(edits)],
-    commandOutcomes: commands.map((c) => c.outcome),
-    commandSucceeded: commands.some((c) => c.outcome === 'completed'),
+    commandOutcomes: [
+      ...commandResults.map((r) => (r.isError ? 'failed' : 'completed')),
+      ...bgCommands.map((c) => c.outcome)
+    ],
+    commandSucceeded:
+      commandResults.some((r) => !r.isError) || bgCommands.some((c) => c.outcome === 'completed'),
     outcome: finalized?.outcome ?? 'unknown',
     errorCode: finalized?.error?.code ?? null,
     answer

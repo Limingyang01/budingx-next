@@ -94,7 +94,9 @@ node --env-file-if-exists=.env.e2e.local scripts/langfuse/capability-probe.mjs
 - 需 `.env.e2e.local` 的模型配置（`BUDINGX_BASE_URL/MODEL/API_KEY`）与追踪变量；**消耗真实模型额度**（受 `BUDINGX_E2E_BUDGET_USD` 授权约束）。
 - 关键：必须经 `loadRuntimeConfig` 绑定存储 profile，`capabilities.tools` 才为 true，模型才拿得到工具（纯 env 无 profile 时工具被禁用，Agent 只会空答）。
 - 输出：工具调用统计、编辑文件、命令结果、bug 是否落盘修复、turn outcome 与错误码、能力判定。
-- **已知边界**：本机若无已验证执行隔离后端，Bash/PowerShell 被 `BUDINGX_EXEC_005` 拦截，「运行测试」步无法完成（turn 以 error 收尾）——这是宿主执行隔离能力缺失，非模型能力问题；探针会如实区分「定位+编辑 PASS」与「运行测试 BLOCKED」。
+- **启用沙箱**：跑真实命令需 `BUDINGX_SANDBOX=bubblewrap`（否则 fail-closed，Bash/PowerShell 被 `BUDINGX_EXEC_005` 拒）。Windows 宿主走 WSL bubblewrap，后端 id `bubblewrap-wsl`。
+- **沙箱内跑 node 测试的前提**：bubblewrap 绑定 `/usr`(ro)、PATH=`/usr/bin:/bin`，工作区是复制进沙箱（非挂 `/mnt`）。WSL 的 `/usr/bin` 必须有 node——`wsl -d Ubuntu -u root -- apt-get install -y nodejs`（Ubuntu 26.04 给 22.x，支持 `node --test`）；装上即自动可用，无需改沙箱代码。缺 node 时 `node --test` 报 `command not found (127)`。
+- **判定**：探针区分「定位+编辑」与「运行测试」。命令成功按 `tool_result`（callId 配对 Bash/PowerShell）判定，前台命令不走 `command_finished`。无沙箱或沙箱缺 node 时「运行测试」如实判 BLOCKED，非模型能力问题。
 - 跑完用 `query-traces.mjs` 查看生成的 trace（含 ERROR 观测）。纯函数 `createBugFixture`/`summarizeEvents`/`summarizeTraces` 有单测（`test:langfuse`）。
 
 ## 常见故障
