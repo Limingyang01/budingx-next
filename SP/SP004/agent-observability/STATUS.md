@@ -9,13 +9,13 @@
 | 需求版本 | v0.3（含验收回填） |
 | 设计版本 | v1.2 |
 | 实施计划版本 | v1.2 |
-| 生命周期 | **VERIFYING**（实施完成，代码验证全绿；真实部署/live 三场景 UNVERIFIED） |
-| 阶段 | 需求 ✅ → 设计 ✅ → 计划 ✅ → 文档自审 ✅ → 实施 ✅ → 测试 ✅（代码层）→ 交付 ⏳ |
-| 功能分支 | `feature/SP004/real-coding-task`（沿用 SP004 分支，未新建） |
+| 生命周期 | **VERIFYING**（已重应用并合入 master，代码验收全绿；真实部署/live 三场景 UNVERIFIED） |
+| 阶段 | 需求 ✅ → 设计 ✅ → 计划 ✅ → 文档自审 ✅ → 实施 ✅ → 测试 ✅（代码层）→ 交付 ✅（合入 master 并推送） |
+| 功能分支 | `feature/SP004/agent-observability`（重应用分支）→ 已合入 master |
 | 设计文档 | [design/design.zh.md](./design/design.zh.md)（本需求自有设计，独立于 SP004 主设计） |
 | 实施计划 | [design/plan.zh.md](./design/plan.zh.md) |
 | AC 总数 | 28 条（OB-01 … OB-28）；代码/结构/判定逻辑 26 条 PASS，OB-04/OB-24 UNVERIFIED |
-| Git 范围 | T26–T33 多个中文提交于 SP004 功能分支；**未合入 master、未推送**（待用户验收与门禁） |
+| Git 范围 | 重应用提交 `07f6e78` → 合并提交 `20c467f` 已合入 master 并推送 origin（远端 SHA 已核对）；门禁 GREEN |
 
 ## 授权与来源
 
@@ -118,3 +118,5 @@
 | 2026-11-19 | R-01 可行性核验：不引入 OTel SDK 对监控效果无实质影响；设计升 v1.1 | 用户会话「不引入会对监控有影响吗」 | 仅文档补充；技术路线不变 |
 | 2026-11-19 | 需求 v0.2、设计与计划 v1.2 文档自审通过 | 用户要求修正四个 P1 及上报、版本口径 | 实施暂停 |
 | 2026-11-19 | **实施完成（T25–T33）**：Core 端口/Session 接线、脱敏、运行时/OTLP 导出器、宿主装配、部署资产、验收脚本；全量 `npm test` 775/773/0/2skip；AST 首轮命中 2 → 独立重构后命中 0 PASS | 用户会话「你先做SP004的优化需求吧……你做完后再全量复测一下，确保交付给我的是完整的产品」 | 代码层全绿；真实部署 ClickHouse fresh-migration 脏失败记 UNVERIFIED 并清理（未伤参考栈）；live 三场景需用户凭据记 UNVERIFIED；未合入 master/未推送 |
+
+| 2026-11-19 | **重应用到远端 master 并合入推送**：远端 master 已由并发会话合入 SP004 主体（T25）并准备 0.4.0；本优化与之在 SP004 主体实现上分歧，故不合并整条 feature 分支，改为在远端 master 上单独重应用观测接入点（保留远端 SP004 主体）。门禁 GREEN（722/722/0），合并提交 `20c467f` 推送 origin | 用户确认「单独重应用观测到远端 master」 | 远端 SP004 主体不变；观测默认关闭叠加；0.4.0 dry-run verified-local；OB-04/OB-24 仍 UNVERIFIED |
