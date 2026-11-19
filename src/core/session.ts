@@ -850,6 +850,8 @@ export class Session {
       'langfuse.observation.type': 'agent',
       'langfuse.trace.name': 'agent.run'
     })
+    // OB-17：根观测 input 为用户消息数组。正文是否实际上报由宿主追踪器决定。
+    this.tracePayload(turn.traceRoot, 'input', [{ role: 'user', content: userText }])
     if (queued) {
       this.emit({
         type: 'input_injected',
@@ -1576,6 +1578,26 @@ export class Session {
       return
     }
     turn.finalized = true
+    // OB-17：根观测 output 为助手消息数组；模型在产生任何助手消息前失败时
+    // 合法 output 为空数组。必须在消息被裁剪/回滚之前收集。
+    if (turn.traceRoot) {
+      const assistantTexts = this.messages
+        .filter(
+          (message) => message.role === 'assistant' && turn.messageIds.includes(message.id)
+        )
+        .map((message) =>
+          message.blocks
+            .filter((block): block is Extract<Message['blocks'][number], { type: 'text' }> => block.type === 'text')
+            .map((block) => block.text)
+            .join('')
+        )
+        .filter((text) => text.length > 0)
+      this.tracePayload(
+        turn.traceRoot,
+        'output',
+        assistantTexts.map((content) => ({ role: 'assistant', content }))
+      )
+    }
     this.options.approval.cancelAll?.()
     this.approvalForMemory = undefined
     for (const listener of this.toolPreviewListeners) listener([])

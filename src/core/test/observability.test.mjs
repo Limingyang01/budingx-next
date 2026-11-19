@@ -399,3 +399,56 @@ test('a failing root leaves no orphan child observations', async () => {
   const models = begins(tracer, 'model.request')
   assert.equal(models.length, 0)
 })
+
+test('the root observation receives user input and assistant output payloads', async () => {
+  const tracer = recordingTracer()
+  const { session } = makeSession({
+    tracer,
+    script: [
+      [
+        { type: 'text_delta', text: 'the answer' },
+        { type: 'message_completed', finishReason: 'stop' }
+      ]
+    ]
+  })
+  await submitAndWait(session, 'hello')
+
+  const root = begins(tracer, 'agent.run')[0]
+  const payloads = tracer.calls.filter(
+    (call) => call.op === 'setPayload' && call.handle === root.handle
+  )
+  const input = payloads.find((call) => call.key === 'input')
+  const output = payloads.find((call) => call.key === 'output')
+  assert.ok(input, 'root input payload must be written')
+  assert.deepEqual(input.value, [{ role: 'user', content: 'hello' }])
+  assert.ok(output, 'root output payload must be written')
+  assert.deepEqual(output.value, [{ role: 'assistant', content: 'the answer' }])
+})
+
+test('a model failure before any assistant message yields an empty output array', async () => {
+  const tracer = recordingTracer()
+  const { session } = makeSession({
+    tracer,
+    script: [
+      [
+        {
+          type: 'failed',
+          error: {
+            class: 'unknown',
+            code: 'BUDINGX_PROVIDER_001',
+            message: 'connection refused',
+            retryable: false
+          }
+        }
+      ]
+    ]
+  })
+  await submitAndWait(session, 'hello')
+
+  const root = begins(tracer, 'agent.run')[0]
+  const output = tracer.calls.find(
+    (call) => call.op === 'setPayload' && call.handle === root.handle && call.key === 'output'
+  )
+  assert.ok(output)
+  assert.deepEqual(output.value, [])
+})
