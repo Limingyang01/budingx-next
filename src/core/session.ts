@@ -35,6 +35,7 @@ import type {
 } from './tools.js'
 import type { CommandResult, VerifiedTestEvidence } from './exec.js'
 import type { CodingTaskTracker } from './coding.js'
+import type { TraceHandle, Tracer } from './observability.js'
 import type {
   PermissionMode,
   PermissionPolicy,
@@ -80,6 +81,11 @@ export type SessionOptions = {
   queueAutostartMs?: number
   /** Host resources to release on dispose, e.g. the foreground/background command runner (SP004 §4.4). */
   disposers?: (() => void)[]
+  /**
+   * SP004 agent-observability §4.2：可选追踪端口。实现由宿主注入。
+   * 未注入时完全跳过埋点，不产生任何观测或网络请求。
+   */
+  tracer?: Tracer
   onEvent?: (event: SessionEvent) => void
 }
 
@@ -104,6 +110,11 @@ type ActiveTurn = {
   messageIds: string[]
   assistant?: Message
   cancelTimer?: NodeJS.Timeout
+  /**
+   * SP004 agent-observability §4.2：本回合的根观测句柄。
+   * 模型与工具观测显式以它为父，Core 不依赖任何隐式上下文。
+   */
+  traceRoot?: TraceHandle
 }
 
 const ALLOWED_TRANSITIONS: Record<SessionState, SessionState[]> = {
@@ -730,6 +741,77 @@ export class Session {
     for (const listener of this.listeners) listener(event)
   }
 
+  /**
+   * SP004 agent-observability §4.2：埋点安全包装。
+   * 追踪异常绝不影响回合状态机与工具执行（OB-21）。
+   */
+  private traceBegin(
+    name: string,
+    attributes: Record<string, string | number | boolean>,
+    parent?: TraceHandle
+  ): TraceHandle | undefined {
+    const tracer = this.options.tracer
+    if (!tracer) return undefined
+    try {
+      return tracer.begin(name, attributes, parent)
+    } catch {
+      return undefined
+    }
+  }
+
+  private traceEnd(
+    handle: TraceHandle | undefined,
+    outcome: 'success' | 'error' | 'cancelled' | 'blocked',
+    error?: unknown
+  ): void {
+    const tracer = this.options.tracer
+    if (!tracer || !handle) return
+    try {
+      tracer.end(handle, outcome, error)
+    } catch {
+      /* 观测不得改变业务结果 */
+    }
+  }
+
+  private traceAttributes(
+    handle: TraceHandle | undefined,
+    attributes: Record<string, string | number | boolean>
+  ): void {
+    const tracer = this.options.tracer
+    if (!tracer || !handle) return
+    try {
+      tracer.setAttributes(handle, attributes)
+    } catch {
+      /* 观测不得改变业务结果 */
+    }
+  }
+
+  private tracePayload(
+    handle: TraceHandle | undefined,
+    key: 'input' | 'output',
+    value: unknown
+  ): void {
+    const tracer = this.options.tracer
+    if (!tracer || !handle) return
+    try {
+      tracer.setPayload(handle, key, value)
+    } catch {
+      /* 观测不得改变业务结果 */
+    }
+  }
+
+  /**
+   * SP004 agent-observability §4.3：usage_details 为 JSON string，
+   * 字段名 input/output，与 Langfuse 官方属性映射一致。
+   */
+  private traceUsage(handle: TraceHandle | undefined, usage: Usage): void {
+    const input = usage.inputTokens ?? 0
+    const output = usage.outputTokens ?? 0
+    this.traceAttributes(handle, {
+      'langfuse.observation.usage_details': JSON.stringify({ input, output })
+    })
+  }
+
   private setState(next: SessionState): void {
     if (next === this.state) return
     if (!ALLOWED_TRANSITIONS[this.state].includes(next)) {
@@ -759,6 +841,15 @@ export class Session {
       messageIds: []
     }
     this.activeTurn = turn
+    // SP004 agent-observability §4.2：根观测在回合真正开始后创建一次。
+    // 排队本身不建观测；队列触发新回合时另建新根。
+    turn.traceRoot = this.traceBegin('agent.run', {
+      'session.id': this.id,
+      'turn.id': turn.id,
+      'langfuse.trace.metadata.runId': randomUUID(),
+      'langfuse.observation.type': 'agent',
+      'langfuse.trace.name': 'agent.run'
+    })
     if (queued) {
       this.emit({
         type: 'input_injected',
@@ -832,6 +923,19 @@ export class Session {
       const fragments: ToolFragment[] = []
       let finishReason: FinishReason = 'unknown'
       let providerFailure: ErrorInfo | undefined
+      // SP004 agent-observability §4.2：每次 Provider 调用一个子观测，
+      // 父为本回合根观测。usage 只在本次调用真正返回时写入，不跨调用继承。
+      const modelTrace = this.traceBegin(
+        'model.request',
+        {
+          'langfuse.observation.type': 'generation',
+          'gen_ai.request.model': snapshot.model,
+          'session.id': this.id,
+          'turn.id': turn.id
+        },
+        turn.traceRoot
+      )
+      let modelUsage: Usage | undefined
 
       try {
         for await (const event of turn.provider.stream(
@@ -873,6 +977,7 @@ export class Session {
             case 'message_completed':
               finishReason = event.finishReason
               usage = event.usage
+              modelUsage = event.usage
               break
             case 'retry':
               this.emit({
@@ -904,6 +1009,15 @@ export class Session {
       }
 
       if (providerFailure) {
+        // SP004 agent-observability：失败的模型调用也要收尾，级别按失败类型区分。
+        if (modelUsage) this.traceUsage(modelTrace, modelUsage)
+        this.traceEnd(
+          modelTrace,
+          providerFailure.class === 'aborted' || turn.controller.signal.aborted
+            ? 'cancelled'
+            : 'error',
+          providerFailure
+        )
         if (providerFailure.class === 'aborted' || turn.controller.signal.aborted) {
           outcome = 'cancelled'
         } else {
@@ -912,6 +1026,10 @@ export class Session {
         }
         break
       }
+
+      // 正常完成的模型调用：先写 usage 再收尾。
+      if (modelUsage) this.traceUsage(modelTrace, modelUsage)
+      this.traceEnd(modelTrace, 'success')
 
       const { calls, errors } = assembleToolCalls(fragments, true)
       const callErrors = errors.filter(
@@ -1035,6 +1153,18 @@ export class Session {
       }
       const input = parseToolArguments(call)
       const handler = this.tools.find((tool) => tool.name === call.name)
+      // SP004 agent-observability §4.2：工具观测在权限判断之前创建，
+      // 这样被拒绝与被阻断也能被平台看到。
+      const toolTrace = this.traceBegin(
+        `tool.${call.name}`,
+        {
+          'langfuse.observation.type': 'tool',
+          'gen_ai.tool.call.id': call.id,
+          'session.id': this.id,
+          'turn.id': turn.id
+        },
+        turn.traceRoot
+      )
       this.emit({
         type: 'tool_call_completed',
         turnId: turn.id,
@@ -1043,6 +1173,7 @@ export class Session {
         input
       })
       if (!handler) {
+        this.traceEnd(toolTrace, 'error')
         this.pushToolResult(
           turn,
           call.id,
@@ -1069,6 +1200,7 @@ export class Session {
         let verdict = policy.decide(permissionRequest)
         const capability = permissionRequest.capability
         if (verdict.action === 'deny') {
+          this.traceEnd(toolTrace, 'blocked')
           this.pushToolResult(
             turn,
             call.id,
@@ -1089,6 +1221,7 @@ export class Session {
         }
         const drift = capability === 'read' ? [] : this.recheckApprovedPlan()
         if (drift.length > 0) {
+          this.traceEnd(toolTrace, 'blocked')
           this.pushToolResult(
             turn,
             call.id,
@@ -1100,6 +1233,7 @@ export class Session {
         }
         if (this.planModeState) {
           if (this.planModeState.phase === 'pending' && capability !== 'read') {
+            this.traceEnd(toolTrace, 'blocked')
             this.pushToolResult(
               turn,
               call.id,
@@ -1119,6 +1253,7 @@ export class Session {
             continue
           }
           if (this.planModeState.reapprovalDrift && capability !== 'read') {
+            this.traceEnd(toolTrace, 'blocked')
             this.pushToolResult(
               turn,
               call.id,
@@ -1142,6 +1277,7 @@ export class Session {
         try {
           prepared = await handler.prepareApproval?.(input)
         } catch (error) {
+          this.traceEnd(toolTrace, 'error', error)
           this.pushToolResult(
             turn,
             call.id,
@@ -1196,6 +1332,10 @@ export class Session {
             decision.feedback && decision.feedback.trim()
               ? `\nUser feedback: ${decision.feedback.trim()}`
               : ''
+          this.traceEnd(
+            toolTrace,
+            decision.outcome === 'cancelled' ? 'cancelled' : 'blocked'
+          )
           this.pushToolResult(
             turn,
             call.id,
@@ -1263,6 +1403,7 @@ export class Session {
           }
         }
         if (permissionRequest && policy?.decide(permissionRequest).action === 'deny') {
+          this.traceEnd(toolTrace, 'blocked')
           this.pushToolResult(turn, call.id, 'Permission changed before execution', true, ERROR_CODES.permissionDenied)
           continue
         }
@@ -1273,6 +1414,7 @@ export class Session {
           // A per-tool approval can wait long enough for the reviewed state to change.
           const drift = needsApproval ? this.recheckApprovedPlan() : []
           if (drift.length > 0) {
+            this.traceEnd(toolTrace, 'blocked')
             this.pushToolResult(
               turn,
               call.id,
@@ -1310,7 +1452,7 @@ export class Session {
         this.lastToolElapsed = { turnId: turn.id, callId: call.id, ms: performance.now() - startedAt }
       }
       try {
-        this.pushToolResult(turn, call.id, content, isError, errorCode)
+        this.pushToolResult(turn, call.id, content, isError, errorCode, toolTrace)
       } finally {
         this.lastToolElapsed = undefined
       }
@@ -1323,8 +1465,16 @@ export class Session {
     callId: string,
     content: string,
     isError: boolean,
-    code?: string
+    code?: string,
+    /**
+     * SP004 agent-observability §4.2：本工具调用的观测句柄。
+     * 在此收尾一次，保证成功、失败、拒绝与阻断都有对应 outcome。
+     */
+    toolTrace?: TraceHandle
   ): void {
+    if (toolTrace) {
+      this.traceEnd(toolTrace, isError ? 'error' : 'success')
+    }
     const message: Message = {
       id: randomUUID(),
       role: 'tool',
@@ -1459,6 +1609,9 @@ export class Session {
 
     if (this.activeTurn === turn) this.activeTurn = undefined
     this.setState('idle')
+    // SP004 agent-observability §4.2：根观测在回合统一收尾处结束一次。
+    // 取消与失败走同一收尾路径，晚到的回调不再写入。
+    this.traceEnd(turn.traceRoot, this.traceOutcomeOf(outcome), error)
     this.emit({
       type: 'turn_finalized',
       finishedAt: Date.now(),
@@ -1468,6 +1621,16 @@ export class Session {
       ...(restoreText ? { restoreText } : {})
     })
     this.scheduleQueueDrain()
+  }
+
+  /**
+   * SP004 agent-observability §4.2：回合终态映射到观测 outcome。
+   * 只有明确的成功算 success，其余失败类终态按 error/cancelled 区分。
+   */
+  private traceOutcomeOf(outcome: TurnOutcome): 'success' | 'error' | 'cancelled' {
+    if (outcome === 'completed') return 'success'
+    if (outcome === 'cancelled') return 'cancelled'
+    return 'error'
   }
 
   private keepCancelArtifacts(turn: ActiveTurn): void {
