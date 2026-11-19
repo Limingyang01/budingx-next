@@ -81,6 +81,52 @@ export function judgeLevels(observations, expectations) {
   return { ok: problems.length === 0, problems }
 }
 
+/**
+ * 判定工具调用是否合适（工具调用质量）：次数有界、参数指向真实目标、无重复调用。
+ * 次数上限默认 2：允许模型在失败后重试一次，但重复同一调用视为浪费。
+ * @param observations v2 API 返回的观测数组
+ * @param expectation { name, maxCalls, argsMustInclude }
+ */
+export function judgeToolCalls(observations, expectation) {
+  const wanted = 'tool.' + expectation.name
+  const calls = observations.filter((o) => o.name === wanted)
+  const maxCalls = expectation.maxCalls ?? 2
+  const problems = []
+  if (calls.length === 0) problems.push(wanted + ': no tool call observation')
+  if (calls.length > maxCalls) {
+    problems.push(wanted + ': ' + calls.length + ' calls exceed the budget of ' + maxCalls)
+  }
+  const seen = new Set()
+  for (const call of calls) {
+    const raw = typeof call.input === 'string' ? call.input : JSON.stringify(call.input ?? null)
+    if (expectation.argsMustInclude && !raw.includes(expectation.argsMustInclude)) {
+      problems.push(wanted + ': arguments do not mention ' + expectation.argsMustInclude)
+    }
+    if (seen.has(raw)) problems.push(wanted + ': duplicate call with identical arguments ' + raw)
+    seen.add(raw)
+  }
+  return { ok: problems.length === 0, calls: calls.length, problems }
+}
+
+/**
+ * 判定模型观测带真实用量（OB-03 的可观测性要求：generation 能定位成本与耗时）。
+ */
+export function judgeModelObservations(observations) {
+  const generations = observations.filter((o) => o.name === 'model.request')
+  if (generations.length === 0) {
+    return { ok: false, count: 0, totalUsage: 0, reason: 'no model.request observation' }
+  }
+  const totalUsage = generations.reduce((sum, o) => sum + Number(o.totalUsage ?? 0), 0)
+  const slow = generations.filter((o) => Number(o.latency ?? 0) <= 0)
+  if (totalUsage <= 0) {
+    return { ok: false, count: generations.length, totalUsage, reason: 'model request reports no token usage' }
+  }
+  if (slow.length > 0) {
+    return { ok: false, count: generations.length, totalUsage, reason: 'model request has no measurable latency' }
+  }
+  return { ok: true, count: generations.length, totalUsage }
+}
+
 /** 读取本地环境文件。 */
 function readEnvFile(file) {
   if (!existsSync(file)) return {}
@@ -163,7 +209,7 @@ async function queryObservations(baseUrl, auth, traceId, deadlineMs = 60000) {
   const deadline = Date.now() + deadlineMs
   const url = new URL('/api/public/v2/observations', baseUrl)
   url.searchParams.set('traceId', traceId)
-  url.searchParams.set('fields', 'core,basic,io')
+  url.searchParams.set('fields', 'core,basic,io,usage')
   url.searchParams.set('limit', '100')
   while (Date.now() < deadline) {
     try {
@@ -190,7 +236,10 @@ async function main() {
   const e2eValues = readEnvFile(path.join(ROOT, '.env.e2e.local'))
   const langfuseEnv = {
     BUDINGX_LANGFUSE_ENABLED: '1',
-    BUDINGX_LANGFUSE_CAPTURE_CONTENT: agentValues.BUDINGX_LANGFUSE_CAPTURE_CONTENT ?? '0',
+    BUDINGX_LANGFUSE_CAPTURE_CONTENT:
+      e2eValues.BUDINGX_LANGFUSE_CAPTURE_CONTENT ??
+      agentValues.BUDINGX_LANGFUSE_CAPTURE_CONTENT ??
+      '0',
     LANGFUSE_BASE_URL: agentValues.LANGFUSE_BASE_URL ?? 'http://localhost:3000',
     LANGFUSE_PUBLIC_KEY: agentValues.LANGFUSE_PUBLIC_KEY,
     LANGFUSE_SECRET_KEY: agentValues.LANGFUSE_SECRET_KEY
@@ -224,12 +273,21 @@ async function main() {
     const levels = judgeLevels(observations, [
       { name: 'tool.Read', level: scenario === 'tool-error' ? 'ERROR' : 'DEFAULT' }
     ])
+    // 工具调用质量：恰好一次 Read，参数指向该场景的目标文件，且没有重复调用。
+    const toolCalls = judgeToolCalls(observations, {
+      name: 'Read',
+      maxCalls: 2,
+      argsMustInclude: scenario === 'tool-error' ? 'missing-sp005.txt' : 'facts.txt'
+    })
+    const modelObservations = judgeModelObservations(observations)
     results.push({
       ...local,
       observationCount: observations.length,
       hierarchy,
       toolNames,
       levels,
+      toolCalls,
+      modelObservations,
       observationNames: observations.map((o) => ({ name: o.name, level: o.level, parent: o.parentObservationId }))
     })
   }
@@ -242,11 +300,14 @@ async function main() {
       r.localExpectationMet &&
       r.hierarchy.ok &&
       r.toolNames.ok &&
-      r.levels.ok
+      r.levels.ok &&
+      r.toolCalls.ok &&
+      r.modelObservations.ok
     if (!ok) failed = true
     console.log(
       `${r.scenario}: local=${r.localExpectationMet} obs=${r.observationCount} ` +
-        `hierarchy=${r.hierarchy.ok} tools=${r.toolNames.ok} levels=${r.levels.ok} trace=${r.traceId}`
+        `hierarchy=${r.hierarchy.ok} tools=${r.toolNames.ok} levels=${r.levels.ok} ` +
+        `calls=${r.toolCalls.calls} usage=${r.modelObservations.totalUsage} trace=${r.traceId}`
     )
   }
   process.exitCode = failed ? 1 : 0

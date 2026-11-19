@@ -3,7 +3,9 @@ import { test } from 'node:test'
 import {
   judgeHierarchy,
   judgeToolNames,
-  judgeLevels
+  judgeLevels,
+  judgeToolCalls,
+  judgeModelObservations
 } from './sp005-observation.mjs'
 
 function observation(overrides) {
@@ -98,6 +100,55 @@ test('OB-03 权限阻断必须是 WARNING 级', () => {
     [{ name: 'tool.Write', level: 'WARNING' }]
   )
   assert.equal(result.ok, true)
+})
+
+test('OB-03 工具调用次数在预算内且参数指向目标才合适', () => {
+  const result = judgeToolCalls(
+    [observation({ id: 'obs-2', name: 'tool.Read', parentObservationId: 'obs-1', input: '{"file":"facts.txt"}' })],
+    { name: 'Read', maxCalls: 2, argsMustInclude: 'facts.txt' }
+  )
+  assert.equal(result.ok, true)
+  assert.equal(result.calls, 1)
+})
+
+test('OB-03 没有工具调用或被重复调用判定不合适', () => {
+  const none = judgeToolCalls([observation({})], { name: 'Read', maxCalls: 2 })
+  assert.equal(none.ok, false)
+  assert.match(none.problems[0], /no tool call observation/)
+  const dup = judgeToolCalls(
+    [
+      observation({ id: 'obs-2', name: 'tool.Read', parentObservationId: 'obs-1', input: '{"file":"facts.txt"}' }),
+      observation({ id: 'obs-3', name: 'tool.Read', parentObservationId: 'obs-1', input: '{"file":"facts.txt"}' })
+    ],
+    { name: 'Read', maxCalls: 2 }
+  )
+  assert.equal(dup.ok, false)
+  assert.match(dup.problems.join(' '), /duplicate call/)
+})
+
+test('OB-03 工具参数偏离目标判定不合适', () => {
+  const result = judgeToolCalls(
+    [observation({ id: 'obs-2', name: 'tool.Read', parentObservationId: 'obs-1', input: '{"file":"other.txt"}' })],
+    { name: 'Read', maxCalls: 2, argsMustInclude: 'facts.txt' }
+  )
+  assert.equal(result.ok, false)
+  assert.match(result.problems[0], /arguments do not mention facts\.txt/)
+})
+
+test('OB-03 模型观测必须带真实用量与耗时', () => {
+  const ok = judgeModelObservations([
+    observation({ id: 'obs-2', name: 'model.request', parentObservationId: 'obs-1', totalUsage: 42, latency: 0.8 })
+  ])
+  assert.equal(ok.ok, true)
+  assert.equal(ok.totalUsage, 42)
+  const empty = judgeModelObservations([observation({})])
+  assert.equal(empty.ok, false)
+  assert.match(empty.reason, /no model.request/)
+  const zero = judgeModelObservations([
+    observation({ id: 'obs-2', name: 'model.request', parentObservationId: 'obs-1', totalUsage: 0, latency: 1 })
+  ])
+  assert.equal(zero.ok, false)
+  assert.match(zero.reason, /no token usage/)
 })
 
 test('OB-03 缺少工具观测判定失败', () => {
