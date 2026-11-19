@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Session } from '../../tui/dist/core/session.js'
@@ -81,7 +81,7 @@ test('T25-1 进入 worktree：独立目录与专用分支，主工作区改动�
 
   const session = toolset.session()
   assert.ok(session)
-  assert.ok(session.path.startsWith(fixture.root))
+  assert.equal(session.path, join(realpathSync.native(fixture.root), 'repo', 'fix-auth'))
   assert.equal(existsSync(join(session.path, 'base.txt')), true)
   assert.match(session.branch, /-budingx\//)
   assert.match(message, /已进入隔离工作树/)
