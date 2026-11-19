@@ -79,6 +79,8 @@ SP010 继续交付宿主契约与共享边界。SP011 只规划 TUI/npm 交付�
 | SP016 | 当前范围完整替代验收：full-agent-parity、long-running-reliability、final-release-evidence | SP015 | 当前范围能力矩阵（必交 47 项）无缺项/FAIL/UNVERIFIED；固定任务与独立盲测、恢复/负向安全、npm 公开安装和用户工作试用分别验收；有证据不足或实质差距则继续修复/增轮，不宣布完整替代。**TUI 还原度公布**：按[还原度基线](tui-fidelity-gap-baseline.md)§6 的结构覆盖率口径公布 PASS/PARTIAL/MISS 分母与结果；缺项或 FAIL 不得宣称完整替代，禁用「已对齐/同等效果」措辞。 |
 
 
+**SP004 可选优化**：[agent-observability](../SP/SP004/agent-observability/STATUS.md) 规划本机 Langfuse 观测与独立的三场景验收。需求 v0.2、设计 v1.2、实施计划 v1.2 已随 `203d78a` 推送至 SP004 功能分支。SP004 原有出口门槛保持不变，T25–T33 继续暂停，部署与运行验证为 **UNVERIFIED**。
+
 SP008 自 SP001/005 承接共享数据约束，以契约和轻量测试客户端验证宿主入口。SP002–SP007 保持宿主无关和可取消。
 
 ## 如何证明达到原 Agent 效果
