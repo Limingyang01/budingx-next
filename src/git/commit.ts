@@ -79,7 +79,8 @@ function runGit(
         resolvePromise({ stdout: String(stdout), stderr: String(stderr), status: error ? 1 : 0 })
       }
     )
-    child.stdin?.end(options.input ?? '')
+    child.stdin?.on('error', rejectPromise)
+    child.stdin?.end(options.input)
   })
 }
 
