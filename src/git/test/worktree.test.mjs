@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync, writeFileSync, mkdirSync, appendFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync, mkdirSync, appendFileSync, realpathSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { readGitStatus } from '../../tui/dist/git/status.js'
@@ -135,6 +135,35 @@ test('T8-6 重复进入同名 worktree：核对身份后恢复复用（F-18）',
     assert.equal(second.branch, first.branch)
     const list = git(repo, ['worktree', 'list', '--porcelain'])
     assert.equal(list.split('\n').filter((line) => line.startsWith('worktree ')).length, 2)
+  } finally {
+    cleanup()
+  }
+})
+
+test('worktree creation, reuse and removal agree across directory aliases', async () => {
+  const { repo, root, base, cleanup } = makeRepo()
+  try {
+    mkdirSync(root)
+    const alias = join(base, 'alias')
+    symlinkSync(root, alias, process.platform === 'win32' ? 'junction' : 'dir')
+    const entered = await enterWorktree({ cwd: repo, name: 'aliased', root: alias })
+    const expected = join(realpathSync.native(root), 'repo', 'aliased')
+    assert.equal(entered.path, expected)
+    assert.deepEqual(await enterWorktree({ cwd: repo, name: 'aliased', root }), entered)
+    const exited = await exitWorktree({
+      ...entered,
+      action: 'remove',
+      authorization: {
+        id: 'alias-test',
+        worktree: join(alias, 'repo', 'aliased'),
+        branch: entered.branch,
+        discardChanges: false
+      }
+    })
+    assert.equal(exited.cwd, repo)
+    assert.equal(exited.action, 'remove')
+    assert.equal(existsSync(expected), false)
+    assert.equal(git(repo, ['branch', '--list', entered.branch]).trim(), '')
   } finally {
     cleanup()
   }

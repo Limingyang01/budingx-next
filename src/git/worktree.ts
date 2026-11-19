@@ -144,10 +144,11 @@ function runGit(args: string[], cwd: string): Promise<RunResult> {
   })
 }
 
-/** 统一分隔符大小写后比较路径（git 输出用 `/`，Windows 上路径可能用 `\\`）。 */
-function comparablePath(path: string): string {
-  const slashed = resolve(path).split('\\').join('/')
-  return process.platform === 'win32' ? slashed.toLowerCase() : slashed
+/** 对现存目录比较真实路径，兼容 Windows 短路径与目录别名。 */
+function comparablePath(path: string): string | undefined {
+  const realPath = realPathOf(path)
+  if (realPath === undefined) return undefined
+  return process.platform === 'win32' ? realPath.toLowerCase() : realPath
 }
 
 /** 读取 `git worktree list --porcelain` 中某个真实路径对应的条目。 */
@@ -159,6 +160,7 @@ async function findWorktreeEntry(
   if (!list.ok) return undefined
   const records = list.stdout.split('\n\n')
   const wanted = comparablePath(targetPath)
+  if (wanted === undefined) return undefined
   for (const record of records) {
     const lines = record.split('\n').filter((line) => line !== '')
     const worktreeLine = lines.find((line) => line.startsWith('worktree '))
@@ -199,9 +201,14 @@ export async function enterWorktree(input: EnterWorktreeInput): Promise<Worktree
 
   // 已存在：只接受能核对身份的复用（真实路径 + 同仓库 + 专用分支）。
   if (existsSync(targetPath)) {
+    const rootReal = realPathOf(root)
+    const targetReal = realPathOf(targetPath)
+    if (rootReal === undefined || targetReal === undefined || !isInside(rootReal, targetReal)) {
+      throw new Error(`目标路径越界或无法解析：${targetPath}`)
+    }
     const entry = await findWorktreeEntry(cwd, targetPath)
     if (entry !== undefined && entry.branch === `${baseBranch}-budingx/${flattenSlug(name)}`) {
-      return { path: targetPath, branch: entry.branch, baseBranch, originalCwd: cwd }
+      return { path: targetReal, branch: entry.branch, baseBranch, originalCwd: cwd }
     }
     throw new Error(`目标路径已存在且无法确认为本会话创建的 worktree：${targetPath}`)
   }
@@ -212,19 +219,24 @@ export async function enterWorktree(input: EnterWorktreeInput): Promise<Worktree
   }
 
   mkdirSync(dirname(targetPath), { recursive: true })
-  const added = await runGit(['worktree', 'add', targetPath, '-b', branch], cwd)
+  const rootReal = realpathSync.native(root)
+  const worktreePath = join(realpathSync.native(dirname(targetPath)), name)
+  if (!isInside(rootReal, worktreePath)) {
+    throw new Error('目标路径越界：worktree 的真实路径不在 worktree 根目录内')
+  }
+  const added = await runGit(['worktree', 'add', worktreePath, '-b', branch], cwd)
   if (!added.ok) {
     // 只清理本轮自己创建的路径，不触碰未知路径。
-    if (existsSync(targetPath)) {
+    if (existsSync(worktreePath)) {
       try {
-        rmSync(targetPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 })
+        rmSync(worktreePath, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 })
       } catch {
         // 清理失败时保留现场，错误信息里带上路径。
       }
     }
     throw new Error(`创建 worktree 失败：${added.stderr.trim() || added.stdout.trim()}`)
   }
-  return { path: targetPath, branch, baseBranch, originalCwd: cwd }
+  return { path: worktreePath, branch, baseBranch, originalCwd: cwd }
 }
 
 /** 统计 worktree 内未提交文件数（含暂存、未暂存、未跟踪；重命名按一条记录计）。 */
@@ -258,16 +270,21 @@ export async function exitWorktree(current: ExitWorktreeInput): Promise<Worktree
   if (authorization === undefined) {
     throw new Error('删除 worktree 需要宿主单次授权：缺少 authorization（未经授权不会删除任何文件）')
   }
-  if (comparablePath(authorization.worktree) !== comparablePath(current.path) || authorization.branch !== current.branch) {
-    throw new Error(`授权与目标 worktree 不匹配，拒绝删除：授权 ${authorization.worktree}@${authorization.branch}`)
-  }
-
   const repoCwd = current.originalCwd ?? current.path
   const entry = await findWorktreeEntry(repoCwd, current.path)
   if (entry === undefined || entry.branch !== current.branch) {
     throw new Error(
       `无法复核 worktree 身份，拒绝删除；可确认残留：路径 ${current.path}、分支 ${current.branch}`
     )
+  }
+
+  const authorizedPath = comparablePath(authorization.worktree)
+  if (
+    authorizedPath === undefined ||
+    authorizedPath !== comparablePath(entry.path) ||
+    authorization.branch !== current.branch
+  ) {
+    throw new Error(`授权与目标 worktree 不匹配，拒绝删除：授权 ${authorization.worktree}@${authorization.branch}`)
   }
 
   const discardedFiles = await countPendingFiles(current.path)
@@ -280,7 +297,7 @@ export async function exitWorktree(current: ExitWorktreeInput): Promise<Worktree
     )
   }
 
-  const removed = await runGit(['worktree', 'remove', '--force', current.path], repoCwd)
+  const removed = await runGit(['worktree', 'remove', '--force', entry.path], repoCwd)
   if (!removed.ok) {
     throw new Error(`删除 worktree 失败：${removed.stderr.trim() || removed.stdout.trim()}；可确认残留：路径 ${current.path}`)
   }
@@ -300,7 +317,7 @@ export async function exitWorktree(current: ExitWorktreeInput): Promise<Worktree
 /** 真实路径助手：用于宿主核对 worktree 身份（测试与 T23 复用）。 */
 export function realPathOf(path: string): string | undefined {
   try {
-    return realpathSync(path)
+    return realpathSync.native(path)
   } catch {
     return undefined
   }
