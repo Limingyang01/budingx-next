@@ -6,13 +6,16 @@ const MAX_TAIL_LINES = 16
 
 type Counter = 'tests' | 'pass' | 'fail' | 'skipped' | 'cancelled' | 'todo'
 const TAP_COUNTER = /^# (tests|pass|fail|skipped|cancelled|todo) (\d+)$/
+const TAP_COUNTER_MARKER = /^# (?:tests|pass|fail|skipped|cancelled|todo)(?:\s|$)/
+const DIRECT_REPORTERS = new Set(['node', 'pytest', 'jest', 'vitest', 'mocha', 'cargo', 'go'])
+const PYTEST_MARKER = /^(?:=+ )?(?:no tests ran|\d+ (?:passed|failed|errors?|skipped|deselected|xfailed|xpassed)(?:, [^,]+)*)(?: in(?:\s|$)| =+$|$)/
 
 function count(value: string): number {
   const result = Number(value)
   return Number.isSafeInteger(result) && result >= 0 ? result : NaN
 }
 
-/** The final Node/TAP reporter counters take precedence over plan lines. */
+/** Parse the contiguous Node/TAP counter block ending at the newest counter. */
 function nodeSummary(tail: readonly string[]): number | undefined {
   const counters: Partial<Record<Counter, number>> = {}
   let recognized = false
@@ -25,6 +28,7 @@ function nodeSummary(tail: readonly string[]): number | undefined {
     const key = match[1] as Counter
     if (counters[key] !== undefined) return 0
     counters[key] = count(match[2])
+    if (key === 'tests') break
   }
   if (!recognized) return undefined
   const { tests, pass, fail, skipped, cancelled = 0, todo = 0 } = counters
@@ -118,8 +122,14 @@ function mochaSummary(tail: readonly string[]): number | undefined {
 function captureStream(program: string) {
   const decoder = new StringDecoder('utf8')
   const tail: string[] = []
+  const selected = program === 'python' || program === 'python3'
+    ? 'unittest'
+    : DIRECT_REPORTERS.has(program) ? program : undefined
+  const accepts = (reporter: string) => selected === undefined || selected === reporter
   let pending = ''
   let overflow = false
+  let reported: number | undefined
+  let startedTap = false
   let tapPlan: number | undefined
   let tapTotal = 0
   let tapPassed = 0
@@ -128,37 +138,98 @@ function captureStream(program: string) {
   let cargoPassed: number | undefined
   let cargoFailed = false
 
-  function finishLine(): void {
-    // Long lines are neither summaries nor observable TAP directives.
-    const line = overflow ? '\0' : stripVTControlCharacters(pending).replace(/\r$/, '')
-    pending = ''
-    overflow = false
-    if (!line.trim()) return
-    tail.push(line.trimEnd())
-    if (tail.length > MAX_TAIL_LINES) tail.shift()
-    if (TAP_COUNTER.test(line)) sawNodeCounters = true
-    const cargo = /^test result: (ok|FAILED)\. (\d+) passed; (\d+) failed; \d+ ignored; \d+ measured; \d+ filtered out; finished in [\d.]+s$/.exec(line)
-    if (cargo) {
-      cargoPassed = (cargoPassed ?? 0) + count(cargo[2])
-      cargoFailed ||= cargo[1] !== 'ok' || count(cargo[3]) !== 0
+  function observeSummary(line: string, previous: string): void {
+    if (accepts('node') && TAP_COUNTER_MARKER.test(line)) {
+      sawNodeCounters = true
+      reported = nodeSummary(tail) ?? 0
+    } else if (accepts('unittest') && /^Ran \S+ tests? in(?:\s|$)/.test(line)) {
+      // The next nonblank line must finish this report with a known outcome.
+      reported = 0
+    } else if (accepts('unittest') && (line === 'NO TESTS RAN' || /^FAILED \([^()]*\)$/.test(line))) {
+      reported = 0
+    } else if (accepts('unittest') && /^OK(?:\s|$)/.test(line)) {
+      reported = unittestSummary(previous, line) ?? reported
+    } else if (accepts('pytest') && PYTEST_MARKER.test(line)) {
+      reported = pytestSummary(line) ?? 0
+    } else if (accepts('jest') && /^(?:Tests:|No tests found(?:, exiting with code \d+)?$)/.test(line.trim())) {
+      reported = jestSummary(tail) ?? 0
+    } else if (accepts('vitest') && /^(?:Tests\s+(?:\d|no tests\b|.*\([^)]+\)$)|No test files found(?:, exiting with code \d+)?$)/.test(line.trim())) {
+      reported = vitestSummary(tail) ?? 0
+    } else if (accepts('mocha') && /^\d+ (?:passing|pending|failing)(?:\s|$)/.test(line.trim())) {
+      reported = mochaSummary(tail) ?? 0
+    } else if (accepts('cargo') && line.startsWith('test result:')) {
+      const cargo = /^test result: (ok|FAILED)\. (\d+) passed; (\d+) failed; \d+ ignored; \d+ measured; \d+ filtered out; finished in [\d.]+s$/.exec(line)
+      const passed = cargo ? count(cargo[2]) : 0
+      const success = cargo?.[1] === 'ok' && count(cargo[3]) === 0
+      if (selected === 'cargo') {
+        // A direct Cargo invocation reports separate unit, integration and doc-test groups.
+        cargoPassed = (cargoPassed ?? 0) + passed
+        cargoFailed ||= !success
+        reported = cargoFailed ? 0 : cargoPassed
+      } else {
+        reported = success ? passed : 0
+      }
     }
+  }
 
+  function startTap(): void {
+    startedTap = true
+    tapPlan = undefined
+    tapTotal = 0
+    tapPassed = 0
+    invalidTap = false
+    sawNodeCounters = false
+  }
+
+  function observeTap(line: string): void {
+    if (!accepts('tap') && !accepts('node')) return
+    if (/^TAP version(?:\s|$)/i.test(line)) {
+      startTap()
+      invalidTap = !/^TAP version \d+$/i.test(line)
+      reported = 0
+      return
+    }
     const plan = /^1\.\.(\d+)(?:\s+#\s*SKIP(?:\s.*)?)?$/i.exec(line)
-    if (plan) {
-      if (tapPlan !== undefined) invalidTap = true
-      tapPlan = count(plan[1])
+    if (/^1\.\./.test(line)) {
+      if (sawNodeCounters) startTap()
+      if (!plan || tapPlan !== undefined) invalidTap = true
+      tapPlan = plan ? count(plan[1]) : 0
       if (line.includes('#') && tapPlan !== 0) invalidTap = true
     } else if (/^Bail out!/i.test(line)) {
       invalidTap = true
+      reported = 0
+      return
     } else {
       const assertion = /^(ok|not ok)(?=\s|$)(?:\s+(\d+)(?=\s|$))?/.exec(line)
-      if (!assertion) return
+      if (!assertion || (!assertion[2] && tapPlan !== undefined && tapPlan === tapTotal)) return
+      if (assertion[2]) {
+        if (sawNodeCounters) startTap()
+        startedTap = true
+      }
       tapTotal += 1
       if (assertion[2] !== undefined && count(assertion[2]) !== tapTotal) invalidTap = true
-      if (/\s+#\s*(?:skip|todo)(?:\s|$)/i.test(line)) return
-      if (assertion[1] === 'ok') tapPassed += 1
-      else invalidTap = true
+      if (!/\s+#\s*(?:skip|todo)(?:\s|$)/i.test(line)) {
+        if (assertion[1] === 'ok') tapPassed += 1
+        else invalidTap = true
+      }
     }
+    // Direct Node requires its own validated counters; a later explicit TAP plan alone cannot replace them.
+    if (!sawNodeCounters && (tapPlan !== undefined || startedTap)) {
+      reported = accepts('tap') && !invalidTap && tapPlan === tapTotal ? tapPassed : 0
+    }
+  }
+
+  function finishLine(): void {
+    // Long lines are neither summaries nor observable TAP directives.
+    const line = overflow ? '\0' : stripVTControlCharacters(pending).trimEnd()
+    pending = ''
+    overflow = false
+    if (!line) return
+    const previous = tail.at(-1) ?? ''
+    tail.push(line)
+    if (tail.length > MAX_TAIL_LINES) tail.shift()
+    observeTap(line)
+    observeSummary(line, previous)
   }
 
   function append(text: string): void {
@@ -185,24 +256,12 @@ function captureStream(program: string) {
     result(): number | undefined {
       append(decoder.end())
       if (pending || overflow) finishLine()
-      const last = tail.at(-1) ?? ''
-      const previous = tail.at(-2) ?? ''
-      if (program === 'node') return nodeSummary(tail)
-      if (program === 'python' || program === 'python3') return unittestSummary(previous, last)
-      if (program === 'pytest') return pytestSummary(last)
-      if (program === 'jest') return jestSummary(tail)
-      if (program === 'vitest') return vitestSummary(tail)
-      if (program === 'mocha') return mochaSummary(tail)
-      if (program === 'cargo') return cargoFailed ? 0 : cargoPassed
-      if (program === 'go') return undefined
-      const tap = sawNodeCounters ? 0 : tapPlan === undefined ? undefined : !invalidTap && tapPlan === tapTotal ? tapPassed : 0
-      return nodeSummary(tail) ?? unittestSummary(previous, last) ?? pytestSummary(last) ??
-        jestSummary(tail) ?? vitestSummary(tail) ?? mochaSummary(tail) ?? (cargoFailed ? 0 : cargoPassed) ?? tap
+      return reported
     }
   }
 }
 
-/** Parse small terminal summaries without depending on the transcript's truncation budget. */
+/** Keep the latest recognized reporter outcome independently of ordinary trailing output. */
 export function createTestSummaryParser(command: string) {
   const program = command.trim().split(/[ \t]/, 1)[0]
   const streams = { stdout: captureStream(program), stderr: captureStream(program) }

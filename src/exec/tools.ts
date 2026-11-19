@@ -145,6 +145,7 @@ function formatResult(result: CommandResult): string {
       `persisted_output_size: ${result.persistedOutputSize ?? 0}`
     )
   }
+  if (result.outputWarning !== undefined) lines.push(`output_warning: ${result.outputWarning}`)
   if (result.reason !== undefined && result.reason !== '') {
     lines.push('--- note ---', result.reason)
   } else if (result.outcome === 'running') {

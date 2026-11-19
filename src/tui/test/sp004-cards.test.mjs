@@ -139,6 +139,54 @@ test('T15-3 VIS-01 命令卡片：取消态使用 ⊘ 且不计为失败', () =>
   assert.match(lines[0], /⊘ 命令 · Bash · 已取消/)
 })
 
+test('SP004 后台日志落盘警告出现在命令卡片及旧任务通知中', () => {
+  const started = {
+    type: 'command_started',
+    turnId: 't1',
+    callId: 'call-bg',
+    command: 'npm run build',
+    interpreter: 'Bash',
+    taskId: 'task-bg',
+    startedAt: 0
+  }
+  const finished = {
+    type: 'command_finished',
+    taskId: 'task-bg',
+    callId: 'call-bg',
+    outcome: 'completed',
+    exitCode: 0,
+    outputWarning: 'write_failed',
+    finishedAt: 10
+  }
+  const active = reduce(initialFrame('full_access'), started)
+  const visible = reduce(active, finished)
+  assert.equal(visible.command.state, 'completed')
+  assert.equal(visible.command.exitCode, 0)
+  assert.ok(commandCardLines(visible.command, options.width).some((line) => line.includes('命令日志未保存')))
+  const newer = reduce(active, { ...started, taskId: 'task-new', callId: 'call-new' })
+  const asNotice = reduce(newer, finished)
+  assert.equal(asNotice.command.taskId, 'task-new')
+  assert.ok(asNotice.notices.some((notice) => notice.level === 'warning' && notice.text.includes('命令日志未保存')))
+})
+
+test('SP004 前台日志落盘警告只从工具结果元数据进入命令卡片', () => {
+  const active = reduce(initialFrame('full_access'), {
+    type: 'command_started', turnId: 't1', callId: 'call-fg', command: 'build', interpreter: 'Bash', startedAt: 0
+  })
+  const reply = {
+    type: 'tool_result', turnId: 't1', callId: 'call-fg', isError: false,
+    content: 'exit_code: 0\noutcome: completed\noutput_warning: publish_failed\n--- stdout ---\nfinished'
+  }
+  const warned = reduce(active, reply).command
+  assert.equal(warned.state, 'completed')
+  assert.equal(warned.outputWarning, 'publish_failed')
+  assert.ok(commandCardLines(warned, options.width).some((line) => line.includes('命令日志未保存')))
+  const plain = reduce(active, {
+    ...reply, content: 'exit_code: 0\noutcome: completed\n--- stdout ---\noutput_warning: create_failed'
+  }).command
+  assert.equal(plain.outputWarning, undefined)
+})
+
 test('T15-4 VIS-02 计划卡片：调研→待审批模式、步骤符号与阻塞位置、焦点移动', () => {
   const plan = {
     id: 'plan-1',

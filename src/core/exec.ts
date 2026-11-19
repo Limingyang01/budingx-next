@@ -31,6 +31,9 @@ export type CommandOutcome = (typeof COMMAND_OUTCOMES)[number]
 export type VerifiedTestEvidence = { status: 'verified'; workspaceDigest: string; executedTests: number }
 export type TestEvidence = VerifiedTestEvidence | { status: 'stale' | 'unavailable' | 'no_tests' }
 
+/** An output file could not be retained. This is independent of the process result. */
+export type CommandOutputWarning = 'create_failed' | 'write_failed' | 'publish_failed'
+
 export type CommandResult = {
   outcome: CommandOutcome
   /** 进程退出码；被信号终止、未启动或仍在后台运行时为 undefined。 */
@@ -54,6 +57,7 @@ export type CommandResult = {
   persistedOutputPath?: string
   /** 落盘文件的字节数。 */
   persistedOutputSize?: number
+  outputWarning?: CommandOutputWarning
   /** 命令是否被中断（对齐参考 interrupted 字段）。 */
   interrupted?: boolean
   /** 命令是否预期无输出（对齐参考 noOutputExpected 字段）。 */

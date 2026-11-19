@@ -156,10 +156,11 @@ async function assertPlanReapproval(t, target, reference, targetPaths) {
   cwd = root
   writeFileSync(join(root, target), 'export const value = 1\n')
   await ui.send('制定计划并执行\r')
-  await ui.waitFor((frame) => ui.gateway.pendingRequests.length === 1 && frame.includes('审查计划'))
+  await ui.waitFor((frame) => ui.gateway.pendingRequests.length === 1 &&
+    frame.includes('需要审批: ExitPlanMode') && frame.includes('批准计划：审查计划'))
   await ui.send('1')
   await ui.waitFor((frame) => approvals.length === 2 && ui.gateway.pendingRequests.length === 1 &&
-    frame.includes('审查计划'), 5000)
+    frame.includes('需要审批: ExitPlanMode') && frame.includes('重新审批的漂移项'), 5000)
   await ui.send('1')
   await ui.waitFor(() => !runtime.session.isBusy)
   assert.equal(events.find((event) => event.type === 'turn_finalized').outcome, 'completed')
@@ -393,6 +394,54 @@ test('SP004 正式 TUI：前后台命令结束前输出已流式落盘，终态�
   assert.equal(readdirSync(tasks).some((name) => name.endsWith('.out.partial')), false)
 })
 
+test('SP004 正式 TUI：输出落盘失败单独提示并保留前后台命令退出状态', { timeout: 30000 }, async (t) => {
+  let launch = 0
+  let sessionEvents
+  const backend = createHostProcessFixture({
+    spawn(_executable, _args, options) {
+      const foreground = ++launch === 1
+      return spawn(process.execPath, ['-e',
+        foreground ? 'process.stdout.write(Buffer.alloc(1280 * 1024, 70))' : 'process.exitCode = 7'
+      ], options)
+    }
+  })
+  const { ui, base, runtime, events } = await sp004Runtime(t, [
+    [['Bash', { command: 'node log-fixture.mjs' }]],
+    [['Bash', { command: 'node log-fixture.mjs', run_in_background: true }]],
+    async (request) => {
+      const started = request.messages.find((message) => message.tool_call_id === 'call-2-0')
+      const taskId = /background_task_id: (\S+)/.exec(started?.content ?? '')?.[1]
+      const deadline = Date.now() + 8000
+      while (!sessionEvents.some((event) => event.type === 'command_finished' && event.taskId === taskId) &&
+        Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      return [['TaskStatus', { task_id: taskId ?? 'missing' }]]
+    },
+    '已报告退出状态'
+  ], { sandboxBackend: backend, tty: true, timeoutMs: 12000 })
+  sessionEvents = events
+  const sessionDir = join(dataRoot(join(base, 'home')), 'sessions', runtime.session.id)
+  mkdirSync(sessionDir, { recursive: true })
+  writeFileSync(join(sessionDir, 'tasks'), 'synthetic fixture: destination unavailable')
+  await ui.send('验证日志失败提示\r')
+  await ui.waitFor(() => events.some((event) => event.type === 'turn_finalized'), 16000)
+  const foreground = events.find((event) => event.type === 'tool_result' && event.callId === 'call-1-0')
+  assert.equal(foreground.isError, false)
+  assert.match(foreground.content, /exit_code: 0/)
+  assert.match(foreground.content.slice(0, 1024), /output_warning: create_failed/)
+  assert.doesNotMatch(foreground.content, /persisted_output_path:/)
+  const background = events.find((event) => event.type === 'command_finished' && event.callId === 'call-2-0')
+  assert.equal(background.outcome, 'failed')
+  assert.equal(background.exitCode, 7)
+  assert.equal(background.outputWarning, 'create_failed')
+  const status = events.find((event) => event.type === 'tool_result' && event.callId === 'call-3-0')
+  assert.match(status.content, /exit_code: 7/)
+  assert.match(status.content, /output_warning: create_failed/)
+  await ui.waitFor((_frame, frames) => frames.some((frame) => frame.includes('命令日志未保存')))
+  assert.equal(readFileSync(join(sessionDir, 'tasks'), 'utf8'), 'synthetic fixture: destination unavailable')
+})
+
 test('SP004 生产入口：缺隔离后端时编码任务报告阻塞并结束回合', async (t) => {
   const { runtime, requests } = await sp004Runtime(t, [
     [['StartCodingTask', { goal: '修复 fixture' }]],
@@ -570,6 +619,56 @@ test('SP004 正式 TUI：零测试不会结束回合，非交互 unittest 执行
   assert.equal(requests.length, 6, 'must add and run an actual test after the zero-test command')
   assert.match(positive.content, /Ran 1 test/)
   assert.match(positive.content, /test_evidence: verified/)
+})
+
+test('SP004 正式 TUI：清理日志不遮蔽有效测试计数，随后零测试仍使证据失效', { timeout: 50000 }, async (t) => {
+  const { createHostSandboxFromEnvironment } = await import('../dist/exec/host-sandbox.js')
+  const backend = createHostSandboxFromEnvironment({ BUDINGX_SANDBOX: 'bubblewrap' })
+  if (!backend) {
+    t.skip('当前宿主没有通过 Bubblewrap 能力探测')
+    return
+  }
+  const { cwd, runtime, events, requests, ui } = await sp004Runtime(t, [
+    [['StartCodingTask', { goal: '验证有清理阶段的测试' }]],
+    [['Bash', { command: 'bash later-empty.test.sh' }]],
+    '已经完成',
+    [['Bash', { command: 'bash passing.test.sh' }]],
+    '一个测试通过，清理已完成'
+  ], { sandboxBackend: backend, tty: true })
+  writeFileSync(join(cwd, 'test_fixture.py'), [
+    'import unittest',
+    'class FixtureTest(unittest.TestCase):',
+    '    def test_fixture(self):',
+    '        self.assertEqual(2 + 2, 4)'
+  ].join('\n') + '\n')
+  writeFileSync(join(cwd, 'empty_suite.py'), [
+    'import sys, unittest',
+    'result = unittest.TextTestRunner().run(unittest.TestSuite())',
+    'sys.exit(0 if result.wasSuccessful() else 1)'
+  ].join('\n') + '\n')
+  writeFileSync(join(cwd, 'passing.test.sh'), [
+    'set -eu',
+    'python3 -m unittest discover 2>&1',
+    "printf 'cleanup complete\\n'"
+  ].join('\n') + '\n')
+  writeFileSync(join(cwd, 'later-empty.test.sh'), [
+    'set -eu',
+    'bash passing.test.sh',
+    'python3 empty_suite.py 2>&1',
+    "printf 'second cleanup complete\\n'"
+  ].join('\n') + '\n')
+  await ui.send('运行带清理步骤的测试\r')
+  await ui.waitFor(() => !runtime.session.isBusy && events.some((event) => event.type === 'turn_finalized'), 35000)
+  assert.equal(events.find((event) => event.type === 'turn_finalized').outcome, 'completed')
+  const laterEmpty = events.find((event) => event.type === 'tool_result' && event.callId === 'call-2-0')
+  const passing = events.find((event) => event.type === 'tool_result' && event.callId === 'call-4-0')
+  assert.match(laterEmpty.content, /Ran 1 test/)
+  assert.match(laterEmpty.content, /Ran 0 tests/)
+  assert.match(laterEmpty.content, /test_evidence: no_tests/)
+  assert.match(passing.content, /cleanup complete/)
+  assert.match(passing.content, /test_evidence: verified/)
+  assert.match(passing.content, /tests_executed: 1/)
+  assert.equal(requests.length, 5)
 })
 test('G04/G05 两端点切换模型和凭据，当前回合快照不变', async (t) => {
   const requests = []

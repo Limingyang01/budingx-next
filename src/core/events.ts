@@ -1,7 +1,7 @@
 // Core event contract (SP002 design §3.2, SP003 design §4.2 v2, SP004 design §4.4/§6).
 // Host agnostic: no UI types, JSON serializable.
 import type { PermissionMode } from './permissions.js'
-import type { CommandOutcome, TestEvidence } from './exec.js'
+import type { CommandOutcome, CommandOutputWarning, TestEvidence } from './exec.js'
 import type { Plan, PendingQuestion, PlanModePhase, QuestionAnswers, QuestionAnnotations, TodoItem } from './plan.js'
 
 export type SessionState =
@@ -197,6 +197,7 @@ export type SessionEvent =
       outcome: CommandOutcome
       exitCode?: number
       outputPath?: string
+      outputWarning?: CommandOutputWarning
       finishedAt: number
       testEvidence?: TestEvidence
     }

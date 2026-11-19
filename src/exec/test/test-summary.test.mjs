@@ -46,20 +46,56 @@ test('pytest and Python unittest require positive passing counts from their term
   assert.equal(parse('pytest', '=== no tests ran in 0.00s ==='), undefined)
 })
 
-test('stream parsing keeps a real summary despite large diagnostics and ignores nonterminal counters', () => {
+test('npm posttest logs keep a complete count after diagnostics move it outside the rolling tail', () => {
   const summary = '# tests 1\n# pass 1\n# fail 0\n# skipped 0'
   const chunks = '诊'.repeat(1_000_000) + '\n' + summary
   assert.deepEqual(parse('npm test', chunks), { executed: 1 })
   assert.equal(parse('npm test', 'ordinary output without a summary'), undefined)
-  assert.equal(parse('npm test', summary + '\npost-command log without a terminal summary'), undefined)
+  const posttest = '\n> posttest\n> node cleanup.js\n' + 'cleanup 完成\n'.repeat(80)
+  assert.deepEqual(parse('npm test', summary + posttest), { executed: 1 })
+  assert.deepEqual(parse('node --test', summary + '\ncleanup complete'), { executed: 1 })
+})
+
+test('trailing logs retain complete unittest and pytest summaries', () => {
+  assert.deepEqual(parse('python3 -m unittest', '', 'Ran 2 tests in 0.001s\n\nOK\ncleanup finished\n'), { executed: 2 })
+  assert.deepEqual(parse('pytest', '=== 2 passed in 0.03s ===\narchive cleanup complete'), { executed: 2 })
+})
+
+test('a later explicit empty, failed, incomplete, or malformed report overrides earlier evidence', () => {
+  const valid = '# tests 1\n# pass 1\n# fail 0\n# skipped 0'
+  const cleanup = '\narchiving\ncleanup finished\n'
+  for (const later of [
+    '# tests 0\n# pass 0\n# fail 0\n# skipped 0',
+    '# tests 1\n# pass 0\n# fail 0\n# skipped 1',
+    '# tests 1\n# pass 0\n# fail 1\n# skipped 0',
+    '# tests 1\n# pass invalid\n# fail 0\n# skipped 0',
+    '# tests 2\n# pass 2',
+    'ok 1 incomplete TAP report without a plan',
+    '1..2\nok 1 incomplete native TAP report',
+    'Ran 0 tests in 0.001s\nNO TESTS RAN',
+    'Ran 1 test in 0.001s\nFAILED (failures=1)',
+    'Ran 1 test in 0.001s',
+    '=== 1 skipped in 0.04s ===',
+    'Tests: 1 passed, malformed total'
+  ]) {
+    assert.equal(parse('npm test', valid + cleanup + later + cleanup), undefined, later)
+  }
+  assert.equal(parse('npm test', valid + cleanup, 'Ran 0 tests in 0.001s\nNO TESTS RAN' + cleanup), undefined)
+  assert.equal(parse('npm test', valid + cleanup, 'Ran 2 tests in 0.001s\nOK' + cleanup), undefined)
+  assert.equal(parse('node --test', valid + cleanup, '# tests 0\n# pass 0\n# fail 0\n# skipped 0' + cleanup), undefined)
+  const laterValid = '# tests 2\n# pass 2\n# fail 0\n# skipped 0'
+  assert.deepEqual(parse('npm test', valid + cleanup + laterValid + cleanup), { executed: 2 })
+  assert.deepEqual(parse('npm test', valid + '\n' + laterValid + cleanup), { executed: 2 })
+  assert.deepEqual(parse('npm test', valid + cleanup + 'ok 1 first\nok 2 second\n1..2' + cleanup), { executed: 2 })
+  assert.deepEqual(parse('npm test', valid + cleanup + '1..2\nok 1 first\nok 2 second' + cleanup), { executed: 2 })
 })
 
 test('Jest, Vitest, Mocha, and Cargo require explicit positive passing counts', () => {
-  assert.deepEqual(parse('jest', '', 'Test Suites: 1 passed, 1 total\nTests:       2 passed, 2 total\nSnapshots: 0 total\nTime: 0.346 s\nRan all test suites.'), { executed: 2 })
+  assert.deepEqual(parse('jest', '', 'Test Suites: 1 passed, 1 total\nTests:       2 passed, 2 total\nSnapshots: 0 total\nTime: 0.346 s\nRan all test suites.\nCache cleanup done'), { executed: 2 })
   assert.equal(parse('jest', 'No tests found, exiting with code 0'), undefined)
-  assert.deepEqual(parse('vitest run', ' Test Files  1 passed (1)\n      Tests  3 passed | 1 skipped (4)\n   Start at 16:48:23\n   Duration 320ms'), { executed: 3 })
+  assert.deepEqual(parse('vitest run', ' Test Files  1 passed (1)\n      Tests  3 passed | 1 skipped (4)\n   Start at 16:48:23\n   Duration 320ms\nCache cleanup done'), { executed: 3 })
   assert.equal(parse('vitest run', '      Tests  2 skipped (2)\n   Duration 120ms'), undefined)
-  assert.deepEqual(parse('mocha', '  1 passing (4ms)\n  1 pending'), { executed: 1 })
+  assert.deepEqual(parse('mocha', '  1 passing (4ms)\n  1 pending\nCache cleanup done'), { executed: 1 })
   assert.equal(parse('mocha', '  0 passing (3ms)\n  1 pending'), undefined)
   const cargo = (passed) => `test result: ok. ${passed} passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s`
   assert.deepEqual(parse('cargo test', `running 4 tests\n${cargo(4)}\n\nrunning 0 tests\n${cargo(0)}`), { executed: 4 })

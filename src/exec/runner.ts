@@ -259,6 +259,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
       child.stderr?.destroy()
       return await spool?.finish(keep)
     }
+    const getOutputWarning = () => spool?.warning
 
     // 后台路径：同一启动门禁后立即返回 running + taskId，终态经 status/list 查询（design §4.4）。
     if (spec.runInBackground === true) {
@@ -273,6 +274,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
           turnId: context.turnId,
           callId: context.callId,
           finishOutput,
+          getOutputWarning,
           verifyResult,
           autoBackgrounded: false,
           backgroundedByUser: true
@@ -284,7 +286,11 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
       )
       // 命令已真正启动才通知宿主（拒绝路径零 spawn，也就不发 command_started）。
       context.onStarted?.({ taskId, startedAt: started, readOnlyWorkspace: mode === 'read_only' })
-      return early({ outcome: 'running', taskId, backgroundedByUser: true })
+      const outputWarning = getOutputWarning()
+      return early({
+        outcome: 'running', taskId, backgroundedByUser: true,
+        ...(outputWarning !== undefined ? { outputWarning } : {})
+      })
     }
 
     // 前台命令已真正启动：通知宿主（拒绝路径零 spawn，不发 command_started）。
@@ -323,6 +329,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
             turnId: context.turnId,
             callId: context.callId,
             finishOutput,
+            getOutputWarning,
             verifyResult,
             autoBackgrounded: true,
             backgroundedByUser: false
@@ -332,6 +339,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
           stderrCollector,
           context.signal
         )
+        const outputWarning = getOutputWarning()
         resolve(
           early({
             outcome: 'running',
@@ -339,7 +347,8 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
             autoBackgrounded: true,
             reason:
               `命令超过阻塞预算（${blockingBudgetMs}ms）已自动转入后台` +
-              (spool !== undefined ? `，最终输出将写入：${outputPath}` : '')
+              (spool !== undefined && outputWarning === undefined ? `，最终输出将写入：${outputPath}` : ''),
+            ...(outputWarning !== undefined ? { outputWarning } : {})
           })
         )
       }, blockingBudgetMs)
@@ -358,7 +367,7 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
         const output = capMergedText(stdoutSnap.text + stderrSnap.text, mergedBytes, EXEC_OUTPUT_CAP)
         const truncated = stdoutSnap.truncated || stderrSnap.truncated || mergedBytes > EXEC_OUTPUT_CAP
         const outcome = forced ? forced.outcome : exitCode === 0 ? 'completed' : 'failed'
-        const persisted = await finishOutput(mergedBytes > persistThreshold)
+        const retainedOutput = await finishOutput(mergedBytes > persistThreshold)
         const testEvidence = outcome === 'completed' ? verifyResult?.() : undefined
         resolve({
           outcome,
@@ -375,8 +384,9 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
           errorCode: forced?.outcome === 'timeout'
             ? ERROR_CODES.execTimeout
             : forced?.outcome === 'cancelled' ? ERROR_CODES.execCancelled : undefined,
-          persistedOutputPath: persisted?.path,
-          persistedOutputSize: persisted?.size,
+          persistedOutputPath: retainedOutput?.file?.path,
+          persistedOutputSize: retainedOutput?.file?.size,
+          ...(retainedOutput?.warning !== undefined ? { outputWarning: retainedOutput.warning } : {}),
           ...(testEvidence !== undefined ? { testEvidence } : {})
         })
       }

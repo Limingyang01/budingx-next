@@ -5,6 +5,7 @@ import type {
   SessionState
 } from '../../core/events.js'
 import type { PermissionMode } from '../../core/permissions.js'
+import type { CommandOutputWarning } from '../../core/exec.js'
 import type { PlanStepStatus } from '../../core/plan.js'
 import type {
   Question,
@@ -57,6 +58,7 @@ export type CommandCard = {
   finishedAt?: number
   exitCode?: number
   outputPath?: string
+  outputWarning?: CommandOutputWarning
   /** 工具结果原文（用于展开输出）；超过阈值时由渲染层截断。 */
   result?: string
 }

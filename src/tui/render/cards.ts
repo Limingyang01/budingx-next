@@ -89,6 +89,9 @@ export function commandCardLines(
   if (card.outputPath !== undefined) {
     lines.push(truncateByWidth(`  ${pick(zh, '输出', 'output')}: ${card.outputPath}`, width))
   }
+  if (card.outputWarning !== undefined) {
+    lines.push(truncateByWidth(`  ⚠ ${pick(zh, '命令日志未保存', 'Command log was not saved')}`, width))
+  }
   const resultLines = (card.result ?? '').split('\n').filter((line) => line !== '')
   const tailCount = expanded ? 40 : 6
   const shown = resultLines.slice(-tailCount)

@@ -6,11 +6,12 @@ import { ERROR_CODES } from '../core/constants.js'
 import {
   EXEC_OUTPUT_CAP,
   type BackgroundTask,
+  type CommandOutputWarning,
   type CommandResult,
   type TestEvidence
 } from '../core/exec.js'
 import { OutputCollector, capMergedText, formatStream } from './output.js'
-import { buildCommandFinishedEvent, type PersistedOutput } from './persist.js'
+import { buildCommandFinishedEvent, type OutputSpoolResult } from './persist.js'
 
 interface BackgroundRecord {
   task: BackgroundTask
@@ -26,7 +27,9 @@ interface BackgroundRecord {
   reason?: string
   callId?: string
   turnId?: string
-  finishOutput?: (keep: boolean) => Promise<PersistedOutput | undefined>
+  finishOutput?: (keep: boolean) => Promise<OutputSpoolResult | undefined>
+  getOutputWarning?: () => CommandOutputWarning | undefined
+  outputWarning?: CommandOutputWarning
   verifyResult?: () => TestEvidence
   testEvidence?: TestEvidence
   /** 终止重试计时器（T4 稳定性：首次终止未生效时重发，进程退出即清理）。 */
@@ -53,7 +56,8 @@ export interface BackgroundRegistration {
   startedAt?: number
   callId?: string
   turnId?: string
-  finishOutput?: (keep: boolean) => Promise<PersistedOutput | undefined>
+  finishOutput?: (keep: boolean) => Promise<OutputSpoolResult | undefined>
+  getOutputWarning?: () => CommandOutputWarning | undefined
   verifyResult?: () => TestEvidence
   autoBackgrounded: boolean
   backgroundedByUser: boolean
@@ -83,6 +87,7 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
     const stderrSnap = record.stderr.snapshot(EXEC_OUTPUT_CAP)
     const mergedBytes = stdoutSnap.bytes + stderrSnap.bytes
     const endedAt = record.finishedAt ?? Date.now()
+    const outputWarning = record.outputWarning ?? record.getOutputWarning?.()
     return {
       outcome: record.task.state,
       exitCode: record.task.exitCode,
@@ -102,6 +107,7 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
       backgroundedByUser: record.task.backgroundedByUser || undefined,
       persistedOutputPath: record.task.outputPath,
       persistedOutputSize: record.task.outputSize,
+      ...(outputWarning !== undefined ? { outputWarning } : {}),
       ...(record.testEvidence !== undefined ? { testEvidence: record.testEvidence } : {})
     }
   }
@@ -144,13 +150,14 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
           : 'failed'
     // 被信号终止/强制结束时不伪造退出码。
     const finalExitCode = record.forced || errorReason !== undefined ? undefined : exitCode
-    const persisted = await record.finishOutput?.(true)
+    const retainedOutput = await record.finishOutput?.(true)
     // 终态字段原子发布：落盘完成前 status 仍报 running，避免读到缺输出路径的半终态。
     record.finishedAt = finishedAt
     record.task.state = state
     record.task.exitCode = finalExitCode
-    record.task.outputPath = persisted?.path
-    record.task.outputSize = persisted?.size
+    record.task.outputPath = retainedOutput?.file?.path
+    record.task.outputSize = retainedOutput?.file?.size
+    record.outputWarning = retainedOutput?.warning
     if (errorReason !== undefined) record.reason = errorReason
     record.testEvidence = state === 'completed' ? record.verifyResult?.() : undefined
     // The table retains only the bounded terminal result, not the child or collectors.
@@ -162,7 +169,8 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
         turnId: record.turnId,
         outcome: state,
         exitCode: finalExitCode,
-        outputPath: persisted?.path,
+        outputPath: record.task.outputPath,
+        ...(record.outputWarning !== undefined ? { outputWarning: record.outputWarning } : {}),
         finishedAt,
         ...(record.testEvidence !== undefined ? { testEvidence: record.testEvidence } : {})
       })
@@ -199,6 +207,7 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
       callId: meta.callId,
       turnId: meta.turnId,
       finishOutput: meta.finishOutput,
+      getOutputWarning: meta.getOutputWarning,
       verifyResult: meta.verifyResult,
       onAbort: () => force(record, 'cancelled', '命令已取消'),
       timer: setTimeout(

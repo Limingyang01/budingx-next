@@ -1,6 +1,6 @@
 # SP004 验收与验证报告 · 真实编码任务
 
-状态：**第四轮复审修复待用户确认**。分支 `feature/SP004/real-coding-task`，复审产品基线 `47b2814`，参考 TUI `b5c9be8`。本次交付范围为 SP004 功能分支。
+状态：**本轮复审修复待用户确认**。分支 `feature/SP004/real-coding-task`，复审产品基线 `feea936`，参考 TUI `b5c9be8`。本次交付范围为 SP004 功能分支。
 
 ## 0. 本轮执行证据
 
@@ -9,18 +9,22 @@
 | 检查 | 命令 | 结果 |
 | --- | --- | --- |
 | 构建 | `npm run build` | 通过（tsc，无错误） |
-| 单元/功能 | `npm run test:unit` | **623/623 通过**（`npm test` 内运行） |
+| 单元/功能 | `npm run test:unit` | **632/632 通过**（`npm test` 内运行） |
+| 正式 TUI 专项 | `node --test --test-name-pattern SP004 src/tui/test/runtime.test.mjs` | 19/19 通过，0 跳过 |
 | 模块边界 | `npm run test:checks` | 「模块边界检查通过」 |
 | 规格自洽 | `npm run spec:check` | 「OK: 路线图、能力清单与任务清单自洽」（能力 91 项） |
 | 技能入口 | `npm run skills:check` | 「Skill entries are current」 |
 | 发布脚本 | `npm run test:release` | 17/17 通过 |
 | 合入门禁脚本 | `npm run merge:test` | 5/5 通过 |
-| 全量 | `npm test`（启用 `BUDINGX_TEST_BUBBLEWRAP=1`） | **666 通过 / 0 失败 / 0 跳过**（skills 10 + spec 11 + unit 623 + release 17 + merge 5） |
+| 全量 | `npm test`（启用 `BUDINGX_TEST_BUBBLEWRAP=1`） | **675 通过 / 0 失败 / 0 跳过**（skills 10 + spec 11 + unit 632 + release 17 + merge 5） |
 | 交叉验证门禁 | `npm run merge:gate` | 本次只推送功能分支，未执行 master 合入门禁 |
 | 来源 AST 复核 | `node scripts/review/sp004-ast.mjs --worktree --reference <参考仓> --reference-revision b5c9be8 --base master` | 改动 43/43 映射，函数对 20,133 组，命中 0，自检 4/4 通过（详见 [ast-review.md](ast-review.md)） |
 
 本轮复审回归覆盖：
 
+- 正式 Ink 与真实 WSL Bubblewrap 联合回归验证测试摘要后出现普通清理日志仍可生成正数证据，后续出现零测试则要求复测。解析器回归覆盖 npm `posttest`、冲突和异常摘要。
+- 在隔离用户目录中用普通文件占据日志目录名，模拟日志创建失败。正式 TUI 和工具回执分别显示保存失败，前台成功退出码 `0` 与后台失败退出码 `7` 均保持准确。
+- 中文和含空格路径重审回归以对应审批弹窗实际渲染为送键条件。首次审批和重审分别等待各自的可见标记，三种路径同组用例连续三次通过。
 - 正式 Ink 与本地 HTTP 回归使用真实 WSL Bubblewrap 跑 Python。零测试的包装器以 `0` 退出时，结果为 `test_evidence: no_tests`，会话要求继续验证。补入一个真实测试后，直接调用 `python3 -m unittest discover` 能运行并产生完成证据。
 - 前后台真实子进程在各自退出前即可观察到会话临时输出文件。终态验证完整字节数、stderr、文件路径和临时文件清理。长输出回执保留退出状态及路径，内存只保留截断预览。
 - Runner 使用同一有界摘要解析处理前台、显式后台和自动转后台。识别 Node/TAP、unittest、pytest、Jest、Vitest、Mocha 和 Cargo 中明确的通过数。零个、全部跳过、计数矛盾或无法确认数量（例如 Go 的默认摘要）时仍需补充证据。

@@ -134,19 +134,26 @@ export function reduceFrame(
     case 'tool_result': {
       if (next.command !== undefined && next.command.callId === event.callId) {
         const content = event.content
-        const taskId = /^background_task_id: (\S+)$/m.exec(content)?.[1]
-        const exitCode = /^exit_code: (-?\d+)$/m.exec(content)?.[1]
-        const running = /^exit_code: <pending>$/m.test(content)
+        const metadata = content.split(/\n--- (?:note|stdout|stderr) ---\n/, 1)[0]
+        const taskId = /^background_task_id: (\S+)$/m.exec(metadata)?.[1]
+        const exitCode = /^exit_code: (-?\d+)$/m.exec(metadata)?.[1]
+        const running = /^exit_code: <pending>$/m.test(metadata)
+        const outputWarning = /^output_warning: (\w+)$/m.exec(metadata)?.[1]
         next.command = {
           ...next.command,
           result: content,
-          state: taskId !== undefined || running
-            ? 'background'
-            : event.isError
-              ? 'failed'
-              : 'completed',
+          state: next.command.finishedAt !== undefined
+            ? next.command.state
+            : taskId !== undefined || running
+              ? 'background'
+              : event.isError
+                ? 'failed'
+                : 'completed',
           ...(taskId !== undefined ? { taskId } : {}),
-          ...(exitCode !== undefined ? { exitCode: Number.parseInt(exitCode, 10) } : {})
+          ...(exitCode !== undefined ? { exitCode: Number.parseInt(exitCode, 10) } : {}),
+          ...(outputWarning === 'create_failed' || outputWarning === 'write_failed' || outputWarning === 'publish_failed'
+            ? { outputWarning }
+            : {})
         }
       }
       const index = next.transcript.findLastIndex((entry) =>
@@ -198,8 +205,16 @@ export function reduceFrame(
     }
     case 'command_finished': {
       const card = next.command
-      if (card === undefined) return next
-      if (event.taskId !== card.taskId && event.callId !== card.callId) return next
+      if (card === undefined || (event.taskId !== card.taskId && event.callId !== card.callId)) {
+        if (event.outputWarning !== undefined) {
+          next.notices.push({
+            level: 'warning',
+            code: 'command_output_not_saved',
+            text: options.english ? `Command log was not saved (${event.taskId})` : `命令日志未保存（${event.taskId}）`
+          })
+        }
+        return next
+      }
       next.command = {
         ...card,
         state:
@@ -210,7 +225,8 @@ export function reduceFrame(
               : 'failed',
         finishedAt: event.finishedAt,
         ...(event.exitCode !== undefined ? { exitCode: event.exitCode } : {}),
-        ...(event.outputPath !== undefined ? { outputPath: event.outputPath } : {})
+        ...(event.outputPath !== undefined ? { outputPath: event.outputPath } : {}),
+        ...(event.outputWarning !== undefined ? { outputWarning: event.outputWarning } : {})
       }
       return next
     }

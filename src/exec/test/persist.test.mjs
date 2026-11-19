@@ -3,7 +3,7 @@
 import { createHostProcessFixture } from './helpers/host-process.mjs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, existsSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import fs, { mkdirSync, mkdtempSync, readFileSync, existsSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -221,11 +221,86 @@ test('SP004 流式落盘临时文件冲突时恢复读取，并保留原文件',
     const pauses = []
     const spool = createOutputSpool(path, (paused) => pauses.push(paused))
     spool.push(Buffer.alloc(64 * 1024))
-    assert.equal(await spool.finish(true), undefined)
+    assert.deepEqual(await spool.finish(true), { warning: 'create_failed' })
     assert.equal(readFileSync(partial, 'utf8'), 'existing owner')
     assert.equal(existsSync(path), false)
     assert.deepEqual(pauses, [true, false])
   } finally {
+    await cleanupDir(home)
+  }
+})
+
+test('SP004 日志创建失败时保留前后台命令终态，并单独提示预期日志丢失', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'budingx-persist-unavailable-'))
+  const events = []
+  const runner = makeRunner(home, { onCommandFinished: (event) => events.push(event), persistThreshold: 4 })
+  try {
+    const tasks = dirname(resolveTaskOutputPath('session-a', 'fixture', home))
+    mkdirSync(dirname(tasks), { recursive: true })
+    writeFileSync(tasks, 'not a directory')
+    const context = { signal: new AbortController().signal, cwd: home }
+    const command = 'node -e "process.stdout.write(\'fixture\')"'
+    const live = await runner.run({ command, runInBackground: true }, context)
+    assert.equal(live.outcome, 'running')
+    assert.equal(live.outputWarning, 'create_failed')
+    assert.equal(runner.status(live.taskId).outputWarning, 'create_failed')
+    const done = await waitForDone(runner, live.taskId)
+    const foreground = await runner.run({ command }, context)
+    for (const result of [done, foreground]) {
+      assert.equal(result.outcome, 'completed')
+      assert.equal(result.exitCode, 0)
+      assert.equal(result.errorCode, undefined)
+      assert.equal(result.stderr, '')
+      assert.equal(result.stdout, 'fixture')
+      assert.equal(result.outputWarning, 'create_failed')
+      assert.equal(result.persistedOutputPath, undefined)
+    }
+    assert.equal(events.length, 1)
+    assert.equal(events[0].outputWarning, 'create_failed')
+    assert.equal(events[0].exitCode, 0)
+    assert.equal(events[0].outputPath, undefined)
+    const small = await runner.run({ command: 'node -e "process.stdout.write(\'tiny\')"' }, context)
+    assert.equal(small.outcome, 'completed')
+    assert.equal(small.outputWarning, undefined)
+    assert.equal(readFileSync(tasks, 'utf8'), 'not a directory')
+  } finally {
+    runner.dispose()
+    await cleanupDir(home)
+  }
+})
+
+test('SP004 日志无法发布时返回发布失败警告并清理本次临时文件', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'budingx-publish-blocked-'))
+  try {
+    const path = join(home, 'blocked.out')
+    mkdirSync(path)
+    const spool = createOutputSpool(path, () => {})
+    spool.push(Buffer.from('some output'))
+    assert.deepEqual(await spool.finish(true), { warning: 'publish_failed' })
+    assert.equal(existsSync(`${path}.partial`), false)
+    assert.equal(statSync(path).isDirectory(), true)
+  } finally {
+    await cleanupDir(home)
+  }
+})
+
+test('SP004 日志写入失败时恢复背压并清理临时文件', async (t) => {
+  const home = mkdtempSync(join(tmpdir(), 'budingx-stream-write-blocked-'))
+  const pauses = []
+  // The spool really opens its file. Only the ensuing write is simulated as a full disk.
+  const write = t.mock.method(fs, 'write', (_fd, _buffer, _offset, _length, _position, callback) => {
+    process.nextTick(() => callback(Object.assign(new Error('fixture disk full'), { code: 'ENOSPC' })))
+  })
+  try {
+    const path = join(home, 'blocked.out')
+    const spool = createOutputSpool(path, (paused) => pauses.push(paused))
+    spool.push(Buffer.alloc(64 * 1024))
+    assert.deepEqual(await spool.finish(true), { warning: 'write_failed' })
+    assert.equal(write.mock.callCount(), 1)
+    assert.deepEqual(pauses, [true, false])
+    assert.deepEqual(readdirSync(home), [])
+  } finally {
+    write.mock.restore()
     await cleanupDir(home)
   }
 })
