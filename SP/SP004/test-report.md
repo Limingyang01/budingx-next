@@ -1,6 +1,6 @@
 # SP004 验收与验证报告 · 真实编码任务
 
-状态：**实施完成，全量门禁 GREEN，已合入 master（`fdfdae8`），源码版本 0.4.0 已准备待发布**。分支 `feature/SP004/real-coding-task`，文档起点 `363d1eb`，实施基线 `e808679`，参考 TUI revision `b5c9be8`。本报告与[设计](design/design.zh.md)及[实施计划](design/plan.zh.md)配套。
+状态：**实施完成，全量门禁 GREEN，已合入 master（`fdfdae8`），0.4.0 已通过 OIDC 发布，见 §10**。分支 `feature/SP004/real-coding-task`，文档起点 `363d1eb`，实施基线 `e808679`，参考 TUI revision `b5c9be8`。本报告与[设计](design/design.zh.md)及[实施计划](design/plan.zh.md)配套。
 
 ## 0. 本轮执行证据
 
@@ -123,7 +123,7 @@ AC 区间：CE-01…20（20）、CT-01…09（9）、GW-01…09（9）、TP-01�
 - **worktree 工具表面未接入生产 runtime**：`createWorktreeTools` 与协议级用例已交付（T25），但会话级 cwd 重绑定（进入隔离工作树后命令/文件工具改到新目录）属 SP005 会话状态重构；现在接线会出现「工具声称已隔离、实际仍写主工作区」的误导。恢复条件：先实现会话 cwd 抽象，再把工具集接入 `src/tui/runtime.ts` 并补伪 TTY 用例（进入→写文件→退出 keep/remove 全链路），复跑 `tui/test/cli.test.mjs` 防回归。
 - **参考实现像素级对照（VIS-01…04）**：行为与交互的逐项对照记在 [reference-parity.md](reference-parity.md)（能力/组件映射、四类差异及理由、未验证边界）；本环境无头，无两路真实交互终端与截图；参考仓也没有计划模式卡片/多题追问向导可供一一对照。恢复条件：具备图形终端与参考环境后，在 100×30 与 70×20 下采证单元格与 PNG，按 §1 的断言逐项目检。
 - **真实 Provider（live）**：本轮全部用例使用 scriptProvider/伪 TTY，未调用真实模型 API。恢复条件：配置真实 Provider 后跑 `npm run test:unit -- live` 类手工场景（仓库未提供自动 live 套件），单独记证据。
-- **发布包核验（SRC-01 的制品侧）**：本轮未打包发布。恢复条件：发布前准备阶段用 `npm pack --dry-run` 核对清单并核对 `THIRD-PARTY-NOTICES.md`，实际 npm 发布由用户在 GitHub 手动触发。
+- **发布包核验（SRC-01 的制品侧）**：0.4.0 官方源安装与完整性核验已完成，证据见 §10。
 - **AST 分值不证明来源**：见 `ast-review.md` 的边界说明；不等于法律洁净室认证。
 
 ## 6. 本轮变更与验证范围
@@ -149,7 +149,7 @@ AC 区间：CE-01…20（20）、CT-01…09（9）、GW-01…09（9）、TP-01�
 - [运行 #16](https://github.com/Limingyang01/budingx-next/actions/runs/44492443786) 基于 `5f504e0`，Windows 和 Linux 均在发布预演步骤失败，OIDC 发布任务跳过。该源码的 Windows 和 WSL Linux 干净检出均复现 `ERR_MODULE_NOT_FOUND`：Langfuse 能力探针导入主线未包含的 `dist/exec/host-sandbox.js`，已有工作树的残留编译文件掩盖了此问题。
 - 探针改为直接使用 0.4.0 主线的 TUI 运行时装配。干净 Windows 检出的现有探针测试由模块加载失败恢复到 9 项通过。Windows Node 22.22.0 / npm 11.21.2 完整预演 722 项通过，0 失败、0 跳过，91 文件 tarball、隔离安装、版本 shim 与本地 HTTP smoke 均通过。
 - 自审确认探针脚本只移除缺失的模块及无效的注入参数，产品的命令隔离策略、依赖与发布门禁沿用主线。产品说明书于核实正式发布时同步发布状态。本次源码检查通过 `git diff --check`，未引入产物、凭据或参考仓内容。
-- 正式发布、官方包安装和真实 Langfuse 探针为 UNVERIFIED。恢复条件为维护者从修复后的 master 新建发布运行并核验 npm 回执，以及按 §7 的真实环境条件复测 Langfuse。
+- #16 时正式发布和官方包安装待验证，后续结果见 §10。真实 Langfuse 探针仍待按 §7 的环境条件复测。
 - Linux Node 24.22.3 预演另复现 10 个受控 Git 用例因 `EPIPE` 失败。临时诊断发现，无输入的 Git 命令退出时仍会收到一次空写入。修复让无输入调用直接结束 stdin，并将 stdin 传输错误返回给调用者。Linux 上原有 Git 与探针回归共 20 项通过。自审核对有输入的 Git 命令仍接收审批绑定的内容，授权消耗、预期 tree 校验与条件更新 ref 的检查均沿用原逻辑。
 
 
@@ -158,4 +158,10 @@ AC 区间：CE-01…20（20）、CT-01…09（9）、GW-01…09（9）、TP-01�
 - [运行 #17](https://github.com/Limingyang01/budingx-next/actions/runs/44497301504) 的 Linux 验证通过。Windows 日志中 6 个 Git 用例因 `RUNNER~1` 与 `runneradmin` 指向同一目录但字符串不同而失败，OIDC 任务跳过。
 - 新增真实目录别名回归，Windows fixture 使用 junction。旧实现返回别名路径，断言失败。修复后创建、复用与授权移除以真实目录匹配，路径缺失仍拒绝删除并报告残留。新增回归与 T23-10 复测通过。
 - 自审核对目录边界、Git 登记、分支匹配、宿主授权与丢弃确认均生效。残留检查和删除使用同一 Git 登记路径，Git 状态无法读取时拒绝删除。变更局限于 worktree 路径匹配与测试，未引入依赖或产物。产品说明书随正式发布回执更新。
-- GitHub 托管 Windows 正式验证和 npm 发布为 UNVERIFIED，恢复条件为维护者从修复后的 master 新建运行并核对 npm 版本、签名及隔离安装。
+- #17 时 Windows 验证和 npm 发布尚未通过，后续结果见 §10。
+
+## 10. 0.4.0 正式发布回执（2026-11-19）
+
+[GitHub Actions #18](https://github.com/Limingyang01/budingx-next/actions/runs/44504716724) 基于 `82af4ab`，Windows 和 Linux 验证及 OIDC 发布均通过，npm `latest` 指向 0.4.0。官方源独立安装、CLI 版本、本地 HTTP 流式测试通过，已验证 53 个 registry 签名和 7 个 attestations。制品 SHA-512 和发布源码均与 npm provenance 一致。详见 [发行说明](../../release-notes/v0.4.0.md)和[发布台账](../../release-ledger.json)。
+
+真实平台隔离、生产运行时接线、参考终端视觉与 live Provider 的验证边界见 §5，Langfuse 真实部署与 live 三场景见 §7。

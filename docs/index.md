@@ -25,7 +25,7 @@
 
 首发使用与交付：[TUI README](../src/tui/README.md)、[版本管理](versioning.md)、[首发状态](requirements/tui-bootstrap/STATUS.md)。
 
-当前发布：[0.3.6 · SP002 与 SP003 终端交互修复](../release-notes/v0.3.6.md)（npm latest）。
+当前发布：[0.4.0 · SP004 真实编码任务](../release-notes/v0.4.0.md)（npm `latest`）。本轮进度与验证边界见 [SP004 迭代汇总](../SP/SP004/requirements-summary.md)。
 
 源码模块组织见 [仓库布局](repository-layout.md)。
 
