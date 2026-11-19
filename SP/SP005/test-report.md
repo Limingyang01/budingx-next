@@ -1,6 +1,6 @@
 # SP005 验收与验证报告 · 长会话与数据可靠性
 
-状态：**代码层验收全绿，交叉验证门禁 GREEN；未合入 master（等用户决定）**。分支 `feature/SP005/long-session-reliability`，文档起点 master `17afe34`，实施提交 `a76199e`，补强提交 `62f3e9e`（真实 Langfuse 栈接入、子进程超时预算与文档同步）、`ef90f11`（登录凭据对齐 `.env.e2e.local` 与登录自检）。本报告是轮次级结论；逐条细节见 [long-session-reliability 验收报告](long-session-reliability/test-report.md)，配套 [需求](long-session-reliability/requirements.md)、[设计](long-session-reliability/design/design.zh.md)、[实施计划](long-session-reliability/design/plan.zh.md)与 [STATUS](long-session-reliability/STATUS.md)。
+状态：**代码层验收全绿，交叉验证门禁 GREEN；未合入 master（等用户决定）**。分支 `feature/SP005/long-session-reliability`，文档起点 master `17afe34`，实施提交 `a76199e`，补强提交 `62f3e9e`（真实 Langfuse 栈接入、子进程超时预算与文档同步）、`ef90f11`（登录凭据对齐 `.env.e2e.local` 与登录自检）、`90f1e9a`（判定工具调用是否合适）、`ebfb882`（真实模型端到端：模型用量与工具观测载荷、判读允许熔断停机）。本报告是轮次级结论；逐条细节见 [long-session-reliability 验收报告](long-session-reliability/test-report.md)，配套 [需求](long-session-reliability/requirements.md)、[设计](long-session-reliability/design/design.zh.md)、[实施计划](long-session-reliability/design/plan.zh.md)与 [STATUS](long-session-reliability/STATUS.md)。
 
 ## 0. 本轮执行证据
 
@@ -17,7 +17,7 @@
 | 发布脚本 | `npm run test:release` | 17/17 通过 |
 | 合入门禁脚本 | `npm run merge:test` | 5/5 通过 |
 | 全量 | `npm test` | **838 通过 / 0 失败**（skills 10 + spec 11 + unit 716 + langfuse 79 + release 17 + merge 5，`EXIT=0`，日志 `.runtime/npm-test-full9.log`） |
-| 交叉验证门禁 | `npm run merge:gate` | **GATE GREEN**（`artifacts/merge-gate/feature-SP005-long-session-reliability-2026-11-19T15-32-44-972Z.md`（HEAD `ef90f11`）；outgoing 4 commits / 53 files；`npm test` / `spec:check` / `skills:check` / `pack-smoke` 全绿） |
+| 交叉验证门禁 | `npm run merge:gate` | **GATE GREEN**（`artifacts/merge-gate/feature-SP005-long-session-reliability-2026-11-19T16-10-43-342Z.md`（HEAD `ebfb882`）；outgoing 6 commits / 56 files；`npm test` / `spec:check` / `skills:check` / `pack-smoke` 全绿） |
 
 本轮新增用例 101 例（12 个测试文件；另含 1 例整轮挂起回归，见 §5），全部对应用例文件与 AC 的映射见 [细节报告 §2](long-session-reliability/test-report.md)。
 
