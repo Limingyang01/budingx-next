@@ -114,6 +114,22 @@ export function buildRequestBody(
   }
 }
 
+/** 构造 OTLP 上报请求 init。协议字段由 Langfuse 公开规范规定。 */
+function buildRequestInit(body: string, publicKey: string, secretKey: string): RequestInit {
+  const credential = Buffer.from(`${publicKey}:${secretKey}`).toString('base64')
+  return {
+    method: 'POST',
+    headers: {
+      authorization: `Basic ${credential}`,
+      'content-type': 'application/json',
+      'x-langfuse-ingestion-version': '4'
+    },
+    body,
+    redirect: 'error',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+  }
+}
+
 /**
  * OTLP 导出器。负责把封存的批次投递到 Langfuse。
  */
@@ -129,26 +145,19 @@ export class OtlpExporter {
   /** 发送一个批次。失败静默，不影响 Agent 业务结果。 */
   async sendBatch(batch: TraceBatch, payloads?: TraceBatchPayloads): Promise<boolean> {
     if (!batch || !batch.spans.length) return true
+    const body = buildRequestBody(batch, {
+      captureContent: this.config.captureContent === true,
+      knownSecrets: this.config.knownSecrets ?? [],
+      ...(payloads ? { payloads } : {})
+    })
+    const endpoint = new URL(TRACES_PATH, this.config.baseUrl).toString()
+    const init = buildRequestInit(
+      JSON.stringify(body),
+      this.config.publicKey,
+      this.config.secretKey
+    )
     try {
-      const body = buildRequestBody(batch, {
-        captureContent: this.config.captureContent === true,
-        knownSecrets: this.config.knownSecrets ?? [],
-        ...(payloads ? { payloads } : {})
-      })
-      const url = new URL(TRACES_PATH, this.config.baseUrl).toString()
-      const response = await this.send(url, {
-        method: 'POST',
-        headers: {
-          authorization: `Basic ${Buffer.from(
-            `${this.config.publicKey}:${this.config.secretKey}`
-          ).toString('base64')}`,
-          'content-type': 'application/json',
-          'x-langfuse-ingestion-version': '4'
-        },
-        body: JSON.stringify(body),
-        redirect: 'error',
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
-      })
+      const response = await this.send(endpoint, init)
       return response.ok
     } catch {
       // 可观测性不得改变业务结果。

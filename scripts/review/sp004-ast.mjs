@@ -69,7 +69,15 @@ const REFERENCE_ALLOWLIST = [
   { ours: 'src/tui/render/reducer.ts', theirs: ['src/components'] },
   { ours: 'src/tui/render/types.ts', theirs: ['src/components'] },
   { ours: 'src/tui/runtime.ts', theirs: ['src/bootstrap', 'src/application'] },
-  { ours: 'src/workspace/policy.ts', theirs: ['src/components/permissions', 'src/hooks/useCanUseTool.tsx'] }
+  { ours: 'src/workspace/policy.ts', theirs: ['src/components/permissions', 'src/hooks/useCanUseTool.tsx'] },
+  // SP004 agent-observability：追踪端口与传输层。参考对照为 Langfuse 埋点/配置/运行时。
+  { ours: 'src/core/observability.ts', theirs: ['vscode_plugin/src/host/observability/agentTracing.ts'] },
+  { ours: 'src/observability/config.ts', theirs: ['vscode_plugin/src/host/observability/tracingConfig.ts'] },
+  { ours: 'src/observability/context.ts', theirs: ['vscode_plugin/src/host/observability/agentTracing.ts', 'src/server/services/langfuseRuntime.ts'] },
+  { ours: 'src/observability/exporter.ts', theirs: ['src/server/services/langfuseRuntime.ts'] },
+  { ours: 'src/observability/index.ts', theirs: [], note: '模块导出面（barrel），仅 re-export，无可比较实现' },
+  { ours: 'src/observability/redact.ts', theirs: ['src/server/services/langfuseRuntime.ts', 'vscode_plugin/src/host/observability/agentTracing.ts'] },
+  { ours: 'src/observability/runtime.ts', theirs: ['vscode_plugin/src/host/observability/agentTracing.ts', 'src/server/services/langfuseRuntime.ts'] }
 ]
 
 // 人工处置：命中项的复核结论（按「本仓路径::单元名」）。
