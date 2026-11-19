@@ -10,7 +10,6 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createAgentRuntime } from '../../src/tui/dist/tui/runtime.js'
-import { createHostSandboxFromEnvironment } from '../../src/tui/dist/exec/host-sandbox.js'
 import {
   mergeSources,
   startupProfile,
@@ -97,8 +96,6 @@ async function main() {
     return
   }
   console.log('model:', config.model, '| profileTools:', profileTools)
-  const sandboxBackend = createHostSandboxFromEnvironment()
-  console.log('sandboxBackend:', sandboxBackend ? sandboxBackend.id : '(none — commands may be refused)')
 
   const events = []
   const runtime = createAgentRuntime({
@@ -106,8 +103,7 @@ async function main() {
     getConfig: () => config,
     approval: { async request() { return { outcome: 'allow', via: 'user' } } },
     configStore,
-    mode: 'workspace_edit',
-    sandboxBackend
+    mode: 'workspace_edit'
   })
   for (const w of runtime.warnings) console.log('warning:', w)
   const session = runtime.session
