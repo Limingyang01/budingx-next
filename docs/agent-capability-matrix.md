@@ -51,6 +51,20 @@ SP001 已把本矩阵的能力条目落成可勾选的[能力清单 v1.2](../SP/
 | 多代理团队与隔离协作 | 必交；SP011、SP015–SP016 | 至少 3 个真实成员，任务依赖/租约、消息、隔离 worktree、冲突、恢复及成本取消有端到端证据。 |
 | 定时任务 | 必交；SP014、SP015–SP016 | 定时一次性/周期、时区/DST、持久租约/重启/重复触发和无人值守授权均通过；管理入口 TUI/headless，通知使用本地或无头回执。 |
 
+## SP005 落地情况（2026-11-19）
+
+SP005 交付后，本表中由 SP005 负责的五行有了代码层证据（全部为自有实现与自有用例，未引用旧仓成绩）：
+
+| 行 | SP005 交付 | 证据 |
+| --- | --- | --- |
+| 终端及后台任务 | 后台任务输出与进程取消沿用 SP004；本轮补「会话级任务状态随转录落盘」，恢复后可见任务归属 | `src/storage/test/session-recovery.e2e.test.mjs` |
+| 指令与项目记忆 | 项目级/会话级两级记忆、按目录隔离、凭据拒写、损坏隔离 | `src/storage/test/project-memory.test.mjs`（PM-01…08） |
+| 长上下文与恢复 | 确定性压缩 + 约束/计划/工具状态保留 + 幂等与熔断；跨进程恢复不重放副作用；未知结果标 `needs_review` | `src/core/test/context-budget.e2e.test.mjs`、`src/storage/test/session-recovery.e2e.test.mjs` |
+| 会话管理 | `/sessions`、`/resume <id>`、会话索引与写锁；未知 ID 明确报错 | `src/tui/test/sp005-commands.test.mjs`、`src/storage/test/session-transcript.test.mjs` |
+| 多端共享边界 | 写出会话目录/锁/凭据隔离边界，供 SP008 复用；本轮不交付跨端共享 | `SP/SP005/long-session-reliability/design/design.zh.md` §5 |
+
+仍未满足的部分（不改变本表门槛）：多项目并发共享、删除/导出策略、fork 会话隔离属 SP008；指令文件 `@import` 与作用域优先级属 SP006。
+
 ## 每轮不可跳过的负向场景
 
 - Provider/MCP/网络不可用时返回可诊断状态，不假装任务完成；取消从 UI/CLI 到模型、工具、子代理和后台命令传播。

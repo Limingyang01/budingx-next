@@ -5,6 +5,8 @@ import {
   CANCEL_BUDGET_MS,
   ERROR_CODES,
   MAX_ITERATIONS,
+  MAX_REPEATED_TOOL_FAILURES,
+  MAX_TOOL_FAILURE_STREAK,
   QUEUE_AUTOSTART_MS,
   TOOL_OUTPUT_CAP
 } from './constants.js'
@@ -18,6 +20,16 @@ import type {
   Usage
 } from './events.js'
 import { normalizeForApi } from './normalize.js'
+import {
+  COMPACTION_CIRCUIT_LIMIT,
+  collectConstraintItems,
+  createContextBudgetManager,
+  unfinishedToolCalls,
+  type ContextBudgetManager,
+  type PreservedItem
+} from './context-budget.js'
+import type { SessionTranscript, TranscriptRecord } from './transcript.js'
+import { appendTranscript } from './session-persistence.js'
 import type {
   ChatRequest,
   FinishReason,
@@ -81,6 +93,29 @@ export type SessionOptions = {
   disposers?: (() => void)[]
   /** SP004 agent-observability §4.2：可选追踪端口。未注入时跳过埋点。 */
   tracer?: Tracer
+  /**
+   * SP005 §5：会话转录端口。未注入时不落盘；注入后每条消息、回合与工具步骤
+   * 都会追加到转录，跨进程恢复只读取，不重放任何副作用。
+   */
+  transcript?: SessionTranscript
+  /**
+   * SP005 §4：上下文预算上限（模型上下文窗口的 token 数）。
+   * 未注入时不压缩，保持 SP002 起的既有行为。
+   */
+  contextBudget?: {
+    maxTokens: number
+    /** 为模型输出预留的 token 数，默认按 1/4 上限估算。 */
+    reservedOutputTokens?: number
+  }
+  /**
+   * SP005 §5 SR-10：恢复会话时的权限上限。恢复不会提升权限档位，
+   * 目标档位高于上限时被降到上限并发出 notice。
+   */
+  permissionModeCeiling?: PermissionMode
+  /**
+   * SP005 §4：读取当前已批准计划文本，压缩时作为保留项。
+   */
+  resolvePlanText?: () => string | undefined
   onEvent?: (event: SessionEvent) => void
 }
 
@@ -180,6 +215,21 @@ export class Session {
     question: PendingQuestion
     resolve: (outcome: QuestionOutcome) => void
   }
+  /** SP005 §4：上下文预算管理器。未注入预算时为 undefined（不压缩）。 */
+  private readonly budget?: ContextBudgetManager
+  /** SP005 §4：压缩熔断计数，连续失败达到上限后停止压缩并明确报错。 */
+  private compactionFailures = 0
+  /** SP005 §5：本回合已派发但结果未知的工具调用（不自动重放）。 */
+  private readonly pendingToolCalls = new Map<string, { turnId: string; name: string }>()
+  /** SP005 FR-07：本轮转录写入失败的位置，随 turn_finalized 一起报出。 */
+  private persistenceError?: { code: string; message: string }
+  /**
+   * SP005 FR-05：同一工具 + 同一参数的连续失败计数。
+   * 达到上限后熔断，避免模型在同一个失败调用上空转。
+   */
+  private readonly repeatedToolFailures = new Map<string, number>()
+  /** SP005 FR-05：同一工具 + 同一错误码的连续失败计数（捕捉换参数瞎试）。 */
+  private readonly toolFailureStreaks = new Map<string, number>()
 
   /** Hosts pause auto-start while boundary commands or credential entry run. */
   setQueuePaused(paused: boolean): void {
@@ -194,9 +244,34 @@ export class Session {
   constructor(private readonly options: SessionOptions) {
     this.id = options.id ?? randomUUID()
     this.tools = options.tools ?? []
+    if (options.contextBudget) {
+      this.budget = createContextBudgetManager()
+    }
     this.options.permissionPolicy?.onModeChanged?.((mode: PermissionMode) => {
       this.emit({ type: 'permission_changed', mode })
     })
+  }
+
+  /**
+   * SP005 §5：把恢复出来的历史装入会话（跨进程恢复入口）。
+   * 只装载历史，绝不重放任何工具步骤。
+   */
+  restoreHistory(messages: readonly Message[]): void {
+    this.messages.splice(0, this.messages.length, ...messages)
+  }
+
+  /**
+   * SP005 §5 SR-10：恢复时的权限上限。目标档位高于上限则降到上限，
+   * 绝不因恢复而提升权限。
+   */
+  applyPermissionCeiling(mode: PermissionMode): PermissionMode {
+    const ceiling = this.options.permissionModeCeiling
+    if (!ceiling) return mode
+    const rank: Record<PermissionMode, number> = { read_only: 0, workspace_edit: 1, full_access: 2 }
+    if (rank[mode] <= rank[ceiling]) return mode
+    this.options.permissionPolicy?.setMode?.(ceiling)
+    this.emit({ type: 'permission_changed', mode: ceiling })
+    return ceiling
   }
 
   /** UI-only query. No approval payload or session event shape changes. */
@@ -772,13 +847,198 @@ export class Session {
     const userMessage = this.userMessage(userText, options)
     turn.messageIds.push(userMessage.id)
     this.messages.push(userMessage)
+    this.recordMessage(userMessage)
     await this.runTurn(turn, snapshot)
   }
 
+  /**
+   * SP005 §5：把一条记录写入转录。写入失败不会影响本轮业务结果，
+   * 只会记录错误位置（FR-07）。
+   */
+  private writeTranscript(record: TranscriptRecord): void {
+    const result = appendTranscript(this.options.transcript, record)
+    if (result.ok) return
+    this.persistenceError = { code: result.code, message: result.message }
+    this.emit({
+      type: 'notice',
+      level: 'error',
+      code: 'storage_write_failed',
+      text: `session transcript write failed (${result.code}): ${result.message}`
+    })
+  }
+
+  /** SP005 §5：记录一条消息（用户、助手或工具结果）。 */
+  private recordMessage(message: Message, parentId?: string): void {
+    if (!this.options.transcript) return
+    this.writeTranscript({
+      type: 'message',
+      ts: new Date().toISOString(),
+      id: message.id,
+      ...(parentId ? { parentId } : {}),
+      role: message.role,
+      blocks: message.blocks
+    })
+  }
+
+  /**
+   * SP005 §4：收集压缩必须保留的结构化事实。
+   * 保留项来自状态本身（用户约束 / 已批准计划 / 未完成工具调用），
+   * 不依赖对历史做文本摘要，因此压缩后约束与工具状态不会丢。
+   */
+  private preservedItems(): PreservedItem[] {
+    const maxTokens = this.options.contextBudget?.maxTokens ?? 0
+    const reserved = this.options.contextBudget?.reservedOutputTokens ?? Math.floor(maxTokens / 4)
+    // 单条保留项最多占目标预算的 1/4，避免保留项本身把预算占满。
+    const itemLimit = Math.max(1, Math.floor((maxTokens - reserved) / 4))
+    const items: PreservedItem[] = collectConstraintItems(this.messages, itemLimit)
+    const planText = this.options.resolvePlanText?.()
+    if (planText && planText.trim()) {
+      items.push({
+        kind: 'plan',
+        id: 'plan',
+        text: planText.trim(),
+        reason: '已批准计划在压缩后必须仍然可读'
+      })
+    }
+    for (const call of unfinishedToolCalls(this.messages)) {
+      items.push({
+        kind: 'tool_state',
+        id: call.callId,
+        text: `工具 ${call.name}（${call.callId}）在压缩前未完成，结果未知。`,
+        reason: '未完成的工具调用必须显式标记，不能伪造成功'
+      })
+    }
+    return items
+  }
+
+  /**
+   * SP005 §4：按预算压缩上下文。
+   * 压缩保留用户约束、已批准计划与未完成工具状态；连续失败达到熔断上限
+   * 时停止压缩并交给调用方明确报错（CB-06）。
+   */
+  private compactIfNeeded(turn: ActiveTurn): { messages: Message[]; compacted: boolean } {
+    const budget = this.budget
+    if (!budget) return { messages: this.messages, compacted: false }
+    const maxTokens = this.options.contextBudget?.maxTokens ?? 0
+    const reserved = this.options.contextBudget?.reservedOutputTokens ?? Math.floor(maxTokens / 4)
+    const estimate = budget.estimate({
+      messages: this.messages,
+      maxTokens,
+      reservedOutputTokens: reserved
+    })
+    const trigger = Math.floor((maxTokens - reserved) * 0.85)
+    if (estimate <= trigger) {
+      this.compactionFailures = 0
+      return { messages: this.messages, compacted: false }
+    }
+    if (this.compactionFailures >= COMPACTION_CIRCUIT_LIMIT) {
+      this.emit({
+        type: 'notice',
+        level: 'error',
+        code: 'context_overflow',
+        text: `context compaction stopped after ${this.compactionFailures} consecutive failures`
+      })
+      return { messages: this.messages, compacted: false }
+    }
+    const preserved = this.preservedItems()
+    const result = budget.compact(
+      {
+        messages: this.messages,
+        maxTokens,
+        reservedOutputTokens: reserved
+      },
+      preserved
+    )
+    if (!result.compacted) {
+      this.compactionFailures++
+      this.emit({
+        type: 'notice',
+        level: 'error',
+        code: 'context_overflow',
+        text: `context is over the budget and cannot be compacted (${result.overflowReason ?? 'unknown'})`
+      })
+      return { messages: this.messages, compacted: false }
+    }
+    this.compactionFailures = 0
+    // 压缩结果写回会话历史：下一次请求不再重复压缩同一段历史，
+    // 转录也只保留压缩后的真实上下文。
+    this.messages.splice(0, this.messages.length, ...result.messages)
+    this.emit({
+      type: 'context_compacted',
+      turnId: turn.id,
+      replacedRange: result.replacedRange ?? { from: 0, to: 0 },
+      replacedCount: result.replacedCount,
+      preserved: result.preserved,
+      estimatedBefore: estimate,
+      estimatedAfter: result.estimatedTokens,
+      withinBudget: result.withinBudget
+    })
+    this.writeTranscript({
+      type: 'note',
+      ts: new Date().toISOString(),
+      text: `context compacted: ${result.replacedCount} messages replaced, ` +
+        `estimated ${estimate} -> ${result.estimatedTokens}`
+    })
+    return { messages: result.messages, compacted: true }
+  }
+
+  /**
+   * SP005 FR-08：上下文溢出时的强制压缩。
+   * 压缩失败或压缩后仍然超预算时返回 false，由调用方给出明确失败原因。
+   */
+  private compactForOverflow(turn: ActiveTurn): boolean {
+    const budget = this.budget
+    if (!budget) return false
+    const maxTokens = this.options.contextBudget?.maxTokens ?? 0
+    const reserved = this.options.contextBudget?.reservedOutputTokens ?? Math.floor(maxTokens / 4)
+    const preserved = this.preservedItems()
+    const estimatedBefore = budget.estimate({
+      messages: this.messages,
+      maxTokens,
+      reservedOutputTokens: reserved
+    })
+    // force：模型已明确报告溢出，本地估算可能因分词器差异而看起来正常，
+    // 因此这里忽略触发阈值，强制尝试裁剪一次。
+    const result = budget.compact(
+      { messages: this.messages, maxTokens, reservedOutputTokens: reserved, force: true },
+      preserved
+    )
+    if (!result.compacted) {
+      this.emit({
+        type: 'notice',
+        level: 'error',
+        code: 'context_overflow',
+        text: `the model reported a context overflow and the history cannot be compacted ` +
+          `(${result.overflowReason ?? 'unknown'})`
+      })
+      return false
+    }
+    this.messages.splice(0, this.messages.length, ...result.messages)
+    this.emit({
+      type: 'context_compacted',
+      turnId: turn.id,
+      replacedRange: result.replacedRange ?? { from: 0, to: 0 },
+      replacedCount: result.replacedCount,
+      preserved: result.preserved,
+      estimatedBefore,
+      estimatedAfter: result.estimatedTokens,
+      withinBudget: result.withinBudget
+    })
+    this.writeTranscript({
+      type: 'note',
+      ts: new Date().toISOString(),
+      text: `context compacted after an overflow report: ${result.replacedCount} messages replaced, ` +
+        `estimated ${estimatedBefore} -> ${result.estimatedTokens}`
+    })
+    return true
+  }
+
   private buildRequest(snapshot: TurnSnapshot, turn: ActiveTurn): ChatRequest {
+    const budgeted = this.compactIfNeeded(turn)
+    const source = budgeted.messages
     const request: ChatRequest = {
       model: snapshot.model,
-      messages: normalizeForApi(this.messages, turn.provider.preserveToolReasoning?.(snapshot.model)
+      messages: normalizeForApi(source, turn.provider.preserveToolReasoning?.(snapshot.model)
         ? (message) => {
             const source = this.reasoningSource.get(message)
             return source?.modelId === snapshot.modelId &&
@@ -810,6 +1070,8 @@ export class Session {
     let error: ErrorInfo | undefined
     let usage: Usage | undefined
     let iteration = 0
+    // SP005 FR-08：上下文溢出后最多再试一次（先压缩再重试）。
+    let overflowRetried = false
 
     while (iteration < maxIterations) {
       iteration++
@@ -922,6 +1184,16 @@ export class Session {
         )
         if (providerFailure.class === 'aborted' || turn.controller.signal.aborted) {
           outcome = 'cancelled'
+        } else if (
+          providerFailure.class === 'context_overflow' &&
+          !overflowRetried &&
+          this.budget &&
+          this.compactForOverflow(turn)
+        ) {
+          // SP005 FR-08：压缩成功后再试一次；仍失败则明确报错，不静默重试。
+          overflowRetried = true
+          iteration--
+          continue
         } else {
           outcome = 'error'
           error = providerFailure
@@ -959,6 +1231,13 @@ export class Session {
       if (assistant.blocks.length > 0) {
         this.messages.push(assistant)
         turn.messageIds.push(assistant.id)
+        this.recordMessage(assistant)
+        // SP005 §5：已派发的工具调用先登记，结果未知时只标记 needs_review。
+        for (const block of assistant.blocks) {
+          if (block.type === 'tool_use') {
+            this.pendingToolCalls.set(block.id, { turnId: turn.id, name: block.name })
+          }
+        }
         this.emit({
           type: 'message_completed',
           turnId: turn.id,
@@ -1020,7 +1299,7 @@ export class Session {
       })
     }
 
-    this.finalize(turn, outcome, error)
+    this.finalize(turn, outcome, error, usage)
   }
 
   private async dispatchTools(
@@ -1286,13 +1565,66 @@ export class Session {
         // model so it can self-correct (SP003 AC WT-14).
         const candidate = (error as { code?: unknown } | null)?.code
         if (typeof candidate === 'string') errorCode = candidate
+        // SP005 FR-06：工具失败必须带稳定错误码，失败位置才能被定位到具体步骤。
+        errorCode = errorCode ?? ERROR_CODES.coreToolFailed
       }
       if (content.length > TOOL_OUTPUT_CAP) {
-        content = content.slice(0, TOOL_OUTPUT_CAP)
+        // SP005 FR-03：截断必须带显式标记，模型与人都能看出结果不完整，
+        // 不能把一段被砍掉的内容当成完整结果。
+        const omitted = content.length - TOOL_OUTPUT_CAP
+        content = content.slice(0, TOOL_OUTPUT_CAP) +
+          `\n[truncated] ${omitted} characters were omitted because the tool output exceeded ` +
+          `${TOOL_OUTPUT_CAP} characters (${ERROR_CODES.coreToolOutputTooLong})`
         isError = true
+        errorCode = errorCode ?? ERROR_CODES.coreToolOutputTooLong
       }
       if (startedAt !== undefined) {
         this.lastToolElapsed = { turnId: turn.id, callId: call.id, ms: performance.now() - startedAt }
+      }
+      // SP005 FR-05：工具空转熔断，分两级。
+      // 一级：同一工具 + 同一参数连续失败 —— 完全重复的调用。
+      // 二级：同一工具 + 同一错误码连续失败 —— 模型换参数瞎试同一件事，
+      //       参数签名变了但错误类型没变，同样不会带来新信息。
+      // 两种情况都只会让长任务空转到最大迭代次数，因此必须显式停下并给出稳定原因。
+      const signature = `${call.name}:${call.arguments ?? '{}'}`
+      const streakKey = `${call.name}:${errorCode ?? 'unknown'}`
+      if (isError) {
+        const count = (this.repeatedToolFailures.get(signature) ?? 0) + 1
+        this.repeatedToolFailures.set(signature, count)
+        const streak = (this.toolFailureStreaks.get(streakKey) ?? 0) + 1
+        this.toolFailureStreaks.set(streakKey, streak)
+        const tripped =
+          count >= MAX_REPEATED_TOOL_FAILURES
+            ? `failed ${count} times with the same arguments`
+            : streak >= MAX_TOOL_FAILURE_STREAK
+              ? `failed ${streak} times in a row with the same error (${errorCode ?? 'unknown'})`
+              : undefined
+        if (tripped) {
+          this.repeatedToolFailures.delete(signature)
+          this.toolFailureStreaks.delete(streakKey)
+          this.traceEnd(toolTrace, 'error')
+          this.pushToolResult(
+            turn,
+            call.id,
+            `Tool "${call.name}" ${tripped}; retrying it again cannot add information. ` +
+              `Stop and report the reason instead. (${ERROR_CODES.coreToolLoopDetected})`,
+            true,
+            ERROR_CODES.coreToolLoopDetected
+          )
+          return {
+            error: {
+              class: 'unknown',
+              code: ERROR_CODES.coreToolLoopDetected,
+              message:
+                `Tool "${call.name}" ${tripped} ` +
+                `(${ERROR_CODES.coreToolLoopDetected})`,
+              retryable: false
+            }
+          }
+        }
+      } else {
+        this.repeatedToolFailures.delete(signature)
+        this.toolFailureStreaks.delete(streakKey)
       }
       try {
         this.pushToolResult(turn, call.id, content, isError, errorCode, toolTrace)
@@ -1321,6 +1653,19 @@ export class Session {
     }
     turn.messageIds.push(message.id)
     this.messages.push(message)
+    this.recordMessage(message)
+    // SP005 §5 SR-06：工具步骤落盘，成功与失败分别记录；
+    // 未完成的调用保持 needs_review，恢复时只提示核对，绝不重放。
+    this.writeTranscript({
+      type: 'tool_step',
+      ts: new Date().toISOString(),
+      turnId: turn.id,
+      callId,
+      name: this.pendingToolCalls.get(callId)?.name ?? 'unknown',
+      status: isError ? 'failed' : 'completed',
+      ...(code ? { detail: code } : {})
+    })
+    this.pendingToolCalls.delete(callId)
     this.emit({
       type: 'tool_result',
       turnId: turn.id,
@@ -1404,7 +1749,12 @@ export class Session {
     )
   }
 
-  private finalize(turn: ActiveTurn, outcome: TurnOutcome, error?: ErrorInfo): void {
+  private finalize(
+    turn: ActiveTurn,
+    outcome: TurnOutcome,
+    error?: ErrorInfo,
+    usage?: Usage
+  ): void {
     if (turn.finalized) {
       this.emit({
         type: 'notice',
@@ -1465,14 +1815,41 @@ export class Session {
     if (this.activeTurn === turn) this.activeTurn = undefined
     this.setState('idle')
     this.traceEnd(turn.traceRoot, this.traceOutcomeOf(outcome), error)
+    // SP005 §5 SR-06：结果未知的工具调用标记为 needs_review，
+    // 恢复时只提示人工核对，不会自动重放副作用。
+    for (const [callId, pending] of this.pendingToolCalls) {
+      if (pending.turnId !== turn.id) continue
+      this.writeTranscript({
+        type: 'tool_step',
+        ts: new Date().toISOString(),
+        turnId: turn.id,
+        callId,
+        name: pending.name,
+        status: 'needs_review',
+        detail: 'turn ended before the tool result was known'
+      })
+      this.pendingToolCalls.delete(callId)
+    }
+    this.writeTranscript({
+      type: 'turn',
+      ts: new Date().toISOString(),
+      turnId: turn.id,
+      outcome,
+      ...(error ? { error } : {}),
+      ...(usage ? { usage } : {})
+    })
     this.emit({
       type: 'turn_finalized',
       finishedAt: Date.now(),
       turnId: turn.id,
       outcome,
       ...(error ? { error } : {}),
-      ...(restoreText ? { restoreText } : {})
+      ...(restoreText ? { restoreText } : {}),
+      // SP005 FR-07：存储写失败与模型失败是两件事，
+      // 本轮结果仍然有效，但要明确标出持久化出了问题。
+      ...(this.persistenceError ? { persistenceError: this.persistenceError } : {})
     })
+    this.persistenceError = undefined
     this.scheduleQueueDrain()
   }
 

@@ -54,20 +54,50 @@ const isWindows = process.platform === 'win32'
 const systemTool = (name) =>
   path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', name)
 
-/** 读取当前用户账户名与 SID（Windows）。失败返回 undefined。 */
-function currentUser() {
+/** 读取当前用户 SID（Windows）。失败返回 undefined。 */
+// 只取 SID：账户名经控制台代码页传输，非 ASCII 账户会被解码成乱码，
+// 用名字比对会在中文等账户名下误判（SID 始终是 ASCII）。
+export function currentUserSid() {
   try {
     const out = execFileSync(systemTool('whoami.exe'), ['/user', '/fo', 'csv', '/nh'], {
       encoding: 'utf8',
       windowsHide: true
     })
-    const account = out.match(/"([^"]+)"/)
-    const sid = out.match(/"(S-1-5-[0-9-]+)"/)
-    if (!account || !sid) return undefined
-    return { account: account[1], sid: sid[1] }
+    const sid = out.match(/"(S-1-[0-9]+(?:-[0-9]+)+)"/)
+    return sid ? sid[1] : undefined
   } catch {
     return undefined
   }
+}
+
+/** 不允许出现在私有路径 DACL 里的宽泛主体（Everyone / Authenticated Users / INTERACTIVE / BUILTIN\Users）。 */
+export const BROAD_PRINCIPAL_SIDS = ['S-1-1-0', 'S-1-5-11', 'S-1-5-4', 'S-1-5-32-545']
+
+/**
+ * 读取路径 DACL 的 SDDL 文本（Windows）。
+ * 用 icacls /save 导出：SDDL 里只有 SID 和 ACE 类型，不经过控制台代码页，
+ * 因此不会因账户名含非 ASCII 字符而乱码（原来的名字比对正是这样误判的）。
+ */
+export function readAclSddl(target) {
+  const dump = path.join(os.tmpdir(), `budingx-acl-${process.pid}-${randomUUID()}.txt`)
+  try {
+    execFileSync(systemTool('icacls.exe'), [target, '/save', dump], {
+      encoding: 'utf8',
+      windowsHide: true
+    })
+    return readFileSync(dump, 'utf16le')
+  } finally {
+    try {
+      unlinkSync(dump)
+    } catch {
+      // 清理失败不影响校验结果。
+    }
+  }
+}
+
+/** 从 SDDL 文本里取出全部 SID。 */
+export function aclSids(sddl) {
+  return sddl.match(/S-1-[0-9]+(?:-[0-9]+)+/g) ?? []
 }
 
 /**
@@ -90,25 +120,25 @@ export function restrictAndVerify(target, kind) {
     }
     return
   }
-  const user = currentUser()
-  if (!user) throw new Error('Cannot determine the current user SID; refusing to write credentials')
+  const sid = currentUserSid()
+  if (!sid) throw new Error('Cannot determine the current user SID; refusing to write credentials')
   // SID 前缀 * 让 icacls 按 SID 而非账户名授权。
-  const grant = kind === 'dir' ? `*${user.sid}:(OI)(CI)F` : `*${user.sid}:F`
+  const grant = kind === 'dir' ? `*${sid}:(OI)(CI)F` : `*${sid}:F`
   execFileSync(systemTool('icacls.exe'), [target, '/inheritance:r', '/grant:r', grant], {
     encoding: 'utf8',
     windowsHide: true
   })
-  const acl = execFileSync(systemTool('icacls.exe'), [target], { encoding: 'utf8', windowsHide: true })
-  // icacls 可能把 SID 解析为账户名显示；两者任一命中即视为授予当前用户。
-  const grantsUser =
-    acl.toLowerCase().includes(user.account.toLowerCase()) || acl.includes(user.sid)
-  if (!grantsUser) {
-    throw new Error(`Cannot verify the current user on ${target}`)
+  // 按 SID 核对：icacls 的文本输出会把账户名按控制台代码页显示，名字比对不可靠
+  // （中文账户名解码成乱码后既匹配不到名字也匹配不到 SID）。
+  const sids = aclSids(readAclSddl(target))
+  if (!sids.includes(sid)) {
+    throw new Error(`Cannot verify the current user (SID ${sid}) on ${target}`)
   }
-  for (const broad of ['Everyone', 'BUILTIN\\Users', 'Authenticated Users', 'NT AUTHORITY\\INTERACTIVE']) {
-    if (acl.includes(broad)) {
-      throw new Error(`${target} still grants access to ${broad}; refusing to write credentials`)
-    }
+  const broad = sids.filter((entry) => BROAD_PRINCIPAL_SIDS.includes(entry))
+  if (broad.length > 0) {
+    throw new Error(
+      `${target} still grants access to a broad principal (${broad.join(', ')}); refusing to write credentials`
+    )
   }
 }
 

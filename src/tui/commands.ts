@@ -52,6 +52,35 @@ export type CommandContext = {
     denials: () => DenialRecord[]
     modes: { order: PermissionMode[]; zh: Record<string, string>; en: Record<string, string> }
   }
+  /** SP005: present once the session persistence runtime is wired. */
+  sessions?: {
+    /** List known sessions with id, title, updated time and turn count. */
+    list: () => { sessionId: string; title: string; updatedAt: string; turns: number }[]
+    /** Restore a session by id; unknown ids must fail explicitly. */
+    resume: (sessionId: string) => {
+      ok: boolean
+      message?: string
+      messages?: unknown[]
+      needsReview?: { name: string; callId: string; detail?: string }[]
+      warnings?: string[]
+    }
+  }
+  /** SP005: context budget composition for /context. */
+  context?: {
+    budget: () => {
+      estimatedTokens: number
+      maxTokens: number
+      reservedOutputTokens: number
+      triggerTokens: number
+      messages: number
+      breakdown: { kind: string; tokens: number }[]
+    }
+  }
+  /** SP005: project and session memory for /memory. */
+  memory?: {
+    read: (scope: 'project' | 'session') => { entries: { title: string; text: string }[]; message?: string }
+    write: (scope: 'project' | 'session', title: string, text: string) => { ok: boolean; message?: string }
+  }
 }
 
 const MODE_ALIASES: Record<string, PermissionMode> = {
@@ -86,6 +115,11 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
   /diff [路径]          查看本会话改动（交互模式打开对话框）
   /undo [路径]          撤销最近一组改动或指定文件（外部改动会阻止自动撤销）
   /denials              查看拒绝历史
+  /sessions             列出已保存的会话
+  /resume <会话ID>      恢复指定会话（不重放未确认的工具调用）
+  /context              查看上下文预算构成
+  /memory               查看项目/会话记忆
+  /memory <范围> add <标题>：<正文>  写入记忆
   /clear                清空会话
   /exit                 退出 budingx`
     : `Commands:
@@ -100,6 +134,11 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
   /diff [path]          show this session's changes (opens a dialog interactively)
   /undo [path]          undo the latest change group or a file (foreign edits block undo)
   /denials              show the denial history
+  /sessions             list saved sessions
+  /resume <sessionId>    restore a session (unconfirmed tool calls are not replayed)
+  /context              show the context budget composition
+  /memory               show project/session memory
+  /memory <scope> add <title>: <body>   store a memory entry
   /clear                clear the conversation
   /exit                 leave budingx`
 }
@@ -129,8 +168,12 @@ async function executeCommand(
   const pick = (zh: string, en: string) => (lang === 'zh' ? zh : en)
   const text = input.trim()
   if (!text.startsWith('/')) return { handled: false }
-  const [command, ...rest] = text.slice(1).split(/\s+/)
-  const argument = rest.join(' ')
+  // The command name ends at the first whitespace; everything after it is the
+  // argument, with the original spacing kept so bodies stay readable.
+  const body = text.slice(1)
+  const separator = body.search(/\s/)
+  const command = (separator < 0 ? body : body.slice(0, separator)).toLowerCase()
+  const argument = separator < 0 ? '' : body.slice(separator + 1).trim()
 
   switch (command) {
     case 'help':
@@ -216,11 +259,209 @@ async function executeCommand(
       return undoCommand(argument, context, pick)
     case 'denials':
       return denialsCommand(context, pick)
+    case 'sessions':
+      return sessionsCommand(context, pick)
+    case 'resume':
+      return resumeCommand(argument, context, pick)
+    case 'context':
+      return contextCommand(context, pick)
+    case 'memory':
+      return memoryCommand(argument, context, pick)
     default:
       return {
         handled: true,
         error: pick('未知命令；使用 /help', 'Unknown command; use /help')
       }
+  }
+}
+
+/** SP005: list known sessions on disk. */
+function sessionsCommand(
+  context: CommandContext,
+  pick: (zh: string, en: string) => string
+): CommandOutcome {
+  const sessions = context.sessions
+  if (!sessions) {
+    return {
+      handled: true,
+      error: pick(
+        '会话存储尚未接入；请重新以支持持久化的方式启动 budingx',
+        'Session storage is not wired; start budingx in a mode that supports persistence'
+      )
+    }
+  }
+  const listed = sessions.list()
+  if (listed.length === 0) {
+    return { handled: true, message: pick('尚无已保存的会话', 'No saved sessions yet') }
+  }
+  const lines = listed.map(
+    (entry) =>
+      `${entry.sessionId}  ${entry.title}  ${entry.updatedAt}  ${pick('回合', 'turns')} ${entry.turns}`
+  )
+  return { handled: true, message: lines.join('\n') }
+}
+
+/** SP005: restore a session by id. Unknown ids fail explicitly. */
+function resumeCommand(
+  argument: string,
+  context: CommandContext,
+  pick: (zh: string, en: string) => string
+): CommandOutcome {
+  const sessions = context.sessions
+  if (!sessions) {
+    return {
+      handled: true,
+      error: pick(
+        '会话存储尚未接入；无法恢复会话',
+        'Session storage is not wired; cannot resume a session'
+      )
+    }
+  }
+  const sessionId = argument.trim()
+  if (!sessionId) {
+    return {
+      handled: true,
+      error: pick('用法：/resume <sessionId>', 'Usage: /resume <sessionId>')
+    }
+  }
+  const restored = sessions.resume(sessionId)
+  if (!restored.ok) {
+    return {
+      handled: true,
+      error: pick(
+        `无法恢复会话 ${sessionId}：${restored.message ?? '未知错误'}`,
+        `Cannot resume session ${sessionId}: ${restored.message ?? 'unknown error'}`
+      )
+    }
+  }
+  const warnings = restored.warnings ?? []
+  const needsReview = restored.needsReview ?? []
+  const lines = [
+    pick(
+      `已恢复会话 ${sessionId}，历史 ${restored.messages?.length ?? 0} 条消息`,
+      `Resumed session ${sessionId} with ${restored.messages?.length ?? 0} messages`
+    )
+  ]
+  if (needsReview.length > 0) {
+    lines.push(
+      pick(
+        `有 ${needsReview.length} 个工具调用的结果未知，恢复时未重放，请先核对：`,
+        `${needsReview.length} tool call(s) have an unknown outcome and were not replayed; verify them first:`
+      )
+    )
+    for (const step of needsReview) {
+      lines.push(`- ${step.name} (${step.callId})${step.detail ? ` — ${step.detail}` : ''}`)
+    }
+  }
+  for (const warning of warnings) lines.push(pick(`提示：${warning}`, `Warning: ${warning}`))
+  return { handled: true, message: lines.join('\n') }
+}
+
+/** SP005: context budget composition (the grid view itself belongs to SP006). */
+function contextCommand(
+  context: CommandContext,
+  pick: (zh: string, en: string) => string
+): CommandOutcome {
+  const budget = context.context?.budget()
+  if (!budget) {
+    return {
+      handled: true,
+      error: pick(
+        '上下文预算未接入；请设置 contextBudget 后重试',
+        'Context budget is not wired; configure contextBudget and retry'
+      )
+    }
+  }
+  const lines = [
+    pick(
+      `估算用量：${budget.estimatedTokens} / ${budget.maxTokens} token（预留输出 ${budget.reservedOutputTokens}，触发阈值 ${budget.triggerTokens}）`,
+      `Estimated usage: ${budget.estimatedTokens} / ${budget.maxTokens} tokens (reserved output ${budget.reservedOutputTokens}, trigger ${budget.triggerTokens})`
+    ),
+    pick(`消息条数：${budget.messages}`, `Messages: ${budget.messages}`)
+  ]
+  for (const part of budget.breakdown) {
+    lines.push(`- ${part.kind}: ${part.tokens}`)
+  }
+  return { handled: true, message: lines.join('\n') }
+}
+
+/** SP005: project and session memory. */
+function memoryCommand(
+  argument: string,
+  context: CommandContext,
+  pick: (zh: string, en: string) => string
+): CommandOutcome {
+  const memory = context.memory
+  if (!memory) {
+    return {
+      handled: true,
+      error: pick(
+        '项目记忆尚未接入；请重新以支持记忆的方式启动 budingx',
+        'Project memory is not wired; start budingx in a mode that supports memory'
+      )
+    }
+  }
+  const text = argument.trim()
+  if (!text) {
+    const lines: string[] = []
+    for (const scope of ['project', 'session'] as const) {
+      const read = memory.read(scope)
+      lines.push(
+        pick(
+          `【${scope === 'project' ? '项目' : '会话'}记忆】${read.entries.length} 条`,
+          `[${scope} memory] ${read.entries.length} entries`
+        )
+      )
+      for (const entry of read.entries) {
+        lines.push(`- ${entry.title}`)
+      }
+      if (read.message) lines.push(pick(`提示：${read.message}`, `Warning: ${read.message}`))
+    }
+    return { handled: true, message: lines.join('\n') }
+  }
+  const match = /^(project|session)\s+add\s+(.+)$/i.exec(text)
+  if (!match) {
+    return {
+      handled: true,
+      error: pick(
+        '用法：/memory 或 /memory <project|session> add <标题>：<正文>',
+        'Usage: /memory or /memory <project|session> add <title>: <body>'
+      )
+    }
+  }
+  const scope = match[1].toLowerCase() as 'project' | 'session'
+  const rest = match[2]
+  // Accept the ASCII colon and the full-width colon used by Chinese input.
+  const separator = Math.min(
+    ...[rest.indexOf(':'), rest.indexOf('：')].filter((index) => index >= 0)
+  )
+  if (separator < 0) {
+    return {
+      handled: true,
+      error: pick(
+        '用法：/memory <project|session> add <标题>：<正文>',
+        'Usage: /memory <project|session> add <title>: <body>'
+      )
+    }
+  }
+  const title = rest.slice(0, separator).trim()
+  const body = rest.slice(separator + 1).trim()
+  const written = memory.write(scope, title, body)
+  if (!written.ok) {
+    return {
+      handled: true,
+      error: pick(
+        `记忆写入失败：${written.message ?? '未知错误'}`,
+        `Memory write failed: ${written.message ?? 'unknown error'}`
+      )
+    }
+  }
+  return {
+    handled: true,
+    message: pick(
+      `已写入${scope === 'project' ? '项目' : '会话'}记忆：${title}`,
+      `Stored in ${scope} memory: ${title}`
+    )
   }
 }
 
