@@ -167,3 +167,19 @@ Windows 侧 `curl http://127.0.0.1:3000/api/public/health` 返回 `{"status":"OK
 **无模型额度也能验收接入链路**：`npm run langfuse:smoke` 用生产导出器（`src/observability/exporter.ts` 编译产物）投递一条合成 trace（`agent.run` + `model.request` + `tool.Read` 失败），再从 v2 Observations API 回查，判定根节点唯一、子节点挂根、工具失败可见、会话一致；报告写 `.runtime/langfuse/stack-smoke.json`。它证明「上报 → 索引 → 查询」链路，不替代真实模型回合的 OB 判定。
 
 **与第 8 节互斥**：兼容接收端与真实栈都默认占用 `127.0.0.1:3000`，同一时间只能起一个；真实栈可用 `LANGFUSE_WEB_PORT` 换端口并同步 `agent.env` 的 `LANGFUSE_BASE_URL`。
+
+### 凭据来源与登录自检（2026-11-19 补）
+
+UI 登不上，通常不是服务没起来，而是**账号密码不是这一套**：`local.env` 的 `LANGFUSE_INIT_USER_*` / `LANGFUSE_INIT_PROJECT_*` 只在首次初始化（数据库为空）时生效，而 `npm run langfuse:init` 早先会随机生成一套，和仓库根 `.env.e2e.local` 里的 `BUDINGX_LANGFUSE_EMAIL` / `BUDINGX_LANGFUSE_PASSWORD` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` 对不上。表现就是：用 `.env.e2e.local` 的密码登录失败，API 用它的 Key 查 `/api/public/projects` 返回 401。
+
+现行规则：
+
+- `.env.e2e.local` 是唯一事实来源；`npm run langfuse:init` 检测到它会直接复用这四个值，不再另生成（没有该文件时才随机生成）。
+- 已经生成的 `local.env` / `agent.env` / `login.json` 不会被 init 覆盖；要改就改 `local.env` 里对应的 `LANGFUSE_INIT_USER_EMAIL`、`LANGFUSE_INIT_USER_PASSWORD`、`LANGFUSE_INIT_PROJECT_PUBLIC_KEY`、`LANGFUSE_INIT_PROJECT_SECRET_KEY`，同步 `agent.env` 的两个 Key 与 `login.json`。
+- 改完必须重建数据库卷才会重新初始化：`docker compose ... down -v` 再 `up -d`（旧数据会清空，只用于本机验收）。
+- 自检两条：`npm run langfuse:login`（走 NextAuth 的 csrf → credentials → session，返回 `ok:true` 即账号密码可用）；`npm run langfuse:smoke`（验证项目 Key 能上报并回查）。
+
+```bash
+npm run langfuse:login   # { csrfOk: true, sessionEmail: ..., ok: true }
+npm run langfuse:smoke   # { sent: true, hierarchyOk: true, ... ok: true }
+```

@@ -70,6 +70,31 @@ test('login.json holds the url, email and password', () => {
   assert.ok(login.password)
 })
 
+test('e2e credentials are reused so UI login and API keys match .env.e2e.local', () => {
+  const root = tempRoot()
+  writeFileSync(
+    path.join(root, '.env.e2e.local'),
+    [
+      'BUDINGX_LANGFUSE_EMAIL=e2e@budingx.local',
+      'BUDINGX_LANGFUSE_PASSWORD=e2e-password',
+      'LANGFUSE_PUBLIC_KEY=pk-lf-e2e',
+      'LANGFUSE_SECRET_KEY=sk-lf-e2e'
+    ].join('\n') + '\n'
+  )
+  const dir = initLocal(root)
+  const local = parseEnvFile(readFileSync(path.join(dir, 'local.env'), 'utf8'))
+  assert.equal(local.LANGFUSE_INIT_USER_EMAIL, 'e2e@budingx.local')
+  assert.equal(local.LANGFUSE_INIT_USER_PASSWORD, 'e2e-password')
+  assert.equal(local.LANGFUSE_INIT_PROJECT_PUBLIC_KEY, 'pk-lf-e2e')
+  assert.equal(local.LANGFUSE_INIT_PROJECT_SECRET_KEY, 'sk-lf-e2e')
+  const agent = parseEnvFile(readFileSync(path.join(dir, 'agent.env'), 'utf8'))
+  assert.equal(agent.LANGFUSE_PUBLIC_KEY, 'pk-lf-e2e')
+  assert.equal(agent.LANGFUSE_SECRET_KEY, 'sk-lf-e2e')
+  const login = JSON.parse(readFileSync(path.join(dir, 'login.json'), 'utf8'))
+  assert.equal(login.email, 'e2e@budingx.local')
+  assert.equal(login.password, 'e2e-password')
+})
+
 test('a repeat run preserves existing credentials and succeeds', () => {
   const root = tempRoot()
   const dir = initLocal(root)

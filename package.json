@@ -22,6 +22,7 @@
     "langfuse:receiver": "node scripts/langfuse/local-receiver.mjs",
     "langfuse:observe": "node scripts/langfuse/sp005-observation.mjs",
     "langfuse:smoke": "node scripts/langfuse/stack-smoke.mjs",
+    "langfuse:login": "node scripts/langfuse/login-check.mjs",
     "langfuse:ui": "node scripts/langfuse/build-ui.mjs",
     "test:release": "node --test scripts/release/*.test.mjs",
     "merge:test": "node --test scripts/merge/*.test.mjs",

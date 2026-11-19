@@ -1,6 +1,6 @@
 # SP005 验收与验证报告 · 长会话与数据可靠性
 
-状态：**代码层验收全绿，交叉验证门禁 GREEN；未合入 master（等用户决定）**。分支 `feature/SP005/long-session-reliability`，文档起点 master `17afe34`，实施提交 `a76199e`，补强提交 `f9b7fa3`（真实 Langfuse 栈接入、子进程超时预算与文档同步）。本报告是轮次级结论；逐条细节见 [long-session-reliability 验收报告](long-session-reliability/test-report.md)，配套 [需求](long-session-reliability/requirements.md)、[设计](long-session-reliability/design/design.zh.md)、[实施计划](long-session-reliability/design/plan.zh.md)与 [STATUS](long-session-reliability/STATUS.md)。
+状态：**代码层验收全绿，交叉验证门禁 GREEN；未合入 master（等用户决定）**。分支 `feature/SP005/long-session-reliability`，文档起点 master `17afe34`，实施提交 `a76199e`，补强提交 `62f3e9e`（真实 Langfuse 栈接入、子进程超时预算与文档同步）、`ef90f11`（登录凭据对齐 `.env.e2e.local` 与登录自检）。本报告是轮次级结论；逐条细节见 [long-session-reliability 验收报告](long-session-reliability/test-report.md)，配套 [需求](long-session-reliability/requirements.md)、[设计](long-session-reliability/design/design.zh.md)、[实施计划](long-session-reliability/design/plan.zh.md)与 [STATUS](long-session-reliability/STATUS.md)。
 
 ## 0. 本轮执行证据
 
@@ -13,11 +13,11 @@
 | 模块边界 | `npm run test:checks` | 通过（`core` 不 import `storage`） |
 | 规格自洽 | `npm run spec:check` | 通过（路线图、能力清单与任务清单自洽） |
 | 技能入口 | `npm run skills:check` | 通过（Skill entries are current） |
-| 观测脚本 | `npm run test:langfuse` | 69/69 通过（含真实栈冒烟 5 例） |
+| 观测脚本 | `npm run test:langfuse` | 73/73 通过（含真实栈冒烟 5 例、登录自检 3 例、初始化凭据对齐 1 例） |
 | 发布脚本 | `npm run test:release` | 17/17 通过 |
 | 合入门禁脚本 | `npm run merge:test` | 5/5 通过 |
-| 全量 | `npm test` | **825 通过 / 0 失败**（skills 10 + spec 11 + unit 713 + langfuse 69 + release 17 + merge 5，`EXIT=0`，日志 `.runtime/npm-test-full6.log`） |
-| 交叉验证门禁 | `npm run merge:gate` | **GATE GREEN**（`artifacts/merge-gate/feature-SP005-long-session-reliability-2026-11-19T15-21-37-533Z.md`（HEAD `7a1a06c`）；outgoing 3 commits / 51 files；`npm test` / `spec:check` / `skills:check` / `pack-smoke` 全绿） |
+| 全量 | `npm test` | **829 通过 / 0 失败**（skills 10 + spec 11 + unit 713 + langfuse 73 + release 17 + merge 5，`EXIT=0`，日志 `.runtime/npm-test-full7.log`） |
+| 交叉验证门禁 | `npm run merge:gate` | **GATE GREEN**（`artifacts/merge-gate/feature-SP005-long-session-reliability-2026-11-19T15-32-44-972Z.md`（HEAD `ef90f11`）；outgoing 4 commits / 53 files；`npm test` / `spec:check` / `skills:check` / `pack-smoke` 全绿） |
 
 本轮新增用例 96 例（12 个测试文件；另含 1 例整轮挂起回归，见 §5），全部对应用例文件与 AC 的映射见 [细节报告 §2](long-session-reliability/test-report.md)。
 
@@ -30,6 +30,8 @@
 浏览器查看：启动接收端后打开 <http://127.0.0.1:3000/>，即可按 trace 查看观测树（`agent.run` → `model.request` / `tool.<Name>`）、级别着色、耗时与 input/output，支持过滤与自动刷新；数据源是同进程的 `GET /ui/observations`。
 
 真实栈（2026-11-19 补齐）：按用户要求在 WSL2 发行版内装 Docker Engine（不是桌面端 Docker），`ops/langfuse/compose.yaml` 起 `langfuse/langfuse:4.78.0` + Postgres 16 + ClickHouse 26.3.62.3 + Redis + MinIO 六容器，`GET /api/public/health` ⇒ `{"status":"OK","version":"4.78.0"}`，带 Basic 的 `/api/public/projects` 返回项目 `budingx-agent`。因为模型额度仍是 402，用 `scripts/langfuse/stack-smoke.mjs` 走**生产导出器** `OtlpExporter.sendBatch` 投递合成 trace 再回查：`count:3, rootCount:1, hierarchyOk:true, toolErrorVisible:true, modelPresent:true, sessionConsistent:true, ok:true`，落盘 `.runtime/langfuse/stack-smoke.json`。这说明上报与查询链路对真实 Langfuse 服务端成立，只剩真实模型回合这一项待额度。
+
+登录凭据对齐（同日补）：真实栈首次初始化时 `npm run langfuse:init` 随机生成了管理员密码与项目 Key，与仓库根 `.env.e2e.local` 里那套不一致，所以用该文件的密码登不进 UI、用它的 Key 查 `/api/public/projects` 也是 401。按用户要求「按这个账号密码去改，不要改账号密码」，把 `local.env` 的 `LANGFUSE_INIT_USER_*`/`LANGFUSE_INIT_PROJECT_*` 改成 `.env.e2e.local` 的四个值，`down -v` 重建数据卷重新初始化；现在 `npm run langfuse:login` ⇒ `{csrfOk:true, callbackStatus:200, sessionEmail:"admin@budingx.local", ok:true}`，`npm run langfuse:smoke` ⇒ `ok:true`。为防复发，`init-local.mjs` 改为检测到 `.env.e2e.local` 就复用它这四个值（新增 `e2eCredentials` 与对应用例），并新增 `scripts/langfuse/login-check.mjs`（`npm run langfuse:login`）把「能不能登录」变成一条命令可验。
 
 真实模型侧的关键结论（进入设计 §8 与需求 FR-09 的原因）：
 
@@ -81,6 +83,7 @@ AC 区间：CB-01…07（7）、SR-01…11（11）、FR-01…09（9）、PM-01�
 - 转录与记忆写入失败时回合结果仍留在内存，进程退出即丢失——这属于「明确报错」而非「静默成功」，错误码 `BUDINGX_STORAGE_005`。
 - 工具空转熔断是启发式（精确签名 3 次 / 同工具同错误码 5 次）；若某工具在多参数下确实可恢复，可能被提前终止，阈值后续可依观测调整。
 - 兼容接收端不是 Langfuse 本体：只有只读查看页，无 ClickHouse、无登录与项目管理；保留给无 Docker 的机器与 CI，本机真实栈已就绪（§1），两者互斥占用 3000 端口。
+- Langfuse 初始化凭据只在数据库为空时生效：`LANGFUSE_INIT_*` 改动后必须 `down -v` 重建才会生效，直接重启容器不会改库里的账号与项目 Key；本机已用 `npm run langfuse:login` 与 `npm run langfuse:smoke` 双检。
 
 ## 6. 授权与集成状态
 

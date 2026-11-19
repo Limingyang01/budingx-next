@@ -22,7 +22,7 @@
 | `node --test src/*/test/*.test.mjs` | **713 / 713 pass** |
 | `node --test src/core/test/context-budget.e2e.test.mjs` | 3 / 3 pass（真实 HTTP 请求体） |
 | `node --test src/storage/test/session-recovery.e2e.test.mjs` | 4 / 4 pass（真实子进程） |
-| `node --test scripts/langfuse/*.test.mjs` | 本轮新增 22 / 22 pass（3 + 4 + 10 + 3 + 2，含接收端查看页与真实栈冒烟）；同目录含 SP004 用例，`npm run test:langfuse` 合计 **69 / 69** |
+| `node --test scripts/langfuse/*.test.mjs` | 本轮新增 26 / 26 pass（含接收端查看页、真实栈冒烟 5、登录凭据自检 3）；`npm run test:langfuse` 合计 **73 / 73** |
 | `node --test scripts/langfuse/stack-smoke.test.mjs` | 5 / 5 pass（OB-02/03 真实栈判读） |
 | `npm run langfuse:smoke` | PASS（真实栈 4.78.0 回查 3 条 observation，四项判定全 true） |
 | `npm run test:checks` | PASS（模块边界：core 不 import storage） |
@@ -46,6 +46,8 @@
 | `scripts/langfuse/sp005-observation.test.mjs` | 10 | OB-02/03 判读纯函数 |
 | `scripts/langfuse/sp005-observation.e2e.test.mjs` | 3 | OB-02/03 + FR-09（真实 HTTP + 追踪 + 接收端） |
 | `scripts/langfuse/stack-smoke.test.mjs` | 5 | OB-02/03 真实栈判读（层级/失败可见/会话一致） |
+| `scripts/langfuse/init-local.test.mjs` | 10 | OB-01 配置初始化与 `.env.e2e.local` 凭据对齐 |
+| `scripts/langfuse/login-check.test.mjs` | 3 | OB-01 UI 登录凭据自检（csrf → credentials → session） |
 
 ## 3. AC 回填
 

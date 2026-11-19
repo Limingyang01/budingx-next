@@ -163,8 +163,25 @@ function writePrivateFile(file, content) {
   }
 }
 
-/** 生成首次初始化的全部值。 */
-function generateValues() {
+/**
+ * 读取仓库根 `.env.e2e.local` 里的 Langfuse 凭据。
+ * 该文件是端到端测试的事实来源；存在且四个值齐全时，初始化沿用同一套
+ * 管理员账号与项目密钥，避免 local.env 另生成一套导致 UI 登录与 API 鉴权失配。
+ */
+export function e2eCredentials(root) {
+  const file = path.join(root, '.env.e2e.local')
+  if (!existsSync(file)) return null
+  const values = parseEnvFile(readFileSync(file, 'utf8'))
+  const email = values.BUDINGX_LANGFUSE_EMAIL
+  const password = values.BUDINGX_LANGFUSE_PASSWORD
+  const publicKey = values.LANGFUSE_PUBLIC_KEY
+  const secretKey = values.LANGFUSE_SECRET_KEY
+  if (!email || !password || !publicKey || !secretKey) return null
+  return { email, password, publicKey, secretKey }
+}
+
+/** 生成首次初始化的全部值；有 `.env.e2e.local` 时沿用其凭据。 */
+function generateValues(e2e = null) {
   const values = {
     LANGFUSE_IMAGE_TAG: process.env.LANGFUSE_IMAGE_TAG || '4.78.0',
     CLICKHOUSE_IMAGE_TAG: process.env.CLICKHOUSE_IMAGE_TAG || '26.3.62.3',
@@ -183,11 +200,11 @@ function generateValues() {
     LANGFUSE_INIT_ORG_NAME: 'budingX Local',
     LANGFUSE_INIT_PROJECT_ID: 'budingx-agent',
     LANGFUSE_INIT_PROJECT_NAME: 'budingX Agent',
-    LANGFUSE_INIT_PROJECT_PUBLIC_KEY: 'pk-lf-' + randomUUID(),
-    LANGFUSE_INIT_PROJECT_SECRET_KEY: 'sk-lf-' + secret(),
-    LANGFUSE_INIT_USER_EMAIL: 'admin@budingx.local',
+    LANGFUSE_INIT_PROJECT_PUBLIC_KEY: e2e ? e2e.publicKey : 'pk-lf-' + randomUUID(),
+    LANGFUSE_INIT_PROJECT_SECRET_KEY: e2e ? e2e.secretKey : 'sk-lf-' + secret(),
+    LANGFUSE_INIT_USER_EMAIL: e2e ? e2e.email : 'admin@budingx.local',
     LANGFUSE_INIT_USER_NAME: 'Local Admin',
-    LANGFUSE_INIT_USER_PASSWORD: secret()
+    LANGFUSE_INIT_USER_PASSWORD: e2e ? e2e.password : secret()
   }
   values.DATABASE_URL = `postgresql://postgres:${values.POSTGRES_PASSWORD}@postgres:5432/postgres`
   for (const kind of ['EVENT', 'MEDIA']) {
@@ -216,7 +233,7 @@ export function initLocal(root) {
       }
     }
   } else {
-    values = generateValues()
+    values = generateValues(e2eCredentials(root))
     writePrivateFile(envPath, serializeEnv(values))
   }
   const agentPath = path.join(directory, 'agent.env')

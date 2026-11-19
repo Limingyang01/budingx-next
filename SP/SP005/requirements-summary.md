@@ -30,7 +30,7 @@
 ## 验收与交接
 
 - 出口门槛对照：① 压缩保留约束/计划/工具状态 → CB-01…CB-04（单元 + 真实 HTTP 请求体）PASS；② 跨进程恢复不盲重放副作用 → SR-02…SR-04、FR-06 真实子进程 PASS；③ 项目记忆/会话隔离、原子持久化、共享写入约束 → PM-01…PM-08 + SR-11 两进程互斥 PASS；④ 明确长任务失败原因 → FR-01…FR-09 PASS。
-- 自动化计数：`node --test src/*/test/*.test.mjs` **713/713**；`npm test` 全链路 **825 通过 / 0 失败**（langfuse 69，含真实栈冒烟 5 例）；`npm run test:checks`（core 不依赖 storage）通过；`npm run merge:gate` GREEN；AC 共 **42 条**（7+11+9+8+4+3）全部回填。
+- 自动化计数：`node --test src/*/test/*.test.mjs` **713/713**；`npm test` 全链路 **829 通过 / 0 失败**（langfuse 73，含真实栈冒烟 5 例、登录自检 3 例）；`npm run test:checks`（core 不依赖 storage）通过；`npm run merge:gate` GREEN；AC 共 **42 条**（7+11+9+8+4+3）全部回填。
 - 监测平台就绪：`npm run langfuse:init` / `npm run langfuse:receiver` / `npm run langfuse:observe`；健康检查 200、未鉴权 401、观测落盘 `.runtime/langfuse/local-receiver/`；边界与端点见 `ops/langfuse/README.md` 第 8 节。
 - 未完成/延期项（UNVERIFIED，非本轮 FAIL）：真实模型三场景（provider 402 额度耗尽）、真实 Langfuse 服务端（本机无 Docker/WSL）、TUI 长会话像素级观感（归 SP006）。恢复条件见 [STATUS](long-session-reliability/STATUS.md) 与[验收报告](long-session-reliability/test-report.md) §5。
 - 下一轮输入（供 SP006）：压缩与恢复的 UI 呈现（`/context` 网格、恢复会话选择器可视化）、系统提示词与指令文件（`@import`）接入项目记忆、完成证据闸门与压缩的交互。
@@ -49,4 +49,5 @@
 | 2026-11-19 | 新增 FR-09 与 CB-04 配对要求（需求 v0.2 / 设计 v1.1） | 真实模型观测暴露「换参数空转」与「占位被 normalize 丢弃」两处真实缺陷 |
 | 2026-11-19 | 交付记录落盘，合入 master 待用户决定 | 用户明确「测试完成后待我决定后再合入master分支」 |
 | 2026-11-19 | 监测平台搭到就绪态（三条 npm 命令 + 接收端文档），真实模型三场景保持 UNVERIFIED | 用户说明模型额度用尽，要求先搭好监测、到时再跑真实模型 |
+| 2026-11-19 | 真实栈登录取 `.env.e2e.local`：`langfuse:init` 复用该文件四个凭据、新增 `langfuse:login` 自检，重建数据卷后 UI 登录与项目 Key 双检通过 | 用户「用 .env.e2e.local 文件无法进入langfuse里面」→「按照这个账号密码去改，不要改账号密码」 |
 | 2026-11-19 | 真实档补强：接收端加只读查看页；WSL2 内 Docker 起真实 Langfuse 4.78.0 栈 + `langfuse:smoke` 接入链路验收（需求 v0.3）；顺手修后台任务句柄泄漏与子进程测试超时；全量 825 通过 | 用户「环境限制你帮我安装好就行了」→「不要桌面端 docker，装在 WSL 里」→「部署完成后检查 SP005 查漏补缺」；真实模型额度仍 402 |
