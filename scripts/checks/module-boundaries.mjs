@@ -67,11 +67,11 @@ function report(file, reason) {
 }
 
 const RULES = {
-  // SP004 §3：core 只保留纯契约/状态机，新增的 exec/git/plan 也不得被 core 反向依赖。
+  // SP004 §3：core 只保留纯契约/状态机，新增的 exec/git/plan/observability 也不得被 core 反向依赖。
   core: {
     ui: UI_BANNED,
     io: CORE_IO_BANNED,
-    dirs: ['provider', 'storage', 'tui', 'workspace', 'exec', 'git', 'plan']
+    dirs: ['provider', 'storage', 'tui', 'workspace', 'exec', 'git', 'plan', 'observability']
   },
   provider: { ui: UI_BANNED, io: [], dirs: ['storage', 'tui'] },
   storage: { ui: UI_BANNED, io: [], dirs: ['tui'] },
@@ -81,7 +81,10 @@ const RULES = {
   // Git 能力层：允许子进程/文件/路径 IO，不得依赖执行层、计划层或 UI。
   git: { ui: UI_BANNED, io: [], dirs: ['tui', 'exec', 'plan'] },
   // 计划层：状态机 + 持久化 + 宿主计划集成（T22 落盘用 node:fs，T15 读 Git HEAD 用 node:child_process）。
-  plan: { ui: UI_BANNED, io: [], dirs: ['tui', 'exec', 'git'] }
+  plan: { ui: UI_BANNED, io: [], dirs: ['tui', 'exec', 'git'] },
+  // SP004 agent-observability：观测传输层。只依赖 core 纯端口；
+  // 允许 node:fs（读显式 env 文件）与网络上报，但不得依赖宿主 UI 或其他能力层。
+  observability: { ui: UI_BANNED, io: [], dirs: ['tui', 'exec', 'git', 'plan', 'workspace', 'provider', 'storage'] }
 }
 
 for (const [moduleName, rule] of Object.entries(RULES)) {
