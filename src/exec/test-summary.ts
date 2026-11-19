@@ -201,17 +201,19 @@ function captureStream(program: string) {
       return
     } else {
       const assertion = /^(ok|not ok)(?=\s|$)(?:\s+(\d+)(?=\s|$))?/.exec(line)
-      if (!assertion || (!assertion[2] && tapPlan !== undefined && tapPlan === tapTotal)) return
-      if (assertion[2]) {
+      if (!assertion) return
+      const skipped = /\s+#\s*(?:skip|todo)(?:\s|$)/i.test(line)
+      const failed = assertion[1] === 'not ok' && !skipped
+      // Unnumbered positive cleanup text can follow a complete plan.
+      if (!failed && !assertion[2] && tapPlan !== undefined && tapPlan === tapTotal) return
+      if (failed || assertion[2]) {
         if (sawNodeCounters) startTap()
         startedTap = true
       }
       tapTotal += 1
       if (assertion[2] !== undefined && count(assertion[2]) !== tapTotal) invalidTap = true
-      if (!/\s+#\s*(?:skip|todo)(?:\s|$)/i.test(line)) {
-        if (assertion[1] === 'ok') tapPassed += 1
-        else invalidTap = true
-      }
+      if (failed) invalidTap = true
+      else if (!skipped) tapPassed += 1
     }
     // Direct Node requires its own validated counters; a later explicit TAP plan alone cannot replace them.
     if (!sawNodeCounters && (tapPlan !== undefined || startedTap)) {
@@ -220,16 +222,23 @@ function captureStream(program: string) {
   }
 
   function finishLine(): void {
-    // Long lines are neither summaries nor observable TAP directives.
-    const line = overflow ? '\0' : stripVTControlCharacters(pending).trimEnd()
+    const prefix = stripVTControlCharacters(pending).trimEnd()
+    const truncatedFailure = overflow && (accepts('tap') || accepts('node')) && /^not ok(?:\s|$)/.test(prefix)
+    const line = overflow ? '\0' : prefix
     pending = ''
     overflow = false
     if (!line) return
     const previous = tail.at(-1) ?? ''
     tail.push(line)
     if (tail.length > MAX_TAIL_LINES) tail.shift()
-    observeTap(line)
-    observeSummary(line, previous)
+    if (truncatedFailure) {
+      // The description and any directive may be incomplete. Keep the explicit failure.
+      invalidTap = true
+      reported = 0
+    } else {
+      observeTap(line)
+      observeSummary(line, previous)
+    }
   }
 
   function append(text: string): void {
@@ -238,12 +247,9 @@ function captureStream(program: string) {
       const newline = text.indexOf('\n', start)
       const end = newline === -1 ? text.length : newline
       if (!overflow) {
-        if (pending.length + end - start > MAX_LINE_CHARS) {
-          pending = ''
-          overflow = true
-        } else {
-          pending += text.slice(start, end)
-        }
+        const room = MAX_LINE_CHARS - pending.length
+        pending += text.slice(start, Math.min(end, start + room))
+        overflow = end - start > room
       }
       if (newline === -1) break
       finishLine()

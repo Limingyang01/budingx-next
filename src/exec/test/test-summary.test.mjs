@@ -34,6 +34,22 @@ test('native TAP requires a complete plan, positive pass, and consistent termina
   assert.equal(parse('bash proof.test.sh', valid + '# tests 0\n# pass 0\n# fail 0\n# skipped 0\n'), undefined)
 })
 
+test('explicit TAP failure after cleanup revokes a completed report even without a number or with a long description', () => {
+  const tap = 'TAP version 13\nok 1 - ran first assertion\n1..1\n'
+  const node = tap + '# tests 1\n# pass 1\n# fail 0\n# skipped 0\n'
+  const cleanup = 'ok cleanup complete\n' + 'cleanup details '.repeat(100) + '\n'
+  for (const [command, earlier] of [['bash proof.test.sh', tap], ['node --test', node]]) {
+    assert.deepEqual(parse(command, earlier + cleanup), { executed: 1 })
+    for (const failure of [
+      'not ok - later assertion failed',
+      'not ok - ' + '诊'.repeat(1500),
+      '\x1b[31mnot ok 2 - ' + 'a'.repeat(1500) + '\x1b[0m'
+    ]) {
+      assert.equal(parse(command, earlier + cleanup + failure + '\nposttest complete\n'), undefined, failure.slice(0, 75))
+    }
+  }
+})
+
 test('pytest and Python unittest require positive passing counts from their terminal report', () => {
   assert.deepEqual(parse('python3 -m unittest', '', 'Ran 4 tests in 0.002s\n\nOK (skipped=1)'), { executed: 3 })
   assert.equal(parse('python3 -m unittest', '', 'Ran 2 tests in 0.001s\n\nOK (skipped=1, expected failures=1)'), undefined)

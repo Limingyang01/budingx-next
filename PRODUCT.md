@@ -233,7 +233,7 @@ budingx --prompt "Hello" --timeout 120000
 - **待办卡片**：显示 `TodoWrite` 的独立会话待办、完成数和各项状态，最近完成的项在 60 秒后折叠，`Ctrl+E` 展开。
 - **追问卡片**：一次可问 1–4 题、每题 2–4 个选项；`↑`/`↓` 或 `Tab` 移动光标，`←`/`→` 切题，空格选择（多选可多个），`Enter` 确认或进入下一题，最后一题 `Enter` 提交；`Other` 行直接输入自定义答案；`Esc` 取消追问并以同一调用返回取消结果。
 
-交互 CLI 设置 `BUDINGX_SANDBOX=bubblewrap` 可使用通过能力探测的 Linux Bubblewrap 或 WSL 2 Bubblewrap。Windows 可用 `BUDINGX_WSL_DISTRO` 选择发行版。Bash 使用离线私有项目快照，快照内生成的文件随命令结束丢弃，持久项目修改通过文件工具完成。正式 TUI 可运行非交互的 `python3 -m unittest`。前后台的完成证据要求只读项目输入、可识别的实际通过测试数量，以及结束时和声明完成前的内容核对。完整摘要后出现普通清理日志时仍可识别有效计数。后续零测试或矛盾的报告会使这次证据失效。需要生成中间文件的验证流程可使用隔离的临时目录。真实验收与平台边界见 [SP004 验收报告](SP/SP004/test-report.md)。
+交互 CLI 设置 `BUDINGX_SANDBOX=bubblewrap` 可使用通过能力探测的 Linux Bubblewrap 或 WSL 2 Bubblewrap。Windows 可用 `BUDINGX_WSL_DISTRO` 选择发行版。Bash 使用离线私有项目快照，快照内生成的文件随命令结束丢弃，持久项目修改通过文件工具完成。正式 TUI 可运行非交互的 `python3 -m unittest`。前后台的完成证据要求只读项目输入、可识别的实际通过测试数量，以及结束时和声明完成前的内容核对。完整摘要后出现普通清理日志时仍可识别有效计数。后续零测试、矛盾报告或 TAP 失败会使证据失效。TAP 失败行可以没有编号，超长描述也会保留失败标记。需要生成中间文件的验证流程可使用隔离的临时目录。真实验收与平台边界见 [SP004 验收报告](SP/SP004/test-report.md)。
 
 ## 6. 数据与隐私
 

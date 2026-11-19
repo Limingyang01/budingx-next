@@ -670,6 +670,55 @@ test('SP004 正式 TUI：清理日志不遮蔽有效测试计数，随后零测�
   assert.match(passing.content, /tests_executed: 1/)
   assert.equal(requests.length, 5)
 })
+
+test('SP004 正式 TUI：无编号和超长 TAP 失败都使先前通过数失效', { timeout: 50000 }, async (t) => {
+  const { createHostSandboxFromEnvironment } = await import('../dist/exec/host-sandbox.js')
+  const backend = createHostSandboxFromEnvironment({ BUDINGX_SANDBOX: 'bubblewrap' })
+  if (!backend) {
+    t.skip('当前宿主没有通过 Bubblewrap 能力探测')
+    return
+  }
+  const { cwd, runtime, events, requests, ui } = await sp004Runtime(t, [
+    [['StartCodingTask', { goal: '核对实际 TAP 结果' }]],
+    [['Bash', { command: 'bash unnumbered.test.sh' }]],
+    '测试完成',
+    [['Bash', { command: 'bash long-failure.test.sh' }]],
+    '测试完成',
+    [['Bash', { command: 'bash passing.test.sh' }]],
+    '测试通过，清理完成'
+  ], { sandboxBackend: backend, tty: true })
+  writeFileSync(join(cwd, 'input.txt'), 'synthetic fixture\n')
+  writeFileSync(join(cwd, 'passing.test.sh'), [
+    'set -eu',
+    'test -s input.txt',
+    "printf 'TAP version 13\\nok 1 - fixture input exists\\n1..1\\n'",
+    "printf 'ok cleanup complete\\n'"
+  ].join('\n') + '\n')
+  for (const [file, failure] of [
+    ['unnumbered.test.sh', 'not ok - expected artifact is missing'],
+    ['long-failure.test.sh', 'not ok 2 - expected artifact is missing ' + '诊'.repeat(1500)]
+  ]) {
+    writeFileSync(join(cwd, file), [
+      'set -eu',
+      'bash passing.test.sh',
+      `if ! test -f expected.txt; then printf '%s\\n' '${failure}'; fi`
+    ].join('\n') + '\n')
+  }
+  await ui.send('验证 TAP 测试并保留清理结果\r')
+  await ui.waitFor(() => !runtime.session.isBusy && events.some((event) => event.type === 'turn_finalized'), 35000)
+  assert.equal(events.find((event) => event.type === 'turn_finalized').outcome, 'completed')
+  assert.equal(requests.length, 7, 'either TAP failure must cause a retry even when the process exits zero')
+  for (const callId of ['call-2-0', 'call-4-0']) {
+    const result = events.find((event) => event.type === 'tool_result' && event.callId === callId)
+    assert.match(result.content, /exit_code: 0/)
+    assert.match(result.content, /test_evidence: no_tests/)
+    assert.match(result.content, /not ok/)
+  }
+  const passing = events.find((event) => event.type === 'tool_result' && event.callId === 'call-6-0')
+  assert.match(passing.content, /test_evidence: verified/)
+  assert.match(passing.content, /tests_executed: 1/)
+  assert.match(passing.content, /ok cleanup complete/)
+})
 test('G04/G05 两端点切换模型和凭据，当前回合快照不变', async (t) => {
   const requests = []
   let release
