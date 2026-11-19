@@ -69,3 +69,13 @@
 ## TAP 失败结果复验
 
 复审产品基线为 `7bb1d51`。沿用同一参考提交和映射，覆盖 43 个源码文件及 20,133 组函数对。4 项自检通过，命中 0。
+
+## agent-observability 优化需求复核（T33）
+
+沿用同一参考提交 `b5c9be8`。observability 模块加入 `REFERENCE_ALLOWLIST`，对照参考仓 Langfuse 埋点/配置/运行时（`vscode_plugin/src/host/observability/agentTracing.ts`、`tracingConfig.ts`、`src/server/services/langfuseRuntime.ts`）。
+
+- **首轮**：覆盖 50 个源码文件、238 个本仓单元、5733 个参考单元、21376 组函数对。命中 2 处（`config.ts::loadTracingEnvironment` 子树 76 节点；`exporter.ts::sendBatch` 子树 39 节点），处置 UNRESOLVED，结论 FAIL。
+- **处置**：按设计 §9.3「无法解释的片段从行为规格重新实现并复测」，将 config 加载拆为 `readEnvFile`/`mergeAllowlisted` 两个 helper 并独立诊断包装，exporter 抽出 `buildRequestInit`，控制流与参考实现不同；协议字段与行为保持不变。复测 60/60 通过。
+- **复跑**：覆盖 50 个源码文件、241 个本仓单元、5733 个参考单元、21389 组函数对。4 项自检通过，**命中 0，结论 PASS**。
+
+本仓观测实现为独立编写：追踪端口为纯类型契约，上下文用显式父句柄（非参考的 AsyncLocalStorage/OTel），导出器为手写 OTLP JSON（不引入 OTel SDK，偏离 R-01 已登记）。公开协议字段（OTLP 请求体、Langfuse 属性名、Basic 认证、`x-langfuse-ingestion-version:4`）按公开规范实现。

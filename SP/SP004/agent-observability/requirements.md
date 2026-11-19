@@ -1,6 +1,6 @@
 # agent-observability · Agent 可观测性监控（Langfuse）
 
-状态：**文档已修订，实施暂停**｜版本：v0.2｜依据：SP004 优化需求（USER_CONFIRMED）、路线图 SP004、参考仓 `buding-worker-space` Langfuse 体系只读审计
+状态：**实施完成，代码验证全绿；真实部署/live 三场景 UNVERIFIED**｜版本：v0.3｜依据：SP004 优化需求（USER_CONFIRMED）、路线图 SP004、参考仓 `buding-worker-space` Langfuse 体系只读审计
 
 ## 目标
 
@@ -129,3 +129,51 @@
 - 未决问题已收敛为 OPEN-01…OPEN-06 并在本文档内关闭，无阻塞性 OPEN。
 
 2026-11-19 · v0.2 将四项 P1 与上报、版本两处口径纳入原有 28 条 AC。方案沿用本机 Langfuse 与直接 OTLP/HTTP，实施保持暂停。
+
+## 验收回填（T33，2026-11-19）
+
+实施完成（T25–T33）。全量 `npm test` **775 项，773 通过，0 失败，2 既有 skip**；`test:checks` 模块边界通过；AST 独立来源复核**命中 0，PASS**（详见 [../ast-review.md](../ast-review.md)）。下表逐条回填。验证层：L0 纯逻辑 / L1 真实 Core 回合 / L1 脚本实测 / live 平台。
+
+| AC | 状态 | 证据（用例 / 命令） |
+| --- | --- | --- |
+| OB-01 | PASS | `scripts/langfuse/init-local.test.mjs`：三文件生成、随机凭据、Windows 真实 NTFS DACL+SID 核对（`node --test scripts/langfuse/*.test.mjs`） |
+| OB-02 | PASS | 同上：幂等不覆盖、缺关键键报错保留原文件 |
+| OB-03 | PASS（结构） | `scripts/langfuse/compose.test.mjs`：六服务、仅 loopback 3000/9090、数据库不发布、健康检查、五具名卷。**真实运行时见 OB-04 UNVERIFIED** |
+| OB-04 | **UNVERIFIED** | 本机隔离部署 ClickHouse fresh-migration 脏失败（version 40 循环），Web 未就绪；恢复条件见下 |
+| OB-05 | PASS | `compose.test.mjs`：stop 无 `down`/`-v`，start 先初始化 |
+| OB-06 | PASS | `src/observability/test/exporter.test.mjs`、`src/tui/test/observability-wiring.test.mjs`：未启用零请求、不注入 tracer |
+| OB-07 | PASS | `exporter.test.mjs`：仅 5 白名单变量、继承环境优先 |
+| OB-08 | PASS | 同上 + wiring：相对路径/不可读保留继承环境、脱敏诊断、不阻断 |
+| OB-09 | PASS | `exporter.test.mjs`：`NODE_OPTIONS` 不被导入 |
+| OB-10 | PASS | `exporter.test.mjs`：file/ftp/含凭据/非本机 http 拒绝，本机 http 与任意 https 允许 |
+| OB-11 | PASS | `src/core/test/observability.test.mjs`：每回合唯一根，带 session/turn/runId/agent 类型 |
+| OB-12 | PASS | 同上：每次 stream 一个 model.request 子观测，usage 不跨调用继承 |
+| OB-13 | PASS | 同上：工具观测在权限判断前创建，带 call.id 与名字 |
+| OB-14 | PASS | 同上 + `exporter.test.mjs`：同会话多回合 session.id 一致、turn.id 不同 |
+| OB-15 | PASS | 同上：error→ERROR、cancelled/blocked→WARNING |
+| OB-16 | PASS | `exporter.test.mjs`：正文关闭时无 input/output 属性 |
+| OB-17 | PASS | `src/core/test/observability.test.mjs` + `exporter.test.mjs`：根 input/output 为 user/assistant 数组，模型未产生助手消息即失败时 output 为 `[]` |
+| OB-18 | PASS | `src/observability/test/redact.test.mjs`：超长裁剪 ≤8000、合法 JSON、保留角色、不重新引入密钥 |
+| OB-19 | PASS | 同上：敏感键/凭据样式/已知凭据脱敏，短串不误伤 |
+| OB-20 | PASS | `exporter.test.mjs`：平台 5xx/拒连/挂起静默失败，3 秒超时，缓冲有界 |
+| OB-21 | PASS | `src/core/test/observability.test.mjs`：假 tracer 抛异常回合仍正常完成 |
+| OB-22 | PASS | `exporter.test.mjs`：shutdown 限时返回，平台挂起不阻塞 |
+| OB-23 | PASS | `exporter.test.mjs`：即时禁用后无新观测、丢弃待发批次 |
+| OB-24 | **UNVERIFIED**（live） | 脚本已实现并走生产路径；替身判定 20 项 PASS。真实三场景需模型凭据 + 部署成功，未执行 |
+| OB-25 | PASS（判定逻辑） | `scripts/langfuse/verify-agent.test.mjs`：五项判定、正文关闭为 null、model-error 空数组。**live 报告生成 UNVERIFIED** |
+| OB-26 | PASS（判定逻辑） | 同上：四项必通过 + 正文符合配置才退出 0，负向场景非零。**live 退出码 UNVERIFIED** |
+| OB-27 | PASS（判定逻辑） | 同上：根唯一/子父/会话/级别，根重复/缺子/错父/错级别/错会话均非零。**live v2 回查 UNVERIFIED** |
+| OB-28 | PASS | `.runtime/` 已 Git 忽略；报告/凭据落 `.runtime/langfuse/`；`git status` 无凭据/报告入库 |
+
+**汇总**：28 条 AC，代码/结构/判定逻辑层面 **26 条 PASS**；**OB-04、OB-24 为 UNVERIFIED**（真实部署与 live 三场景），OB-03 真实运行时、OB-25/26/27 的 live 平台叠加亦 UNVERIFIED。
+
+### UNVERIFIED 恢复条件
+
+| 项 | 恢复条件 |
+| --- | --- |
+| OB-04 真实部署健康 | 在无竞争 Langfuse 实例、ClickHouse fresh-migration 可正常完成的环境重跑 `control.ps1 -Action start`（本次失败为 Langfuse 部署工具在 fresh-init 的迁移脏状态循环，非观测代码缺陷；本机另有参考仓实例运行） |
+| OB-24 live 三场景 | 部署成功 + 用户提供 `BUDINGX_SMOKE_MODEL_KEY`/`_BASE_URL`/`_MODEL`，运行 `node scripts/langfuse/verify-agent.mjs` |
+| OB-25/26/27 live 叠加 | 同上，真实平台回查并生成 `verification.json` |
+| OB-03 真实运行时 | 同 OB-04 |
+
+2026-11-19 · v0.3 实施完成并回填验收；代码验证全绿，真实部署/live 三场景 UNVERIFIED（恢复条件如上）。

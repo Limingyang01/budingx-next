@@ -43,7 +43,7 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 
 | 迭代  | 目标                    | 主要功能目录                                                                                               | 状态 |
 | ----- | ----------------------- | ---------------------------------------------------------------------------------------------------------- | ---- |
-| SP004 | 真实编码任务 | 计划、待办、命令与追问；普通命令要求已验证的执行隔离，提交限专用 worktree；本机 Langfuse 观测为可选优化 | 审查修复待复审；观测文档已提交，实施暂停 |
+| SP004 | 真实编码任务 | 计划、待办、命令与追问；普通命令要求已验证的执行隔离，提交限专用 worktree；本机 Langfuse 观测为可选优化（默认关闭，已实现） | 审查修复待复审；观测代码已实现并全量复测，真实部署/live 三场景 UNVERIFIED |
 | SP005 | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         | 规划中 |
 | SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 规划中 |
 | SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | 规划中 |
@@ -240,7 +240,7 @@ budingx --prompt "Hello" --timeout 120000
 - 产品数据统一落在 `~/.budingx`；不读取、不回退、不写入 `~/.claude`。
 - 配置文件与凭据文件分离；密钥不作为普通共享明文配置保存，也不出现在日志与 UI 回显中。
 - 仓库与文档不包含真实密钥、真实会话与用户身份信息。
-- **本机 Langfuse 观测（规划）**。追踪默认关闭，未显式启用时无 Langfuse 网络请求。启用追踪后默认只采集结构化元数据。正文需单独开启，并在脱敏后裁剪。凭据和验收报告存放在 Git 忽略的开发目录。
+- **本机 Langfuse 观测（可选，已实现，默认关闭）**。追踪默认关闭，未显式启用时无 Langfuse 网络请求。启用追踪后默认只采集结构化元数据。正文需单独开启，并在脱敏后裁剪。凭据和验收报告存放在 Git 忽略的开发目录。启用方式：`node scripts/langfuse/init-local.mjs` 初始化本机 Langfuse，再把 `BUDINGX_LANGFUSE_ENV_FILE` 指向生成的 `.runtime/langfuse/agent.env` 绝对路径后启动 TUI；详见 [ops/langfuse/README.md](ops/langfuse/README.md)。
 
 ---
 
@@ -254,7 +254,7 @@ budingx --prompt "Hello" --timeout 120000
 | 权限规则与沙箱                 | 三档权限模式、规则匹配、拒绝记录与撤销已实现（SP003）；交互 CLI 可选经过探测的 Bubblewrap；普通命令在没有可用隔离后端时拒绝启动 | SP004 补命令执行边界 |
 | 撤销粒度                       | 仅本会话内可撤销（SP003）；跨会话快照与 rewind 未实现                          | SP005                 |
 | 图片与多模态                   | 读取图片只返回尺寸摘要，不发送图像内容                                          | SP007                 |
-| 可观测性（可选） | SP004 追加优化。需求 v0.2、设计 v1.2 和实施计划 v1.2 已随 `203d78a` 提交并推送至 SP004 功能分支。T25–T33 暂停，部署与真实三场景验证为 **UNVERIFIED** | SP004 原有出口门槛保持不变。详见 [Langfuse STATUS](SP/SP004/agent-observability/STATUS.md) |
+| 可观测性（可选） | SP004 追加优化，**已实现**（需求 v0.3、设计 v1.2、计划 v1.2，T25–T33 完成）。代码/结构/判定逻辑 26 条 AC PASS，全量 `npm test` 775/773/0，AST 命中 0。**真实部署健康（OB-04）与 live 三场景（OB-24）UNVERIFIED**：本机隔离部署 ClickHouse fresh-migration 脏失败；live 需用户模型凭据 | SP004 原有出口门槛保持不变。恢复条件见 [Langfuse STATUS](SP/SP004/agent-observability/STATUS.md) |
 | Desktop / VS Code / 移动端 / 远程/H5 / IM | 当前 SP 范围外，保留通用宿主接口 | 后续如需纳入，另行决定范围和排期 |
 | 真实服务 live 证据             | 已验证一个用户提供的服务：流式、工具审批回合、取消、鉴权错误；见 SP002 报告 §16 | 其他型号/服务仍未测   |
 | 真终端 CJK/IME 与 resize 体验  | 未验证（需 Windows Terminal + ConHost 人工 smoke）                              | 验收时补              |
@@ -281,6 +281,7 @@ budingx --prompt "Hello" --timeout 120000
 | —（规划调整） | 2026-11-18 | 路线图 r8：现行 SP001–SP016 连续编号，能力与产品版本不变 | 规划文档调整 |
 | —（规划调整） | 2026-11-18 | 路线图 r9：确立 TUI 还原度目标与判定口径（结构覆盖率 + 行为用例），SP006 加 P0 骨架出口、SP015 加 P1 命令与工具面出口、SP016 加覆盖率公布出口；能力清单升 v1.4（分母 47→49）；说明书 v1.6 | 规划文档调整 |
 | —（规划调整，无产品行为变化） | 2026-11-19 | SP004 追加本机 Langfuse 可选优化，文档版本为需求 v0.2、设计 v1.2、实施计划 v1.2（`203d78a`） | 文档已推送，实施暂停 |
+| —（SP004 可选优化实现，默认关闭） | 2026-11-19 | `agent-observability` 实施完成（T25–T33）：Core 追踪端口 + Session 埋点、脱敏、OTLP 导出器、宿主装配、本机部署资产与验收脚本；需求升 v0.3。默认关闭，不改变未启用时的产品行为 | 代码全量复测 775/773/0、AST 命中 0；真实部署/live 三场景 UNVERIFIED；未合入 master |
 
 发布台账以 [release-ledger.json](release-ledger.json) 为准，发行说明见 `release-notes/`。
 

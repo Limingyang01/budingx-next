@@ -140,3 +140,14 @@ AC 区间：CE-01…20（20）、CT-01…09（9）、GW-01…09（9）、TP-01�
 - 修复涉及执行后端契约、专用 worktree 与审批、计划和待办接线、追问按键、证据闸门、AST 脚本和验收记录。自动化测试使用自有临时仓和合成工作区。
 - 文档检查：`npm run spec:check`、`npm run skills:check`、`git diff --check`；48 条 AC 与 25 个任务映射见[实施计划](design/plan.zh.md#测试收口映射ac--任务--用例)。
 - [产品说明书](../../PRODUCT.md)已在同轮同步：§5.4 记录四类卡片与键位，§7 记录命令执行与 worktree 限制。
+
+## 7. 追加优化需求 agent-observability（T25–T33，2026-11-19）
+
+本机 Langfuse 监控优化需求的实施与验证独立回填于 [agent-observability/requirements.md §验收回填](agent-observability/requirements.md)，状态与证据见 [agent-observability/STATUS.md](agent-observability/STATUS.md)。摘要：
+
+- **全量复测**：`npm test` = skills 10 + spec 11 + unit 694 + langfuse 38 + release 17 + merge 5 = **775 项，773 通过，0 失败，2 既有 skip**；`npm run test:checks` 模块边界通过（新增 observability 规则，core 不得反向依赖）。
+- **新增观测用例 98 项全通过**：core 埋点 15、redact 13、exporter/runtime 24、宿主 wiring 8、langfuse 脚本 38（init/compose 18 + verify 判定 20）。
+- **AST 独立来源复核**：首轮命中 2（config 加载器/exporter 发送），按设计 §9.3 从行为规格独立重构后复跑 **命中 0，PASS**（21389 组函数对）。见 [ast-review.md](ast-review.md)。
+- **AC**：28 条中 26 条 PASS（代码/结构/判定逻辑）；**OB-04 真实部署健康、OB-24 live 三场景 UNVERIFIED**。
+- **UNVERIFIED 恢复条件**：OB-04 需在无竞争实例且 ClickHouse fresh-migration 可正常完成的环境重跑 `control.ps1 -Action start`（本次隔离部署迁移脏失败，已清理、未伤参考栈）；OB-24 需部署成功 + 用户提供 `BUDINGX_SMOKE_MODEL_*` 后运行 `node scripts/langfuse/verify-agent.mjs`。
+- **产品说明书同步**：§2.2/§6/§7/§8 已记录可选追踪默认关闭、启用方式与 UNVERIFIED 边界。

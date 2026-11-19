@@ -6,16 +6,16 @@
 | --- | --- |
 | 需求 slug | `agent-observability` |
 | 所属 SP | SP004（优化需求，2026-11-19 追加） |
-| 需求版本 | v0.2 |
+| 需求版本 | v0.3（含验收回填） |
 | 设计版本 | v1.2 |
 | 实施计划版本 | v1.2 |
-| 生命周期 | **PLANNED**（文档修订完成，实施暂停） |
-| 阶段 | 需求 ✅ → 设计 ✅ → 计划 ✅ → 文档自审 ✅ → 实施 ⬜ → 测试 ⬜ → 交付 ⬜ |
-| 功能分支 | 实施放行后沿用 SP004 功能分支；本轮未创建分支 |
+| 生命周期 | **VERIFYING**（实施完成，代码验证全绿；真实部署/live 三场景 UNVERIFIED） |
+| 阶段 | 需求 ✅ → 设计 ✅ → 计划 ✅ → 文档自审 ✅ → 实施 ✅ → 测试 ✅（代码层）→ 交付 ⏳ |
+| 功能分支 | `feature/SP004/real-coding-task`（沿用 SP004 分支，未新建） |
 | 设计文档 | [design/design.zh.md](./design/design.zh.md)（本需求自有设计，独立于 SP004 主设计） |
 | 实施计划 | [design/plan.zh.md](./design/plan.zh.md) |
-| AC 总数 | 28 条（OB-01 … OB-28），分 5 组 |
-| Git 范围 | 五份 Langfuse 文档单独提交至当前 SP004 功能分支。实施 T25–T33 暂停 |
+| AC 总数 | 28 条（OB-01 … OB-28）；代码/结构/判定逻辑 26 条 PASS，OB-04/OB-24 UNVERIFIED |
+| Git 范围 | T26–T33 多个中文提交于 SP004 功能分支；**未合入 master、未推送**（待用户验收与门禁） |
 
 ## 授权与来源
 
@@ -45,9 +45,26 @@
 - [x] 正式设计（design.zh.md）
 - [x] 实施计划（plan.zh.md）
 - [x] 文档自审（核对四项 P1、后台上报口径与版本状态）
-- [ ] 实施（**未启动**，用户明确「先不要实现」）
-- [ ] 测试收口
-- [ ] 交付与合入
+- [x] 实施（T25–T32：Core 端口/Session 接线、脱敏、运行时/OTLP 导出器、宿主装配、部署资产、验收脚本）
+- [x] 测试收口（代码层）：全量 `npm test` 775 项 773 通过 0 失败；AST 复核命中 0
+- [ ] 交付与合入（待用户验收 + 交叉验证门禁 GREEN；真实部署/live 三场景 UNVERIFIED）
+
+## 实施与验证证据（T33，2026-11-19）
+
+| 任务 | 产物 | 验证 |
+| --- | --- | --- |
+| T26 | `src/core/observability.ts` 纯端口 + Session 回合/模型/工具埋点、根正文 | `src/core/test/observability.test.mjs` 15/15 |
+| T27 | `src/observability/redact.ts` 先脱敏后裁剪 | `src/observability/test/redact.test.mjs` 13/13 |
+| T28 | config/context/exporter/runtime/index | `src/observability/test/exporter.test.mjs` 24/24 |
+| T29 | `setupTracing` 宿主装配 + cli 限时 flush + 边界规则 | `src/tui/test/observability-wiring.test.mjs` 8/8；TUI 全套 206 无回归 |
+| T30 | `ops/langfuse/compose.yaml`、`init-local.mjs`、`control.ps1`、README | `scripts/langfuse/init-local.test.mjs` + `compose.test.mjs` 18/18（含 Windows 真实 DACL） |
+| T31 | 本机隔离部署尝试 | **UNVERIFIED**：ClickHouse fresh-migration 脏失败；已清理，未伤参考栈 |
+| T32 | `verify-agent.mjs` + 判定纯函数 | `scripts/langfuse/verify-agent.test.mjs` 20/20（替身）；live UNVERIFIED |
+| T33 | 全量回归 + AST 复核 + 回填 | `npm test` 775/773/0/2skip；AST 命中 0 PASS |
+
+**全量复测**（用户要求「确保交付完整产品」）：`npm test` = skills 10 + spec 11 + unit 694 + langfuse 38 + release 17 + merge 5 = **775 项，773 通过，0 失败，2 既有 skip**；`npm run test:checks` 模块边界通过。新增观测相关用例 98 项（core 15 + redact 13 + exporter 24 + wiring 8 + langfuse 38）全部通过。
+
+**AST 独立来源复核**：首轮命中 2（config 加载器/exporter 发送），按设计 §9.3 从行为规格独立重构后复跑 **命中 0，PASS**（21389 组函数对）。详见 [../ast-review.md](../ast-review.md)。
 
 ## 独立实现与复用边界
 
@@ -62,10 +79,10 @@
 
 | 项 | 状态 | 恢复条件 |
 | --- | --- | --- |
-| Langfuse 镜像实际可拉取版本 | **UNVERIFIED** | 实施阶段以 `docker compose pull` 实际成功为准，不得凭记忆写死版本号 |
-| 本机 Docker/WSL 环境可用性 | **UNVERIFIED** | 实施阶段在目标机器实测；无 Docker 时按 OPEN-03 降级 |
-| 真实模型端到端（三场景） | **UNVERIFIED** | 依赖用户凭据；无凭据时按 SP002 惯例记 UNVERIFIED 并写明恢复条件 |
-| Langfuse 平台侧观测可查询 | **UNVERIFIED** | 依赖本机部署成功 + 平台 API 可达 |
+| 本机 Docker/WSL 可用性 | **已实测可用** | WSL Ubuntu Docker 29.1.3 + Compose 2.40.3；镜像已缓存（mirror.gcr.io） |
+| Langfuse 真实部署健康（OB-04） | **UNVERIFIED** | 隔离实例 ClickHouse fresh-migration 在 version 40 反复脏失败、Web 重启循环；需在无竞争实例且迁移可正常完成的环境重跑 `control.ps1 -Action start`。非观测代码缺陷 |
+| 真实模型三场景（OB-24） | **UNVERIFIED** | 需部署成功 + 用户提供 `BUDINGX_SMOKE_MODEL_KEY`/`_BASE_URL`/`_MODEL`；当前环境变量未设置，未读取真实密钥 |
+| Langfuse 平台侧观测可查询（OB-25/26/27 live） | **UNVERIFIED** | 依赖部署成功 + 平台 API 可达；判定逻辑已经 20 项替身测试 |
 | 真实平台/生产高可用部署 | **NOT_APPLICABLE** | 本轮定位为本机开发期监控 |
 
 风险：
@@ -87,14 +104,17 @@
 | 上报生命周期 | OB-20、OB-22、OB-23、设计 §4.3/§4.10 与 T28/T29 一致。回合无需等待后台请求，正常退出总预算为 3 秒 |
 | 版本与范围 | 需求 v0.2、设计 v1.2、计划 v1.2 和 SP004 汇总对齐。文档自审通过，实施、测试、交付均暂停 |
 
-## 恢复实施
+## 交付与恢复
 
-用户明确放行后核对 SP004 功能分支与基线，再按 v1.2 执行 T25–T33。全部 28 条 AC 的运行验证均为 **UNVERIFIED**。
+实施与代码层测试已完成（T25–T33），全量复测全绿、AST 命中 0。**未合入 master、未推送**——待用户验收与交叉验证门禁 GREEN 后按 buding-merge 合入并推送（2026-11-17 委托范围内）。
+
+真实部署（OB-04）与 live 三场景（OB-24）为 UNVERIFIED，恢复条件见上表。这两项不阻塞代码交付，但**完整产品验收**需用户在可正常部署 Langfuse 的环境提供模型凭据后补跑 `node scripts/langfuse/verify-agent.mjs`。
 
 ## 变更记录
 
 | 日期 | 范围或状态变化 | 原因/来源 | 影响及处理 |
 | --- | --- | --- | --- |
-| 2026-11-19 | 建立 `agent-observability` 优化需求目录；产出 requirements v0.1 + STATUS；产出设计 v1.0 / 计划 v1.0（本需求自有文档） | 用户会话「SP004 中需要加一项优化需求……直接照搬这套监控即可，你先不要实现，先产出文档，走 SDD 流程」 | 仅文档产出；**未创建分支、未写产品代码、未提交**；实施暂停待用户放行 |
-| 2026-11-19 | **R-01 可行性核验**：用户问「不引入 OTel 会不会影响监控」→ 查参考仓源码 + 官方 Langfuse 文档核验，**结论：对监控效果无实质影响**；设计升 v1.1（新增 §4.3 可行性核验小节与 §9.2 后续触发条件），需求 OPEN-01 补充核验结论 | 用户会话「不引入会对监控有影响吗」 | 仅文档补充；**不改变已定技术路线**（仍不引入 OTel SDK）；把「何时必须重新评估」写成显式触发条件，避免将来静默遗漏 |
-| 2026-11-19 | 需求 v0.2、设计与计划 v1.2 文档自审通过 | 用户要求修正四个 P1 及上报、版本口径，仅改文档 | 实施暂停，T25–T33 未执行 |
+| 2026-11-19 | 建立 `agent-observability` 优化需求目录；产出 requirements v0.1 + STATUS；产出设计 v1.0 / 计划 v1.0（本需求自有文档） | 用户会话「SP004 中需要加一项优化需求……直接照搬这套监控即可，你先不要实现，先产出文档，走 SDD 流程」 | 仅文档产出；实施暂停待用户放行 |
+| 2026-11-19 | R-01 可行性核验：不引入 OTel SDK 对监控效果无实质影响；设计升 v1.1 | 用户会话「不引入会对监控有影响吗」 | 仅文档补充；技术路线不变 |
+| 2026-11-19 | 需求 v0.2、设计与计划 v1.2 文档自审通过 | 用户要求修正四个 P1 及上报、版本口径 | 实施暂停 |
+| 2026-11-19 | **实施完成（T25–T33）**：Core 端口/Session 接线、脱敏、运行时/OTLP 导出器、宿主装配、部署资产、验收脚本；全量 `npm test` 775/773/0/2skip；AST 首轮命中 2 → 独立重构后命中 0 PASS | 用户会话「你先做SP004的优化需求吧……你做完后再全量复测一下，确保交付给我的是完整的产品」 | 代码层全绿；真实部署 ClickHouse fresh-migration 脏失败记 UNVERIFIED 并清理（未伤参考栈）；live 三场景需用户凭据记 UNVERIFIED；未合入 master/未推送 |
