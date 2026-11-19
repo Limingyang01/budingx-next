@@ -44,7 +44,7 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | 迭代  | 目标                    | 主要功能目录                                                                                               | 状态 |
 | ----- | ----------------------- | ---------------------------------------------------------------------------------------------------------- | ---- |
 | SP004（0.4.0） | 计划、待办、命令与追问；普通命令要求已验证的执行隔离，提交限专用 worktree | 命令执行、后台任务、受控 Git 提交、计划模式与追问、四类会话卡片 | 已发布 |
-| SP005 | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         | 已在仓库实现（未发布） |
+| SP005 | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         | 功能分支已实现、代码层验收全绿（未合入 master、未发布） |
 | SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 规划中 |
 | SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | 规划中 |
 | SP008 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | 规划中（契约轮，轻量测试客户端验证） |
@@ -234,7 +234,7 @@ budingx --prompt "Hello" --timeout 120000
 - **隔离工作树工具面**：智能体可调用 `EnterWorktree`（可选名称）进入专用分支工作树、`ExitWorktree`（默认保留、显式 `remove` 删除）；删除即使在全自动档位也必须经宿主单次审批，有未提交文件或未合并提交时还要求显式 `discard_changes`，回执给出丢弃计数。当前仅工具协议层可用，生产会话尚未把命令与文件工具切到隔离目录（见限制）。
 - **追问卡片**：一次可问 1–4 题、每题 2–4 个选项；`↑`/`↓` 或 `Tab` 移动光标，`←`/`→` 切题，空格选择（多选可多个），`Enter` 确认或进入下一题，最后一题 `Enter` 提交；`Other` 行直接输入自定义答案；`Esc` 取消追问并以同一调用返回取消结果。
 
-限制：当前仓库未内置已验证的执行隔离后端，因此普通终端命令在启动前会被拒绝（仅宿主托管的只读/编辑能力可用）；计划模式与追问界面本身可用；`EnterWorktree`/`ExitWorktree` 工具面已实现并测试，但进入隔离工作树后命令与文件工具仍指向主工作区，生产接线待会话工作目录重构（SP005）。本节描述的是仓库内已实现（待随下一版本发布）的行为，验收证据与未验证项见 [SP004 验收报告](SP/SP004/test-report.md)。
+限制：当前仓库未内置已验证的执行隔离后端，因此普通终端命令在启动前会被拒绝（仅宿主托管的只读/编辑能力可用）；计划模式与追问界面本身可用；`EnterWorktree`/`ExitWorktree` 工具面已实现并测试，但进入隔离工作树后命令与文件工具仍指向主工作区，生产接线待后续迭代的会话工作目录重构（SP005 未覆盖此项）。本节描述的是仓库内已实现（待随下一版本发布）的行为，验收证据与未验证项见 [SP004 验收报告](SP/SP004/test-report.md)。
 
 ### 5.5 SP005 · 长会话与数据可靠性
 

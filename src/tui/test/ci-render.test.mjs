@@ -25,7 +25,10 @@ test('CI 环境仍执行真实交互帧与光标断言', () => {
     {
       env: { ...env, CI: 'true', HOME: home, USERPROFILE: home },
       encoding: 'utf8',
-      timeout: 20000,
+      // 全量回归时多个 node --test 文件并行跑满 CPU，本机另有 WSL2/Docker 占资源，
+      // 2026-11-19 实测该真实 TUI 子进程被杀于 20047ms（status=null）。
+      // 放宽的是子进程墙钟预算，断言阈值不变。单独运行时约 1.8s。
+      timeout: 90000,
       maxBuffer: 2 * 1024 * 1024
     }
   )

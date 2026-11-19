@@ -143,3 +143,27 @@ npm run langfuse:receiver    # 启动：默认 http://127.0.0.1:3000（可用 --
 
 - 有模型额度：`npm run langfuse:observe` → 跑 tool-success / tool-error 两个真实回合，回查并判读层级、工具名与级别，报告写 `.runtime/langfuse/sp005-observation.json`。
 - 无模型额度：`node --test scripts/langfuse/sp005-observation.e2e.test.mjs` → 用本地脚本化 OpenAI 兼容端点复现同一条链路（真实 HTTP、真实解析、真实工具、真实追踪、真实接收端）。
+
+## 9. 本机真实栈：WSL2 内的 Docker Engine（2026-11-19 落地）
+
+用户要求不使用 Docker Desktop，改为在 WSL2 发行版内直接跑 Docker Engine。落地步骤与后续维护事实如下（仓库只记录机制，不记录机器专属路径）。
+
+1. **发行版**：用 Ubuntu 官方 rootfs 导入到本地目录，`wsl --import <名称> <目录> <rootfs.tar.gz> --version 2`；rootfs 取自 `https://cloud-images.ubuntu.com/wsl/jammy/current/ubuntu-jammy-wsl-amd64-ubuntu22.04lts.rootfs.tar.gz`。
+2. **systemd**：在发行版内写 `/etc/wsl.conf`（`[boot] systemd=true`、`[user] default=root`），`wsl --terminate <名称>` 后重新进入，`ps -p 1 -o comm=` 应为 `systemd`。
+3. **Docker**：apt 源换国内镜像，按官方 apt 仓库安装 `docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin`，随后 `systemctl enable --now docker`（`docker version` 有 Server 段才算成功）。镜像拉取可给 `/etc/docker/daemon.json` 配 `registry-mirrors`。
+4. **保活（必做）**：WSL2 在没有 `wsl.exe` 会话时会按 `vmIdleTimeout`（默认约 60 秒）终止 VM；一旦 VM 退出，`dockerd` 与所有容器一起被 SIGTERM——表现为容器反复 “Up N seconds”、Postgres 崩溃恢复、Langfuse 迁移报 `Prisma P3009`。保活任选其一：常驻 `wsl -d <名称> -u root -- tail -f /dev/null`；或在 `%USERPROFILE%\.wslconfig` 写 `[wsl2]` 段并设 `vmIdleTimeout=-1`。
+5. **迁移失败后的清理**：`Prisma P3009` 表示库里有失败迁移记录，先 `docker compose ... down -v` 清空数据卷再 `up -d`；不要在带失败记录的库上强行 `migrate resolve` 掩盖原因。
+
+WSL 内启动（端口仍只发布到 `127.0.0.1`）：
+
+```bash
+cd /mnt/<盘符>/<仓库路径>
+docker compose -p budingx-langfuse --env-file .runtime/langfuse/local.env -f ops/langfuse/compose.yaml up -d
+docker compose -p budingx-langfuse --env-file .runtime/langfuse/local.env -f ops/langfuse/compose.yaml down
+```
+
+Windows 侧 `curl http://127.0.0.1:3000/api/public/health` 返回 `{"status":"OK","version":"<Langfuse 版本>"}`，`/api/public/projects` 用 `local.env` 里的项目 Key 可查到 `budingX Agent` 项目，即接入成功。
+
+**无模型额度也能验收接入链路**：`npm run langfuse:smoke` 用生产导出器（`src/observability/exporter.ts` 编译产物）投递一条合成 trace（`agent.run` + `model.request` + `tool.Read` 失败），再从 v2 Observations API 回查，判定根节点唯一、子节点挂根、工具失败可见、会话一致；报告写 `.runtime/langfuse/stack-smoke.json`。它证明「上报 → 索引 → 查询」链路，不替代真实模型回合的 OB 判定。
+
+**与第 8 节互斥**：兼容接收端与真实栈都默认占用 `127.0.0.1:3000`，同一时间只能起一个；真实栈可用 `LANGFUSE_WEB_PORT` 换端口并同步 `agent.env` 的 `LANGFUSE_BASE_URL`。

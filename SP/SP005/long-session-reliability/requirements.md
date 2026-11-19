@@ -1,6 +1,6 @@
 # long-session-reliability · 长会话与数据可靠性
 
-状态：DRAFT｜版本：v0.1｜迭代：SP005｜来源身份：USER_CONFIRMED（路线图 SP005 名称与出口验收）；AC 切分 MODEL_PROPOSED
+状态：DRAFT｜版本：v0.3｜迭代：SP005｜来源身份：USER_CONFIRMED（路线图 SP005 名称与出口验收）；AC 切分 MODEL_PROPOSED
 
 ## 来源与目标
 
@@ -124,10 +124,12 @@
 
 | AC ID | 前置条件 / 输入 | 操作 | 可观察结果 | 验证方式 |
 | --- | --- | --- | --- | --- |
-| OB-01 | 本机无 Docker/WSL | 启动本地接收端 | 接收端提供健康检查、OTLP 摄入与 v2 observations 查询 | 单元测试 + 真实进程证据 |
+| OB-01 | 本机有真实栈（WSL2 内 Docker Engine）或只有兼容接收端 | 启动对应服务 | 服务提供健康检查、项目鉴权、OTLP 摄入与 v2 observations 查询 | 单元测试 + 真实进程证据 |
 | OB-02 | 真实 Agent 回合（走生产 `createAgentRuntime`） | 开启追踪 | 接收端收到**唯一**根 `agent.run`，子观测 `model.request` / `tool.<name>` 挂在根下，`session.id` 一致 | 真实进程证据 |
 | OB-03 | 一次包含工具调用的回合 | 回查观测 | 工具观测名称与实际工具名对应；工具失败为 ERROR、权限阻断为 WARNING | 真实进程证据 |
 | OB-04 | 追踪关闭或接收端不可达 | 跑回合 | 回合业务结果与开启追踪时一致 | 单元测试 + 端到端 |
+
+> v0.3 补充：OB-01 原先只允许「无 Docker/WSL 的兼容接收端」；2026-11-19 本机在 WSL2 内装好 Docker Engine 后，真实 Langfuse 栈（4.78.0）同样满足 OB-01，并以 `npm run langfuse:smoke` 用生产导出器投递合成 trace 回查层级/工具名/级别/会话，作为 OB-02、OB-03 的**接入链路**证据；**真实模型回合**的 OB-02/OB-03 仍待 provider 额度恢复后由 `npm run langfuse:observe` 补齐。
 | EV-01 | 端到端测试 | 跑端到端并回查观测 | 产出脱敏摘要：每场景的回合终态、模型/工具观测计数、错误级别、父子关系结论 | 交付记录 |
 | EV-02 | 本轮全部 AC | 执行 `npm test` 与 `npm run merge:gate` | 全部通过；未通过项如实记 FAIL/UNVERIFIED，不粉饰 | 交付记录 |
 | EV-03 | 恢复/迁移等负向场景 | 检验数据保护 | 写入/会话迁移/共享失败时**原数据保留**；恢复时对不确定的执行结果先核对 | 交付记录 |
@@ -187,3 +189,5 @@
 - 范围依据：路线图 SP005 行（USER_CONFIRMED）+ r5 排查增补要点（USER_CONFIRMED）。
 - AC 切分与具体设计：**MODEL_PROPOSED**，由设计文档自审确认。
 - 与 2026-11-17 委托的差异：**合入 master 改为待用户决定**（本次指令更具体、更新）。
+- v0.2（实现期）：新增 FR-09「工具空转熔断」与 CB-04 配对要求（真实模型观测暴露换参数空转、占位被 normalize 丢弃）。
+- v0.3（2026-11-19）：OB-01 允许真实栈；新增 `langfuse:smoke` 合成 trace 接入链路证据；真实模型回合继续保持 UNVERIFIED。

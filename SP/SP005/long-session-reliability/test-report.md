@@ -10,8 +10,8 @@
 | 分支 | `feature/SP005/long-session-reliability` |
 | 实施基线 | master `17afe34` |
 | Node | 见 `node -v`（package.json 要求 >=22.18） |
-| 平台 | Windows 11 + MSYS bash（无 Docker、无 WSL 发行版） |
-| 观测栈 | 仓内 `scripts/langfuse/local-receiver.mjs`（Langfuse 兼容，127.0.0.1:3000） |
+| 平台 | Windows 10 家庭版 19045.6466 + MSYS bash；WSL2 发行版 `Ubuntu22`（内核 6.18.58.1-1）内 Docker Engine 29.10.0 |
+| 观测栈 | 双轨：真实 Langfuse 4.78.0（WSL2 内 Docker compose，六容器，127.0.0.1:3000）与仓内兼容接收端 `scripts/langfuse/local-receiver.mjs`（无 Docker 的机器与 CI 用，互斥占 3000） |
 | 模型 | DeepSeek 兼容端点（`BUDINGX_BASE_URL`/`BUDINGX_MODEL` 来自 `.env.e2e.local`） |
 
 ## 2. 执行命令与计数
@@ -22,7 +22,9 @@
 | `node --test src/*/test/*.test.mjs` | **713 / 713 pass** |
 | `node --test src/core/test/context-budget.e2e.test.mjs` | 3 / 3 pass（真实 HTTP 请求体） |
 | `node --test src/storage/test/session-recovery.e2e.test.mjs` | 4 / 4 pass（真实子进程） |
-| `node --test scripts/langfuse/*.test.mjs` | 本轮新增 17 / 17 pass（3 + 4 + 10 + 3，含接收端查看页）；同目录含 SP004 用例，`npm run test:langfuse` 合计 **64 / 64** |
+| `node --test scripts/langfuse/*.test.mjs` | 本轮新增 22 / 22 pass（3 + 4 + 10 + 3 + 2，含接收端查看页与真实栈冒烟）；同目录含 SP004 用例，`npm run test:langfuse` 合计 **69 / 69** |
+| `node --test scripts/langfuse/stack-smoke.test.mjs` | 5 / 5 pass（OB-02/03 真实栈判读） |
+| `npm run langfuse:smoke` | PASS（真实栈 4.78.0 回查 3 条 observation，四项判定全 true） |
 | `npm run test:checks` | PASS（模块边界：core 不 import storage） |
 | `npm test` | PASS（skills + spec + unit + checks + langfuse + release + merge） |
 | `npm run merge:gate` | GREEN |
@@ -43,6 +45,7 @@
 | `scripts/langfuse/local-receiver.test.mjs` | 3 | OB-01…OB-04 接收端 |
 | `scripts/langfuse/sp005-observation.test.mjs` | 10 | OB-02/03 判读纯函数 |
 | `scripts/langfuse/sp005-observation.e2e.test.mjs` | 3 | OB-02/03 + FR-09（真实 HTTP + 追踪 + 接收端） |
+| `scripts/langfuse/stack-smoke.test.mjs` | 5 | OB-02/03 真实栈判读（层级/失败可见/会话一致） |
 
 ## 3. AC 回填
 
@@ -83,10 +86,10 @@
 | PM-06 | PASS | 损坏文件保留 + `.bak` 旁存 + 报损坏 |
 | PM-07 | PASS | 会话级记忆不跨会话泄漏 |
 | PM-08 | PASS | 超上限明确拒绝而不是静默丢弃 |
-| OB-01 | PASS | 本地接收端可起、OTLP 接入、v2 查询可用 |
-| OB-02 | PASS | 追踪层级 `agent.run` → `model.request` / `tool.<name>` |
-| OB-03 | PASS | 工具名与真实调用一致（`tool.Read`） |
-| OB-04 | PASS | 失败工具 observation 级别为 ERROR |
+| OB-01 | PASS | 双轨可起：兼容接收端 `health` 200、真实栈 `GET /api/public/health` ⇒ `{"status":"OK","version":"4.78.0"}`；未鉴权 `projects` 401、带 Basic ⇒ 项目 `budingx-agent` |
+| OB-02 | PASS | 追踪层级 `agent.run` → `model.request` / `tool.<name>`；真实栈 `stack-smoke` 判定 `hierarchyOk:true` |
+| OB-03 | PASS | 工具名与真实调用一致（`tool.Read`）；真实栈 `toolErrorVisible:true`、`modelPresent:true` |
+| OB-04 | PASS | 失败工具 observation 级别为 ERROR；真实栈 `tool.Read` 为 `TOOL|ERROR` 且 `status.code=2` |
 | EV-01 | PASS（代码层） | 失败原因与熔断原因可在转录与终态错误中定位 |
 | EV-02 | PASS | `npm test` + `npm run merge:gate` GREEN |
 | EV-03 | PASS | 新增 95 例覆盖四支柱；无零测试、无全 skip |
@@ -106,18 +109,31 @@
 
 额度未恢复期间，监测平台已搭到就绪态：`npm run langfuse:init` / `npm run langfuse:receiver` / `npm run langfuse:observe`（端点与边界见 `ops/langfuse/README.md` 第 8 节）；真实模型场景保留 UNVERIFIED，等额度恢复后一次跑完。
 
+### 4.1 真实 Langfuse 栈接入证据（2026-11-19）
+
+真实栈不是用真实模型验证的，而是用**生产导出器**验证的：`scripts/langfuse/stack-smoke.mjs` 直接调用 `src/tui/dist/observability/exporter.js` 的 `OtlpExporter.sendBatch`，投递一条含 `agent.run`（根）/ `model.request` / 失败 `tool.Read` 的合成 trace，再按产品查询路径回查。
+
+| 项 | 证据 |
+| --- | --- |
+| 栈状态 | `langfuse/langfuse:4.78.0`、`clickhouse-server:26.3.62.3`、`postgres:16`、`redis:7-alpine`、`cgr.dev/chainguard/minio:latest`，六容器全部 healthy |
+| 鉴权 | `GET /api/public/projects` 无鉴权 401；带 `.runtime/langfuse/agent.env` 的 Basic ⇒ 项目 `budingx-agent` |
+| 上报-查询闭环 | `npm run langfuse:smoke` ⇒ `sent:true, count:3, rootCount:1, hierarchyOk:true, toolErrorVisible:true, modelPresent:true, sessionConsistent:true, ok:true` |
+| 层级与级别 | 回查得到 `agent.run|AGENT|DEFAULT|root`、`model.request|GENERATION|DEFAULT|child`、`tool.Read|TOOL|ERROR|child`，sessionId 全为 `smoke-session` |
+
+WSL2 的 `vmIdleTimeout` 会在无会话时终止 VM 并 SIGTERM 掉容器，曾导致 Postgres 崩溃恢复与 `Prisma P3009`；落地方案与保活步骤写在 `ops/langfuse/README.md` 第 9 节。真实模型回合只需把 `BUDINGX_LANGFUSE_BASE_URL` 指向同一 3000 端口即可，无需再改代码。
+
 ## 5. 未验证项与恢复条件
 
 | 项 | 状态 | 恢复条件 | 动作 |
 | --- | --- | --- | --- |
 | 真实模型三场景（成功/工具失败/长会话压缩） | UNVERIFIED | provider Token Plan 额度恢复（用户 2026-11-19：先搭好监测平台，到时再跑真实模型测试） | `npm run langfuse:observe`，回填 §4 |
-| 真实 Langfuse 服务端（Docker/WSL） | UNVERIFIED | 本机具备 Docker 或 WSL2 发行版 | 按 `ops/langfuse/README.md` 起栈，用 `scripts/langfuse/query-traces.mjs` 复核 |
 | TUI 长会话视觉观感 | UNVERIFIED | SP006 可视化验收 | 终端快照 + 按键回放 |
 
 ## 6. 风险与剩余
 
 - 整轮 `npm test` 偶发挂起已定位并修复：`src/exec/background.ts` 的 `finalize` 未释放子进程 stdout/stderr 读端，被 `taskkill /T` 漏掉的孙进程继续持有写端时，`node --test` 的隔离子进程永远等不到事件循环清空（实测 T5-10 之后卡住 12 分钟）。修复为终态后 `child.stdout.destroy()` / `child.stderr.destroy()`，并补 `CE-07/R-05` 回归用例；修复后全量回归 `EXIT=0`。
 
+- 全量回归中子进程测试的超时预算偏紧：`src/tui/test/ci-render.test.mjs` 用 `spawnSync` 跑真实 TUI 子进程并设 `timeout: 20000`，2026-11-19 在 WSL2/Docker 抢 CPU 的并行负载下被 20047ms 杀掉（`status=null`，单独重跑 1.8s 通过）。已放宽到 90s 并加注释说明只放宽墙钟预算、不放宽断言阈值（该文件属 SP002 提交 `2c63631`，非 SP005 代码）。
 - 压缩默认阈值按模型上下文上限的 85% 触发；真实模型上下文上限变化时需重新校准（当前由 `contextBudget.maxTokens` 注入）。
 - 转录与记忆写入失败时回合结果仍在内存中，进程退出即丢失（设计如此，属于「明确报错」而非「静默成功」）。
 - 工具空转熔断为启发式：若某工具在多参数下确实可恢复，可能被提前终止；阈值（3 / 5）已在设计中固定，后续可依据观测调整。
