@@ -137,7 +137,7 @@ function writePrivateFile(file, content) {
 function generateValues() {
   const values = {
     LANGFUSE_IMAGE_TAG: process.env.LANGFUSE_IMAGE_TAG || '4.78.0',
-    CLICKHOUSE_IMAGE_TAG: process.env.CLICKHOUSE_IMAGE_TAG || '26.3',
+    CLICKHOUSE_IMAGE_TAG: process.env.CLICKHOUSE_IMAGE_TAG || '26.3.62.3',
     MINIO_IMAGE_TAG: process.env.MINIO_IMAGE_TAG || 'latest',
     NEXTAUTH_URL: 'http://localhost:3000',
     TELEMETRY_ENABLED: 'false',

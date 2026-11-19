@@ -3,7 +3,10 @@
 # 禁止 down -v（会删除本实例数据）。Windows 无 Docker CLI 时走 WSL 并保活。
 param(
   [ValidateSet('start', 'stop', 'status', 'logs')][string]$Action = 'start',
-  [string]$Distro = 'Ubuntu'
+  [string]$Distro = 'Ubuntu',
+  # 单机默认一个实例。若本机已有其他仓库的同名实例，用独立项目名隔离，
+  # 避免重建/接管其他项目的容器与数据卷。
+  [string]$Project = 'budingx-langfuse'
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -14,7 +17,7 @@ if ($Action -eq 'start') {
 }
 
 $composeArgs = @(
-  'compose', '-p', 'budingx-langfuse',
+  'compose', '-p', $Project,
   '--env-file', '.runtime/langfuse/local.env',
   '-f', 'ops/langfuse/compose.yaml'
 )

@@ -35,8 +35,9 @@ test('only the web and minio ports are published, and only on loopback', () => {
   assert.equal(published.length, 2)
   const web = published.find((p) => p.name === 'langfuse-web')
   const minio = published.find((p) => p.name === 'minio')
-  assert.equal(web.mapping, '127.0.0.1:3000:3000')
-  assert.equal(minio.mapping, '127.0.0.1:9090:9000')
+  // 宿主端口可配置（默认 3000/9090），但必须仅绑定 loopback，容器端口固定。
+  assert.match(web.mapping, /^127\.0\.0\.1:\$\{LANGFUSE_WEB_PORT:-3000\}:3000$/)
+  assert.match(minio.mapping, /^127\.0\.0\.1:\$\{LANGFUSE_MINIO_PORT:-9090\}:9000$/)
 })
 
 test('the data stores do not publish any host port', () => {
