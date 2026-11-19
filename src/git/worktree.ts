@@ -242,7 +242,9 @@ export async function enterWorktree(input: EnterWorktreeInput): Promise<Worktree
 /** 统计 worktree 内未提交文件数（含暂存、未暂存、未跟踪；重命名按一条记录计）。 */
 async function countPendingFiles(worktreePath: string): Promise<number> {
   const statusRun = await runGit(['status', '--porcelain=v1', '-z'], worktreePath)
-  if (!statusRun.ok) return 0
+  if (!statusRun.ok) {
+    throw new Error(`无法复核未提交文件，拒绝删除：${worktreePath}；${statusRun.stderr.trim() || 'git status 失败'}`)
+  }
   return statusRun.stdout.split('\0').filter((entry) => entry !== '').length
 }
 
@@ -287,7 +289,7 @@ export async function exitWorktree(current: ExitWorktreeInput): Promise<Worktree
     throw new Error(`授权与目标 worktree 不匹配，拒绝删除：授权 ${authorization.worktree}@${authorization.branch}`)
   }
 
-  const discardedFiles = await countPendingFiles(current.path)
+  const discardedFiles = await countPendingFiles(entry.path)
   const discardedCommits = await countUnmergedCommits(repoCwd, current.baseBranch, current.branch)
   const hasResidue = discardedFiles > 0 || discardedCommits > 0
   if (hasResidue && !(current.discard_changes === true && authorization.discardChanges === true)) {
