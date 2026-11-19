@@ -17,10 +17,11 @@
     "start": "node --env-file-if-exists=.env.e2e.local src/tui/dist/tui/cli.js",
     "test:unit": "npm run build && node --test src/*/test/*.test.mjs",
     "test:checks": "node scripts/checks/module-boundaries.mjs",
+    "test:langfuse": "node --test scripts/langfuse/*.test.mjs",
     "test:release": "node --test scripts/release/*.test.mjs",
     "merge:test": "node --test scripts/merge/*.test.mjs",
     "merge:gate": "node scripts/merge/cross-validate.mjs",
-    "test": "npm run skills:test && npm run spec:test && npm run test:unit && npm run test:checks && npm run test:release && npm run merge:test",
+    "test": "npm run skills:test && npm run spec:test && npm run test:unit && npm run test:checks && npm run test:langfuse && npm run test:release && npm run merge:test",
     "publish": "node scripts/release/publish.mjs",
     "version:prepare": "node scripts/release/version.mjs",
     "release:sync": "node scripts/release/receipt.mjs"
