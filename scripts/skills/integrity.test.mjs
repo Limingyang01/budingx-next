@@ -29,7 +29,8 @@ test('every managed skill is discoverable through all generated entry families',
   assert.deepEqual(syncEntries(root, { check: true }), [])
   assert.ok(SKILLS.includes('buding-npm-release'))
   assert.ok(SKILLS.includes('buding-version-prepare'))
-  assert.equal(SKILLS.length, 23)
+  assert.ok(SKILLS.includes('buding-langfuse'))
+  assert.equal(SKILLS.length, 24)
   for (const family of FAMILIES) {
     for (const name of SKILLS) {
       const file = `${family}/skills/${name}/SKILL.md`

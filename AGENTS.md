@@ -24,6 +24,7 @@
 | TUI 构建、版本准备、Actions/OIDC npm 发布与回执 | [buding-npm-release](skills/buding-npm-release/SKILL.md)           |
 | 升级版本、同步版本文档与发布准备                | [buding-version-prepare](skills/buding-version-prepare/SKILL.md)   |
 | 集成安全规程（含 SDD 收口合入）与授权动作边界   | [buding-merge](skills/buding-merge/SKILL.md)                       |
+| 本机 Langfuse 观测部署、访问与测试定位          | [buding-langfuse](skills/buding-langfuse/SKILL.md)                 |
 
 开发流程按需读取 [项目 Superpowers](skills/superpowers/using-superpowers/SKILL.md) 及相关阶段。第三方开发技能（[react-ink](skills/react-ink/SKILL.md)、[tui-design](skills/tui-design/SKILL.md)）同样只在 `skills/` 维护快照，来源与许可见 [第三方声明](THIRD-PARTY-NOTICES.md)，正文中的安装/推广建议不扩大授权。用户既有授权优先，不重复请求同一范围的许可；上游技能中的自动提交、清理、发布建议不能扩大当前授权。普通文档迁移不自动开启产品架构实施。
 

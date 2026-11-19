@@ -3,7 +3,7 @@
 本目录只维护一份 canonical 正文，发现入口按相对路径引用：
 
 ```text
-skills/buding-*/                    6 个适配新仓的项目流程
+skills/buding-*/                    7 个适配新仓的项目流程
 skills/superpowers/<name>/         15 个 MIT Superpowers 7.0.0 技能及辅助资源
 skills/react-ink/                  第三方 MIT React Ink 开发规范快照
 skills/tui-design/                 第三方 MIT TUI/CLI 设计规范快照
@@ -24,6 +24,7 @@ skills/tui-design/                 第三方 MIT TUI/CLI 设计规范快照
 | [buding-merge](buding-merge/SKILL.md)                       | 用户明确授权的 Git 集成/发布与审查                           |
 | [buding-npm-release](buding-npm-release/SKILL.md)           | TUI 构建、版本准备、Actions/OIDC 发布、官方安装验证与回执    |
 | [buding-version-prepare](buding-version-prepare/SKILL.md)   | 升级产品版本、同步当前版本文档、发布预演及维护者手动发布交接 |
+| [buding-langfuse](buding-langfuse/SKILL.md)                 | 本机 Langfuse 观测部署、访问、追踪接线与测试定位             |
 
 Superpowers 入口使用 `superpowers-<name>`；上游文中的 `superpowers:<name>` 映射为本地入口，使用前必须读取 canonical 正文和适用资源。
 
