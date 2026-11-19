@@ -172,6 +172,7 @@ async function runPipe(config: ResolvedConfig, stores: Stores): Promise<number> 
     if (turnCode !== 0) code = turnCode
   }
   session.dispose()
+  await runtime.shutdownTracing?.()
   return code
 }
 
@@ -219,6 +220,7 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
   )
   await instance.waitUntilExit()
   session.dispose()
+  await runtime.shutdownTracing?.()
 }
 
 async function main(): Promise<void> {
@@ -276,6 +278,7 @@ async function main(): Promise<void> {
     const code = await runTurn(runtime, config.prompt)
     process.stdout.write('\n')
     runtime.session.dispose()
+    await runtime.shutdownTracing?.()
     process.exitCode = code
     return
   }

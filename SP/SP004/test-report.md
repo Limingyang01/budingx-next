@@ -132,3 +132,13 @@ AC 区间：CE-01…20（20）、CT-01…09（9）、GW-01…09（9）、TP-01�
 - 文档检查：`npm run spec:check`、`npm run skills:check`、`git diff --check`；48 条 AC 与 26 个任务（含 T25 补记）映射见[实施计划](design/plan.zh.md#测试收口映射ac--任务--用例)。
 - 参考 TUI 对照记录见 [reference-parity.md](reference-parity.md)（用户 2026-11-18 指定参考仓 `b5c9be8`）。
 - [产品说明书](../../PRODUCT.md)已在同轮同步：§5.4 记录四类卡片与键位，§7 记录命令执行与 worktree 限制。
+## 7. 追加优化需求 agent-observability（重应用到 master，2026-11-19）
+
+本机 Langfuse 可选监测优化（默认关闭）独立回填于 [agent-observability/requirements.md §验收回填](agent-observability/requirements.md)，状态与证据见 [agent-observability/STATUS.md](agent-observability/STATUS.md)。本优化在远端已合入的 SP004 主体（T25）之上**单独重应用**，保留远端 SP004 实现不变，仅叠加观测接入点（session.ts 埋点、runtime.ts setupTracing、cli.ts flush、tsconfig/边界规则/skill 注册/e2e 模板/package.json）。摘要：
+
+- **观测测试**：core 埋点 15 + redact 13 + exporter/runtime 24 + 宿主 wiring 8 = 60 项通过；langfuse 脚本 38 项（init/compose 18 + verify 判定 20）通过。
+- **全量复测（重应用后）**：`npm test` **722 项，722 通过，0 失败，0 跳过**（含远端 SP004 T25 用例与观测用例）；`npm run test:checks` 模块边界通过（新增 observability 规则，core 不得反向依赖）。
+- **AST 独立来源复核**：观测实现首轮命中 2 → 按设计 §9.3 独立重构后命中 0 PASS（见 [ast-review.md](ast-review.md)）。
+- **AC**：28 条中 26 条 PASS（代码/结构/判定逻辑）；OB-04 真实部署健康、OB-24 live 三场景 UNVERIFIED。
+- **UNVERIFIED 恢复条件**：OB-04 需在无竞争实例且 ClickHouse fresh-migration 可正常完成的环境重跑 `control.ps1 -Action start`；OB-24 需部署成功 + 用户提供 `BUDINGX_SMOKE_MODEL_*` 后运行 `node scripts/langfuse/verify-agent.mjs`。
+- **产品说明书同步**：PRODUCT.md §6/§7/§8 与发行说明 v0.4.0 已记录可选追踪默认关闭、启用方式与 UNVERIFIED 边界。

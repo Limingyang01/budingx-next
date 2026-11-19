@@ -35,6 +35,7 @@ import type {
 } from './tools.js'
 import type { CommandResult } from './exec.js'
 import type { CodingTaskTracker } from './coding.js'
+import type { TraceHandle, Tracer } from './observability.js'
 import type {
   PermissionMode,
   PermissionPolicy,
@@ -78,6 +79,8 @@ export type SessionOptions = {
   queueAutostartMs?: number
   /** Host resources to release on dispose, e.g. the foreground/background command runner (SP004 §4.4). */
   disposers?: (() => void)[]
+  /** SP004 agent-observability §4.2：可选追踪端口。未注入时跳过埋点。 */
+  tracer?: Tracer
   onEvent?: (event: SessionEvent) => void
 }
 
@@ -102,6 +105,8 @@ type ActiveTurn = {
   messageIds: string[]
   assistant?: Message
   cancelTimer?: NodeJS.Timeout
+  /** SP004 agent-observability：本回合根观测句柄。 */
+  traceRoot?: TraceHandle
 }
 
 const ALLOWED_TRANSITIONS: Record<SessionState, SessionState[]> = {
@@ -651,6 +656,70 @@ export class Session {
     for (const listener of this.listeners) listener(event)
   }
 
+  private traceBegin(
+    name: string,
+    attributes: Record<string, string | number | boolean>,
+    parent?: TraceHandle
+  ): TraceHandle | undefined {
+    const tracer = this.options.tracer
+    if (!tracer) return undefined
+    try {
+      return tracer.begin(name, attributes, parent)
+    } catch {
+      return undefined
+    }
+  }
+
+  private traceEnd(
+    handle: TraceHandle | undefined,
+    outcome: 'success' | 'error' | 'cancelled' | 'blocked',
+    error?: unknown
+  ): void {
+    const tracer = this.options.tracer
+    if (!tracer || !handle) return
+    try {
+      tracer.end(handle, outcome, error)
+    } catch {
+      /* 观测不得改变业务结果 */
+    }
+  }
+
+  private traceAttributes(
+    handle: TraceHandle | undefined,
+    attributes: Record<string, string | number | boolean>
+  ): void {
+    const tracer = this.options.tracer
+    if (!tracer || !handle) return
+    try {
+      tracer.setAttributes(handle, attributes)
+    } catch {
+      /* 观测不得改变业务结果 */
+    }
+  }
+
+  private tracePayload(
+    handle: TraceHandle | undefined,
+    key: 'input' | 'output',
+    value: unknown
+  ): void {
+    const tracer = this.options.tracer
+    if (!tracer || !handle) return
+    try {
+      tracer.setPayload(handle, key, value)
+    } catch {
+      /* 观测不得改变业务结果 */
+    }
+  }
+
+  private traceUsage(handle: TraceHandle | undefined, usage: Usage): void {
+    const input = usage.inputTokens ?? 0
+    const output = usage.outputTokens ?? 0
+    this.traceAttributes(handle, {
+      'langfuse.observation.usage_details': JSON.stringify({ input, output })
+    })
+  }
+
+
   private setState(next: SessionState): void {
     if (next === this.state) return
     if (!ALLOWED_TRANSITIONS[this.state].includes(next)) {
@@ -680,6 +749,14 @@ export class Session {
       messageIds: []
     }
     this.activeTurn = turn
+    turn.traceRoot = this.traceBegin('agent.run', {
+      'session.id': this.id,
+      'turn.id': turn.id,
+      'langfuse.trace.metadata.runId': randomUUID(),
+      'langfuse.observation.type': 'agent',
+      'langfuse.trace.name': 'agent.run'
+    })
+    this.tracePayload(turn.traceRoot, 'input', [{ role: 'user', content: userText }])
     if (queued) {
       this.emit({
         type: 'input_injected',
@@ -753,6 +830,17 @@ export class Session {
       const fragments: ToolFragment[] = []
       let finishReason: FinishReason = 'unknown'
       let providerFailure: ErrorInfo | undefined
+      const modelTrace = this.traceBegin(
+        'model.request',
+        {
+          'langfuse.observation.type': 'generation',
+          'gen_ai.request.model': snapshot.model,
+          'session.id': this.id,
+          'turn.id': turn.id
+        },
+        turn.traceRoot
+      )
+      let modelUsage: Usage | undefined
 
       try {
         for await (const event of turn.provider.stream(
@@ -794,6 +882,7 @@ export class Session {
             case 'message_completed':
               finishReason = event.finishReason
               usage = event.usage
+              modelUsage = event.usage
               break
             case 'retry':
               this.emit({
@@ -825,6 +914,12 @@ export class Session {
       }
 
       if (providerFailure) {
+        if (modelUsage) this.traceUsage(modelTrace, modelUsage)
+        this.traceEnd(
+          modelTrace,
+          providerFailure.class === 'aborted' || turn.controller.signal.aborted ? 'cancelled' : 'error',
+          providerFailure
+        )
         if (providerFailure.class === 'aborted' || turn.controller.signal.aborted) {
           outcome = 'cancelled'
         } else {
@@ -833,6 +928,9 @@ export class Session {
         }
         break
       }
+
+      if (modelUsage) this.traceUsage(modelTrace, modelUsage)
+      this.traceEnd(modelTrace, 'success')
 
       const { calls, errors } = assembleToolCalls(fragments, true)
       const callErrors = errors.filter(
@@ -945,6 +1043,16 @@ export class Session {
       }
       const input = parseToolArguments(call)
       const handler = this.tools.find((tool) => tool.name === call.name)
+      const toolTrace = this.traceBegin(
+        `tool.${call.name}`,
+        {
+          'langfuse.observation.type': 'tool',
+          'gen_ai.tool.call.id': call.id,
+          'session.id': this.id,
+          'turn.id': turn.id
+        },
+        turn.traceRoot
+      )
       this.emit({
         type: 'tool_call_completed',
         turnId: turn.id,
@@ -953,6 +1061,7 @@ export class Session {
         input
       })
       if (!handler) {
+        this.traceEnd(toolTrace, 'error')
         this.pushToolResult(
           turn,
           call.id,
@@ -979,6 +1088,7 @@ export class Session {
         let verdict = policy.decide(permissionRequest)
         const capability = permissionRequest.capability
         if (verdict.action === 'deny') {
+          this.traceEnd(toolTrace, 'blocked')
           this.pushToolResult(
             turn,
             call.id,
@@ -1010,6 +1120,7 @@ export class Session {
             const check = host.validate(plan)
             if (!check.ok) {
               await this.reopenPlanForApproval(plan, check.drift)
+              this.traceEnd(toolTrace, 'blocked')
               this.pushToolResult(
                 turn,
                 call.id,
@@ -1024,6 +1135,7 @@ export class Session {
         }
         if (this.planModeState) {
           if (this.planModeState.phase === 'pending' && capability !== 'read') {
+            this.traceEnd(toolTrace, 'blocked')
             this.pushToolResult(
               turn,
               call.id,
@@ -1062,6 +1174,7 @@ export class Session {
         try {
           prepared = handler.prepareApproval?.(input)
         } catch (error) {
+          this.traceEnd(toolTrace, 'error', error)
           this.pushToolResult(
             turn,
             call.id,
@@ -1111,6 +1224,7 @@ export class Session {
             decision.feedback && decision.feedback.trim()
               ? `\nUser feedback: ${decision.feedback.trim()}`
               : ''
+          this.traceEnd(toolTrace, decision.outcome === 'cancelled' ? 'cancelled' : 'blocked')
           this.pushToolResult(
             turn,
             call.id,
@@ -1158,6 +1272,7 @@ export class Session {
             : {})
         }
         if (permissionRequest && policy?.decide(permissionRequest).action === 'deny') {
+          this.traceEnd(toolTrace, 'blocked')
           this.pushToolResult(turn, call.id, 'Permission changed before execution', true, ERROR_CODES.permissionDenied)
           continue
         }
@@ -1180,7 +1295,7 @@ export class Session {
         this.lastToolElapsed = { turnId: turn.id, callId: call.id, ms: performance.now() - startedAt }
       }
       try {
-        this.pushToolResult(turn, call.id, content, isError, errorCode)
+        this.pushToolResult(turn, call.id, content, isError, errorCode, toolTrace)
       } finally {
         this.lastToolElapsed = undefined
       }
@@ -1193,8 +1308,12 @@ export class Session {
     callId: string,
     content: string,
     isError: boolean,
-    code?: string
+    code?: string,
+    toolTrace?: TraceHandle
   ): void {
+    if (toolTrace) {
+      this.traceEnd(toolTrace, isError ? 'error' : 'success')
+    }
     const message: Message = {
       id: randomUUID(),
       role: 'tool',
@@ -1296,6 +1415,22 @@ export class Session {
       return
     }
     turn.finalized = true
+    if (turn.traceRoot) {
+      const assistantTexts = this.messages
+        .filter((message) => message.role === 'assistant' && turn.messageIds.includes(message.id))
+        .map((message) =>
+          message.blocks
+            .filter((block): block is Extract<Message['blocks'][number], { type: 'text' }> => block.type === 'text')
+            .map((block) => block.text)
+            .join('')
+        )
+        .filter((text) => text.length > 0)
+      this.tracePayload(
+        turn.traceRoot,
+        'output',
+        assistantTexts.map((content) => ({ role: 'assistant', content }))
+      )
+    }
     this.options.approval.cancelAll?.()
     this.approvalForMemory = undefined
     for (const listener of this.toolPreviewListeners) listener([])
@@ -1329,6 +1464,7 @@ export class Session {
 
     if (this.activeTurn === turn) this.activeTurn = undefined
     this.setState('idle')
+    this.traceEnd(turn.traceRoot, this.traceOutcomeOf(outcome), error)
     this.emit({
       type: 'turn_finalized',
       finishedAt: Date.now(),
@@ -1338,6 +1474,12 @@ export class Session {
       ...(restoreText ? { restoreText } : {})
     })
     this.scheduleQueueDrain()
+  }
+
+  private traceOutcomeOf(outcome: TurnOutcome): 'success' | 'error' | 'cancelled' {
+    if (outcome === 'completed') return 'success'
+    if (outcome === 'cancelled') return 'cancelled'
+    return 'error'
   }
 
   private keepCancelArtifacts(turn: ActiveTurn): void {

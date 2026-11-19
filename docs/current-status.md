@@ -1,6 +1,6 @@
 # 当前状态
 
-日期：2026-11-19。**0.3.6 已通过 OIDC 发布，npm latest 已核对。** Windows 和 Linux 的 CI 验证、官方源隔离安装及本地 HTTP 冒烟均通过。**SP004「真实编码任务」已实施、验证（`npm test` 615 项通过）并合入 master，源码版本已准备为 0.4.0，待维护者触发发布工作流。**
+日期：2026-11-19。**0.3.6 已通过 OIDC 发布，npm latest 已核对。** Windows 和 Linux 的 CI 验证、官方源隔离安装及本地 HTTP 冒烟均通过。**SP004「真实编码任务」已实施、验证（`npm test` 615 项通过）并合入 master，源码版本已准备为 0.4.0，待维护者触发发布工作流。** 追加优化 **agent-observability**（本机 Langfuse 可选监测，默认关闭）已重应用到 master：Core 追踪端口 + Session 埋点 + `src/observability` OTLP 导出器 + 部署资产 + 能力探针/trace 查询 + `buding-langfuse` skill；观测测试 60 项、langfuse 脚本 38 项通过，全量 `npm test` 722/722/0。真实部署健康与 live 三场景 UNVERIFIED（见 [Langfuse STATUS](../SP/SP004/agent-observability/STATUS.md)）。
 
 ## 已有
 
