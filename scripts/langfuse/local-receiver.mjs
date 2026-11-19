@@ -16,6 +16,7 @@ import { createServer } from 'node:http'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { LOCAL_UI_HTML } from './local-ui.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -121,6 +122,47 @@ function compareNanos(a, b) {
  * 构造接收端服务。
  * @returns { server, store }
  */
+/**
+
+ * 组装 v2 observations 形状的响应体：/api/public/v2/observations 与本地查看页共用。
+
+ */
+
+function observationPayload(store, url) {
+  const traceId = url.searchParams.get('traceId')
+  const sessionId = url.searchParams.get('sessionId')
+  const name = url.searchParams.get('name')
+  const limit = Number(url.searchParams.get('limit') ?? '100')
+  const page = Number(url.searchParams.get('page') ?? '1')
+  const fields = url.searchParams.get('fields') ?? 'core,basic,io'
+  const wantIo = fields.includes('io')
+  let rows = store.observations.slice()
+  if (traceId) rows = rows.filter((o) => o.traceId === traceId)
+  if (sessionId) rows = rows.filter((o) => o.sessionId === sessionId)
+  if (name) rows = rows.filter((o) => o.name === name)
+  rows.sort((a, b) => compareNanos(a.startTime, b.startTime))
+  const totalItems = rows.length
+  const pageSize = Math.max(1, Math.min(limit || 100, 500))
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
+  const slice = rows.slice((page - 1) * pageSize, page * pageSize)
+  const data = slice.map((o) => ({
+    id: o.id,
+    traceId: o.traceId,
+    parentObservationId: o.parentObservationId,
+    name: o.name,
+    type: o.type,
+    startTime: o.startTime,
+    endTime: o.endTime,
+    level: o.level,
+    statusMessage: o.statusMessage,
+    sessionId: o.sessionId,
+    metadata: o.metadata,
+    input: wantIo ? o.input : null,
+    output: wantIo ? o.output : null
+  }))
+  return { data, meta: { page, limit: pageSize, totalItems, totalPages } }
+}
+
 export function createReceiver(options = {}) {
   const keys = options.keys ?? { publicKey: 'pk-lf-local', secretKey: 'sk-lf-local' }
   const store = { observations: [] }
@@ -184,44 +226,22 @@ export function createReceiver(options = {}) {
         res.end(JSON.stringify({ message: 'Unauthorized' }))
         return
       }
-      const traceId = url.searchParams.get('traceId')
-      const sessionId = url.searchParams.get('sessionId')
-      const name = url.searchParams.get('name')
-      const limit = Number(url.searchParams.get('limit') ?? '100')
-      const page = Number(url.searchParams.get('page') ?? '1')
-      const fields = url.searchParams.get('fields') ?? 'core,basic,io'
-      const wantIo = fields.includes('io')
-      let rows = store.observations.slice()
-      if (traceId) rows = rows.filter((o) => o.traceId === traceId)
-      if (sessionId) rows = rows.filter((o) => o.sessionId === sessionId)
-      if (name) rows = rows.filter((o) => o.name === name)
-      rows.sort((a, b) => compareNanos(a.startTime, b.startTime))
-      const totalItems = rows.length
-      const pageSize = Math.max(1, Math.min(limit || 100, 500))
-      const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
-      const slice = rows.slice((page - 1) * pageSize, page * pageSize)
-      const data = slice.map((o) => ({
-        id: o.id,
-        traceId: o.traceId,
-        parentObservationId: o.parentObservationId,
-        name: o.name,
-        type: o.type,
-        startTime: o.startTime,
-        endTime: o.endTime,
-        level: o.level,
-        statusMessage: o.statusMessage,
-        sessionId: o.sessionId,
-        metadata: o.metadata,
-        input: wantIo ? o.input : null,
-        output: wantIo ? o.output : null
-      }))
       res.writeHead(200, { 'content-type': 'application/json' })
-      res.end(
-        JSON.stringify({
-          data,
-          meta: { page, limit: pageSize, totalItems, totalPages }
-        })
-      )
+      res.end(JSON.stringify(observationPayload(store, url)))
+      return
+    }
+
+    // 本地查看页：浏览器打开 http://127.0.0.1:3000/ 即可查看已接收的观测（只读、无外部依赖）。
+    if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/ui')) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+      res.end(LOCAL_UI_HTML)
+      return
+    }
+
+    // 查看页数据源：仅本机回环可访问（服务本就只监听 127.0.0.1），不额外索要 Basic 凭据。
+    if (req.method === 'GET' && url.pathname === '/ui/observations') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(observationPayload(store, url)))
       return
     }
 

@@ -117,3 +117,30 @@ test('receiver rejects unauthenticated ingestion and serves observations', async
     await new Promise((resolve) => server.close(resolve))
   }
 })
+
+test('receiver serves the read-only viewer page and the open query endpoint', async () => {
+  const { server } = createReceiver({ keys: { publicKey: 'pk-ui', secretKey: 'sk-ui' } })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const base = 'http://127.0.0.1:' + server.address().port
+  try {
+    const page = await fetch(base + '/')
+    assert.equal(page.status, 200)
+    assert.match(page.headers.get('content-type'), /text\/html/)
+    const html = await page.text()
+    assert.match(html, /budingX/)
+    assert.match(html, /ui\/observations/)
+    // 页面内联脚本必须能被解析：字符串转义出错时浏览器会静默不执行（曾发生）。
+    const inline = /<script>([\s\S]*?)<\/script>/.exec(html)
+    assert.ok(inline, '查看页必须内联脚本')
+    assert.doesNotThrow(() => new Function(inline[1]))
+
+    const data = await fetch(base + '/ui/observations?limit=5')
+    assert.equal(data.status, 200)
+    const body = await data.json()
+    assert.deepEqual(body.data, [])
+    assert.equal(body.meta.limit, 5)
+    assert.equal(body.meta.totalItems, 0)
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})

@@ -1,6 +1,6 @@
 # SP005 · 长会话与数据可靠性
 
-状态：**VERIFYING（实施与测试完成，合入 master 等用户决定）**｜功能分支 `feature/SP005/long-session-reliability`｜实施基线 `17afe34`（master）
+状态：**VERIFYING（实施与测试完成，本地监测平台就绪，合入 master 等用户决定）**｜功能分支 `feature/SP005/long-session-reliability`｜实施基线 `17afe34`（master）｜轮次验收报告 [SP005/test-report.md](test-report.md)
 
 ## 本轮目标与边界
 
@@ -13,6 +13,7 @@
 - 依赖与启动条件：
   - USER_CONFIRMED（2026-11-19）：「开始SP005，做完后跑端到端的测试，测试过程你可以使用langfuse去看看测试的效果以及工具的调用是否合适，你在本地搭好langfuse的监测」→ 授权启动本轮 + 端到端测试 + 本地观测。
   - USER_CONFIRMED（2026-11-19）：「测试完成后待我决定后再合入master分支」→ **合入 master 由用户决定**，与 2026-11-17 的一般委托冲突时以本条为准。
+  - USER_CONFIRMED（2026-11-19）：「目前那个模型好像没有token了，你可以先搭建好监测平台，到时再跑真实模型测试」→ 本轮先把监测平台搭到可一键起/可回查（`npm run langfuse:receiver` 等三条命令），真实模型三场景保留 UNVERIFIED 等额度恢复后补跑。
   - USER_CONFIRMED（2026-11-17）委托：设计文档为 Agent 自审对象；自审通过后自主推进计划/实施/测试/交付与各阶段本地提交（中文说明）。
   - 边界：真实模型端到端依赖用户 provider 凭据与额度；额度耗尽时如实记 UNVERIFIED 并用本地脚本化端点补可复现证据。
 
@@ -24,12 +25,13 @@
 | 同上 · session-recovery | 路线图；AC MODEL_PROPOSED | SR-01…11：JSONL 转录、会话索引与恢复、不盲重放、needs_review、损坏与版本、强杀一致性、权限不升权、并发写互斥 | 新增 `src/storage/session-transcript.ts`、`session-store.ts`、`private-file.ts`、`src/core/transcript.ts` | 需求/设计/计划 v1.1 · 实施 T3/T4/T6/T7 完成 | 同上 | SR-01…11 全部 PASS（含真实子进程） | 分支本地提交，未合入 master | 等用户决定合入 |
 | 同上 · failure-recovery | 路线图；AC MODEL_PROPOSED | FR-01…09：失败类别与稳定错误码、工具失败不伪装、截断、迭代上限、失败点定位、重试不重复副作用、写入失败兜底、溢出恢复链、**工具空转熔断** | `src/core/session-persistence.ts` + `Session` 接线 | 需求/设计/计划 v1.1 · 实施 T1/T6/T9 完成 | 同上 | FR-01…09 全部 PASS；真实模型三场景 UNVERIFIED（402 额度） | 分支本地提交，未合入 master | 额度恢复后补跑观测 |
 | 同上 · project-memory | 路线图；AC MODEL_PROPOSED | PM-01…08：项目隔离、跨进程可见、原子写、凭据拒写、损坏 `.bak`、会话级隔离、上限 | 新增 `src/storage/project-memory.ts` | 需求/设计/计划 v1.1 · 实施 T5/T8 完成 | 同上 | PM-01…08 全部 PASS | 分支本地提交，未合入 master | 等用户决定合入 |
-| 同上 · 观测 | USER_CONFIRMED（2026-11-19，用户要求用 Langfuse 看效果） | OB-01…04：本机可起、层级正确、工具名正确、失败可见 | 新增 `scripts/langfuse/local-receiver.mjs`（Langfuse 兼容接收端）+ `sp005-observation.mjs` | 需求/设计/计划 v1.1 · 实施 T10/T11 完成 | 同上 | OB-01…04 PASS；真实模型 UNVERIFIED | 分支本地提交，未合入 master | 额度恢复后补跑 |
+| 同上 · 观测 | USER_CONFIRMED（2026-11-19，用户要求用 Langfuse 看效果） | OB-01…04：本机可起、层级正确、工具名正确、失败可见 | 新增 `scripts/langfuse/local-receiver.mjs`（Langfuse 兼容接收端）+ `sp005-observation.mjs` + `package.json` 的 `langfuse:init`/`langfuse:receiver`/`langfuse:observe` | 需求/设计/计划 v1.1 · 实施 T10/T11 完成 · 平台就绪 | 同上 | OB-01…04 PASS；真实模型 UNVERIFIED | 分支本地提交，未合入 master | 额度恢复后 `npm run langfuse:observe` |
 
 ## 验收与交接
 
 - 出口门槛对照：① 压缩保留约束/计划/工具状态 → CB-01…CB-04（单元 + 真实 HTTP 请求体）PASS；② 跨进程恢复不盲重放副作用 → SR-02…SR-04、FR-06 真实子进程 PASS；③ 项目记忆/会话隔离、原子持久化、共享写入约束 → PM-01…PM-08 + SR-11 两进程互斥 PASS；④ 明确长任务失败原因 → FR-01…FR-09 PASS。
-- 自动化计数：`node --test src/*/test/*.test.mjs` **712/712**；`npm test` 全链路 GREEN；`npm run test:checks`（core 不依赖 storage）通过；`npm run merge:gate` GREEN。
+- 自动化计数：`node --test src/*/test/*.test.mjs` **713/713**；`npm test` 全链路 **820 通过 / 0 失败**（langfuse 64）；`npm run test:checks`（core 不依赖 storage）通过；`npm run merge:gate` GREEN；AC 共 **42 条**（7+11+9+8+4+3）全部回填。
+- 监测平台就绪：`npm run langfuse:init` / `npm run langfuse:receiver` / `npm run langfuse:observe`；健康检查 200、未鉴权 401、观测落盘 `.runtime/langfuse/local-receiver/`；边界与端点见 `ops/langfuse/README.md` 第 8 节。
 - 未完成/延期项（UNVERIFIED，非本轮 FAIL）：真实模型三场景（provider 402 额度耗尽）、真实 Langfuse 服务端（本机无 Docker/WSL）、TUI 长会话像素级观感（归 SP006）。恢复条件见 [STATUS](long-session-reliability/STATUS.md) 与[验收报告](long-session-reliability/test-report.md) §5。
 - 下一轮输入（供 SP006）：压缩与恢复的 UI 呈现（`/context` 网格、恢复会话选择器可视化）、系统提示词与指令文件（`@import`）接入项目记忆、完成证据闸门与压缩的交互。
 - 风险/回退：
@@ -46,3 +48,4 @@
 | 2026-11-19 | 立项、需求/设计/计划 v1.0、T0–T14 实施与测试 | 用户要求启动 SP005 并跑端到端测试 |
 | 2026-11-19 | 新增 FR-09 与 CB-04 配对要求（需求 v0.2 / 设计 v1.1） | 真实模型观测暴露「换参数空转」与「占位被 normalize 丢弃」两处真实缺陷 |
 | 2026-11-19 | 交付记录落盘，合入 master 待用户决定 | 用户明确「测试完成后待我决定后再合入master分支」 |
+| 2026-11-19 | 监测平台搭到就绪态（三条 npm 命令 + 接收端文档），真实模型三场景保持 UNVERIFIED | 用户说明模型额度用尽，要求先搭好监测、到时再跑真实模型 |

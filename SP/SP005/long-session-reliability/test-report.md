@@ -19,15 +19,15 @@
 | 命令 | 结果 |
 | --- | --- |
 | `npm run build` | PASS（tsc，无错误） |
-| `node --test src/*/test/*.test.mjs` | **712 / 712 pass** |
+| `node --test src/*/test/*.test.mjs` | **713 / 713 pass** |
 | `node --test src/core/test/context-budget.e2e.test.mjs` | 3 / 3 pass（真实 HTTP 请求体） |
 | `node --test src/storage/test/session-recovery.e2e.test.mjs` | 4 / 4 pass（真实子进程） |
-| `node --test scripts/langfuse/*.test.mjs` | 16 / 16 pass（3 + 10 + 3） |
+| `node --test scripts/langfuse/*.test.mjs` | 本轮新增 17 / 17 pass（3 + 4 + 10 + 3，含接收端查看页）；同目录含 SP004 用例，`npm run test:langfuse` 合计 **64 / 64** |
 | `npm run test:checks` | PASS（模块边界：core 不 import storage） |
 | `npm test` | PASS（skills + spec + unit + checks + langfuse + release + merge） |
 | `npm run merge:gate` | GREEN |
 
-本轮新增用例合计 **95** 例：
+本轮新增用例合计 **96** 例：
 
 | 文件 | 数量 | 覆盖 |
 | --- | --- | --- |
@@ -104,15 +104,19 @@
 
 修复后再次运行时 provider 返回 HTTP 402 `insufficient_balance_error`（Token Plan 用量上限），因此改为本地脚本化 OpenAI 兼容端点复现同一链路（真实 HTTP、真实解析、真实工具、真实追踪、真实接收端），3 例全绿。
 
+额度未恢复期间，监测平台已搭到就绪态：`npm run langfuse:init` / `npm run langfuse:receiver` / `npm run langfuse:observe`（端点与边界见 `ops/langfuse/README.md` 第 8 节）；真实模型场景保留 UNVERIFIED，等额度恢复后一次跑完。
+
 ## 5. 未验证项与恢复条件
 
 | 项 | 状态 | 恢复条件 | 动作 |
 | --- | --- | --- | --- |
-| 真实模型三场景（成功/工具失败/长会话压缩） | UNVERIFIED | provider Token Plan 额度恢复 | `node scripts/langfuse/sp005-observation.mjs`，回填 §4 |
+| 真实模型三场景（成功/工具失败/长会话压缩） | UNVERIFIED | provider Token Plan 额度恢复（用户 2026-11-19：先搭好监测平台，到时再跑真实模型测试） | `npm run langfuse:observe`，回填 §4 |
 | 真实 Langfuse 服务端（Docker/WSL） | UNVERIFIED | 本机具备 Docker 或 WSL2 发行版 | 按 `ops/langfuse/README.md` 起栈，用 `scripts/langfuse/query-traces.mjs` 复核 |
 | TUI 长会话视觉观感 | UNVERIFIED | SP006 可视化验收 | 终端快照 + 按键回放 |
 
 ## 6. 风险与剩余
+
+- 整轮 `npm test` 偶发挂起已定位并修复：`src/exec/background.ts` 的 `finalize` 未释放子进程 stdout/stderr 读端，被 `taskkill /T` 漏掉的孙进程继续持有写端时，`node --test` 的隔离子进程永远等不到事件循环清空（实测 T5-10 之后卡住 12 分钟）。修复为终态后 `child.stdout.destroy()` / `child.stderr.destroy()`，并补 `CE-07/R-05` 回归用例；修复后全量回归 `EXIT=0`。
 
 - 压缩默认阈值按模型上下文上限的 85% 触发；真实模型上下文上限变化时需重新校准（当前由 `contextBudget.maxTokens` 注入）。
 - 转录与记忆写入失败时回合结果仍在内存中，进程退出即丢失（设计如此，属于「明确报错」而非「静默成功」）。

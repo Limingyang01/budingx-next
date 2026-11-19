@@ -14,8 +14,8 @@
 | 功能分支 | `feature/SP005/long-session-reliability`（从 master `17afe34` 建） |
 | 设计文档 | [design/design.zh.md](./design/design.zh.md) |
 | 实施计划 | [design/plan.zh.md](./design/plan.zh.md) |
-| 验收报告 | [test-report.md](./test-report.md) |
-| AC 总数 | 41 条（CB-01…07、SR-01…11、FR-01…09、PM-01…08、OB-01…04、EV-01…03） |
+| 验收报告 | 轮次结论 [SP/SP005/test-report.md](../test-report.md)；逐条细节 [test-report.md](./test-report.md) |
+| AC 总数 | 42 条（CB-01…07 共 7、SR-01…11 共 11、FR-01…09 共 9、PM-01…08 共 8、OB-01…04 共 4、EV-01…03 共 3） |
 | Git 范围 | 功能分支本地提交；**未合入 master、未推送** |
 
 ## 授权与来源
@@ -46,11 +46,26 @@
 4. **本机无 Docker/WSL**：真实 Langfuse 栈不可用，改为仓内 Langfuse 兼容接收端（OTLP 接入 + v2 查询），SP004 的 `verify-agent.mjs` / `query-traces.mjs` 未改一行即可用。
 5. **两级熔断**：真实模型观测证明「换参数重试同一失败工具」会让精确签名熔断失效，因此增加「同工具 + 同错误码连续失败 5 次」这一级。
 
+## 观测平台就绪（本机）
+
+用户 2026-11-19（额度不足时）指示：「目前那个模型好像没有token了，你可以先搭建好监测平台，到时再跑真实模型测试」。据此本轮把监测平台搭到「可一键起、可回查、可复跑」的状态：
+
+| 项 | 状态 | 证据 |
+| --- | --- | --- |
+| 兼容接收端启动 | 就绪 | `npm run langfuse:receiver`（等效 `node scripts/langfuse/local-receiver.mjs`，默认 `127.0.0.1:3000`） |
+| 配置初始化 | 就绪 | `npm run langfuse:init` → `.runtime/langfuse/{local.env,agent.env,login.json}` |
+| 健康检查 | 就绪 | `GET /api/public/health` ⇒ `{"status":"OK","version":"local-receiver"}` |
+| 鉴权 | 就绪 | 未鉴权 `GET /api/public/v2/observations` ⇒ 401 |
+| 观测留存 | 就绪 | span 落盘 `.runtime/langfuse/local-receiver/`，重启回读（重启后 `meta.totalItems=103`） |
+| 浏览器查看 | 就绪 | 打开 <http://127.0.0.1:3000/>：按 trace 分组的观测树、级别着色、耗时、input/output、过滤与自动刷新；数据源 `GET /ui/observations` |
+| 真实回合观测 | 待额度 | `npm run langfuse:observe`（402 期间不跑，脚本会在缺 key/配置时明确报错） |
+| 文档 | 就绪 | `ops/langfuse/README.md` 第 8 节（端点表、边界、两种端到端用法） |
+
 ## 未验证项与恢复条件
 
 | 项 | 状态 | 恢复条件 |
 | --- | --- | --- |
-| 真实模型端到端（三场景） | **UNVERIFIED** | provider 侧 Token Plan 额度恢复（当前 HTTP 402 `insufficient_balance_error`）后重跑 `node scripts/langfuse/sp005-observation.mjs` |
+| 真实模型端到端（三场景） | **UNVERIFIED** | provider 侧 Token Plan 额度恢复（当前 HTTP 402 `insufficient_balance_error`）后重跑 `npm run langfuse:observe`；用户 2026-11-19 决定「先搭好监测平台，到时再跑真实模型测试」 |
 | 真实 Langfuse 服务端（Docker/WSL） | **UNVERIFIED** | 本机具备 Docker 或 WSL2 发行版后按 `ops/langfuse/README.md` 启动，用同一 `query-traces.mjs` 复核 |
 | TUI 长会话的像素级观感 | **UNVERIFIED** | 归 SP006 可视化验收 |
 

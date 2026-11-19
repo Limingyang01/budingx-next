@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>budingX · 本地追踪</title>
+<style>
+body { margin: 0; padding: 16px 20px; background: #0d1117; color: #d7dde8; font: 13px/1.6 ui-monospace, Consolas, monospace; }
+header { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+h1 { font-size: 15px; margin: 0; color: #79c0ff; }
+input[type=text] { background: #161b22; border: 1px solid #30363d; color: #d7dde8; padding: 4px 8px; border-radius: 4px; width: 320px; }
+button { background: #21262d; border: 1px solid #30363d; color: #d7dde8; padding: 4px 10px; border-radius: 4px; cursor: pointer; }
+button:hover { border-color: #58a6ff; }
+.meta { color: #8b949e; }
+.trace { border: 1px solid #21262d; border-radius: 6px; margin: 10px 0; padding: 10px 12px; }
+.thead { display: flex; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+.tid { color: #79c0ff; }
+.obs { border-left: 2px solid #2b3245; padding: 3px 8px; margin: 4px 0; }
+.name { color: #a5d6ff; margin-right: 8px; }
+.lvl { margin-right: 8px; }
+.lvl-ERROR { color: #ff7b72; }
+.lvl-WARNING { color: #e3b341; }
+.lvl-DEFAULT { color: #8b949e; }
+.msg { color: #ff7b72; }
+pre { white-space: pre-wrap; word-break: break-word; background: #0b0f14; border: 1px solid #21262d; border-radius: 4px; padding: 8px; max-height: 260px; overflow: auto; }
+.empty { color: #8b949e; padding: 24px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>budingX · 本地追踪</h1>
+  <span id="summary" class="meta"></span>
+  <input id="q" type="text" placeholder="过滤名称 / session">
+  <button id="refresh">刷新</button>
+  <label class="meta"><input id="auto" type="checkbox"> 自动刷新（5s）</label>
+</header>
+<main id="list"></main>
+<script>
+var rows = []
+function esc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
+function dur(o) { if (!o.endTime) return ''; var ms = Math.round((Number(o.endTime) - Number(o.startTime)) / 1000000); return ms + ' ms' }
+function render() {
+  var filter = (document.getElementById('q').value || '').toLowerCase()
+  var by = {}
+  rows.forEach(function (o) { (by[o.traceId] = by[o.traceId] || []).push(o) })
+  var out = []
+  var traceCount = 0
+  Object.keys(by).sort().forEach(function (tid) {
+    var items = by[tid].slice().sort(function (a, b) { return Number(a.startTime) - Number(b.startTime) })
+    if (filter && !items.some(function (o) { return (o.name + ' ' + (o.sessionId || '')).toLowerCase().indexOf(filter) >= 0 })) return
+    traceCount++
+    var present = {}
+    items.forEach(function (o) { present[o.id] = true })
+    var kids = {}
+    var roots = []
+    items.forEach(function (o) {
+      if (o.parentObservationId && present[o.parentObservationId]) { (kids[o.parentObservationId] = kids[o.parentObservationId] || []).push(o) }
+      else { roots.push(o) }
+    })
+    out.push('<div class="trace"><div class="thead"><span class="tid">trace ' + esc(tid) + '</span><span class="meta">session ' + esc(items[0].sessionId || '-') + ' · ' + items.length + ' obs</span></div>')
+    function walk(o, depth) {
+      out.push('<div class="obs" style="margin-left:' + (depth * 18) + 'px">')
+      out.push('<span class="name">' + esc(o.name) + '</span>')
+      out.push('<span class="lvl lvl-' + esc(o.level || 'DEFAULT') + '">' + esc(o.level || 'DEFAULT') + '</span>')
+      out.push('<span class="meta">' + esc(o.type || '') + ' · ' + dur(o) + '</span>')
+      if (o.statusMessage) out.push('<div class="msg">' + esc(o.statusMessage) + '</div>')
+      out.push('<details><summary>input / output</summary><pre>' + esc(JSON.stringify({ input: o.input, output: o.output }, null, 2)) + '</pre></details>')
+      out.push('</div>')
+      ;(kids[o.id] || []).forEach(function (k) { walk(k, depth + 1) })
+    }
+    roots.forEach(function (r) { walk(r, 0) })
+    out.push('</div>')
+  })
+  document.getElementById('list').innerHTML = out.join('') || '<div class="empty">还没有观测：跑一次带追踪的回合后刷新。</div>'
+  document.getElementById('summary').textContent = traceCount + ' traces · ' + rows.length + ' observations'
+}
+async function load() {
+  try {
+    var res = await fetch('/ui/observations?limit=500&fields=core,basic,io')
+    var body = await res.json()
+    rows = body.data || []
+    render()
+  } catch (e) {
+    document.getElementById('summary').textContent = '读取失败：' + e
+  }
+}
+document.getElementById('refresh').addEventListener('click', load)
+document.getElementById('q').addEventListener('input', render)
+document.getElementById('auto').addEventListener('change', function (ev) {
+  if (ev.target.checked) { window.__timer = setInterval(load, 5000); load() }
+  else { clearInterval(window.__timer) }
+})
+load()
+</script>
+</body>
+</html>

@@ -114,3 +114,32 @@ stop 仅停止本实例容器，保留数据卷和本机凭据，不关闭 WSL �
 成功标准分为：服务健康、项目鉴权、真实模型成功、真实工具失败、平台可查询；每项分别留证，未完成项保持 UNVERIFIED。
 
 上游参考：[官方 Compose 部署](https://langfuse.com/self-hosting/deployment/docker-compose)、[初始化](https://langfuse.com/self-hosting/administration/headless-initialization)、[OTLP 端点与属性映射](https://langfuse.com/integrations/native/opentelemetry)。
+
+## 8. 无 Docker/WSL 时的兼容接收端（SP005）
+
+本机没有 Docker 也没有 WSL2 发行版时，上面的真实栈无法启动。仓库内提供一个 **Langfuse 兼容接收端** `scripts/langfuse/local-receiver.mjs`：它实现追踪上报与查询所需的最小协议，让 Agent 的 OTLP 上报、SP004 的 `query-traces.mjs` / `verify-agent.mjs` 不改一行即可工作。
+
+```bash
+npm run langfuse:init        # 首次：生成 .runtime/langfuse/{local.env,agent.env,login.json}
+npm run langfuse:receiver    # 启动：默认 http://127.0.0.1:3000（可用 --port/--storage 覆盖）
+```
+
+| 端点 | 用途 | 鉴权 |
+| --- | --- | --- |
+| `GET /api/public/health` | 存活探针 | 否 |
+| `GET /` `GET /ui` | 只读查看页：按 trace 分组、按层级展开、显示 input/output 与级别 | 否 |
+| `GET /ui/observations?limit=&traceId=&sessionId=&name=` | 查看页数据源，形状与 v2 一致（仅因服务只监听回环而免鉴权） | 否 |
+| `POST /api/public/otel/v1/traces` | 接收 OTLP JSON（与 `src/observability/exporter.ts` 同协议） | Basic（项目 public/secret key） |
+| `GET /api/public/v2/observations?traceId=&sessionId=&name=&fields=core,basic,io` | 回查观测（层级、工具名、级别、输入输出） | Basic |
+| `GET /api/public/projects` | 项目身份探针 | Basic |
+
+观测按 span 落盘到 `.runtime/langfuse/local-receiver/`，重启后保留；`--storage <dir>` 可指定别处。接收端要求上报带 `x-langfuse-ingestion-version: 4`，与 `src/observability/exporter.ts` 一致。
+
+**查看测试效果**：启动后浏览器打开 <http://127.0.0.1:3000/> 即可看到每条 trace 的观测树（`agent.run` / `model.request` / `tool.<Name>`）、级别着色、耗时与 input/output，可过滤、手动刷新或 5s 自动刷新。这是替代性查看页，不是 Langfuse 的完整 UI。页面源文件是 `scripts/langfuse/local-ui.html`，改动后运行 `npm run langfuse:ui` 重新生成 `scripts/langfuse/local-ui.mjs`（测试会校验内联脚本可解析，防止转义错误导致页面静默不执行）。
+
+**边界**：这是兼容接收端，不是 Langfuse 本体——只有只读查看页，没有 ClickHouse/PostgreSQL，没有登录、项目/用户管理、评测与数据集语义。它只能证明「上报与查询链路正确」，**不能替代**真实栈的服务健康与初始化验收；真实栈项保持 UNVERIFIED。
+
+端到端用法：
+
+- 有模型额度：`npm run langfuse:observe` → 跑 tool-success / tool-error 两个真实回合，回查并判读层级、工具名与级别，报告写 `.runtime/langfuse/sp005-observation.json`。
+- 无模型额度：`node --test scripts/langfuse/sp005-observation.e2e.test.mjs` → 用本地脚本化 OpenAI 兼容端点复现同一条链路（真实 HTTP、真实解析、真实工具、真实追踪、真实接收端）。
