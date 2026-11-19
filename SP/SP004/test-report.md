@@ -142,3 +142,12 @@ AC 区间：CE-01…20（20）、CT-01…09（9）、GW-01…09（9）、TP-01�
 - **AC**：28 条中 26 条 PASS（代码/结构/判定逻辑）；OB-04 真实部署健康、OB-24 live 三场景 UNVERIFIED。
 - **UNVERIFIED 恢复条件**：OB-04 需在无竞争实例且 ClickHouse fresh-migration 可正常完成的环境重跑 `control.ps1 -Action start`；OB-24 需部署成功 + 用户提供 `BUDINGX_SMOKE_MODEL_*` 后运行 `node scripts/langfuse/verify-agent.mjs`。
 - **产品说明书同步**：PRODUCT.md §6/§7/§8 与发行说明 v0.4.0 已记录可选追踪默认关闭、启用方式与 UNVERIFIED 边界。
+
+
+## 8. 0.4.0 Actions #16 干净检出回归（2026-11-19）
+
+- [运行 #16](https://github.com/Limingyang01/budingx-next/actions/runs/44492443786) 基于 `5f504e0`，Windows 和 Linux 均在发布预演步骤失败，OIDC 发布任务跳过。该源码的 Windows 和 WSL Linux 干净检出均复现 `ERR_MODULE_NOT_FOUND`：Langfuse 能力探针导入主线未包含的 `dist/exec/host-sandbox.js`，已有工作树的残留编译文件掩盖了此问题。
+- 探针改为直接使用 0.4.0 主线的 TUI 运行时装配。干净 Windows 检出的现有探针测试由模块加载失败恢复到 9 项通过。Windows Node 22.22.0 / npm 11.21.2 完整预演 722 项通过，0 失败、0 跳过，91 文件 tarball、隔离安装、版本 shim 与本地 HTTP smoke 均通过。
+- 自审确认探针脚本只移除缺失的模块及无效的注入参数，产品的命令隔离策略、依赖与发布门禁沿用主线。产品说明书于核实正式发布时同步发布状态。本次源码检查通过 `git diff --check`，未引入产物、凭据或参考仓内容。
+- 正式发布、官方包安装和真实 Langfuse 探针为 UNVERIFIED。恢复条件为维护者从修复后的 master 新建发布运行并核验 npm 回执，以及按 §7 的真实环境条件复测 Langfuse。
+- Linux Node 24.22.3 预演另复现 10 个受控 Git 用例因 `EPIPE` 失败。临时诊断发现，无输入的 Git 命令退出时仍会收到一次空写入。修复让无输入调用直接结束 stdin，并将 stdin 传输错误返回给调用者。Linux 上原有 Git 与探针回归共 20 项通过。自审核对有输入的 Git 命令仍接收审批绑定的内容，授权消耗、预期 tree 校验与条件更新 ref 的检查均沿用原逻辑。
