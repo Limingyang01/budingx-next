@@ -52,7 +52,8 @@ In piped input, `/models` lists profiles and `/model NAME` selects one. Interact
 - /clear — clear the in-memory conversation and its visible transcript (input history and pending prompts remain)
 - /sessions — list saved sessions with session ID, title, updated time and turn count
 - /resume SESSION_ID — restore a saved session's history; no tool call is replayed and unknown results are marked for review
-- /context — show the context budget: estimated usage, limit, reserved output, compaction threshold and per-message cost
+- /context — show context usage and budget: used tokens, limit, reserved output, compaction threshold and per-message cost
+- /effort [low|medium|high] — show or set the reasoning effort (also shown in the status bar)
 - /memory — show project and session memory entries; /memory PROJECT|SESSION add TITLE:BODY writes one entry
 - /exit or /quit — exit
 

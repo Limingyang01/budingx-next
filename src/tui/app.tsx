@@ -12,16 +12,25 @@ import {
 } from 'ink'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 import stringWidth from 'string-width'
+/**
+ * Stream deltas are coalesced into one paint per frame.
+ *
+ * A real model sends several deltas per millisecond; rendering every one of
+ * them paints the same frame many times per visible change, which is what
+ * made a long session feel stuck (SP005 review, 0.5.2 lag fix).
+ */
+const STREAM_FRAME_MS = 16
+
 import type { SessionEvent } from '../core/events.js'
 import type { Session } from '../core/session.js'
 import type { InkApprovalGateway } from './approval.js'
-import { changePermissionMode, interactiveModeLabel, runCommand, type CommandContext } from './commands.js'
+import { changePermissionMode, formatTokens, interactiveModeLabel, runCommand, type CommandContext } from './commands.js'
 import { EditorBuffer } from './editor/buffer.js'
 import { useWheel } from './editor/mouse.js'
 import { applyKey } from './editor/keys.js'
 import { reduceFrame, renderTextLines } from './render/reducer.js'
 import { ACCENT, renderHeader, sessionTopic, setupHint, terminalStrategy, terminalTitle } from './render/header.js'
-import { initialFrame } from './render/types.js'
+import { initialFrame, type TranscriptEntry } from './render/types.js'
 import { diffStats, diffViewLines } from './render/diff-view.js'
 import {
   commandCardLines,
@@ -126,6 +135,13 @@ export function App({
     () => transcriptMode || !fullScreen ? frame.transcript : collapseReadSearch(frame.transcript, !zh),
     [frame.transcript, fullScreen, transcriptMode, zh]
   )
+  // The live assistant message must keep a stable object identity: a fresh
+  // literal on every render broke the memo of TranscriptMessage and the
+  // markdown token cache with it (SP005 review, 0.5.2 lag fix).
+  const liveEntry = useMemo<TranscriptEntry | undefined>(
+    () => (frame.liveText ? { kind: 'assistant', text: frame.liveText } : undefined),
+    [frame.liveText]
+  )
   const [historyCountAtScroll, setHistoryCountAtScroll] = useState(0)
   const transcriptHeader = useRef<DOMElement>(null)
   const headerMetrics = useBoxMetrics(transcriptHeader)
@@ -163,6 +179,23 @@ export function App({
   useEffect(() => {
     if (fullScreen) stdout.write(terminalTitle(topic, working))
   }, [stdout, fullScreen, topic, working])
+  // 0.5.2：常驻上下文用量。刷新点很少（每回合结束/清空），不参与流式重绘。
+  const [contextInfo, setContextInfo] = useState<
+    { usedTokens: number; maxTokens?: number; percentUsed?: number; source: 'provider' | 'estimate' } | undefined
+  >(undefined)
+  useEffect(() => {
+    const read = commandContext.contextUsage?.usage()
+    setContextInfo(read
+      ? {
+          usedTokens: read.usedTokens,
+          ...(read.maxTokens === undefined ? {} : { maxTokens: read.maxTokens }),
+          ...(read.percentUsed === undefined ? {} : { percentUsed: read.percentUsed }),
+          source: read.source
+        }
+      : undefined)
+  }, [commandContext.contextUsage, frame.status.state, frame.transcript.length])
+  // 0.5.2：推理强度指示。每次渲染直接读取（开销可忽略），
+  // 这样 /effort 改完立刻反映到状态栏。
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
     if (frame.startedAt === undefined) return
@@ -219,6 +252,26 @@ export function App({
   const [, bumpEditor] = useReducer((n: number) => n + 1, 0)
   const ctrlC = useRef(0)
   const pick = (a: string, b: string) => (zh ? a : b)
+  // 0.5.2：上下文用量文案；窗口未知时只报已用 token，绝不编造百分比。
+  const contextLabel = contextInfo === undefined
+    ? undefined
+    : contextInfo.maxTokens === undefined
+      ? pick(`上下文 ${formatTokens(contextInfo.usedTokens)}`, `ctx ${formatTokens(contextInfo.usedTokens)}`)
+      : pick(
+          `上下文 ${contextInfo.percentUsed ?? 0}% · ${formatTokens(contextInfo.usedTokens)}/${formatTokens(contextInfo.maxTokens)}`,
+          `ctx ${contextInfo.percentUsed ?? 0}% · ${formatTokens(contextInfo.usedTokens)}/${formatTokens(contextInfo.maxTokens)}`
+        )
+  const contextTone = contextInfo?.percentUsed === undefined
+    ? undefined
+    : contextInfo.percentUsed >= 95
+      ? 'red'
+      : contextInfo.percentUsed >= 80
+        ? 'yellow'
+        : undefined
+  // 0.5.2：推理强度指示，参考实现把 effort 常驻在底部状态栏。
+  const effortLabel = commandContext.effort === undefined
+    ? undefined
+    : `⊙ ${commandContext.effort.current()} · /effort`
   const suggestion = !working && !input && frame.suggestFollowUp
     ? followUp(frame.lastQuestion ?? '', frame.lastAnswer ?? '', zh)
     : ''
@@ -249,6 +302,7 @@ export function App({
     () => () => {
       mounted.current = false
       clearTimeout(typingTimer.current)
+      clearTimeout(deltaTimer.current)
       managerDone.current?.()
       gateway.cancelAll()
     },
@@ -393,13 +447,40 @@ export function App({
       ? workspacePromptOptions(text, permission.workspace, permission.policy)
       : undefined)
   }
+  // Pending stream deltas, flushed once per frame. Anything that is not a
+  // delta flushes first so text is never reordered against completion/tool
+  // events.
+  const pendingDeltas = useRef<{ event: SessionEvent; toolElapsedMs?: number }[]>([])
+  const deltaTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const flushDeltas = useCallback(() => {
+    if (deltaTimer.current !== undefined) {
+      clearTimeout(deltaTimer.current)
+      deltaTimer.current = undefined
+    }
+    const pending = pendingDeltas.current
+    if (pending.length === 0) return
+    pendingDeltas.current = []
+    for (const action of pending) dispatch(action)
+  }, [])
+  const deliverEvent = useCallback((event: SessionEvent, toolElapsedMs?: number) => {
+    if (event.type === 'text_delta' || event.type === 'thinking_delta') {
+      pendingDeltas.current.push({ event, toolElapsedMs })
+      if (deltaTimer.current === undefined) {
+        deltaTimer.current = setTimeout(flushDeltas, STREAM_FRAME_MS)
+        deltaTimer.current.unref?.()
+      }
+      return
+    }
+    flushDeltas()
+    dispatch({ event, toolElapsedMs })
+  }, [flushDeltas])
   useEffect(
     () =>
       session.on((event) => {
         const toolElapsedMs = event.type === 'tool_result'
           ? session.toolElapsedMs(event.turnId, event.callId)
           : undefined
-        dispatch({ event, toolElapsedMs })
+        deliverEvent(event, toolElapsedMs)
         if (event.type === 'conversation_cleared') {
           setTopic(undefined)
           setScrollTop(undefined)
@@ -419,7 +500,7 @@ export function App({
           }
         }
       }),
-    [session, gateway, editor]
+    [session, gateway, editor, deliverEvent]
   )
   usePaste((text) => {
     if (managerDone.current) {
@@ -1101,8 +1182,8 @@ export function App({
             offset={Math.max(0, offset - headerMetrics.height)} fullScreen={fullScreen}
             ascii={!zh} expanded={transcriptMode}
             targetIndex={messageMatch} onTargetOffset={revealHistory} onPriorRowsChanged={correctPriorRows} />
-          {frame.liveText && (
-            <TranscriptMessage entry={{ kind: 'assistant', text: frame.liveText }} ascii={!zh} />
+          {liveEntry && (
+            <TranscriptMessage entry={liveEntry} ascii={!zh} />
           )}
           {previewTools.map((name, index) => (
             <Text key={index} color={ACCENT} wrap="truncate-end">
@@ -1196,6 +1277,15 @@ export function App({
               </Text>
             )}
           </Text>
+        )}
+        {(contextLabel !== undefined || effortLabel !== undefined) && (
+          <Box justifyContent="space-between">
+            <Text color={contextTone} dimColor={contextTone === undefined} wrap="truncate-end">
+              {contextLabel ?? ''}
+              {contextInfo?.source === 'estimate' && pick('（估算）', ' (estimated)')}
+            </Text>
+            {effortLabel !== undefined && <Text dimColor>{effortLabel}</Text>}
+          </Box>
         )}
         {transcriptMode && (
           <Text dimColor>{pick('转录视图 · / 搜索 · Ctrl+O 或 Esc 返回', 'Transcript · / search · Ctrl+O or Esc to return')}</Text>

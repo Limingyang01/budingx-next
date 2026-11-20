@@ -25,6 +25,7 @@ import {
   type MemoryScope
 } from '../storage/project-memory.js'
 import { estimateTokens, normalizeBudget, triggerTokens } from '../core/context-budget.js'
+import type { ReasoningEffort } from '../core/provider.js'
 import type { ResolvedConfig } from '../storage/profiles.js'
 import {
   createPermissionPolicy,
@@ -90,6 +91,17 @@ export type AgentRuntime = {
       warnings?: string[]
     }
   }
+  /** 0.5.2：上下文用量（provider 真实 usage 优先，缺失时本地估算）。 */
+  contextUsage?: {
+    usage: () => {
+      usedTokens: number
+      maxTokens?: number
+      reservedOutputTokens?: number
+      triggerTokens?: number
+      percentUsed?: number
+      source: 'provider' | 'estimate'
+    }
+  }
   /** SP005：上下文预算构成。 */
   context?: {
     budget: () => {
@@ -100,6 +112,12 @@ export type AgentRuntime = {
       messages: number
       breakdown: { kind: string; tokens: number }[]
     }
+  }
+  /** 0.5.2：推理强度（/effort 与状态栏共用）。 */
+  effort?: {
+    current: () => ReasoningEffort
+    set: (next: ReasoningEffort) => void
+    choices: readonly ReasoningEffort[]
   }
   /** SP005：项目与会话记忆。 */
   memory?: {
@@ -188,6 +206,8 @@ export type AgentRuntimeOptions = {
   contextBudget?: { maxTokens: number; reservedOutputTokens?: number }
   /** SP005: enable the session transcript (persistence) and project memory. */
   persistence?: boolean
+  /** 0.5.2: initial reasoning effort; /effort changes it at runtime. */
+  reasoningEffort?: ReasoningEffort
 }
 
 /**
@@ -257,6 +277,12 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   const tools: ToolHandler[] = [...workspaceTools, ...execTools]
   const denials: DenialRecord[] = []
   // SP005 §5：会话转录与索引。持久化是可选的，未开启时行为与 SP004 一致。
+  // 0.5.2：推理强度在运行时可变；会话每次请求读取一次。
+  const effortChoices: readonly ReasoningEffort[] = ['low', 'medium', 'high']
+  // 未显式设置时不发送该参数：不少兼容端点遇到未知字段会直接 400。
+  // 状态栏仍显示默认值，避免“没设置”看起来像功能缺失。
+  const DEFAULT_EFFORT: ReasoningEffort = 'medium'
+  let reasoningEffort: ReasoningEffort | undefined = options.reasoningEffort
   const persistence = options.persistence ?? false
   let sessionStore: SessionStore | undefined
   let transcript: ReturnType<typeof startSession>['transcript'] | undefined
@@ -275,6 +301,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   }
   const session = new Session({
     id: sessionId,
+    resolveReasoningEffort: () => reasoningEffort,
     provider: provider(),
     resolveProvider: provider,
     approval: options.approval,
@@ -419,8 +446,45 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       }
     : undefined
 
+  // 0.5.2：上下文用量。provider 汇报过就采信真实 input token，
+  // 否则退回本地估算，并明确标注来源。
+  const contextUsageSurface = {
+    usage: () => {
+      const history = session.history
+      const providerUsage = session.usage
+      const usedTokens = providerUsage?.inputTokens ?? estimateTokens([...history])
+      const window = options.contextBudget?.maxTokens
+      const reserved = window === undefined
+        ? undefined
+        : normalizeBudget(window, options.contextBudget?.reservedOutputTokens).reservedOutputTokens
+      const target = window === undefined || reserved === undefined
+        ? undefined
+        : Math.max(1, window - reserved)
+      return {
+        usedTokens,
+        ...(window === undefined ? {} : { maxTokens: window }),
+        ...(reserved === undefined ? {} : { reservedOutputTokens: reserved }),
+        ...(target === undefined
+          ? {}
+          : { triggerTokens: Math.floor(target * 0.85) }),
+        ...(window === undefined || window <= 0
+          ? {}
+          : { percentUsed: Math.min(100, Math.round((usedTokens / window) * 100)) }),
+        source: providerUsage?.inputTokens === undefined ? 'estimate' as const : 'provider' as const
+      }
+    }
+  }
+
   return {
     session, workspace, policy, setPermissionMode, permissionStore, checkpoint, denials, warnings,
+    contextUsage: contextUsageSurface,
+    effort: {
+      current: () => reasoningEffort ?? DEFAULT_EFFORT,
+      set: (next: ReasoningEffort) => {
+        reasoningEffort = next
+      },
+      choices: effortChoices
+    },
     ...(tracing.shutdown ? { shutdownTracing: tracing.shutdown } : {}),
     ...(sessionsSurface ? { sessions: sessionsSurface } : {}),
     ...(contextSurface ? { context: contextSurface } : {}),

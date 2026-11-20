@@ -37,6 +37,7 @@ import type {
   ChatRequest,
   FinishReason,
   ModelProvider,
+  ReasoningEffort,
   ToolFragment
 } from './provider.js'
 import { assembleToolCalls, parseToolArguments } from './tool-calls.js'
@@ -119,6 +120,10 @@ export type SessionOptions = {
    * SP005 §4：读取当前已批准计划文本，压缩时作为保留项。
    */
   resolvePlanText?: () => string | undefined
+  /**
+   * 0.5.2：当前推理强度。每次请求读取一次，`/effort` 修改后立即生效。
+   */
+  resolveReasoningEffort?: () => ReasoningEffort | undefined
   onEvent?: (event: SessionEvent) => void
 }
 
@@ -239,6 +244,13 @@ export class Session {
   /** SP005 FR-07：本轮转录写入失败的位置，随 turn_finalized 一起报出。 */
   private persistenceError?: { code: string; message: string }
   /**
+   * Token usage reported by the provider for the most recent request.
+   * It is the only authoritative context figure we have: the local
+   * estimator is a heuristic. Exposed so the UI can show how much of the
+   * context window is in use (0.5.2 context usage display).
+   */
+  private lastUsage?: Usage
+  /**
    * SP005 FR-05：同一工具 + 同一参数的连续失败计数。
    * 达到上限后熔断，避免模型在同一个失败调用上空转。
    */
@@ -320,6 +332,11 @@ export class Session {
 
   get currentState(): SessionState {
     return this.state
+  }
+
+  /** Provider-reported usage of the last request, when it sent one. */
+  get usage(): Usage | undefined {
+    return this.lastUsage
   }
 
   get history(): readonly Message[] {
@@ -707,6 +724,7 @@ export class Session {
 
   /** Clear the conversation. Only allowed at a turn boundary. */
   clearHistory(): void {
+    this.lastUsage = undefined
     if (this.state !== 'idle') return
     this.messages.length = 0
     this.emit({ type: 'conversation_cleared' })
@@ -1055,8 +1073,11 @@ export class Session {
   private buildRequest(snapshot: TurnSnapshot, turn: ActiveTurn): ChatRequest {
     const budgeted = this.compactIfNeeded(turn)
     const source = budgeted.messages
+    const effort = this.options.resolveReasoningEffort?.()
     const request: ChatRequest = {
       model: snapshot.model,
+      // 0.5.2：每次请求重新读取，/effort 修改后立即生效。
+      ...(effort === undefined ? {} : { reasoningEffort: effort }),
       messages: normalizeForApi(source, turn.provider.preserveToolReasoning?.(snapshot.model)
         ? (message) => {
             const source = this.reasoningSource.get(message)
@@ -1167,6 +1188,7 @@ export class Session {
               finishReason = event.finishReason
               usage = event.usage
               modelUsage = event.usage
+              if (event.usage) this.lastUsage = event.usage
               break
             case 'retry':
               this.emit({

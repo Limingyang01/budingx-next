@@ -7,6 +7,34 @@ import type { ToolTranscriptEntry, TranscriptEntry } from './types.js'
 
 const markdown = new Marked({ gfm: true })
 
+/**
+ * Markdown token cache for assistant messages.
+ *
+ * The live assistant message is re-rendered on every stream delta. Parsing
+ * the whole answer again each time was quadratic in the answer length and was
+ * the second cause of the long-session lag (SP005 review, 0.5.2 lag fix).
+ * Completed paragraphs never change, so their tokens are reused and only the
+ * trailing (still growing) paragraph is re-parsed.
+ */
+type MarkdownCacheEntry = {
+  /** Text of the completed part that the cached tokens were built from. */
+  complete: string
+  /** Text of the trailing part that the cached tokens were built from. */
+  partial: string
+  /** Tokens of the completed part (stable). */
+  stable: Token[]
+  /** Tokens of the trailing part (rebuilt on every change). */
+  tail: Token[]
+}
+const markdownCache = new WeakMap<object, MarkdownCacheEntry>()
+
+/** Split text into stable blocks: complete paragraphs and a trailing partial one. */
+function blocksOf(text: string): { complete: string; partial: string } {
+  const lastBreak = text.lastIndexOf('\n\n')
+  if (lastBreak < 0) return { complete: '', partial: text }
+  return { complete: text.slice(0, lastBreak), partial: text.slice(lastBreak + 2) }
+}
+
 function inline(tokens: Token[]): ReactNode {
   return tokens.map((token, index) => (
     <Fragment key={index}>{inlineToken(token)}</Fragment>
@@ -118,6 +146,27 @@ function ToolMessage({ entry, ascii, expanded }: { entry: ToolTranscriptEntry; a
   )
 }
 
+/**
+ * Parse an assistant message into render tokens, reusing the tokens of the
+ * already completed part. The cache key is the entry object, so it is freed
+ * together with the transcript entry.
+ */
+function assistantTokens(entry: TranscriptEntry, text: string): Token[] {
+  const { complete, partial } = blocksOf(text)
+  const cached = markdownCache.get(entry)
+  if (cached && cached.complete === complete) {
+    if (cached.partial !== partial) {
+      cached.partial = partial
+      cached.tail = markdown.lexer(partial)
+    }
+    return [...cached.stable, ...cached.tail]
+  }
+  const stable = complete ? markdown.lexer(complete) : []
+  const tail = markdown.lexer(partial)
+  markdownCache.set(entry, { complete, partial, stable, tail })
+  return [...stable, ...tail]
+}
+
 export const TranscriptMessage = memo(function TranscriptMessage({
   entry, ascii, expanded = false
 }: { entry: TranscriptEntry; ascii: boolean; expanded?: boolean }) {
@@ -134,7 +183,7 @@ export const TranscriptMessage = memo(function TranscriptMessage({
   if (entry.kind === 'assistant') {
     return (
       <Box marginTop={1} paddingX={1} flexDirection="column">
-        {blocks(markdown.lexer(text), ascii)}
+        {blocks(assistantTokens(entry, text), ascii)}
       </Box>
     )
   }

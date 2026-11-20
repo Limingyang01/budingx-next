@@ -6,6 +6,7 @@
 import type { Session } from '../core/session.js'
 import type { DenialRecord } from '../core/events.js'
 import type { PermissionMode } from '../core/permissions.js'
+import type { ReasoningEffort } from '../core/provider.js'
 import type { ConfigStore } from '../storage/config-store.js'
 import type { CredentialStore } from '../storage/credentials.js'
 import {
@@ -65,6 +66,20 @@ export type CommandContext = {
       warnings?: string[]
     }
   }
+  /**
+   * 0.5.2：上下文用量。usedTokens 优先取 provider 真实 usage，
+   * 缺失时用本地估算；window 未知时只报已用 token。
+   */
+  contextUsage?: {
+    usage: () => {
+      usedTokens: number
+      maxTokens?: number
+      reservedOutputTokens?: number
+      triggerTokens?: number
+      percentUsed?: number
+      source: 'provider' | 'estimate'
+    }
+  }
   /** SP005: context budget composition for /context. */
   context?: {
     budget: () => {
@@ -75,6 +90,16 @@ export type CommandContext = {
       messages: number
       breakdown: { kind: string; tokens: number }[]
     }
+  }
+  /**
+   * 0.5.2：推理强度（/effort）。参考实现的底部状态栏会常驻显示它。
+   */
+  effort?: {
+    current: () => ReasoningEffort
+    set: (next: ReasoningEffort) => void
+    choices: readonly ReasoningEffort[]
+    /** True when the provider ignores the setting. */
+    supported?: boolean
   }
   /** SP005: project and session memory for /memory. */
   memory?: {
@@ -120,6 +145,7 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
   /context              查看上下文预算构成
   /memory               查看项目/会话记忆
   /memory <范围> add <标题>：<正文>  写入记忆
+  /effort [low|medium|high]  查看或设置推理强度
   /clear                清空会话
   /exit                 退出 budingx`
     : `Commands:
@@ -139,6 +165,7 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
   /context              show the context budget composition
   /memory               show project/session memory
   /memory <scope> add <title>: <body>   store a memory entry
+  /effort [low|medium|high]  show or set the reasoning effort
   /clear                clear the conversation
   /exit                 leave budingx`
 }
@@ -267,12 +294,68 @@ async function executeCommand(
       return contextCommand(context, pick)
     case 'memory':
       return memoryCommand(argument, context, pick)
+    case 'effort':
+      return effortCommand(argument, context, pick)
     default:
       return {
         handled: true,
         error: pick('未知命令；使用 /help', 'Unknown command; use /help')
       }
   }
+}
+
+/** 0.5.2：推理强度。无参数时显示当前值与可选值，带参数时设置。 */
+function effortCommand(
+  argument: string,
+  context: CommandContext,
+  pick: (zh: string, en: string) => string
+): CommandOutcome {
+  const effort = context.effort
+  if (!effort) {
+    return {
+      handled: true,
+      error: pick(
+        '推理强度未接入；当前运行时无法修改',
+        'Reasoning effort is not wired; it cannot be changed at runtime'
+      )
+    }
+  }
+  const requested = argument.trim().toLowerCase()
+  if (!requested) {
+    return {
+      handled: true,
+      message: pick(
+        `当前推理强度：${effort.current()}（可选：${effort.choices.join(' / ')}）`,
+        `Reasoning effort: ${effort.current()} (choose: ${effort.choices.join(' / ')})`
+      )
+    }
+  }
+  if (!effort.choices.includes(requested as ReasoningEffort)) {
+    return {
+      handled: true,
+      error: pick(
+        `无效的推理强度：${requested}；可选：${effort.choices.join(' / ')}`,
+        `Invalid reasoning effort: ${requested}; choose: ${effort.choices.join(' / ')}`
+      )
+    }
+  }
+  effort.set(requested as ReasoningEffort)
+  return {
+    handled: true,
+    message: pick(
+      `推理强度已设为 ${requested}（下一次请求生效）`,
+      `Reasoning effort set to ${requested} (applies to the next request)`
+    )
+  }
+}
+
+/** 0.5.2：把 token 数压缩成紧凑文本（1234 → 1.2k，12000 → 12k）。 */
+export function formatTokens(count: number): string {
+  if (!Number.isFinite(count) || count <= 0) return '0'
+  if (count < 1000) return String(Math.round(count))
+  if (count < 10000) return `${(count / 1000).toFixed(1)}k`
+  if (count < 1000000) return `${Math.round(count / 1000)}k`
+  return `${(count / 1000000).toFixed(1)}M`
 }
 
 /** SP005: list known sessions on disk. */
@@ -363,7 +446,25 @@ function contextCommand(
   pick: (zh: string, en: string) => string
 ): CommandOutcome {
   const budget = context.context?.budget()
+  const usage = context.contextUsage?.usage()
   if (!budget) {
+    if (usage) {
+      // 0.5.2：即使没有配置预算，也要能看到上下文用了多少。
+      const used = formatTokens(usage.usedTokens)
+      const lines = [
+        usage.maxTokens === undefined
+          ? pick(`上下文已用：${used} token`, `Context used: ${used} tokens`)
+          : pick(
+              `上下文已用：${used} / ${formatTokens(usage.maxTokens)} token（${usage.percentUsed ?? 0}%）`,
+              `Context used: ${used} / ${formatTokens(usage.maxTokens)} tokens (${usage.percentUsed ?? 0}%)`
+            ),
+        pick(
+          `来源：${usage.source === 'provider' ? '模型汇报的真实用量' : '本地估算'}`,
+          `Source: ${usage.source === 'provider' ? 'provider-reported usage' : 'local estimate'}`
+        )
+      ]
+      return { handled: true, message: lines.join('\n') }
+    }
     return {
       handled: true,
       error: pick(

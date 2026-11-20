@@ -155,3 +155,18 @@ AC 区间：CB-01…07（7）、SR-01…11（11）、FR-01…09（9）、PM-01�
 - [GitHub Actions #21](https://github.com/Limingyang01/budingx-next/actions/runs/44658158215) 基于源码 `9903776`，Ubuntu、Windows、OIDC 发布和发布后的安装验证均通过。npm 官方源确认版本 0.5.1 已公开且 `latest` 指向 0.5.1。
 - 官方包独立安装后的 CLI 版本为 0.5.1，本地 HTTP 流式冒烟通过（1 次 fixture 请求，退出码 0）。已核验 53 个包的 registry 签名和 7 个包的 attestations。公开 tarball 含 98 个文件，实测 SHA-512 与 npm 元数据、安装锁和 provenance subject 摘要一致，provenance 指向同一源码 SHA、`master` 分支、工作流 `.github/workflows/publish-tui.yml` 与运行 #21。
 - Actions 原始回执需要登录才能下载，未取得；台账按公开运行结果、已验签的 npm provenance 和官方包独立安装结果登记（`ciArtifactDownloaded: false`）。证据来源已登记于[发布台账](../../release-ledger.json)和[发行说明](../../release-notes/v0.5.1.md)。真实模型长会话压缩和 TUI 观感的恢复条件见 §4。
+
+## 11. 0.5.2 长会话渲染优化与上下文可见性（2026-11-20）
+
+用户报告「长会话经常卡顿卡死」。在真实渲染管线（真实 Ink + 真实 Session + 伪终端流）上复现并修复，三条根因与实测见 [当前状态 §SP005 长会话渲染优化](../../docs/current-status.md)。
+
+- 根因 1：流式片段每帧全文重排（20k 字符 20 片段 273ms）→ 改为累积原文 + 增量解析。
+- 根因 2：`staticLines`/`liveLines` 死字段每帧复制 → 删除。
+- 根因 3：虚拟列表预渲染过小、无单帧挂载上限、resize 清空高度缓存 → 按参考机制重写（80 行预渲染、25 条/帧、300 条上限、缓存缩放）。
+- 另修：流式片段按帧合并；共享分词器；测量仅在高度变化时重排。
+- 实测：600 条历史同一场景 1806ms → 997ms；2000 条历史 + 24k 字符流式最差帧间隔 51ms，无秒级冻结帧。
+
+同版新增：状态栏常驻上下文用量（真实 usage 优先、标注估算、可配窗口百分比与告警色）与推理强度 `⊙ … · /effort`；新增 `/effort` 命令；`/context` 在未配置预算时也报已用 token；交互式 TUI 默认开启会话持久化，使四个 SP005 命令真正可用。
+
+验证：新增 `long-session-render.test.mjs`（6 项）、`sp0052-status.test.mjs`（2 项）、`sp0052-long-session.test.mjs`（压测）、`sp0052-e2e.test.mjs`（真实 CLI 子进程 + 本地流式服务，断言内容完整、effort 下发、退出码 0）。
+

@@ -4,7 +4,7 @@
 
 ## 当前发布状态（2026-11-20）
 
-**0.5.1（SP005 复审修复）已发布，npm `latest` 指向 0.5.1。** [GitHub Actions #21](https://github.com/Limingyang01/budingx-next/actions/runs/44658158215) 使用源码 `9903776`，Ubuntu、Windows 和 OIDC 发布均通过。已核验官方源独立安装、本地 HTTP 流式冒烟、签名和 provenance，详见 [0.5.1 发行说明](../release-notes/v0.5.1.md)。0.5.0 的发布记录见 [0.5.0 发行说明](../release-notes/v0.5.0.md)。
+**0.5.1（SP005 复审修复）已发布，npm `latest` 指向 0.5.1；候选 0.5.2（长会话渲染优化与上下文可见性）已准备，待维护者触发发布。** [GitHub Actions #21](https://github.com/Limingyang01/budingx-next/actions/runs/44658158215) 使用源码 `9903776`，Ubuntu、Windows 和 OIDC 发布均通过。已核验官方源独立安装、本地 HTTP 流式冒烟、签名和 provenance，详见 [0.5.1 发行说明](../release-notes/v0.5.1.md)。0.5.0 的发布记录见 [0.5.0 发行说明](../release-notes/v0.5.0.md)。
 
 **0.4.0 已发布**，当时 npm `latest` 指向 0.4.0。[GitHub Actions #18](https://github.com/Limingyang01/budingx-next/actions/runs/44504716724) 使用源码 `82af4ab`，Windows、Linux 和 OIDC 发布均通过。官方源独立安装、本地 HTTP 流式测试、签名与来源证明均已核对。详见 [0.4.0 发行说明](../release-notes/v0.4.0.md)。
 
