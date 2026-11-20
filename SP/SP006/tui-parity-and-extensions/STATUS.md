@@ -81,7 +81,7 @@
 | 全量单测 | 914 项 / 913 通过 / 0 失败 / 1 跳过（跳过项仅 POSIX 文件权限） |
 | SP006 新增 | 20 个测试文件、110 例 |
 | 制品 | sp006-packaging.mjs 6 项 PASS，exit 0，未上传 |
-| AST | 48/48 映射，命中 0，自检 3/3 PASS |
+| AST | 52/52 映射，命中 0，自检 3/3 PASS |
 | 版本 | 0.6.0 prepared（sourceCommit 4b78cdb…，receipt 占位 null） |
 
 ## 下一步

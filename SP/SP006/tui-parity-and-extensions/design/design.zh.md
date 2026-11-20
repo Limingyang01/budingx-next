@@ -4,8 +4,8 @@
 | --- | --- |
 | 需求 slug | tui-parity-and-extensions |
 | 所属 SP | SP006 |
-| 版本 | v1.1（自审通过；实施偏差补记 D-12…D-14，2026-11-20） |
-| 状态 | SELF_REVIEWED（Agent 自审 ≥2 轮，见 §16；无需人工审阅点，2026-11-17 委托） |
+| 版本 | v1.2（自审通过；实施偏差补记 D-12…D-14，用户检查反馈修复补记 D-15…D-16 与 §16.4 第 3 轮自审，2026-11-20） |
+| 状态 | SELF_REVIEWED（Agent 自审 ≥3 轮，见 §16；无需人工审阅点，2026-11-17 委托） |
 | 材料来源 | ①用户 m00001 原话；②`docs/iteration-plan.md` r9 SP006 行与出口门槛；③`docs/tui-command-roadmap.md`（2026-11-20）；④`docs/tui-fidelity-gap-baseline.md` §3.6；⑤`skills/buding-sdd/references/reference-repo-inventory.md` 行为事实锚点；⑥参考仓 `D:\my_project\budingWorkerSpace` 的**只读**行为侦察（本轮亲自核实，文件路径见各节「参考对照」） |
 | 身份区分 | USER_CONFIRMED：功能目录、出口门槛、P0 判定项、命令清单、分支与不合入 master；MODEL_PROPOSED：模块切分、命名、字段契约的取舍与实现方式；OPEN：见 §15 |
 | 关联链接 | `SP/SP006/tui-parity-and-extensions/requirements.md`；`SP/SP006/tui-parity-and-extensions/STATUS.md`；`docs/independent-development.md`；`docs/tui-fidelity-gap-baseline.md` |
@@ -855,6 +855,8 @@ npm test                 # 全量门禁
 | D-12 | `/tasks` 读宿主**后台任务登记表**（真实子进程记录：状态/退出码/输出路径）；不读 todo/计划清单 | CMD-08 明确要求状态、退出码、输出路径，todo 清单没有这些字段；登记表由 `TaskRegistry` 提供，命令只读 | 命令面与设计 §6.3 语义一致；后台任务来源为 `src/tui/tasks.ts`，agent 回合暂不自动登记 |
 | D-13 | `/init` 在 `AGENTS.md` 已存在时直接拒绝并输出路径；`/btw` 为空时输出用法；`/mcp`、`/skills` 在非交互模式降级为文本列表 | CMD-05 要求不覆盖、需确认；空问题不应提交给模型；local-jsx 在无 UI 宿主必须有等价输出（CMD-01/CMD-12） | 与设计 §6.3 语义一致；模态槽在 TUI 内由 `commandOverlay` 承载 |
 | D-14 | `src/core/exec.ts` 的 `CommandResult` 增加 `command?`、`startedAt?`；后台任务快照回填二者 | /tasks 需要展示实际命令行与启动时间；既有字段不足以区分同类任务 | 纯增量字段，既有调用方无需改动 |
+| D-15 | 命令卡片在**运行中/后台**才占实时区一行；完成、失败、取消后从实时区移除，结果只保留在转录工具条目；最近一次命令可用 Ctrl+E 显式展开 | 参考仓命令输出不常驻输入区上方；本仓初版把 `Frame.command` 常驻渲染导致「命令不消失、一个调用占多行」 | 行为与参考仓一致；`Frame.command` 字段与 reducer 语义保留（SP004 T15-1/2/3 回归依赖），隐藏逻辑放在 app/纯函数层 |
+| D-16 | `/resume` 恢复走**会话事件通路**（新增 `conversation_restored`）重建可见转录，并做**会话身份切换**（`Session.adoptIdentity({ id, transcript })`）；参考仓直接 `setMessages(() => messages)` 写 React 消息列表 | 本仓渲染层契约规定渲染器不直接读会话（`src/tui/render/reducer.ts:1-6`），`conversation_rewound` 已是同构先例；只做可见性不做身份切换会导致续写仍落在旧会话文件，再次恢复看不到续写 | 恢复后历史可见并进入后续回合上下文；续写写回被恢复会话。已知遗留：后台输出目录与计划目录仍按启动时 id 固定（归档位置差异，无数据丢失） |
 
 ### 15.2 风险
 
@@ -907,5 +909,21 @@ npm test                 # 全量门禁
 ### 16.3 AC 覆盖自检结论
 
 - requirements.md 的 69 条 AC 在本设计中均有落点（§14.2 映射表）；未落点项：无。
-- 全部有意偏离集中在 D-01…D-14，均给出理由、影响与后续归属，不以「已对齐/同等效果」表述。
+- 全部有意偏离集中在 D-01…D-16，均给出理由、影响与后续归属，不以「已对齐/同等效果」表述。
 - P0 五项（四区骨架 / 冻结缓存 / 帧缓冲差分 / 上下文键位 / 状态栏契约）各有独立设计节与验证入口。
+
+### 16.4 第 3 轮自审（用户检查反馈修复，2026-11-20）
+
+用户在功能分支检查阶段提出两处问题（m01955 命令卡片常驻与单次调用占多行；m02285 `/resume` 恢复后看不到历史对话），本轮据此复核设计并补记偏离。
+
+| 编号 | 发现 | 处理 |
+| --- | --- | --- |
+| S3-01 | 初版把 `Frame.command` 常驻渲染，等于「命令完成后仍在输入区上方占位」，且一次调用渲染多行（cwd/结果/exit/hint 全展开） | 补 D-15：实时区只在运行中/后台占一行，完成后移除，结果留在转录工具条目；最近一次命令 Ctrl+E 可显式展开 |
+| S3-02 | 初版设计只写「恢复会话后历史进入模型上下文」，没有把「历史必须回到**可见转录**」写成设计要求，参考仓靠 `setMessages(() => messages)` 直接写 React 消息列表 | 补 D-16 第 1 部分：走 `conversation_restored` 会话事件重建转录（与 `conversation_rewound` 同构），渲染层不直接读会话 |
+| S3-03 | 只做可见性不做会话身份切换，会导致「恢复后继续写仍落在旧会话文件，再次 `/resume` 看不到续写」 | 补 D-16 第 2 部分：`Session.adoptIdentity({ id, transcript })` 切换会话 id 与转录端口（对齐参考仓 `setConversationId` + `switchSession` + `resetSessionFilePointer`） |
+| S3-04 | 恢复后的工具调用若无结果会被渲染成 pending，产生持续脉冲动画，视觉上像「还在跑」 | 实现约定：恢复映射中无结果的 tool_use 一律置 `interrupted`；结果按 callId 回填 `success`/`error` |
+| S3-05 | 恢复可能带来长历史渲染性能风险 | 复用既有 `src/tui/render/history-window.tsx` 虚拟化护栏（阈值 64、over-scan 80、挂载上限 300、连续 Read/Glob/Grep 折叠），恢复只做一次性映射，不引入新的常驻计算 |
+| S3-06 | 新增源文件若未进 AST 映射表，提交后门禁 RED（R-07 实际发生） | 提交前先跑 AST 脚本；`restored-transcript.ts`、`tool-summary.ts` 补 REFERENCE_ALLOWLIST 条目后复核 PASS（52/52） |
+| S3-07 | 用户授权边界变化：m00001 原为「不合入 master、不推送」，m02328 明确「推送远端、先不要合入 master」 | 计划 §分支纪律 与 G-01 改为「不合入 master；推送按 m02328 授权执行」，合入 master 仍禁止，等待用户检查后由用户决定 |
+
+本轮复核结论：两处用户反馈均属实现层缺口而非设计方向错误；补记 D-15/D-16 与 §16.4 后，设计与实现重新一致，AC 覆盖结论不变（69/69）。

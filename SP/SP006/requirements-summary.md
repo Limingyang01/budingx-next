@@ -23,16 +23,16 @@
 | 同上 · HC-01…HC-07 | 路线图；AC MODEL_PROPOSED | text/json/stream-json、事件顺序与字段、失败退出码 1、用法错误 2、非 TTY、不写用户数据 | `src/tui/headless.ts`、`cli.ts` | 实施 T-A7 完成 | 同上 | 5 例 PASS（真实子进程） | 仅功能分支 | 用户检查 |
 | 同上 · NP-01…NP-05 | 路线图；AC MODEL_PROPOSED | tarball 白名单、仓库外隔离安装、真实流式任务、publish dry-run、台账字段 | `scripts/release/sp006-packaging.mjs`、`release-ledger.json`、`sp006-release-ledger.test.mjs` | 实施 T-D1 完成 | 同上 | 脚本 exit 0，6 项 PASS；台账 3 例 PASS | 仅功能分支 | 用户检查后发布 |
 | 同上 · CMD-01…CMD-12 | `docs/tui-command-roadmap.md`；AC MODEL_PROPOSED | 三型注册表、模态槽、prompt 进度、七条新命令、22 条既有命令回归 | `src/tui/commands/{types,registry,util,builtin-*,index}.ts`、`commands.ts`、`app.tsx` | 实施 T-B1…T-B3 完成 | 同上 | 注册表 7 例 + 命令 10 例 + UI 2 例 PASS | 仅功能分支 | 用户检查 |
-| 同上 · AST-01…AST-03 | 用户指令 m00001；AC MODEL_PROPOSED | 改动文件全映射、命中全处置、自检全 PASS | `scripts/review/sp004-ast.mjs` | 实施 T-D2 完成 | 同上 | 48/48 映射，命中 0，自检 3/3 PASS | 仅功能分支 | 用户检查 |
+| 同上 · AST-01…AST-03 | 用户指令 m00001；AC MODEL_PROPOSED | 改动文件全映射、命中全处置、自检全 PASS | `scripts/review/sp004-ast.mjs` | 实施 T-D2 完成 | 同上 | 52/52 映射，命中 0，自检 3/3 PASS | 仅功能分支 | 用户检查 |
 
 ## 验收与交接
 
 - AC 共 **69 条**（TU 15、PI 5、SM 9、HK 8、WR 5、HC 7、NP 5、CMD 12、AST 3）：**69 PASS / 0 PARTIAL / 0 FAIL / 0 UNVERIFIED**。逐条证据见 [验收报告](test-report.md)。
 - 全量回归：`npm run test:unit` **914 项 / 913 通过 / 0 失败 / 1 跳过**，EXIT=0，54.0s；跳过项为仅在 POSIX 生效的文件权限断言。SP006 新增 20 个测试文件、110 例。
 - 定向回归：`node --test src/tui/test/sp006-*.test.mjs sp0054-command-fidelity.test.mjs sp0054-enter-command.test.mjs commands.test.mjs commands-zh.test.mjs` **135 通过 / 0 失败**。
-- 制品：`node scripts/release/sp006-packaging.mjs` exit 0；tarball 139 文件，隔离安装 0.6.0，无头流式 7 事件且未写用户数据，`npm publish --dry-run` 不上传。
-- AST：`node scripts/review/sp004-ast.mjs --reference <参考仓> --reference-revision b5c9be8 --base dc94731`：48 改动文件 / 48 映射，自检 3 项 PASS，本仓单元 238、参考 14250、函数对 44941，命中「无」，结论 PASS。
-- 本地提交：波次 A `cedf2a3`、波次 B `031b99b`、波次 C 与命令面 `4b78cdb`、波次 D `06d7b2a`、命令卡片修复 `f0b11eb`、台账同步 `47c5cb6`、`/resume` 修复（见分支 HEAD）。
+- 制品：`node scripts/release/sp006-packaging.mjs` exit 0；tarball 141 文件，隔离安装 0.6.0，无头流式 7 事件且未写用户数据，`npm publish --dry-run` 不上传。
+- AST：`node scripts/review/sp004-ast.mjs --reference <参考仓> --reference-revision b5c9be8 --base dc94731`：52 改动文件 / 52 映射，自检 3 项 PASS，本仓单元 252、参考 14381、函数对 49285，命中「无」，结论 PASS。
+- 本地提交：波次 A `cedf2a3`、波次 B `031b99b`、波次 C 与命令面 `4b78cdb`、波次 D `06d7b2a`、命令卡片修复 `f0b11eb`、台账同步 `47c5cb6`、`/resume` 修复 `1ef588a`。
 - **集成状态：未合入 master**；远端推送按用户 m02328 授权在提交后执行。npm 0.6.0 仅 prepared，未上传。
 - 已知限制：状态栏外部命令配置在应用挂载时读取一次，修改后需重启；无头模式不加载 MCP/hooks 交互面板；TU-09 可选字段按外部状态栏协议省略。恢复条件见验收报告。
 

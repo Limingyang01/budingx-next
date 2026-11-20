@@ -22,7 +22,7 @@
 | SP006 新增测试 | 20 个文件 / **110 例** |
 | 定向回归 | **135 通过 / 0 失败** |
 | 制品 smoke | **6/6 PASS**，exit 0，未上传 npm |
-| AST | **48/48 映射，命中 0，自检 3/3 PASS** |
+| AST | **52/52 映射，命中 0，自检 3/3 PASS** |
 
 历史失败与修复（保留为回归证据，不掩盖）：
 
@@ -116,7 +116,7 @@
 
 | AC | 结果 | 证据 |
 | --- | --- | --- |
-| NP-01 | PASS | `sp006-packaging.mjs`：tarball 139 文件，仅 package.json/README/LICENSE + dist/**/*.js，无 map/测试/源码 |
+| NP-01 | PASS | `sp006-packaging.mjs`：tarball 141 文件，仅 package.json/README/LICENSE + dist/**/*.js，无 map/测试/源码 |
 | NP-02 | PASS | 同一脚本：仓库外隔离安装，`--version` 为 0.6.0 |
 | NP-03 | PASS | 同一脚本：本地 SSE fixture 跑 `--prompt` stream-json，7 事件，assistant 拼接 `sp006-installed-ok`，HOME 无 sessions |
 | NP-04 | PASS | 同一脚本：`npm publish <tarball> --dry-run --json`，不触发上传 |
@@ -143,7 +143,7 @@
 
 | AC | 结果 | 证据 |
 | --- | --- | --- |
-| AST-01 | PASS | 48 个改动源码文件全部有映射或「无对应参考模块」说明，未覆盖 0 |
+| AST-01 | PASS | 52 个改动源码文件全部有映射或「无对应参考模块」说明，未覆盖 0 |
 | AST-02 | PASS | 命中「无」；映射中的处置项无 UNRESOLVED |
 | AST-03 | PASS | 自检 3/3：相似片段命中、无关实现不命中、<60 节点短样板排除 |
 
@@ -157,15 +157,15 @@ node --test src/tui/test/*.test.mjs   914 tests / 913 pass / 0 fail / 1 skipped
 node scripts/release/sp006-packaging.mjs
 ledger: PASS 0.6.0 SP006 prepared
 release notes: PASS 0.6.0
-tarball: PASS budingx-0.6.0.tgz 139 files
+tarball: PASS budingx-0.6.0.tgz 141 files
 isolated install: PASS 0.6.0
 headless stream-json: PASS 7 events; no user data written
 publish --dry-run: PASS (no upload)
 
 node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8 --base dc94731
-参考仓 @ b5c9be8；基线 dc94731；改动文件 48，映射 48
+参考仓 @ b5c9be8；基线 dc94731；改动文件 52，映射 52
 自检：PASS 相似片段命中 / PASS 无关实现不命中 / PASS 样板排除
-本仓单元 238，参考单元 14250，函数对 44941；命中：无；结论：PASS
+本仓单元 252，参考单元 14381，函数对 49285；命中：无；结论：PASS
 ```
 
 ## 5. 新增测试文件
@@ -206,6 +206,6 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 
 ## 7. 交付边界
 
-- 分支：`feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；提交 `cedf2a3`（A）、`031b99b`（B）、`4b78cdb`（C+B3）、`06d7b2a`（D）、`f0b11eb`（命令卡片完成态隐藏与单行修复）、`47c5cb6`（台账源码 SHA 同步）、`resume-fix`（`/resume` 历史可见性与身份切换，待提交后回填 SHA）。
+- 分支：`feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；提交 `cedf2a3`（A）、`031b99b`（B）、`4b78cdb`（C+B3）、`06d7b2a`（D）、`f0b11eb`（命令卡片完成态隐藏与单行修复）、`47c5cb6`（台账源码 SHA 同步）、`1ef588a`（`/resume` 历史可见性与身份切换）。
 - **未合入 master**（用户 m02328 明确「先不要合入master分支」）；远端推送按用户 m02328 授权在提交后执行。
 - 版本 0.6.0 仅 `prepared`；未打 tag、未 npm 发布、未改远端设置。

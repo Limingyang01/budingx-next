@@ -4,15 +4,15 @@
 | --- | --- |
 | 需求目录 | `SP/SP006/tui-parity-and-extensions/` |
 | 已确认 SP | SP006（用户 m00001 明确「开始SP006的开发」） |
-| 依据设计 | `design/design.zh.md` v1.1（SELF_REVIEWED，含 §16 两轮自审） |
+| 依据设计 | `design/design.zh.md` v1.2（SELF_REVIEWED，含 §16 三轮自审与用户检查反馈修复补记） |
 | 功能分支 | `feature/SP006/tui-parity-and-extensions` |
 | 文档起点 SHA | `dc94731`（master：「登记 0.5.4 发布回执并同步文档至 latest」） |
 | 核对 master SHA | `dc94731`（建分支时工作区干净） |
-| 版本 | v1.0 |
+| 版本 | v1.1（补记波次 E：用户检查反馈修复） |
 | 状态 | APPROVED（计划为 Agent 自审对象；RED 证据随实施记录） |
 
 > 执行方式：每任务严格遵守「先写失败用例（RED，必须真实失败、不得靠 skip 制造）→ 最小实现转 GREEN → 跑本任务验证命令 → 跑相邻回归 → 回填完成事实」。完成事实栏不预填，只在真实执行后写入命令与结果。
-> 分支纪律：全程留在 `feature/SP006/tui-parity-and-extensions`，**不合入 master、不推送远端**（用户 m00001 原话：「先不要直接合入master分支，我检查后再合入」）。
+> 分支纪律：全程留在 `feature/SP006/tui-parity-and-extensions`，**不合入 master**（用户 m00001 原话：「先不要直接合入master分支，我检查后再合入」；用户 m02328 再次确认「先不要合入master分支」，并授权提交后推送远端）。
 > 参考纪律：参考仓 `D:\my_project\budingWorkerSpace` **只读**；只参考行为事实与协议字段，不抄代码、不抄提示词、不抄类型定义。
 
 ## Goal
@@ -54,7 +54,7 @@
 
 | 编号 | 约束 |
 | --- | --- |
-| G-01 | 全程不合入 master、不推送远端、不打标签（用户 m00001）。本地提交用中文说明，分阶段提交。 |
+| G-01 | 全程不合入 master、不打标签（用户 m00001、m02328）。远端推送按用户 m02328 授权在提交后执行（推送到功能分支，不推 master）。本地提交用中文说明，分阶段提交。 |
 | G-02 | 参考仓只读；实现独立编写，禁止逐字/改名搬运；AST 门禁命中必须处置。 |
 | G-03 | `core` 零 IO 与零 UI 依赖；`src/tui/package.json` 运行时依赖白名单固定为 ink/lowlight/marked/react/string-width，**不新增依赖**。 |
 | G-04 | 所有新模块 ESM、2 空格缩进、无分号；TS 严格模式随 `src/tui/tsconfig.json`。 |
@@ -372,7 +372,7 @@
   2. 最小实现：补映射与处置；无对应项用 `{note}`。
   3. 目标成功：exit 0，输出命中数与处置；3 项自检全绿。
 - **检查**：—
-- **状态记录**：DONE 2026-11-20；`node scripts/review/sp004-ast.mjs --reference /d/my_project/budingWorkerSpace --reference-revision b5c9be8 --base dc94731`：48 改动文件 / 48 映射，自检 3 项 PASS，本仓单元 238、参考 14250、函数对 44941，命中「无」，结论 PASS。
+- **状态记录**：DONE 2026-11-20；`node scripts/review/sp004-ast.mjs --reference /d/my_project/budingWorkerSpace --reference-revision b5c9be8 --base dc94731`：48 改动文件 / 48 映射，自检 3 项 PASS，本仓单元 238、参考 14250、函数对 44941，命中「无」，结论 PASS。（2026-11-20 用户检查修复后按 T-E3 复核：52 改动文件 / 52 映射，命中「无」，结论 PASS。）
 
 #### T-D3 文档收口
 
@@ -388,6 +388,61 @@
   1. 产品说明书章节同步；UNVERIFIED 项写明恢复条件。
 - **检查**：spec:check / skills:check
 - **状态记录**：DONE 2026-11-20；PRODUCT.md §2/§4.3/§5.7/§6/§7/§8 与 docs/current-status.md 同步；SP/SP006/requirements-summary.md、SP/SP006/test-report.md、本迭代 STATUS.md 已写；`npm run spec:check`、`npm run skills:check`、`npm run test:checks` 通过。
+
+### 波次 E：用户检查反馈修复（2026-11-20）
+
+> 触发：用户在功能分支检查阶段提出两处问题（m01955 命令卡片常驻与单次调用占多行；m02285 `/resume` 恢复后看不到历史），并要求端到端测试后提交并推送远端、暂不合入 master（m02328）。本波次不新增 AC，只修既有行为的可见性与一致性。
+
+#### T-E1 命令卡片完成态隐藏与单行渲染
+
+- **AC**：既有 TU/CMD 可见性要求（用户检查回归）
+- **文件**：Modify `src/tui/render/cards.ts`、`src/tui/app.tsx`、`src/tui/test/sp004-cards.test.mjs`；Create `src/tui/test/sp006-command-card.test.mjs`
+- **Consumes**：`Frame.command`、`commandCardLines`
+- **Produces**：`activeCommandCard(card)`（只返回 running/background 卡片）；`commandCardLines(card, width, { compact })` 单行输出
+- **依赖**：已完成波次 A–D
+- **责任/复用**：不删除 reducer 的 `command` 字段（SP004 T15-1/2/3 回归依赖它），隐藏逻辑放在 app/纯函数层
+- **工作目录**：仓库根
+- **验证命令**：`npm run build && node --test src/tui/test/sp004-cards.test.mjs src/tui/test/sp006-command-card.test.mjs`
+- **预期行为**：
+  1. RED：完成态卡片仍常驻输入区上方 → 帧级断言失败。
+  2. 最小实现：运行中/后台只占一行（`◐/▷ 命令 · interpreter · 状态 · 任务 <id>`）；完成/失败/取消后从实时区域移除，结果保留在转录工具条目；最近一次命令可 Ctrl+E 显式展开。
+  3. 目标成功：纯函数 4 组断言 + 真实子进程帧级 1 组。
+- **检查**：全量回归
+- **状态记录**：DONE 2026-11-20；提交 `f0b11eb`；纯函数例 PASS + 帧级例 PASS；全量 908 项 / 907 通过 / 0 失败 / 1 跳过
+
+#### T-E2 `/resume` 恢复后历史可见与会话身份切换
+
+- **AC**：用户检查回归（会话恢复可见性）
+- **文件**：Modify `src/core/events.ts`、`src/core/session.ts`、`src/tui/render/reducer.ts`、`src/tui/runtime.ts`、`src/tui/app.tsx`、`src/tui/commands/types.ts`；Create `src/tui/render/restored-transcript.ts`、`src/tui/render/tool-summary.ts`、`src/tui/test/sp006-resume-history.test.mjs`、`src/tui/test/sp006-resume-e2e.test.mjs`
+- **Consumes**：`SessionEvent`、`Frame.transcript`、`SessionStore.restore/startSession`
+- **Produces**：`conversation_restored` 事件；`Session.restoreHistory` 发事件；`Session.adoptIdentity({ id, transcript })`；`restoredTranscriptEntries(messages)`；`toolArgument(input)` / `summarizeInput(input)`
+- **依赖**：已完成波次 A–D
+- **责任/复用**：走会话事件通路（与 `conversation_rewound` 同构），渲染层不直接读会话；身份切换对齐参考实现 `REPL.tsx` 的 `setConversationId` + `switchSession` + `resetSessionFilePointer`
+- **工作目录**：仓库根
+- **验证命令**：`npm run build && node --test src/tui/test/sp006-resume-history.test.mjs src/tui/test/sp006-resume-e2e.test.mjs`
+- **预期行为**：
+  1. RED：恢复后消息区为空 → 帧级断言失败（先复现用户截图现象）。
+  2. 最小实现：恢复事件重建转录（用户/助手文本、工具调用与结果、未决工具标为已中断）；恢复时切换会话 id 与转录端口，续写写回被恢复会话。
+  3. 目标成功：纯函数 2 组 + 真实 Ink 帧 1 组 + 真实运行时/存储 1 组 + 真实 `/resume` 命令 1 组 + 进程外端到端 1 组。
+- **检查**：长历史渲染性能（虚拟化阈值 64、折叠合并不变）
+- **状态记录**：DONE 2026-11-20；提交 `1ef588a`；6 例 PASS；全量 914 项 / 913 通过 / 0 失败 / 1 跳过
+
+#### T-E3 AST 映射表随新文件同批更新
+
+- **AC**：AST-01（改动文件全映射）
+- **文件**：Modify `scripts/review/sp004-ast.mjs`（REFERENCE_ALLOWLIST 增 `src/tui/render/restored-transcript.ts`、`src/tui/render/tool-summary.ts` 条目）
+- **Consumes**：设计 §13
+- **Produces**：52/52 映射，覆盖本轮全部改动源码
+- **依赖**：T-E2 落盘后
+- **责任/复用**：阈值不变，仅补对照路径（`src/commands/resume`、`src/utils/sessionRestore.ts`、`src/components/messages`、`src/utils/collapseReadSearch.ts`）
+- **工作目录**：仓库根
+- **验证命令**：`node scripts/review/sp004-ast.mjs --reference /d/my_project/budingWorkerSpace --reference-revision b5c9be8 --base dc94731`
+- **预期行为**：
+  1. RED：新文件未映射 → 脚本结论 FAIL（先验证）。
+  2. 最小实现：补映射条目。
+  3. 目标成功：52 改动文件 / 52 映射，自检 3 项 PASS，命中「无」，结论 PASS。
+- **检查**：—
+- **状态记录**：DONE 2026-11-20；52 改动文件 / 52 映射，自检 3/3 PASS，本仓单元 252、参考单元 14381、函数对 49285，命中「无」，结论 PASS
 
 ## 全计划 AC 覆盖检查
 
