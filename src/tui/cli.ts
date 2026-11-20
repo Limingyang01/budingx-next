@@ -13,6 +13,7 @@ import { createAgentRuntime, workspacePromptOptions, type AgentRuntime } from '.
 import type { CommandContext } from './commands.js'
 import { InkApprovalGateway } from './approval.js'
 import { runCommand } from './commands.js'
+import { parseCliArgs, runHeadless, UsageError } from './headless.js'
 import { terminalStrategy } from './render/header.js'
 
 const MODE_ORDER: PermissionMode[] = ['read_only', 'workspace_edit', 'full_access']
@@ -68,6 +69,8 @@ function readProductVersion(): string {
 const version = readProductVersion()
 const help = `budingx ${version} — independent terminal coding agent
 Usage: budingx [--model NAME] [--base-url URL] [--timeout MS] [--prompt TEXT]
+  budingx --prompt TEXT [--output-format text|json|stream-json]
+          [--input-format text|stream-json] [--input-file PATH] [--session ID] [--verbose]
 Environment: BUDINGX_API_KEY, BUDINGX_MODEL, BUDINGX_BASE_URL
 Commands: /help /config /models /model NAME
   /permission [read|workspace|full] /rules [add|rm] /diff [path] /undo [path] /denials /clear /exit
@@ -263,6 +266,18 @@ async function main(): Promise<void> {
     return
   }
 
+  let parsed: ReturnType<typeof parseCliArgs>
+  try {
+    parsed = parseCliArgs(args)
+  } catch (error) {
+    if (error instanceof UsageError) {
+      process.stderr.write('Error: ' + error.message + '\n')
+      process.exitCode = 2
+      return
+    }
+    throw error
+  }
+
   let stores: Stores
   try {
     stores = loadStores()
@@ -276,7 +291,7 @@ async function main(): Promise<void> {
 
   let config: ResolvedConfig
   try {
-    config = mergeSources({ args, env: process.env, file: stores.file })
+    config = mergeSources({ args: parsed.passthrough, env: process.env, file: stores.file })
   } catch (error) {
     process.stderr.write(
       `Error: ${error instanceof Error ? error.message : 'invalid configuration'}\n`
@@ -285,32 +300,13 @@ async function main(): Promise<void> {
     return
   }
 
-  if (config.prompt !== undefined) {
-    if (!config.model.trim()) {
-      process.stderr.write(
-        'Error: Set BUDINGX_MODEL or use /model <name> before sending a prompt\n'
-      )
-      process.exitCode = 1
-      return
-    }
-    const promptEffort = effortFromEnv(process.env.BUDINGX_REASONING_EFFORT)
-    const runtime = createAgentRuntime({
-      cwd: process.cwd(),
-      getConfig: () => config,
-      approval: {
-        async request() {
-          return { outcome: 'deny', via: 'policy' }
-        }
-      },
-      configStore: stores.configStore,
-      mode: 'read_only',
-      ...(promptEffort === undefined ? {} : { reasoningEffort: promptEffort })
-    })
-    const code = await runTurn(runtime, config.prompt)
-    process.stdout.write('\n')
-    runtime.session.dispose()
-    await runtime.shutdownTracing?.()
-    process.exitCode = code
+  if (config.prompt !== undefined || parsed.explicit) {
+    process.exitCode = await runHeadless(
+      config,
+      { configStore: stores.configStore, credentialStore: stores.credentialStore },
+      { stdout: process.stdout, stderr: process.stderr, env: process.env },
+      parsed.options
+    )
     return
   }
 

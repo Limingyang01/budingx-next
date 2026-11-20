@@ -81,6 +81,8 @@ export type AgentRuntime = {
   warnings: string[]
   /** SP004 agent-observability：正常退出时的限时追踪 flush；未启用时为 undefined。 */
   shutdownTracing?: () => Promise<void>
+  /** SP006 §11：无头 system init 事件声明的工具名（注册顺序）。 */
+  toolNames: string[]
   /** SP005：会话列表与恢复能力；未开启持久化时为 undefined。 */
   sessions?: {
     list: () => { sessionId: string; title: string; updatedAt: string; turns: number }[]
@@ -492,6 +494,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
   return {
     session, workspace, policy, setPermissionMode, permissionStore, checkpoint, denials, warnings,
+    toolNames: tools.map((tool) => tool.name),
     contextUsage: contextUsageSurface,
     effort: {
       current: () => reasoningEffort ?? DEFAULT_EFFORT,

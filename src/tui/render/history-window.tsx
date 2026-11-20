@@ -1,5 +1,5 @@
 import { Box, measureElement, type DOMElement } from 'ink'
-import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import stringWidth from 'string-width'
 import { TranscriptMessage } from './transcript.js'
 import type { ToolTranscriptEntry, TranscriptEntry } from './types.js'
@@ -85,12 +85,11 @@ function estimate(entry: TranscriptEntry, width: number): number {
 }
 
 function MeasuredMessage({
-  entry, index, ascii, expanded, measure
+  entry, index, node, measure
 }: {
   entry: TranscriptEntry
   index: number
-  ascii: boolean
-  expanded: boolean
+  node: ReactNode
   measure(entry: TranscriptEntry, index: number, height: number): void
 }) {
   const box = useRef<DOMElement>(null)
@@ -105,9 +104,7 @@ function MeasuredMessage({
     reported.current = rows
     measure(entry, index, rows)
   })
-  return <Box flexShrink={0} flexDirection="column" ref={box}>
-    <TranscriptMessage entry={entry} ascii={ascii} expanded={expanded} />
-  </Box>
+  return <Box flexShrink={0} flexDirection="column" ref={box}>{node}</Box>
 }
 
 export function HistoryWindow({
@@ -125,6 +122,23 @@ export function HistoryWindow({
   onPriorRowsChanged(delta: number): void
 }) {
   // Measured heights survive a width change; see the useMemo below.
+  // SP006 §4.3：已完成条目按「条目对象 + 宽度 + 视图参数」冻结 React 元素。
+  // 元素引用不变时 React 直接跳过该子树，等价于参考实现「离屏返回同一元素」，
+  // 避免长会话里每帧重排整段 Markdown。
+  const frozenElements = useRef(new WeakMap<TranscriptEntry, {
+    width: number
+    ascii: boolean
+    expanded: boolean
+    node: ReactNode
+  }>())
+  const messageNode = (entry: TranscriptEntry): ReactNode => {
+    const cache = frozenElements.current
+    const hit = cache.get(entry)
+    if (hit && hit.width === width && hit.ascii === ascii && hit.expanded === expanded) return hit.node
+    const node = <TranscriptMessage entry={entry} ascii={ascii} expanded={expanded} />
+    cache.set(entry, { width, ascii, expanded, node })
+    return node
+  }
   const measuredRef = useRef<Map<TranscriptEntry, number> | undefined>(undefined)
   const measuredWidthRef = useRef(0)
   // Measured heights are kept across a width change and scaled by the
@@ -221,11 +235,11 @@ export function HistoryWindow({
     <>
       {virtual && offsets[start] > 0 && <Box height={offsets[start]} flexShrink={0} />}
       {!fullScreen && entries.map((entry, index) => (
-        <TranscriptMessage key={index} entry={entry} ascii={ascii} expanded={expanded} />
+        <Fragment key={index}>{messageNode(entry)}</Fragment>
       ))}
       {fullScreen && entries.slice(start, end).map((entry, index) => (
-        <MeasuredMessage key={start + index} index={start + index} entry={entry} ascii={ascii}
-          expanded={expanded} measure={measure} />
+        <MeasuredMessage key={start + index} index={start + index} entry={entry}
+          node={messageNode(entry)} measure={measure} />
       ))}
       {virtual && end < entries.length && (
         <Box height={offsets.at(-1)! - offsets[end]} flexShrink={0} />

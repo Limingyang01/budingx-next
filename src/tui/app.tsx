@@ -58,6 +58,11 @@ import { nextMode } from '../workspace/policy.js'
 import { walkWorkspaceFiles } from '../workspace/search.js'
 import { changeDiffs } from '../workspace/checkpoint.js'
 import { gitWorkspaceChanges, hasGitWorkspace } from '../workspace/git-diff.js'
+import { join } from 'node:path'
+import { sessionDirectory } from '../storage/private-file.js'
+import { TRANSCRIPT_FILE } from '../storage/session-transcript.js'
+import { planLayout, regionsFor } from './render/layout.js'
+import { useStatusLine } from './use-statusline.js'
 
 export type AppProps = {
   session: Session
@@ -225,6 +230,47 @@ export function App({
       source: read.source
     } : undefined)
   }, [commandContext.contextUsage, frame.status.state, frame.transcript.length])
+  // SP006 §4.4：外部状态栏命令（可选）。触发源只有「最后一条消息 / 权限模式 /
+  // 模型」变化，300ms 去抖；失败静默回落到内置状态栏。
+  const [statusConfig] = useState(() => {
+    try {
+      return commandContext.configStore.load().statusLine
+    } catch {
+      // A corrupt config already has a backup; the footer just stays built-in.
+      return undefined
+    }
+  })
+  const statusTrigger = useMemo(() => {
+    const last = frame.transcript.at(-1)
+    const lastKey = last === undefined
+      ? 'empty'
+      : last.kind === 'tool'
+        ? 'tool:' + last.callId + ':' + last.status
+        : last.kind + ':' + last.text.length
+    return [lastKey, frame.permissionMode, frame.transcript.length].join('|')
+  }, [frame.transcript, frame.permissionMode])
+  const statusView = useStatusLine({
+    spec: statusConfig === undefined
+      ? undefined
+      : { command: statusConfig.command, args: statusConfig.args, timeoutMs: statusConfig.timeoutMs },
+    trigger: statusTrigger,
+    state: {
+      sessionId: session.id,
+      transcriptPath: join(sessionDirectory(session.id), TRANSCRIPT_FILE),
+      cwd: cwd ?? process.cwd(),
+      permissionMode: frame.permissionMode,
+      model: { id: commandContext.getConfig().model, displayName: commandContext.getConfig().model },
+      workspace: { currentDir: cwd ?? process.cwd(), projectDir: cwd ?? process.cwd() },
+      version,
+      contextWindow: {
+        ...(contextInfo?.usedTokens === undefined ? {} : { usedTokens: contextInfo.usedTokens }),
+        ...(contextInfo?.maxTokens === undefined ? {} : { windowSize: contextInfo.maxTokens })
+      }
+    }
+  })
+  const showStatusLine = statusConfig !== undefined && statusView.text !== undefined && statusView.text !== ''
+  const footerHeight = (planLayout({ columns: width, rows, regions: regionsFor({ headerVisible: false }) })
+    .regions.find((region) => region.id === 'footer')?.height ?? 1) + (showStatusLine ? 1 : 0)
   // 0.5.2：推理强度指示。每次渲染直接读取（开销可忽略），
   // 这样 /effort 改完立刻反映到状态栏。
   const [now, setNow] = useState(Date.now)
@@ -1179,6 +1225,7 @@ export function App({
     if (!modelManagerOpen && !rulesManagerOpen && !resumeOpen && !rewindOpen && !contextOpen && !dialog) scrollHistory(lines)
   })
   const config = commandContext.getConfig()
+  const footerHint = setupHint(config, strategy)
   if (resumeOpen) {
     return <ResumePicker context={{ ...context, session }} input={managerInput} onPick={(id) => {
       const done = managerDone.current; setResumeOpen(false); managerDone.current = undefined; done?.()
@@ -1575,10 +1622,17 @@ export function App({
         {commandCount > 0 && (
           <Text dimColor>{pick('排队命令：', 'Queued commands: ')}{commandCount}</Text>
         )}
-        {(permissionHandles || contextLabel !== undefined || effortLabel !== undefined || (!fullScreen && hint)) && (
-          // 0.5.4：底部元信息合并为一行（模式 · 上下文 · 推理强度 · 快捷键），
-          // 不再让上下文/免审批各自占一行（用户反馈占据行数过多）。
-          <Box justifyContent="space-between">
+        {(showStatusLine || permissionHandles || contextLabel !== undefined || effortLabel !== undefined || (!fullScreen && hint)) && (
+          // SP006 §4.1：页脚是独立区域（固定行数 = 元信息行 + 可选状态栏行），
+          // 与输入区、消息区分离；外部状态栏输出不挤占输入框。
+          <Box flexDirection="column" flexShrink={0} height={footerHeight + (footerHint ? 1 : 0)}>
+            {showStatusLine && (
+              <Text dimColor wrap="truncate-end">{statusView.text}</Text>
+            )}
+            {(permissionHandles || contextLabel !== undefined || effortLabel !== undefined || (!fullScreen && hint)) && (
+              // 0.5.4：底部元信息合并为一行（模式 · 上下文 · 推理强度 · 快捷键），
+              // 不再让上下文/免审批各自占一行（用户反馈占据行数过多）。
+              <Box justifyContent="space-between">
             <Text wrap={fullScreen ? 'truncate-end' : 'wrap'}>
               {permissionHandles && (
                 <>
@@ -1602,10 +1656,12 @@ export function App({
                 )}
               </Text>
             )}
+              </Box>
+            )}
+            {footerHint && (
+              <Text color="yellow" wrap={fullScreen ? 'truncate-end' : 'wrap'}>{footerHint}</Text>
+            )}
           </Box>
-        )}
-        {setupHint(config, strategy) && (
-          <Text color="yellow" wrap={fullScreen ? 'truncate-end' : 'wrap'}>{setupHint(config, strategy)}</Text>
         )}
       </Box>
     </Box>
