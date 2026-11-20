@@ -1,6 +1,6 @@
 # 当前状态
 
-日期：2026-11-20。**npm `latest` 为 0.5.0（SP005 长会话与数据可靠性）**。[运行 #20](https://github.com/Limingyang01/budingx-next/actions/runs/44654008000) 基于源码 `751ba3b`，Windows、Ubuntu 和 OIDC 发布任务均通过。官方源独立安装、签名与 provenance 核验及本地 HTTP 流式冒烟均通过。见 [0.5.0 发行说明](../release-notes/v0.5.0.md)和[发布台账](../release-ledger.json)。SP005 的验证与未验证项见 [SP005 验收报告](../SP/SP005/test-report.md)。可选本机 Langfuse 观测默认关闭。
+日期：2026-11-20。**npm `latest` 为 0.5.0（SP005 长会话与数据可靠性）；候选 0.5.1（SP005 复审修复）已准备，尚未上传 npm**。[运行 #20](https://github.com/Limingyang01/budingx-next/actions/runs/44654008000) 基于源码 `751ba3b`，Windows、Ubuntu 和 OIDC 发布任务均通过。官方源独立安装、签名与 provenance 核验及本地 HTTP 流式冒烟均通过。见 [0.5.0 发行说明](../release-notes/v0.5.0.md)和[发布台账](../release-ledger.json)。SP005 的验证与未验证项见 [SP005 验收报告](../SP/SP005/test-report.md)。可选本机 Langfuse 观测默认关闭。
 
 ## 已有
 
@@ -13,7 +13,7 @@
 - 实际 Node/TypeScript 构建、测试、版本准备与发布编排，实际 tarball 隔离安装 smoke 已通过。
 - **SP002 新增**：`src/core`（事件契约、会话/回合状态机、工具回合、输入队列、消息规范化）、`src/provider`（OpenAI 兼容流解析、tool_calls 碎片、错误分类、有界重试、取消、连通探测）、`src/storage`（`~/.budingx` 配置与凭据仓库、模型档案 CRUD、三源合并）、`src/tui` 的 Ink 8 对话界面（渲染 reducer、多行编辑器、审批卡、双中断与排队）。
 - **SP003 新增（已合入 master `598fb89`）**：`src/workspace`（路径边界与忽略规则、Read/Write/Edit/Glob/Grep、行级 diff、检查点撤销、三模式策略与规则、`@` 上下文）、`src/core` 的权限端口与策略判定接线、`src/storage/permissions.ts`（`~/.budingx/permissions.json`）、TUI 侧审批三档与拒绝反馈、模式徽标与 Shift+Tab 轮播、diff 两级对话框与多源切换、`@`/`/` 统一补全。
-- **SP005 实施产物（已合入 master `293a337`，随 0.5.0 发布）**：`src/core/context-budget.ts`（预算核算、确定性压缩与保留项）、`transcript.ts`/`session-persistence.ts`（转录端口与失败语义）、`src/storage/{private-file,session-transcript,session-store,project-memory}.ts`（`~/.budingx/sessions`、`~/.budingx/memory` 原子持久化与写入锁）、两级工具空转熔断，以及 `/sessions`、`/resume`、`/context`、`/memory` 四个命令；42 条 AC 与证据见 [SP005 验收报告](../SP/SP005/test-report.md) 与[逐条细节](../SP/SP005/long-session-reliability/test-report.md)。
+- **SP005 实施产物（已合入 master `293a337`，随 0.5.0 发布；0.5.1 复审修复见下文专节）**：`src/core/context-budget.ts`（预算核算、确定性压缩与保留项）、`transcript.ts`/`session-persistence.ts`（转录端口与失败语义）、`src/storage/{private-file,session-transcript,session-store,project-memory}.ts`（`~/.budingx/sessions`、`~/.budingx/memory` 原子持久化与写入锁）、两级工具空转熔断，以及 `/sessions`、`/resume`、`/context`、`/memory` 四个命令；42 条 AC 与证据见 [SP005 验收报告](../SP/SP005/test-report.md) 与[逐条细节](../SP/SP005/long-session-reliability/test-report.md)。
 - **SP004 实施产物（随 0.4.0 发布）**：`SP/SP004/` 迭代汇总与四份需求（command-execution / coding-task-loop / git-worktree-safety / task-planning，共 48 条 AC）、[设计 v1.3](../SP/SP004/design/design.zh.md)、[计划 v1.3](../SP/SP004/design/plan.zh.md)（T1–T24 全部完成事实）与[验收报告](../SP/SP004/test-report.md)（48 条 AC 逐条证据、45 PASS + 4 项环境相关 UNVERIFIED）。已新增 `src/exec`（命令执行/后台任务/沙箱声明层）、`src/git`（Git 状态/worktree/受控提交）、`src/plan`（计划、持久化与审批）；`core` 只新增纯端口与状态机。发布范围及后续验证见 [SP004 迭代汇总](../SP/SP004/requirements-summary.md)。
 
 ## 未实现
@@ -56,6 +56,26 @@
 未变动的边界：权限模式固定三档（不还原参考仓七模式）；SP001 决定 3「读机制、不抄代码」；O5=B 效果口径（自有测量 + 能力清单覆盖度，禁用「已对齐/同等效果」措辞）；Vim / 鼠标选区 / 备用屏为可选预算项，不进 P0/P1 门槛。
 
 本次变更**不授权任何开发**；SP004 实施已于 2026-11-18 获用户放行。
+
+## SP005 复审修复（0.5.1，2026-11-20）
+
+0.5.0 发布后对 SP005 代码做了独立复审（4 路并行评审 + 对每条关键结论的独立复现），发现并修复了一批缺陷。修复分支 `feature/SP005/fix-0.5.1` 基于 0.5.0 发布提交之上的 master 最新提交，版本已准备为 **0.5.1**（[发行说明](../release-notes/v0.5.1.md)），尚未上传 npm。
+
+已修复（每条都有新增回归用例）：
+
+- **写入锁互斥**：0.5.0 的「先检查再写」两步在并发下失效（实测 8 个进程有 6 个同时「持锁」）。改为 O_EXCL 排他创建；释放时核对 pid，只有创建者能删锁。
+- **记忆文件往返**：正文里的 `## ` 行会截断条目并伪造新条目；标题换行可注入条目。改为正文结构行转义 + 标题压成单行。
+- **真实损坏检测与备份**：0.5.0 的 corrupt 分支不可达、"保留原件 + `.bak`" 实际未发生。现在无法解析出条目但存在内容的文件会保留原件、旁存 `.bak`、拒绝写入并报出原因。
+- **凭据误判**：`password: none`、`token: not configured` 等正常笔记此前被拒写；现在仅拒绝具真实密钥形状的值，`sk-`/`ghp_`/`AKIA`/`Bearer`/PEM 仍拒绝。
+- **压缩预算**：保留项超预算时不再返回「压缩成功」并把超限请求下发；保留项按预算裁剪。
+- **压缩持久化**：压缩结果写入可重放的转录记录（顺序、合成消息、被丢弃 id），`/resume` 恢复压缩后的历史，不再把压缩静默撤销。
+- **预算阈值统一**：`/context` 与会话循环读同一处 `normalizeBudget`/`triggerTokens`，不再出现展示值与实际行为不一致。
+- **熔断计数按回合重置**，工具签名按稳定 JSON 序列化，换键序不再能绕过。
+- **恢复权限不升权**：`/resume` 应用会话记录的权限模式；此前降档函数在生产路径从未被调用。
+- **`/memory` 缺分隔符**时给出用法提示，不再把整串当标题。
+- **原子写先收紧权限再改名**；`writeJsonAtomic` 也不再留下继承 ACL 的文件。
+
+未修复、已如实记录的限制：预算过紧且历史已裁到只剩当前消息时，强制压缩无法再生效，会明确报错终止；恢复后的「需核对」仍是提示，模型自行重发同一操作不会被二次拦截。两项均已写入产品说明书的限制表与 0.5.1 发行说明。
 
 ## 验证范围
 

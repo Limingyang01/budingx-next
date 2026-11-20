@@ -25,7 +25,7 @@
 
 首发使用与交付：[TUI README](../src/tui/README.md)、[版本管理](versioning.md)、[首发状态](requirements/tui-bootstrap/STATUS.md)。
 
-当前发布：[0.5.0 · SP005 长会话与数据可靠性](../release-notes/v0.5.0.md)（npm `latest`）。本轮进度与验证边界见 [SP005 迭代汇总](../SP/SP005/requirements-summary.md)。
+当前发布：[0.5.0 · SP005 长会话与数据可靠性](../release-notes/v0.5.0.md)（npm `latest`）；候选 [0.5.1 · SP005 复审修复](../release-notes/v0.5.1.md) 已准备，待发布。本轮进度与验证边界见 [SP005 迭代汇总](../SP/SP005/requirements-summary.md)。
 
 源码模块组织见 [仓库布局](repository-layout.md)。
 

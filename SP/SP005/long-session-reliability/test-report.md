@@ -19,14 +19,14 @@
 | 命令 | 结果 |
 | --- | --- |
 | `npm run build` | PASS（tsc，无错误） |
-| `node --test src/*/test/*.test.mjs` | **716 / 716 pass** |
+| `node --test src/*/test/*.test.mjs` | **732 / 731 pass / 1 skip**（0.5.1 复审新增 17 条，跳过项为只在 POSIX 生效的权限断言；0.5.0 时为 716/716） |
 | `node --test src/core/test/context-budget.e2e.test.mjs` | 3 / 3 pass（真实 HTTP 请求体） |
 | `node --test src/storage/test/session-recovery.e2e.test.mjs` | 4 / 4 pass（真实子进程） |
-| `node --test scripts/langfuse/*.test.mjs` | 本轮新增 32 / 32 pass（含接收端查看页、真实栈冒烟 5、登录凭据自检 3、工具调用质量判读 4、场景收尾判读 2）；`npm run test:langfuse` 合计 **79 / 79** |
+| `node --test scripts/langfuse/*.test.mjs` | 本轮新增 32 / 32 pass（含接收端查看页、真实栈冒烟 5、登录凭据自检 3、工具调用质量判读 4、场景收尾判读 2）；`npm run test:langfuse` 合计 **81 / 81**（0.5.1 含 Windows ACL 两条） |
 | `node --test scripts/langfuse/stack-smoke.test.mjs` | 5 / 5 pass（OB-02/03 真实栈判读） |
 | `npm run langfuse:smoke` | PASS（真实栈 4.78.0 回查 3 条 observation，四项判定全 true） |
 | `npm run test:checks` | PASS（模块边界：core 不 import storage） |
-| `npm test` | PASS（**838 通过 / 0 失败**：skills 10 + spec 11 + unit 716 + langfuse 79 + release 17 + merge 5，日志 `.runtime/npm-test-full9.log`） |
+| `npm test` | PASS（**856 项 / 855 通过 / 0 失败 / 1 跳过**：skills 10 + spec 11 + unit 732 + langfuse 81 + release 17 + merge 5，checks 通过；0.5.0 时为 838 通过） |
 | `npm run merge:gate` | GREEN |
 
 本轮新增用例合计 **101** 例：

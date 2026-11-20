@@ -1,6 +1,6 @@
 # budingx
 
-An independent **MIT** terminal agent for OpenAI-compatible APIs. Source version 0.5.0 (SP005) adds long-session and data reliability: on-disk session transcripts with atomic writes, cross-process recovery that never replays side effects, context-budget compaction that keeps your constraints, plan and tool state, project/session memory with isolation, and explicit failure reasons with stable error codes. It keeps the coding task loop from 0.4.0 (Bash/PowerShell command cards with background tasks, plan mode with approval, todo and question cards, and controlled Git commits on dedicated worktrees), the workspace file tools, approval previews and session undo from 0.3.0, the model manager from 0.3.1, and the fixes released through 0.3.6.
+An independent **MIT** terminal agent for OpenAI-compatible APIs. Source version 0.5.1 (SP005, review fixes) adds long-session and data reliability: on-disk session transcripts with atomic writes, cross-process recovery that never replays side effects, context-budget compaction that keeps your constraints, plan and tool state, project/session memory with isolation, and explicit failure reasons with stable error codes. It keeps the coding task loop from 0.4.0 (Bash/PowerShell command cards with background tasks, plan mode with approval, todo and question cards, and controlled Git commits on dedicated worktrees), the workspace file tools, approval previews and session undo from 0.3.0, the model manager from 0.3.1, and the fixes released through 0.3.6.
 
 ## Install
 
