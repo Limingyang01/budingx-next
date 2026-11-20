@@ -43,7 +43,7 @@ test('zh：/help 与 /clear 与未知命令回显中文', async () => {
   assert.match(help.message, /命令：/)
   assert.match(help.message, /\/models/)
   const clear = await runCommand('/clear', ctx)
-  assert.equal(clear.message, '会话已清空')
+  assert.equal(clear.message, '会话已清空（项目规则保留）')
   const unknown = await runCommand('/nope', ctx)
   assert.equal(unknown.error, '未知命令；使用 /help')
 })
@@ -81,7 +81,7 @@ test('zh：/models 使用说明和已移除命令反馈', async () => {
 test('默认（无 lang）保持英文，管道/机器面不受中文化影响', async () => {
   const { ctx } = context()
   const clear = await runCommand('/clear', ctx)
-  assert.equal(clear.message, 'Conversation cleared')
+  assert.equal(clear.message, 'Conversation cleared (project rules kept)')
   const help = await runCommand('/help', ctx)
   assert.match(help.message, /Commands:/)
 })

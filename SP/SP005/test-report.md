@@ -243,3 +243,4 @@ AC 区间：CB-01…07（7）、SR-01…11（11）、FR-01…09（9）、PM-01�
 | /config /model 出现在命令面 | 从 /help 与 / 补全移除，开关分支移除，模型切换统一 /models | commands.test.mjs、commands-zh.test.mjs、app.test.mjs、cli.test.mjs |
 | /rules 只是纯文本命令 | 参照 /models 增加交互管理面板（↑↓/a/d/Esc），管道模式保留列表 | sp0054-rules-manager.test.mjs |
 | 短终端首屏只剩 logo 一行 | rows<18 时保留 3 行头部（版本/模型/目录），rows<8 才降为 1 行 | sp0054-short-header.test.mjs |
+| 既有命令复刻改造 | /new /reset /continue /rewind(Esc+Esc) /plan(Shift+Tab) /context 网格 /compact /cost /usage /permissions /allowed-tools /help 技能清单；累计用量、手动压缩、对话回滚核心 | sp0054-command-fidelity.test.mjs、sp0054-panels.test.mjs |

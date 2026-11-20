@@ -87,6 +87,15 @@ export function reduceFrame(
   }
 
   switch (event.type) {
+    case 'conversation_rewound':
+      // 0.5.4 /rewind：用回滚后的历史重建转录。
+      return {
+        ...initialFrame(frame.permissionMode),
+        queue: frame.queue,
+        changes: frame.changes,
+        denials: frame.denials,
+        transcript: event.entries.map((entry) => ({ kind: entry.kind, text: entry.text }))
+      }
     case 'conversation_cleared':
       // Mode, change set and denials survive a conversation clear; the
       // checkpoint store keeps offering /undo for files we already wrote.

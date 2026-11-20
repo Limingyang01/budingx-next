@@ -159,6 +159,7 @@ export type ContextCompactedEvent = {
 
 export type SessionEvent =
   | { type: 'conversation_cleared' }
+  | { type: 'conversation_rewound'; entries: { kind: 'user' | 'assistant'; text: string }[]; removedCount: number }
   | { type: 'turn_started'; turnId: string; snapshot: TurnSnapshot; userText: string; startedAt: number }
   | { type: 'text_delta'; turnId: string; messageId: string; text: string }
   | { type: 'thinking_delta'; turnId: string; messageId: string; text: string }

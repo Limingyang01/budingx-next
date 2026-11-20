@@ -51,6 +51,7 @@ import { TranscriptMessage } from './render/transcript.js'
 import { workspacePromptOptions } from './runtime.js'
 import { ModelManager } from './model-manager.js'
 import { RulesManager } from './rules-manager.js'
+import { ResumePicker, RewindPicker, ContextGrid } from './panels.js'
 import { readClipboard } from './editor/clipboard.js'
 import { nextMode } from '../workspace/policy.js'
 import { walkWorkspaceFiles } from '../workspace/search.js'
@@ -78,11 +79,25 @@ const COMMAND_NAMES = [
   'help',
   'models',
   'permission',
+  'permissions',
   'rules',
   'diff',
   'undo',
+  'rewind',
   'denials',
   'clear',
+  'new',
+  'reset',
+  'resume',
+  'continue',
+  'sessions',
+  'context',
+  'compact',
+  'cost',
+  'usage',
+  'plan',
+  'memory',
+  'effort',
   'exit',
   'quit'
 ]
@@ -355,6 +370,10 @@ export function App({
   const managerInput = useRef<{ key: (text: string, key: Key) => void; paste: (text: string) => void } | undefined>(undefined)
   const [modelManagerOpen, setModelManagerOpen] = useState(false)
   const [rulesManagerOpen, setRulesManagerOpen] = useState(false)
+  const [resumeOpen, setResumeOpen] = useState(false)
+  const [rewindOpen, setRewindOpen] = useState(false)
+  const [contextOpen, setContextOpen] = useState(false)
+  const lastEscRef = useRef(0)
   const [typing, setTyping] = useState(false)
   const typingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const mounted = useRef(true)
@@ -436,6 +455,18 @@ export function App({
         await new Promise<void>((resolve) => {
           managerDone.current = resolve
         })
+      } else if (result.openResume) {
+        setPosition(undefined)
+        setResumeOpen(true)
+        await new Promise<void>((resolve) => { managerDone.current = resolve })
+      } else if (result.openRewind) {
+        setPosition(undefined)
+        setRewindOpen(true)
+        await new Promise<void>((resolve) => { managerDone.current = resolve })
+      } else if (result.openContext) {
+        setPosition(undefined)
+        setContextOpen(true)
+        await new Promise<void>((resolve) => { managerDone.current = resolve })
       } else setHint(result.error ?? result.message ?? '')
     })
   }
@@ -475,7 +506,7 @@ export function App({
       )
     : [])
   const completion = useMemo(() => {
-    if (dialog || frame.approval || overlayDismissed || modelManagerOpen || rulesManagerOpen) return null
+    if (dialog || frame.approval || overlayDismissed || modelManagerOpen || rulesManagerOpen || resumeOpen || rewindOpen || contextOpen) return null
     const lineText = editor.lines[editor.cursor.line] ?? ''
     const token = activeToken(lineText, editor.cursor.col, COMMAND_NAMES)
     if (!token) return null
@@ -622,6 +653,19 @@ export function App({
     if (managerDone.current) {
       managerInput.current?.key(text, key)
       return
+    }
+    // 0.5.4 /rewind 快捷键 Esc+Esc：空闲且无覆盖层时双击 Esc 打开回滚面板。
+    if (key.escape && !session.isBusy && editor.isEmpty && !dialog && !frame.approval &&
+      !modelManagerOpen && !rulesManagerOpen && !resumeOpen && !rewindOpen && !contextOpen && !transcriptMode && !search) {
+      const now = Date.now()
+      if (now - lastEscRef.current < 500) {
+        lastEscRef.current = 0
+        setPosition(undefined)
+        setRewindOpen(true)
+        managerDone.current = () => {}
+        return
+      }
+      lastEscRef.current = now
     }
     if (pendingQuestion !== undefined) {
       if (editingQuestionNotes && (key.return || key.escape)) {
@@ -1009,6 +1053,17 @@ export function App({
       return
     }
     if (key.shift && key.tab && permissionHandles) {
+      // 0.5.4 D1：三档权限轮播之外增加「规划」覆盖态（只读+审批后执行）。
+      if (session.planMode.active) {
+        void session.exitPlanMode({}).catch(() => {})
+        setHint(pick('退出规划模式（需审批）', 'Exiting plan mode (approval required)'))
+        return
+      }
+      if (permissionHandles.policy.getMode() === 'full_access') {
+        const entered = session.enterPlanMode()
+        setHint(entered.ok ? pick('规划模式：只读分析，计划获批后才执行', 'Plan mode: read-only until approved') : (entered.reason ?? ''))
+        return
+      }
       // SP003 design §3.8: cycle the three fixed modes.
       const next = nextMode(permissionHandles.policy.getMode())
       if (!changePermissionMode(permissionHandles, next)) {
@@ -1119,9 +1174,33 @@ export function App({
     if (text || key.backspace || key.delete) markTyping()
   })
   useWheel(fullScreen, (lines) => {
-    if (!modelManagerOpen && !rulesManagerOpen && !dialog) scrollHistory(lines)
+    if (!modelManagerOpen && !rulesManagerOpen && !resumeOpen && !rewindOpen && !contextOpen && !dialog) scrollHistory(lines)
   })
   const config = commandContext.getConfig()
+  if (resumeOpen) {
+    return <ResumePicker context={{ ...context, session }} input={managerInput} onPick={(id) => {
+      const done = managerDone.current; setResumeOpen(false); managerDone.current = undefined; done?.()
+      executeRef.current(`/resume ${id}`)
+    }} close={(notice) => {
+      const done = managerDone.current; setResumeOpen(false); setHint(notice ?? ''); managerDone.current = undefined; done?.()
+    }} />
+  }
+  if (rewindOpen) {
+    return <RewindPicker context={{ ...context, session }} input={managerInput} onPick={(id) => {
+      const done = managerDone.current; setRewindOpen(false); managerDone.current = undefined; done?.()
+      const result = session.rewindTo(id)
+      let undone = 0
+      for (let i = 0; i < result.removedTurns; i++) { const o = context.permission?.undo(); if (o?.undone) undone++; else break }
+      setHint(pick(`已回滚 ${result.removedMessages} 条消息，撤销 ${undone} 个回合的文件改动`, `Rewound ${result.removedMessages} messages, undone ${undone} turns of file changes`))
+    }} close={(notice) => {
+      const done = managerDone.current; setRewindOpen(false); setHint(notice ?? ''); managerDone.current = undefined; done?.()
+    }} />
+  }
+  if (contextOpen) {
+    return <ContextGrid context={{ ...context, session }} input={managerInput} close={(notice) => {
+      const done = managerDone.current; setContextOpen(false); setHint(notice ?? ''); managerDone.current = undefined; done?.()
+    }} />
+  }
   if (rulesManagerOpen) {
     return <RulesManager context={{ ...context, session }} input={managerInput} close={(notice) => {
       const done = managerDone.current

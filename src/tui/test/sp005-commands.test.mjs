@@ -42,7 +42,7 @@ test('/help 列出 SP005 会话与记忆命令', async () => {
   assert.match(zh.message, /\/memory/)
   const en = await runCommand('/help', { ...ctx, lang: 'en' })
   assert.match(en.message, /\/sessions/)
-  assert.match(en.message, /\/resume <sessionId>/)
+  assert.match(en.message, /\/resume \[sessionId\]/)
 })
 
 test('/sessions 未接入存储时明确报错', async () => {

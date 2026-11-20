@@ -20,6 +20,9 @@ import type { BudingPermissionPolicy, PermissionRule } from '../workspace/policy
 import { changeDiffs, type ChangeRecord, type UndoOutcome } from '../workspace/checkpoint.js'
 import type { Workspace } from '../workspace/paths.js'
 import { diffStats, diffText } from './render/diff-view.js'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { homedir } from 'node:os'
 
 export type CommandOutcome = {
   handled: boolean
@@ -29,6 +32,9 @@ export type CommandOutcome = {
   openModels?: boolean
   openEffort?: boolean
   openRules?: boolean
+  openResume?: boolean
+  openRewind?: boolean
+  openContext?: boolean
   /** Interactive hosts open the diff dialog on this instead of printing. */
   openDiffDialog?: boolean
 }
@@ -139,14 +145,20 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
   /rules rm <id>        删除规则
   /diff [路径]          查看本会话改动（交互模式打开对话框）
   /undo [路径]          撤销最近一组改动或指定文件（外部改动会阻止自动撤销）
+  /rewind               回滚对话+文件到检查点（别名 /undo，Esc+Esc）
   /denials              查看拒绝历史
   /sessions             列出已保存的会话
-  /resume <会话ID>      恢复指定会话（不重放未确认的工具调用）
-  /context              查看上下文预算构成
+  /resume [会话ID]      恢复会话（交互模式打开选择面板，按当前工作区过滤）
+  /continue             恢复当前工作区最近会话
+  /context              上下文占用网格（System/Tools/History）
+  /compact [指令]       手动压缩历史释放 token
+  /cost                 累计 token 与预估费用（别名 /usage）
+  /plan                 进入/退出规划模式（只读，审批后执行；Shift+Tab）
+  /permissions          权限白名单面板（别名 /allowed-tools）
   /memory               查看项目/会话记忆
   /memory <范围> add <标题>：<正文>  写入记忆
   /effort [low|medium|high]  选择或直接设置思考强度
-  /clear                清空会话
+  /clear                清空会话（别名 /new /reset，保留项目规则）
   /exit                 退出 budingx`
     : `Commands:
   /help                 show this help
@@ -157,14 +169,20 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
   /rules rm <id>        remove a rule
   /diff [path]          show this session's changes (opens a dialog interactively)
   /undo [path]          undo the latest change group or a file (foreign edits block undo)
+  /rewind               rewind conversation+files to a checkpoint (alias /undo, Esc+Esc)
   /denials              show the denial history
   /sessions             list saved sessions
-  /resume <sessionId>    restore a session (unconfirmed tool calls are not replayed)
-  /context              show the context budget composition
+  /resume [sessionId]   restore a session (picker interactively, filtered to this workspace)
+  /continue             resume the most recent session in this workspace
+  /context              context usage grid (System/Tools/History)
+  /compact [instruction]  manually compact history to free tokens
+  /cost                 cumulative tokens and estimated cost (alias /usage)
+  /plan                 enter/exit plan mode (read-only until approved; Shift+Tab)
+  /permissions          permission whitelist panel (alias /allowed-tools)
   /memory               show project/session memory
   /memory <scope> add <title>: <body>   store a memory entry
   /effort [low|medium|high]  choose or set the reasoning effort
-  /clear                clear the conversation
+  /clear                clear the conversation (aliases /new /reset, keeps project rules)
   /exit                 leave budingx`
 }
 
@@ -202,14 +220,16 @@ async function executeCommand(
 
   switch (command) {
     case 'help':
-      return { handled: true, message: commandHelp(lang, context.interactive) }
+      return { handled: true, message: commandHelp(lang, context.interactive) + skillHelpSection(context, pick) }
     case 'exit':
     case 'quit':
       context.exit()
       return { handled: true, exit: true }
-    case 'clear': {
+    case 'clear':
+    case 'new':
+    case 'reset': {
       context.session.clearHistory()
-      return { handled: true, message: pick('会话已清空', 'Conversation cleared') }
+      return { handled: true, message: pick('会话已清空（项目规则保留）', 'Conversation cleared (project rules kept)') }
     }
     case 'config': {
       const config = context.getConfig()
@@ -282,15 +302,40 @@ async function executeCommand(
     case 'diff':
       return diffCommand(argument, context, pick)
     case 'undo':
+      // /undo 保留文件撤销语义；对话+文件回滚面板用 /rewind（Esc+Esc）。
+      return undoCommand(argument, context, pick)
+    case 'rewind':
+      if (!argument && context.interactive) return { handled: true, openRewind: true }
       return undoCommand(argument, context, pick)
     case 'denials':
       return denialsCommand(context, pick)
     case 'sessions':
       return sessionsCommand(context, pick)
     case 'resume':
+      if (!argument && context.interactive) return { handled: true, openResume: true }
       return resumeCommand(argument, context, pick)
+    case 'continue': {
+      const latest = context.sessions?.list()[0]
+      if (!latest) return { handled: true, error: pick('当前工作区没有可恢复的会话', 'No resumable session in this workspace') }
+      return resumeCommand(latest.sessionId, context, pick)
+    }
     case 'context':
+      if (context.interactive) return { handled: true, openContext: true }
       return contextCommand(context, pick)
+    case 'compact': {
+      const result = context.session.compactNow(argument || undefined)
+      if (!result.ok) return { handled: true, error: pick(`压缩失败：${result.message}`, `Compact failed: ${result.message}`) }
+      return { handled: true, message: pick(`已压缩：${formatTokens(result.before)} → ${formatTokens(result.after)} token`, `Compacted: ${formatTokens(result.before)} → ${formatTokens(result.after)} tokens`) }
+    }
+    case 'cost':
+    case 'usage':
+      return costCommand(context, pick)
+    case 'plan':
+      return planCommand(argument, context, pick)
+    case 'permissions':
+    case 'allowed-tools':
+      if (context.interactive && context.permission) return { handled: true, openRules: true }
+      return rulesCommand(argument, context, pick)
     case 'memory':
       return memoryCommand(argument, context, pick)
     case 'effort':
@@ -804,4 +849,69 @@ function denialsCommand(
       `${denial.at.slice(11, 19)} ${denial.tool}${denial.path ? ' ' + denial.path : ''} — ${denial.reason}`
   )
   return { handled: true, message: lines.join('\n') }
+}
+
+/** 0.5.4 /cost：累计 token 与预估费用（价格可配置，未配置只报 token/时长）。 */
+function costCommand(context: CommandContext, pick: (zh: string, en: string) => string): CommandOutcome {
+  const totals = context.session.usageTotals
+  const minutes = Math.floor(totals.elapsedMs / 60000)
+  const seconds = Math.floor((totals.elapsedMs % 60000) / 1000)
+  const lines = [
+    pick(`累计输入：${formatTokens(totals.inputTokens)} token · 输出：${formatTokens(totals.outputTokens)} token · 请求 ${totals.requests} 次`,
+      `Input: ${formatTokens(totals.inputTokens)} tokens · Output: ${formatTokens(totals.outputTokens)} tokens · ${totals.requests} requests`),
+    pick(`会话时长：${minutes} 分 ${seconds} 秒`, `Duration: ${minutes}m ${seconds}s`)
+  ]
+  const priceIn = Number(process.env.BUDINGX_PRICE_INPUT_PER_MTOK ?? '')
+  const priceOut = Number(process.env.BUDINGX_PRICE_OUTPUT_PER_MTOK ?? '')
+  if (Number.isFinite(priceIn) && Number.isFinite(priceOut) && (priceIn > 0 || priceOut > 0)) {
+    const cost = (totals.inputTokens / 1e6) * priceIn + (totals.outputTokens / 1e6) * priceOut
+    lines.push(pick(`预估费用：$${cost.toFixed(4)}（按环境变量单价）`, `Estimated cost: $${cost.toFixed(4)} (env pricing)`))
+  } else {
+    lines.push(pick('预估费用：未配置单价（BUDINGX_PRICE_*_PER_MTOK）', 'Estimated cost: no pricing configured (BUDINGX_PRICE_*_PER_MTOK)'))
+  }
+  return { handled: true, message: lines.join('\n') }
+}
+
+/** 0.5.4 /plan：进入/退出规划模式（只读，审批后才执行）。 */
+function planCommand(argument: string, context: CommandContext, pick: (zh: string, en: string) => string): CommandOutcome {
+  const session = context.session
+  if (argument === 'open') {
+    return { handled: true, message: session.planMode.active ? pick('当前处于规划模式', 'Plan mode active') : pick('当前不在规划模式', 'Not in plan mode') }
+  }
+  if (!session.planMode.active) {
+    const result = session.enterPlanMode()
+    if (!result.ok) return { handled: true, error: result.reason ?? 'cannot enter plan mode' }
+    return { handled: true, message: pick('已进入规划模式：只读分析，计划获批后才执行修改', 'Plan mode: read-only research; changes run only after approval') }
+  }
+  void session.exitPlanMode({}).catch(() => {})
+  return { handled: true, message: pick('已请求退出规划模式（需审批）', 'Exiting plan mode (approval required)') }
+}
+
+/** 0.5.4 /help：附加已加载的自定义技能命令（.budingx/skills）。 */
+function skillHelpSection(context: CommandContext, pick: (zh: string, en: string) => string): string {
+  const skills = discoverSkillCommands(context)
+  if (skills.length === 0) return ''
+  const lines = skills.map((skill) => `  /${skill.name}  ${skill.description}`)
+  return '\n' + pick('自定义技能命令：', 'Custom skill commands:') + '\n' + lines.join('\n')
+}
+
+function discoverSkillCommands(context: CommandContext): { name: string; description: string }[] {
+  const roots = [join(homedir(), '.budingx', 'skills'), join(process.cwd(), '.budingx', 'skills')]
+  const out: { name: string; description: string }[] = []
+  const seen = new Set<string>()
+  for (const root of roots) {
+    let dirs: string[] = []
+    try { dirs = readdirSync(root) } catch { continue }
+    for (const dir of dirs) {
+      const file = join(root, dir, 'SKILL.md')
+      let text = ''
+      try { text = readFileSync(file, 'utf8') } catch { continue }
+      const name = /^name:\s*(.+)$/m.exec(text)?.[1]?.trim() ?? dir
+      const description = /^description:\s*(.+)$/m.exec(text)?.[1]?.trim() ?? ''
+      if (seen.has(name)) continue
+      seen.add(name)
+      out.push({ name, description })
+    }
+  }
+  return out
 }
