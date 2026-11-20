@@ -1,13 +1,13 @@
 # SP005 · 验收报告（long-session-reliability）
 
-状态：**代码层验收全绿**；真实模型 tool-success / tool-error 两场景已在真实 Langfuse 4.78.0 上回查 PASS（2026-11-20）；真实模型长会话压缩与 TUI 观感 UNVERIFIED（恢复条件见 §5）。
+状态：**代码层验收全绿**；真实模型 tool-success / tool-error 两场景已在真实 Langfuse 4.78.0 上回查 PASS（2026-11-20）；已合入 master `293a337` 并推送，0.5.0 已完成发布准备（尚未上传 npm）；真实模型长会话压缩与 TUI 观感 UNVERIFIED（恢复条件见 §5）。
 
 ## 1. 环境与基线
 
 | 项 | 值 |
 | --- | --- |
 | 仓库 | `D:\my_project\budingx-next` |
-| 分支 | `feature/SP005/long-session-reliability` |
+| 分支 | `feature/SP005/long-session-reliability`（已合入 master `293a337` 并推送） |
 | 实施基线 | master `17afe34` |
 | Node | 见 `node -v`（package.json 要求 >=22.18） |
 | 平台 | Windows 10 家庭版 19045.6466 + MSYS bash；WSL2 发行版 `Ubuntu22`（内核 6.18.58.1-1）内 Docker Engine 29.10.0 |

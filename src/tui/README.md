@@ -1,6 +1,6 @@
 # budingx
 
-An independent **MIT** terminal agent for OpenAI-compatible APIs. Source version 0.4.0 (SP004) adds real coding tasks: Bash/PowerShell command cards with background tasks, plan mode with approval, todo and question cards, and controlled Git commits on dedicated worktrees. It keeps the workspace file tools, approval previews and session undo from 0.3.0, the model manager from 0.3.1, and the fixes released through 0.3.6.
+An independent **MIT** terminal agent for OpenAI-compatible APIs. Source version 0.5.0 (SP005) adds long-session and data reliability: on-disk session transcripts with atomic writes, cross-process recovery that never replays side effects, context-budget compaction that keeps your constraints, plan and tool state, project/session memory with isolation, and explicit failure reasons with stable error codes. It keeps the coding task loop from 0.4.0 (Bash/PowerShell command cards with background tasks, plan mode with approval, todo and question cards, and controlled Git commits on dedicated worktrees), the workspace file tools, approval previews and session undo from 0.3.0, the model manager from 0.3.1, and the fixes released through 0.3.6.
 
 ## Install
 
@@ -50,6 +50,10 @@ In piped input, `/models` lists profiles and `/model NAME` selects one. Interact
 - /models — open the model manager (list profiles in a pipe)
 - /model NAME — switch the model; the conversation is kept and the switch applies from the next turn
 - /clear — clear the in-memory conversation and its visible transcript (input history and pending prompts remain)
+- /sessions — list saved sessions with session ID, title, updated time and turn count
+- /resume SESSION_ID — restore a saved session's history; no tool call is replayed and unknown results are marked for review
+- /context — show the context budget: estimated usage, limit, reserved output, compaction threshold and per-message cost
+- /memory — show project and session memory entries; /memory PROJECT|SESSION add TITLE:BODY writes one entry
 - /exit or /quit — exit
 
 Version 0.3.4 displays user turns, elapsed time and completion time. After a successful reply, press Tab at an empty prompt to fill the suggested follow-up, then edit and press Enter.
@@ -87,9 +91,9 @@ Use `/diff` to browse session changes, individual turns, and Git working tree ch
 
 ## Scope
 
-Workspace text tools and session-local undo are available. Command execution, transcript persistence, teams, Computer Use and scheduling are planned. Desktop, VS Code, remote/H5 access and IM adapters remain deferred under roadmap r6.
+Workspace text tools, session-local undo and session transcript persistence are available. Command execution, teams, Computer Use and scheduling are planned. Desktop, VS Code, remote/H5 access and IM adapters remain deferred under roadmap r6.
 
-User data is stored under `~/.budingx` only. The session itself stays in memory and is lost when you exit.
+User data is stored under `~/.budingx` only. Session transcripts live in `~/.budingx/sessions/<session ID>/` and project/session memory in `~/.budingx/memory/`; both are written atomically and only readable and writable by the current user. The program never reads, falls back to or writes `~/.claude`.
 
 The release workflow verifies Windows and Linux tests plus real tarball installation. macOS installation is not yet certified. Update with npm install -g budingx@latest; uninstall with npm uninstall -g budingx.
 

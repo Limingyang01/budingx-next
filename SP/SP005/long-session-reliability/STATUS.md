@@ -9,14 +9,14 @@
 | 需求版本 | v0.3（FR-09 / CB-04 实现期补记；真实栈与兼容接收端双轨补记） |
 | 设计版本 | v1.1（新增 §4.8 配对要求、§8 工具空转熔断） |
 | 实施计划版本 | v1.1（T0–T14 完成事实回填、映射表改为真实路径） |
-| 生命周期 | **VERIFYING**（测试全绿、真实模型端到端两场景 PASS、交付记录就绪；**合入 master 等用户决定**） |
-| 阶段 | 需求 ✅ → 设计 ✅ → 计划 ✅ → 文档自审 ✅ → 实施 ✅ → 测试 ✅ → 交付记录 ✅ → 合入 ⏸ 等用户 |
+| 生命周期 | **DELIVERED**（测试全绿、真实模型端到端两场景 PASS、交付记录就绪；已合入 master `293a337` 并推送） |
+| 阶段 | 需求 ✅ → 设计 ✅ → 计划 ✅ → 文档自审 ✅ → 实施 ✅ → 测试 ✅ → 交付记录 ✅ → 合入 ✅（master `293a337`）→ 发布准备 ✅（0.5.0 prepared，未上传 npm） |
 | 功能分支 | `feature/SP005/long-session-reliability`（从 master `17afe34` 建） |
 | 设计文档 | [design/design.zh.md](./design/design.zh.md) |
 | 实施计划 | [design/plan.zh.md](./design/plan.zh.md) |
 | 验收报告 | 轮次结论 [SP/SP005/test-report.md](../test-report.md)；逐条细节 [test-report.md](./test-report.md) |
 | AC 总数 | 42 条（CB-01…07 共 7、SR-01…11 共 11、FR-01…09 共 9、PM-01…08 共 8、OB-01…04 共 4、EV-01…03 共 3） |
-| Git 范围 | 功能分支提交并推送远端（用户 2026-11-20 授权）；**未合入 master** |
+| Git 范围 | 功能分支提交并推送远端（用户 2026-11-20 授权）；**已合入 master**（合并提交 `293a337`，用户 2026-11-20 授权）并推送远端 |
 
 ## 授权与来源
 
@@ -25,6 +25,8 @@
 | USER_CONFIRMED（2026-11-19 本轮会话） | 「开始SP005，做完后跑端到端的测试，测试过程你可以使用langfuse去看看测试的效果以及工具的调用是否合适，你在本地搭好langfuse的监测」 | 启动 SP005 正式 SDD；端到端测试；本地 Langfuse 监测 |
 | USER_CONFIRMED（2026-11-19 本轮会话） | 「测试完成后待我决定后再合入master分支」 | **合入 master 由用户决定**，Agent 不自行合入 |
 | USER_CONFIRMED（2026-11-20 本轮会话） | 「有token了，可以跑真实的测试了，测试的同时用langfuse去做监测遇到问题直接修复，完成后提交并推送远端」 | 真实模型端到端、Langfuse 监测、发现问题即修、提交并**推送功能分支**；仍未授权合入 master |
+| USER_CONFIRMED（2026-11-20 本轮会话） | 「合入master，并且停止容器」 | **合入 master**（合并提交 `293a337`）与停止本地 Langfuse 容器 |
+| USER_CONFIRMED（2026-11-20 本轮会话） | 「合完推送远端，完成发布前的准备工作，到时我直接点发布即可」 | 合入后**推送远端** + 完成 0.5.0 发布准备；实际 npm 上传由用户在 Actions 手动触发 |
 | USER_CONFIRMED（2026-11-17 委托） | 设计文档为 Agent 自审对象；自审通过后自主推进计划/实施/测试/交付与各阶段本地提交（中文说明） | 分支、实施、本地提交 |
 | 路线图 | `docs/iteration-plan.md` SP005 行（名称、四个功能目录、出口验收、依赖 SP004） | 范围与出口标准 |
 
@@ -75,6 +77,6 @@
 
 ## 下一步
 
-1. 等用户决定是否合入 master（功能分支已推送；`npm run merge:gate` 已 GREEN）。
+1. 已在 master 落地（`293a337`）并推送远端；0.5.0 已完成发布准备（版本号、台账 prepared 记录、[0.5.0 发行说明](../../../release-notes/v0.5.0.md)），等待维护者在 GitHub Actions 手动触发发布。
 2. 真实模型长会话压缩场景补跑后，把结果回填本文件与 `test-report.md` §5。
 3. 重启机器后：先 `wsl -d <发行版> -u root -- systemctl is-active docker`，再按 `ops/langfuse/README.md` 第 9 节保活与起栈，最后 `npm run langfuse:smoke` 复核接入链路。

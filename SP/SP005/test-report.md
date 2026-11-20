@@ -1,6 +1,6 @@
 # SP005 验收与验证报告 · 长会话与数据可靠性
 
-状态：**代码层验收全绿，交叉验证门禁 GREEN；未合入 master（等用户决定）**。分支 `feature/SP005/long-session-reliability`，文档起点 master `17afe34`，实施提交 `a76199e`，补强提交 `62f3e9e`（真实 Langfuse 栈接入、子进程超时预算与文档同步）、`ef90f11`（登录凭据对齐 `.env.e2e.local` 与登录自检）、`90f1e9a`（判定工具调用是否合适）、`ebfb882`（真实模型端到端：模型用量与工具观测载荷、判读允许熔断停机）。本报告是轮次级结论；逐条细节见 [long-session-reliability 验收报告](long-session-reliability/test-report.md)，配套 [需求](long-session-reliability/requirements.md)、[设计](long-session-reliability/design/design.zh.md)、[实施计划](long-session-reliability/design/plan.zh.md)与 [STATUS](long-session-reliability/STATUS.md)。
+状态：**代码层验收全绿，交叉验证门禁 GREEN；已合入 master `293a337` 并推送远端；0.5.0 已完成发布准备（尚未上传 npm）**。分支 `feature/SP005/long-session-reliability`，文档起点 master `17afe34`，实施提交 `a76199e`，补强提交 `62f3e9e`（真实 Langfuse 栈接入、子进程超时预算与文档同步）、`ef90f11`（登录凭据对齐 `.env.e2e.local` 与登录自检）、`90f1e9a`（判定工具调用是否合适）、`ebfb882`（真实模型端到端：模型用量与工具观测载荷、判读允许熔断停机）。本报告是轮次级结论；逐条细节见 [long-session-reliability 验收报告](long-session-reliability/test-report.md)，配套 [需求](long-session-reliability/requirements.md)、[设计](long-session-reliability/design/design.zh.md)、[实施计划](long-session-reliability/design/plan.zh.md)与 [STATUS](long-session-reliability/STATUS.md)。
 
 ## 0. 本轮执行证据
 
@@ -18,6 +18,7 @@
 | 合入门禁脚本 | `npm run merge:test` | 5/5 通过 |
 | 全量 | `npm test` | **838 通过 / 0 失败**（skills 10 + spec 11 + unit 716 + langfuse 79 + release 17 + merge 5，`EXIT=0`，日志 `.runtime/npm-test-full9.log`） |
 | 交叉验证门禁 | `npm run merge:gate` | **GATE GREEN**（`artifacts/merge-gate/feature-SP005-long-session-reliability-2026-11-19T16-10-43-342Z.md`（HEAD `ebfb882`）；outgoing 6 commits / 56 files；`npm test` / `spec:check` / `skills:check` / `pack-smoke` 全绿；其后 `62b5544` 仅回填本表，无代码变更） |
+| 发布预演（0.5.0） | `npm ci --ignore-scripts --no-audit --no-fund` + `npm run publish -- --dry-run --expected-version 0.5.0 --tag latest` | **通过**（`EXIT=0`，日志 `.runtime/npm-ci-prep.log` / `.runtime/publish-dryrun.log`）：依赖安装 58 包；整轮 `npm test` 838 通过 / 0 失败（skills 10 + spec 11 + unit 716 + langfuse 79 + release 17 + merge 5）；`npm pack` 产物 99 个文件（`dist/core` `dist/exec` `dist/git` `dist/observability` `dist/plan` `dist/storage` `dist/tui` `dist/workspace` + `package.json` `README.md` `LICENSE`）；tarball integrity `sha512-iiZMl/BtZGXtC/Ky8d+qcLkBuOHRgPodcaiIiR06Ph02dNE70Vs8VtFfuzbQ/GzCt/YvYwTrg1Nuni312lK3xQ==`；隔离 prefix 安装后 `budingx --version` = `0.5.0`；安装态 smoke `version 0.5.0`、`fixtureRequests 1`、`externalProvider UNVERIFIED`；报告 `artifacts/release/0.5.0-1795132949779/report.json`，`state=verified-local`、`dryRun=true`（**未上传 npm**） |
 
 本轮新增用例 101 例（12 个测试文件；另含 1 例整轮挂起回归，见 §5），全部对应用例文件与 AC 的映射见 [细节报告 §2](long-session-reliability/test-report.md)。
 
@@ -95,5 +96,7 @@ AC 区间：CB-01…07（7）、SR-01…11（11）、FR-01…09（9）、PM-01�
 ## 6. 授权与集成状态
 
 - 启动与端到端测试授权：用户 2026-11-19「开始SP005，做完后跑端到端的测试……你在本地搭好langfuse的监测」。
-- 合入约束：用户 2026-11-19「测试完成后待我决定后再合入master分支」→ 本分支仅本地提交，**未合入 master、未推送 master**。
+- 合入约束：用户 2026-11-19「测试完成后待我决定后再合入master分支」→ 该约束在测试通过后生效，用户于 2026-11-20「合入master，并且停止容器」授权合入，合并提交 `293a337`；随后「合完推送远端，完成发布前的准备工作，到时我直接点发布即可」授权推送与发布准备。master 与功能分支均已推送远端。
+- 发布准备：0.5.0 版本号、发布台账 `prepared` 记录与[0.5.0 发行说明](../../release-notes/v0.5.0.md)已就绪，**尚未上传 npm**；实际 npm 上传由维护者在 GitHub Actions 手动触发。
+- 发布预演：本地 `npm run publish -- --dry-run --expected-version 0.5.0 --tag latest` 全绿（打包、隔离安装、命令入口版本、安装态 smoke 全通过，`state=verified-local`），证明制品本身可发布；registry 上仍无 0.5.0（`npm view budingx@0.5.0` 返回 404，`latest` 仍为 0.4.0），符合“尚未上传”的状态。
 - 交付记录：本报告、[细节报告](long-session-reliability/test-report.md)、[STATUS](long-session-reliability/STATUS.md) 与 [requirements-summary](requirements-summary.md) 同步维护。

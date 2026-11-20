@@ -1,6 +1,6 @@
 # budingx-next
 
-独立开发 Coding Agent 的仓库。**当前 npm `latest` 为 0.4.0（SP004）**。本轮交付命令执行与后台任务、计划与待办、追问、受控 Git 提交和四类会话卡片。产品全貌见 [产品说明书](PRODUCT.md)，使用说明见 [TUI README](src/tui/README.md)。
+独立开发 Coding Agent 的仓库。**当前 npm `latest` 为 0.4.0（SP004）**；下一版 0.5.0（SP005 长会话与数据可靠性）已合入 master 并完成发布准备，尚未上传。产品全貌见 [产品说明书](PRODUCT.md)，使用说明见 [TUI README](src/tui/README.md)。
 
 默认主分支为 `master`；新项目统一使用 Node.js + TypeScript，不引入 Bun。
 
@@ -18,10 +18,10 @@
 
 本次不包含旧产品源码、构建产物、系统提示词、用户配置或聊天历史。新产品 MIT 及首发验证后 npm 发布已获用户授权，当前发布状态以 release-ledger.json 为准。已迁入的第三方开发技能按各自许可证保留声明。
 
-迭代统一按 [SP 管理说明](SP/README.md)执行；[16 轮迭代路线图 r8](docs/iteration-plan.md)记录当前交付及依赖。SP001 已验收；SP002 已发布；SP003 已发布至 0.3.6；SP004 随 0.4.0 发布。
+迭代统一按 [SP 管理说明](SP/README.md)执行；[16 轮迭代路线图 r8](docs/iteration-plan.md)记录当前交付及依赖。SP001 已验收；SP002 已发布；SP003 已发布至 0.3.6；SP004 随 0.4.0 发布；SP005 已合入 master，准备 0.5.0。
 
 当前单仓布局：外层管理文档/SP/Skills 和编排，产品统一放 src/，不建子仓或 packages/；见 [仓库布局](docs/repository-layout.md)。产品用户数据统一使用当前用户 home 下 ~/.budingx，不读取 ~/.claude。版本按 [SemVer/SP 规范](docs/versioning.md)管理。
 
 推荐 TUI 发布方式现为 [GitHub Actions + npm Trusted Publishing](docs/github-actions-npm.md)：在 Actions 手动 Run workflow，无需 NPM_TOKEN secret。首次建包及账号授信仍需维护者在个人可信设备上验证，未配置前不宣称可发布。
 
-npm 已发布 [0.4.0](https://www.npmjs.com/package/budingx/v/0.4.0)，可用 `npm install -g budingx@latest` 安装或升级。详见 [0.4.0 发行说明](release-notes/v0.4.0.md)。
+npm 已发布 [0.4.0](https://www.npmjs.com/package/budingx/v/0.4.0)，可用 `npm install -g budingx@latest` 安装或升级。详见 [0.4.0 发行说明](release-notes/v0.4.0.md)。下一版 [0.5.0（SP005）](release-notes/v0.5.0.md) 已准备，待维护者在 GitHub Actions 触发发布。
