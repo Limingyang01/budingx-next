@@ -8,7 +8,8 @@ import {
   usePaste,
   useCursor,
   measureElement,
-  type DOMElement
+  type DOMElement,
+  type Key
 } from 'ink'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 import stringWidth from 'string-width'
@@ -48,7 +49,8 @@ import {
 import { collapseReadSearch, HistoryWindow } from './render/history-window.js'
 import { TranscriptMessage } from './render/transcript.js'
 import { workspacePromptOptions } from './runtime.js'
-import { ModelManager, type ModelManagerInput } from './model-manager.js'
+import { ModelManager } from './model-manager.js'
+import { RulesManager } from './rules-manager.js'
 import { readClipboard } from './editor/clipboard.js'
 import { nextMode } from '../workspace/policy.js'
 import { walkWorkspaceFiles } from '../workspace/search.js'
@@ -74,9 +76,7 @@ type DiffDialog = {
 
 const COMMAND_NAMES = [
   'help',
-  'config',
   'models',
-  'model',
   'permission',
   'rules',
   'diff',
@@ -162,8 +162,26 @@ export function App({
   const transcriptBox = useRef<DOMElement>(null)
   const transcriptContent = useRef<DOMElement>(null)
   const viewport = useBoxMetrics(transcriptBox)
-  const contentMetrics = useBoxMetrics(transcriptContent)
-  const maxScroll = Math.max(0, contentMetrics.height - viewport.clientHeight)
+  // 0.5.4：内容盒高度不再用 Ink 的 useBoxMetrics（其内部是无依赖数组的
+  // useEffect）。内容高度随虚拟列表测量逐帧微调时，会形成
+  // 「测量 → setState → 重渲染 → 高度再变」的同步链，长会话下抛
+  // React「Maximum update depth exceeded」。这里用「布局后测量 + 宏任务合并
+  // 一次 setState」：既保留贴底/滚动所需的精确高度，又打断同步嵌套链。
+  const [contentHeight, setContentHeight] = useState(0)
+  const contentHeightRef = useRef(0)
+  const contentMeasureScheduled = useRef(false)
+  useLayoutEffect(() => {
+    if (!transcriptContent.current) return
+    contentHeightRef.current = measureElement(transcriptContent.current).height
+    if (contentMeasureScheduled.current) return
+    contentMeasureScheduled.current = true
+    setTimeout(() => {
+      contentMeasureScheduled.current = false
+      const next = contentHeightRef.current
+      setContentHeight((previous) => (previous === next ? previous : next))
+    }, 0)
+  })
+  const maxScroll = Math.max(0, contentHeight - viewport.clientHeight)
   const offset = Math.min(scrollTop ?? maxScroll, maxScroll)
   const scrolled = fullScreen && offset < maxScroll
   const unseenMessages = scrolled && !transcriptMode ? Math.max(0, frame.transcript.length - historyCountAtScroll) : 0
@@ -187,18 +205,17 @@ export function App({
   }, [stdout, fullScreen, topic, working])
   // 0.5.2：常驻上下文用量。刷新点很少（每回合结束/清空），不参与流式重绘。
   const [contextInfo, setContextInfo] = useState<
-    { usedTokens: number; maxTokens?: number; percentUsed?: number; source: 'provider' | 'estimate' } | undefined
+    { usedTokens?: number; maxTokens?: number; percentUsed?: number; source: 'provider' | 'none' } | undefined
   >(undefined)
   useEffect(() => {
     const read = commandContext.contextUsage?.usage()
-    setContextInfo(read
-      ? {
-          usedTokens: read.usedTokens,
-          ...(read.maxTokens === undefined ? {} : { maxTokens: read.maxTokens }),
-          ...(read.percentUsed === undefined ? {} : { percentUsed: read.percentUsed }),
-          source: read.source
-        }
-      : undefined)
+    // 0.5.4：没有真实用量（source=none）时就不显示，绝不用估算顶替。
+    setContextInfo(read && read.source === 'provider' ? {
+      ...(read.usedTokens === undefined ? {} : { usedTokens: read.usedTokens }),
+      ...(read.maxTokens === undefined ? {} : { maxTokens: read.maxTokens }),
+      ...(read.percentUsed === undefined ? {} : { percentUsed: read.percentUsed }),
+      source: read.source
+    } : undefined)
   }, [commandContext.contextUsage, frame.status.state, frame.transcript.length])
   // 0.5.2：推理强度指示。每次渲染直接读取（开销可忽略），
   // 这样 /effort 改完立刻反映到状态栏。
@@ -295,12 +312,19 @@ export function App({
   const pick = (a: string, b: string) => (zh ? a : b)
   const effort = commandContext.effort
   const [effortIndex, setEffortIndex] = useState<number>()
-  const contextLabel = contextInfo === undefined
+  // 0.5.4：上下文占用用「饼图字形 + 百分比」显示（类似参考实现的状态栏），
+  // 数据来自 Provider 真实用量，不使用估算。
+  const contextPercent = contextInfo?.percentUsed
+  const contextGlyph = contextPercent === undefined
     ? undefined
-    : contextInfo.maxTokens === undefined
-      ? `${formatTokens(contextInfo.usedTokens)} tokens`
-      : `${formatTokens(contextInfo.usedTokens)}/${formatTokens(contextInfo.maxTokens)} tokens` +
-        (contextInfo.percentUsed === undefined ? '' : ` (${contextInfo.percentUsed.toFixed(1)}%)`)
+    : contextPercent >= 87.5 ? '●'
+      : contextPercent >= 62.5 ? '◕'
+        : contextPercent >= 37.5 ? '◑'
+          : contextPercent >= 12.5 ? '◔'
+            : '○'
+  const contextLabel = contextPercent === undefined
+    ? undefined
+    : `${contextGlyph} ${contextPercent.toFixed(1)}%`
   const contextTone = contextInfo?.percentUsed === undefined
     ? undefined
     : contextInfo.percentUsed >= 95
@@ -328,8 +352,9 @@ export function App({
   const chain = useRef(Promise.resolve())
   const pendingActions = useRef(0)
   const managerDone = useRef<(() => void) | undefined>(undefined)
-  const managerInput = useRef<ModelManagerInput | undefined>(undefined)
+  const managerInput = useRef<{ key: (text: string, key: Key) => void; paste: (text: string) => void } | undefined>(undefined)
   const [modelManagerOpen, setModelManagerOpen] = useState(false)
+  const [rulesManagerOpen, setRulesManagerOpen] = useState(false)
   const [typing, setTyping] = useState(false)
   const typingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const mounted = useRef(true)
@@ -405,6 +430,12 @@ export function App({
         await new Promise<void>((resolve) => {
           managerDone.current = resolve
         })
+      } else if (result.openRules) {
+        setPosition(undefined)
+        setRulesManagerOpen(true)
+        await new Promise<void>((resolve) => {
+          managerDone.current = resolve
+        })
       } else setHint(result.error ?? result.message ?? '')
     })
   }
@@ -444,7 +475,7 @@ export function App({
       )
     : [])
   const completion = useMemo(() => {
-    if (dialog || frame.approval || overlayDismissed || modelManagerOpen) return null
+    if (dialog || frame.approval || overlayDismissed || modelManagerOpen || rulesManagerOpen) return null
     const lineText = editor.lines[editor.cursor.line] ?? ''
     const token = activeToken(lineText, editor.cursor.col, COMMAND_NAMES)
     if (!token) return null
@@ -1088,9 +1119,18 @@ export function App({
     if (text || key.backspace || key.delete) markTyping()
   })
   useWheel(fullScreen, (lines) => {
-    if (!modelManagerOpen && !dialog) scrollHistory(lines)
+    if (!modelManagerOpen && !rulesManagerOpen && !dialog) scrollHistory(lines)
   })
   const config = commandContext.getConfig()
+  if (rulesManagerOpen) {
+    return <RulesManager context={{ ...context, session }} input={managerInput} close={(notice) => {
+      const done = managerDone.current
+      setRulesManagerOpen(false)
+      setHint(notice ?? '')
+      managerDone.current = undefined
+      done?.()
+    }} />
+  }
   if (modelManagerOpen) {
     return <ModelManager context={{ ...context, session }} input={managerInput} readClipboard={readClipboard} close={(notice) => {
       const done = managerDone.current
@@ -1465,7 +1505,6 @@ export function App({
                 {contextLabel !== undefined && (
                   <Text color={contextTone} dimColor={contextTone === undefined}>
                     {contextLabel}
-                    {contextInfo?.source === 'estimate' && pick('（估算）', ' (estimated)')}
                   </Text>
                 )}
               </Text>

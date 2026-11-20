@@ -53,5 +53,5 @@ test('0.5.2 长会话 + 长回答：无秒级卡顿帧', async (t) => {
   // A visible freeze is a frame gap of a second or more; this scenario must
   // stay far below that.
   assert.ok(worst < 400, 'worst frame gap ' + worst + 'ms must stay under 400ms')
-  assert.match(ui.last(), /⊙ 中 · \/effort · 120k\/200k tokens \(60\.0%\)/)
+  assert.match(ui.last(), /⊙ 中 · \/effort · ◑ 60\.0%/)
 })

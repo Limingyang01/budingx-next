@@ -95,12 +95,12 @@ export type AgentRuntime = {
   /** 0.5.2：上下文用量（provider 真实 usage 优先，缺失时本地估算）。 */
   contextUsage?: {
     usage: () => {
-      usedTokens: number
+      usedTokens?: number
       maxTokens?: number
       reservedOutputTokens?: number
       triggerTokens?: number
       percentUsed?: number
-      source: 'provider' | 'estimate'
+      source: 'provider' | 'none'
     }
   }
   /** SP005：上下文预算构成。 */
@@ -287,6 +287,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   // 未显式设置时不发送该参数：不少兼容端点遇到未知字段会直接 400。
   // 状态栏仍显示默认值，避免“没设置”看起来像功能缺失。
   const DEFAULT_EFFORT: ReasoningEffort = 'medium'
+  // 状态栏上下文占比的默认窗口（可用 BUDINGX_CONTEXT_WINDOW 覆盖）。
+  const DEFAULT_CONTEXT_WINDOW = 200000
   let reasoningEffort: ReasoningEffort | undefined = options.reasoningEffort
   const persistence = options.persistence ?? false
   let sessionStore: SessionStore | undefined
@@ -460,10 +462,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   // 否则退回本地估算，并明确标注来源。
   const contextUsageSurface = {
     usage: () => {
-      const history = session.history
+      // 0.5.4：状态栏上下文占比只用 Provider 真实上报的 inputTokens，
+      // 不再用本地估算代替百分比（用户明确要求「不需要估算」）。
+      // 未拿到真实用量前不显示占比；窗口缺省按 200k 计算，可用
+      // BUDINGX_CONTEXT_WINDOW 覆盖。
       const providerUsage = session.usage
-      const usedTokens = providerUsage?.inputTokens ?? estimateTokens([...history])
-      const window = options.contextBudget?.maxTokens
+      const usedTokens = providerUsage?.inputTokens
+      const window = options.contextBudget?.maxTokens ?? DEFAULT_CONTEXT_WINDOW
       const reserved = window === undefined
         ? undefined
         : normalizeBudget(window, options.contextBudget?.reservedOutputTokens).reservedOutputTokens
@@ -471,16 +476,16 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         ? undefined
         : Math.max(1, window - reserved)
       return {
-        usedTokens,
+        ...(usedTokens === undefined ? {} : { usedTokens }),
         ...(window === undefined ? {} : { maxTokens: window }),
         ...(reserved === undefined ? {} : { reservedOutputTokens: reserved }),
         ...(target === undefined
           ? {}
           : { triggerTokens: Math.floor(target * 0.85) }),
-        ...(window === undefined || window <= 0
+        ...(usedTokens === undefined || window === undefined || window <= 0
           ? {}
           : { percentUsed: Math.min(100, Math.round((usedTokens / window) * 1000) / 10) }),
-        source: providerUsage?.inputTokens === undefined ? 'estimate' as const : 'provider' as const
+        source: usedTokens === undefined ? 'none' as const : 'provider' as const
       }
     }
   }

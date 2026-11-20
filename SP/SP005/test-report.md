@@ -233,4 +233,12 @@ AC 区间：CB-01…07（7）、SR-01…11（11）、FR-01…09（9）、PM-01�
 
 全量 `npm test` 通过（782 项 / 0 失败 / 1 跳过）。
 
+## 16. 0.5.4 长会话崩溃、Langfuse、上下文占比与命令面（2026-11-20）
 
+| 项 | 修复 | 证据 |
+| --- | --- | --- |
+| 长会话崩溃 Maximum update depth exceeded | Ink useBoxMetrics 对内容盒的无依赖 effect 与虚拟列表间距互相驱动形成同步更新链；改为「布局后手动测高 + 宏任务合并 setState」，逐条消息只测高且高度不变不上报 | stress-loop.test.mjs（80 回合 + 两次 resize）、screen-e2e.test.mjs 滚动用例 |
+| Langfuse 启动告警暴露给用户 | 观测状态只进内部 diagnostics，默认不启用、不打印；仅开发环境显式开启 | sp0054-langfuse-silent.test.mjs |
+| 上下文只显示 token 数 | 改为「饼图字形 + 百分比」，只用 Provider 真实 inputTokens，不使用估算；窗口缺省 200k | sp0052-status.test.mjs、sp0052-long-session.test.mjs |
+| /config /model 出现在命令面 | 从 /help 与 / 补全移除，开关分支移除，模型切换统一 /models | commands.test.mjs、commands-zh.test.mjs、app.test.mjs、cli.test.mjs |
+| /rules 只是纯文本命令 | 参照 /models 增加交互管理面板（↑↓/a/d/Esc），管道模式保留列表 | sp0054-rules-manager.test.mjs |

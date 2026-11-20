@@ -13,9 +13,9 @@ import {
   maskKey,
   type ResolvedConfig
 } from '../storage/profiles.js'
+import { selectProfile } from './model-management.js'
 import type { PermissionsStore } from '../storage/permissions.js'
 import type { discoverModels, probe } from '../provider/openai.js'
-import { selectProfile } from './model-management.js'
 import type { BudingPermissionPolicy, PermissionRule } from '../workspace/policy.js'
 import { changeDiffs, type ChangeRecord, type UndoOutcome } from '../workspace/checkpoint.js'
 import type { Workspace } from '../workspace/paths.js'
@@ -28,6 +28,7 @@ export type CommandOutcome = {
   error?: string
   openModels?: boolean
   openEffort?: boolean
+  openRules?: boolean
   /** Interactive hosts open the diff dialog on this instead of printing. */
   openDiffDialog?: boolean
 }
@@ -73,12 +74,12 @@ export type CommandContext = {
    */
   contextUsage?: {
     usage: () => {
-      usedTokens: number
+      usedTokens?: number
       maxTokens?: number
       reservedOutputTokens?: number
       triggerTokens?: number
       percentUsed?: number
-      source: 'provider' | 'estimate'
+      source: 'provider' | 'none'
     }
   }
   /** SP005: context budget composition for /context. */
@@ -131,11 +132,9 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
   return lang === 'zh'
     ? `命令：
   /help                 显示本帮助
-  /config               显示端点、模型与密钥状态
   /models               打开模型管理（管道模式列出档案）
-  /model [id]           切换模型（下一回合生效）
   /permission           查看权限模式；/permission ${modes} 切换
-  /rules                列出权限规则（含遮蔽标注）
+  /rules                管理权限规则（交互模式打开面板；管道模式列出）
   /rules add <allow|deny> <tool|*> [path-glob]  新增规则
   /rules rm <id>        删除规则
   /diff [路径]          查看本会话改动（交互模式打开对话框）
@@ -151,11 +150,9 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
   /exit                 退出 budingx`
     : `Commands:
   /help                 show this help
-  /config               show the active endpoint, model and key state
   /models               open model management (list profiles in pipes)
-  /model [id]           switch the model (takes effect from the next turn)
   /permission           show the permission mode; /permission ${modes} to switch
-  /rules                list permission rules (with shadow annotations)
+  /rules                manage permission rules (opens a panel interactively; lists in pipes)
   /rules add <allow|deny> <tool|*> [path-glob]  add a rule
   /rules rm <id>        remove a rule
   /diff [path]          show this session's changes (opens a dialog interactively)
@@ -221,10 +218,7 @@ async function executeCommand(
         handled: true,
         message: [
           pick(`端点：${config.baseUrl}`, `Endpoint: ${config.baseUrl}`),
-          pick(
-            `模型：${config.model || '（未配置）'}`,
-            `Model: ${config.model || '(not configured)'}`
-          ),
+          pick(`模型：${config.model || '（未配置）'}`, `Model: ${config.model || '(not configured)'}`),
           pick(`密钥：${maskKey(key)}`, `API key: ${maskKey(key)}`),
           pick(`来源：${config.source}`, `Source: ${config.source}`),
           pick(`超时：${config.timeoutMs} ms`, `Timeout: ${config.timeoutMs} ms`)
@@ -280,6 +274,10 @@ async function executeCommand(
     case 'permission':
       return permissionCommand(argument, context, pick)
     case 'rules':
+      // 0.5.4：交互模式下无参数打开规则管理面板（参照 /models）。
+      if (!argument && context.interactive && context.permission) {
+        return { handled: true, openRules: true }
+      }
       return rulesCommand(argument, context, pick)
     case 'diff':
       return diffCommand(argument, context, pick)
@@ -457,7 +455,16 @@ function contextCommand(
   const usage = context.contextUsage?.usage()
   if (!budget) {
     if (usage) {
-      // 0.5.2：即使没有配置预算，也要能看到上下文用了多少。
+      // 0.5.4：只展示模型真实上报的用量；未拿到时不显示、不估算。
+      if (usage.usedTokens === undefined) {
+        return {
+          handled: true,
+          message: pick(
+            '上下文用量：尚未收到模型上报的用量（完成一次回合后显示）',
+            'Context usage: no provider-reported usage yet (shown after a turn completes)'
+          )
+        }
+      }
       const used = formatTokens(usage.usedTokens)
       const lines = [
         usage.maxTokens === undefined
@@ -467,8 +474,8 @@ function contextCommand(
               `Context used: ${used} / ${formatTokens(usage.maxTokens)} tokens (${usage.percentUsed ?? 0}%)`
             ),
         pick(
-          `来源：${usage.source === 'provider' ? '模型汇报的真实用量' : '本地估算'}`,
-          `Source: ${usage.source === 'provider' ? 'provider-reported usage' : 'local estimate'}`
+          '来源：模型汇报的真实用量',
+          'Source: provider-reported usage'
         )
       ]
       return { handled: true, message: lines.join('\n') }
