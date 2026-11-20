@@ -207,5 +207,5 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 ## 7. 交付边界
 
 - 分支：`feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；提交 `cedf2a3`（A）、`031b99b`（B）、`4b78cdb`（C+B3）、`06d7b2a`（D）、`f0b11eb`（命令卡片完成态隐藏与单行修复）、`47c5cb6`（台账源码 SHA 同步）、`1ef588a`（`/resume` 历史可见性与身份切换）。
-- **未合入 master**（用户 m02328 明确「先不要合入master分支」）；远端推送按用户 m02328 授权在提交后执行。
+- **未合入 master**（用户 m02328 明确「先不要合入master分支」）；已按用户 m02328 授权推送远端分支 `origin/feature/SP006/tui-parity-and-extensions`（HEAD `a2fd0cc`），master 未改动。
 - 版本 0.6.0 仅 `prepared`；未打 tag、未 npm 发布、未改远端设置。

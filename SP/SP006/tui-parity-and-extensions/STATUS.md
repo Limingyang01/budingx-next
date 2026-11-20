@@ -82,10 +82,10 @@
 | SP006 新增 | 20 个测试文件、110 例 |
 | 制品 | sp006-packaging.mjs 6 项 PASS，exit 0，未上传 |
 | AST | 52/52 映射，命中 0，自检 3/3 PASS |
-| 版本 | 0.6.0 prepared（sourceCommit 4b78cdb…，receipt 占位 null） |
+| 版本 | 0.6.0 prepared（sourceCommit 1ef588a…，receipt 占位 null） |
 
 ## 下一步
 
-1. 等用户检查功能分支、测试报告与 0.6.0 制品；本轮**不合入 master**，远端推送按用户 m02328 授权在提交后执行。
+1. 功能分支已按用户 m02328 授权推送远端（`origin/feature/SP006/tui-parity-and-extensions`，HEAD `a2fd0cc`）；等用户检查功能分支、测试报告与 0.6.0 制品，本轮**不合入 master**。
 2. 用户确认后再按 buding-merge 门禁合入、推送并按发布流程上传 0.6.0。
 3. 合入前若继续改代码，需重跑全量单测、制品 smoke 与 AST 复核。
