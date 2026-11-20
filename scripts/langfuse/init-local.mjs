@@ -16,7 +16,6 @@ import {
   chmodSync
 } from 'node:fs'
 import { execFileSync } from 'node:child_process'
-import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -73,31 +72,30 @@ export function currentUserSid() {
 /** 不允许出现在私有路径 DACL 里的宽泛主体（Everyone / Authenticated Users / INTERACTIVE / BUILTIN\Users）。 */
 export const BROAD_PRINCIPAL_SIDS = ['S-1-1-0', 'S-1-5-11', 'S-1-5-4', 'S-1-5-32-545']
 
-/**
- * 读取路径 DACL 的 SDDL 文本（Windows）。
- * 用 icacls /save 导出：SDDL 里只有 SID 和 ACE 类型，不经过控制台代码页，
- * 因此不会因账户名含非 ASCII 字符而乱码（原来的名字比对正是这样误判的）。
- */
-export function readAclSddl(target) {
-  const dump = path.join(os.tmpdir(), `budingx-acl-${process.pid}-${randomUUID()}.txt`)
-  try {
-    execFileSync(systemTool('icacls.exe'), [target, '/save', dump], {
+/** 直接读取 DACL 的数字 SID，避免 SDDL 别名及本地化账户名影响验证。 */
+export function readAclSids(target) {
+  const command = [
+    "$ErrorActionPreference = 'Stop'",
+    '$target = $env:BUDINGX_LANGFUSE_ACL_TARGET',
+    '$section = [System.Security.AccessControl.AccessControlSections]::Access',
+    '$acl = if ([IO.File]::GetAttributes($target) -band [IO.FileAttributes]::Directory) {',
+    '  [IO.Directory]::GetAccessControl($target, $section)',
+    '} else {',
+    '  [IO.File]::GetAccessControl($target, $section)',
+    '}',
+    '$acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) |',
+    '  ForEach-Object { $_.IdentityReference.Value }'
+  ].join('\n')
+  const output = execFileSync(
+    systemTool(path.join('WindowsPowerShell', 'v1.0', 'powershell.exe')),
+    ['-NoProfile', '-NonInteractive', '-Command', command],
+    {
       encoding: 'utf8',
+      env: { ...process.env, BUDINGX_LANGFUSE_ACL_TARGET: path.resolve(target) },
       windowsHide: true
-    })
-    return readFileSync(dump, 'utf16le')
-  } finally {
-    try {
-      unlinkSync(dump)
-    } catch {
-      // 清理失败不影响校验结果。
     }
-  }
-}
-
-/** 从 SDDL 文本里取出全部 SID。 */
-export function aclSids(sddl) {
-  return sddl.match(/S-1-[0-9]+(?:-[0-9]+)+/g) ?? []
+  )
+  return output.trim().split(/\r?\n/).filter(Boolean)
 }
 
 /**
@@ -128,9 +126,7 @@ export function restrictAndVerify(target, kind) {
     encoding: 'utf8',
     windowsHide: true
   })
-  // 按 SID 核对：icacls 的文本输出会把账户名按控制台代码页显示，名字比对不可靠
-  // （中文账户名解码成乱码后既匹配不到名字也匹配不到 SID）。
-  const sids = aclSids(readAclSddl(target))
+  const sids = readAclSids(target)
   if (!sids.includes(sid)) {
     throw new Error(`Cannot verify the current user (SID ${sid}) on ${target}`)
   }

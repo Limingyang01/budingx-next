@@ -100,3 +100,16 @@ AC 区间：CB-01…07（7）、SR-01…11（11）、FR-01…09（9）、PM-01�
 - 发布准备：0.5.0 版本号、发布台账 `prepared` 记录与[0.5.0 发行说明](../../release-notes/v0.5.0.md)已就绪，**尚未上传 npm**；实际 npm 上传由维护者在 GitHub Actions 手动触发。
 - 发布预演：本地 `npm run publish -- --dry-run --expected-version 0.5.0 --tag latest` 全绿（打包、隔离安装、命令入口版本、安装态 smoke 全通过，`state=verified-local`），证明制品本身可发布；registry 上仍无 0.5.0（`npm view budingx@0.5.0` 返回 404，`latest` 仍为 0.4.0），符合“尚未上传”的状态。
 - 交付记录：本报告、[细节报告](long-session-reliability/test-report.md)、[STATUS](long-session-reliability/STATUS.md) 与 [requirements-summary](requirements-summary.md) 同步维护。
+
+## 7. 0.5.0 发布预检修复自审（2026-11-20）
+
+[发布运行 #19](https://github.com/Limingyang01/budingx-next/actions/runs/44650273279) 的 Windows 预检中，Langfuse 初始化的 8 项测试因 DACL 校验漏读内置管理员的 `LA` 别名而失败。改为直接读取 Windows DACL 中的数字 SID，也覆盖 `AU` 等宽泛主体的别名。由用户手动触发正式发布。
+
+| 验收项 | 结论 | 验证 |
+| --- | --- | --- |
+| 读取 `LA` 对应的内置管理员 SID | PASS | Windows 临时文件真实 DACL，含空格、括号及引号的文件名 |
+| 拒绝显式授予 `AU` 访问 | PASS | Windows 临时文件授予 `S-1-5-11` 后，初始化权限校验拒绝该授权 |
+| 保持现有初始化行为 | PASS | `node --test scripts/langfuse/init-local.test.mjs` 在仓库根执行，Windows 12 项通过，包括目录和文件权限、重复初始化与不完整配置保护 |
+| 托管发布验证 | UNVERIFIED | 恢复条件为新的 GitHub Actions 运行完成 Windows 与 Ubuntu 验证 |
+
+两条新增断言在旧代码上均失败，修复后均通过。自审覆盖初始化脚本、回归测试、本报告及 [产品说明书](../../PRODUCT.md) 的 Langfuse 权限描述。变更范围限于开发初始化工具，无依赖、配置迁移、凭据或制品变动。Windows 测试使用临时文件的真实 ACL，产品发布预检另行验证制品。

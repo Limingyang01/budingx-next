@@ -1,17 +1,25 @@
 // SP004 agent-observability T30：本机初始化脚本。
 // 覆盖 OB-01、OB-02。用临时根目录，避免污染真实 .runtime。
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
 import {
   BROAD_PRINCIPAL_SIDS,
-  aclSids,
   currentUserSid,
   initLocal,
   parseEnvFile,
-  readAclSddl,
+  readAclSids,
   restrictAndVerify
 } from './init-local.mjs'
 
@@ -124,13 +132,10 @@ test('configuration files are restricted to the current user', () => {
       assert.equal(statSync(path.join(dir, name)).mode & 0o777, 0o600)
     }
   } else {
-    // Windows：按 SID 核对 DACL。
-    // 不能比对账户名：icacls 的文本输出按控制台代码页编码，中文账户名解码成乱码后
-    // 既匹配不到名字也匹配不到 SID（2026-11-19 在本机复现，见 SP005 test-report §6）。
     const sid = currentUserSid()
     assert.ok(sid, 'must resolve the current user SID')
     for (const target of [dir, ...['local.env', 'agent.env', 'login.json'].map((n) => path.join(dir, n))]) {
-      const sids = aclSids(readAclSddl(target))
+      const sids = readAclSids(target)
       assert.ok(sids.includes(sid), `${target} must grant the current user (${sid})`)
       for (const broad of BROAD_PRINCIPAL_SIDS) {
         assert.ok(!sids.includes(broad), `${target} must not grant ${broad}`)
@@ -142,6 +147,35 @@ test('configuration files are restricted to the current user', () => {
 test('restrictAndVerify refuses a path it cannot verify', () => {
   const missing = path.join(tempRoot(), 'does-not-exist')
   assert.throws(() => restrictAndVerify(missing, 'file'))
+})
+
+test('Windows DACL reads a local Administrator (LA) grant as its numeric SID', { skip: !isWindows }, (t) => {
+  const root = tempRoot()
+  t.after(() => rmSync(root, { recursive: true }))
+  const target = path.join(root, "admin [fixture]'s file.txt")
+  writeFileSync(target, 'fixture')
+  const sid = execFileSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      "(Get-LocalUser | Where-Object { $_.SID.Value -like '*-500' }).SID.Value"
+    ],
+    { encoding: 'utf8' }
+  ).trim()
+  assert.match(sid, /^S-1-5-21-(?:\d+-){3}500$/)
+  execFileSync('icacls.exe', [target, '/grant:r', `*${sid}:F`])
+  assert.ok(readAclSids(target).includes(sid), 'must resolve the local Administrator grant')
+})
+
+test('Windows DACL rejects an explicit Authenticated Users (AU) grant', { skip: !isWindows }, (t) => {
+  const root = tempRoot()
+  t.after(() => rmSync(root, { recursive: true }))
+  const target = path.join(root, 'fixture.txt')
+  writeFileSync(target, 'fixture')
+  execFileSync('icacls.exe', [target, '/grant:r', '*S-1-5-11:R'])
+  assert.throws(() => restrictAndVerify(target, 'file'), /broad principal \(S-1-5-11\)/)
 })
 
 test('parseEnvFile ignores comments and non assignment lines', () => {
