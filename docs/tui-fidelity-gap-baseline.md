@@ -51,7 +51,7 @@
 
 ### L3 能力面（功能等价）
 
-- **斜杠命令**：参考 60+ 目录、三型契约（`local` / `local-jsx` / `prompt` + `progressMessage`）、注册表驱动、feature 门控。本仓 12 个内联 if-else，无注册表、无三型契约、无 `local-jsx` 模态槽。
+- **斜杠命令**：参考 60+ 目录、三型契约（`local` / `local-jsx` / `prompt` + `progressMessage`）、注册表驱动、feature 门控。本仓现为内联 switch + 两个面板（models/rules），无注册表、无三型契约、无统一 `local-jsx` 模态槽。用户清单 18 项 + /models 的逐项排期见 [TUI 命令路线图](tui-command-roadmap.md)（2026-11-20）。
 - **工具**：参考 34 族真实工具 + 50 个工具目录。本仓 `src/workspace` 提供 5 个文件工具，**零** Agent 工具（Task/Agent/Todo/Plan/AskUserQuestion 等）。
 - **Agent 主循环**：参考有 plan 模式、工具回合、子代理、后台任务六件套、todo 状态机。本仓 `src/core` 有基本回合，无计划模式、无 todo、无子代理。
 
