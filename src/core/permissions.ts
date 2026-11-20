@@ -5,7 +5,14 @@
 
 export type PermissionMode = 'read_only' | 'workspace_edit' | 'full_access'
 
-export type ToolCapability = 'read' | 'write' | 'execute'
+/**
+ * What a tool does to the world.
+ *
+ * `network` is egress: it changes nothing locally, but it sends data to a
+ * third party. It therefore needs its own consent rule instead of being
+ * treated as a plain read (0.5.4: WebSearch prompted even in full access).
+ */
+export type ToolCapability = 'read' | 'write' | 'execute' | 'network'
 
 export type PermissionAction = 'allow' | 'ask' | 'deny'
 

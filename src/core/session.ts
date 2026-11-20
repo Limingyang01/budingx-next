@@ -1627,6 +1627,10 @@ export class Session {
         }
         approved = true
       }
+      // 能走到执行即代表本次调用已获授权：审批通道放行，或权限档位自动放行。
+      // 出网/删除类工具以 `approved` 确认宿主授权（0.5.4：此前仅审批通道置真，
+      // 导致完全权限档位下自动放行的出网调用被工具自设闸门误拒）。
+      approved = true
       this.setState('tool_running')
       let content = ''
       let isError = false

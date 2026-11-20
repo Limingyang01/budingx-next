@@ -87,7 +87,7 @@ A cancelled turn keeps the text that was already produced. A turn cancelled befo
 
 A tool-enabled model can use `Read`, `Glob`, `Grep`, `Write`, and `Edit` in your working directory. Use `@path#L10-20` for a line range or `@"folder/file name.txt"` for a path with spaces. Tab completes paths.
 
-`WebSearch` uses Bing's public search feed when `BUDINGX_TAVILY_API_KEY` is unset, and uses Tavily when the key is set. A tool-enabled model can request a search. Approve the query and destination before it is sent. Search returns up to five URLs and snippets. For multiple questions or a multiple-select question, confirm the answer summary with Enter. Press Left or Shift+Tab to return to the questions.
+`WebSearch` uses Bing's public search feed when `BUDINGX_TAVILY_API_KEY` is unset, and uses Tavily when the key is set. A tool-enabled model can request a search. Approval follows the permission mode: full access sends the query without prompting, while workspace-edit and read-only ask each time and can remember the choice for the session. Search returns up to five URLs and snippets. For multiple questions or a multiple-select question, confirm the answer summary with Enter. Press Left or Shift+Tab to return to the questions.
 
 Interactive sessions default to Allow edits. Ordinary workspace writes run directly, and sensitive targets require approval. Use `/permission edit|full` or Shift+Tab to change modes. For an approval, use Up/Down to review the diff and 1 or 3 to allow once or deny. An approval shows 2 only when session memory is available for that operation. Use `/rules` to manage permission rules and `/denials` to inspect refusals.
 

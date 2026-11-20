@@ -157,8 +157,9 @@ export function createWebSearchTool(apiKey?: string): ToolHandler {
       required: ['query'],
       additionalProperties: false
     },
-    capability: () => 'read',
-    mandatoryApproval: () => true,
+    // 联网搜索是「出网」而不是本地读取：由权限策略决定是否需要确认，
+    // 完全权限档位下不再逐次弹窗（0.5.4 修复：此前无条件强制审批）。
+    capability: () => 'network',
     describe: () => `Send a search query to ${backend}`,
     prepareApproval(input) {
       const { query } = readQuery(input)
@@ -166,6 +167,8 @@ export function createWebSearchTool(apiKey?: string): ToolHandler {
     },
     async execute(input, context) {
       const { query, allow, block } = readQuery(input)
+      // 出网前必须已获授权。`approved` 由 Session 在「审批放行」或
+      // 「权限档位自动放行」时置真（0.5.4），因此完全权限下不再误拒。
       if (!context.approved) throw new Error('WebSearch requires approval before sending a query')
       context.signal.throwIfAborted()
       const signal = AbortSignal.any([context.signal, AbortSignal.timeout(12_000)])
