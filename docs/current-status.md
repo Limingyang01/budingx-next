@@ -64,6 +64,12 @@
 0.5.1 已通过 OIDC 发布（`src/tui/package.json` = 0.5.1，台账为 published，npm `latest` 已指向 0.5.1）；发布回执见 [0.5.1 发行说明](../release-notes/v0.5.1.md) 与 §10。
 
 
+## SP005 长会话优化（0.5.2）合入回执（2026-11-20）
+
+源/目标固定：`feature/SP005/fix-0.5.2`（HEAD `dabbafa`）→ `master`（原 `8ca8930`），`--no-ff` 合并提交 `7d21432`。前置门禁 `npm run merge:gate` GREEN（`artifacts/merge-gate/feature-SP005-fix-0.5.2-2026-11-20T03-06-12-062Z.md`：`npm test`、`spec:check`、`skills:check`、`pack-smoke` 退出码均为 0）。全量单测 706 项 / 705 通过 / 0 失败 / 1 跳过（跳过项仅 POSIX 生效）。推送：`origin/master` `8ca8930..7d21432`；首次推送因 GitHub 连接中断失败，重试后成功，`git ls-remote` 与本地一致。
+
+0.5.2 已准备（`src/tui/package.json` = 0.5.2，台账为 prepared），等待维护者触发发布；发布后需按回执流程登记。
+
 ## SP005 长会话渲染优化（0.5.2，2026-11-20）
 
 用户报告「长会话经常卡顿卡死」。定位与修复如下，均以真实渲染管线（真实 Ink + 真实 Session + 伪终端流）测量。
