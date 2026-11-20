@@ -4,7 +4,7 @@
 | --- | --- |
 | 需求目录 | `SP/SP006/tui-parity-and-extensions/` |
 | 已确认 SP | SP006（用户 m00001 明确「开始SP006的开发」） |
-| 依据设计 | `design/design.zh.md` v1.0（SELF_REVIEWED，含 §16 两轮自审） |
+| 依据设计 | `design/design.zh.md` v1.1（SELF_REVIEWED，含 §16 两轮自审） |
 | 功能分支 | `feature/SP006/tui-parity-and-extensions` |
 | 文档起点 SHA | `dc94731`（master：「登记 0.5.4 发布回执并同步文档至 latest」） |
 | 核对 master SHA | `dc94731`（建分支时工作区干净） |
@@ -47,8 +47,8 @@
 ## Spec
 
 权威来源：
-- 设计：`SP/SP006/tui-parity-and-extensions/design/design.zh.md` v1.0（§4–§12 为实现契约，§14 为验证口径，§15 为偏离与 OPEN）。
-- 需求 AC：`SP/SP006/tui-parity-and-extensions/requirements.md` 的 67 条（TU-01…TU-15、PI-01…PI-05、SM-01…SM-09、HK-01…HK-08、WR-01…WR-05、HC-01…HC-07、NP-01…NP-05、CMD-01…CMD-12、AST-01…AST-03）。
+- 设计：`SP/SP006/tui-parity-and-extensions/design/design.zh.md` v1.1（§4–§12 为实现契约，§14 为验证口径，§15 为偏离与 OPEN）。
+- 需求 AC：`SP/SP006/tui-parity-and-extensions/requirements.md` 的 69 条（TU-01…TU-15、PI-01…PI-05、SM-01…SM-09、HK-01…HK-08、WR-01…WR-05、HC-01…HC-07、NP-01…NP-05、CMD-01…CMD-12、AST-01…AST-03）。
 
 ## Global Constraints
 
@@ -355,7 +355,7 @@
   2. 最小实现：tarball 白名单断言；隔离安装；真实任务跑通；dry-run 不上传；台账状态 `prepared`。
   3. 目标成功：脚本 exit 0 并输出实际检查项。
 - **检查**：—
-- **状态记录**：（未开始）
+- **状态记录**：DONE 2026-11-20；`node scripts/release/sp006-packaging.mjs` exit 0：`ledger: PASS 0.6.0 SP006 prepared`、`release notes: PASS 0.6.0`、`tarball: PASS budingx-0.6.0.tgz 139 files`、`isolated install: PASS 0.6.0`、`headless stream-json: PASS 7 events; no user data written`、`publish --dry-run: PASS (no upload)`；台账含 `sourceCommit` 与 `receipt:null` 占位（sp006-release-ledger.test.mjs 3 例）。
 
 #### T-D2 AST 映射与复核
 
@@ -372,7 +372,7 @@
   2. 最小实现：补映射与处置；无对应项用 `{note}`。
   3. 目标成功：exit 0，输出命中数与处置；3 项自检全绿。
 - **检查**：—
-- **状态记录**：（未开始）
+- **状态记录**：DONE 2026-11-20；`node scripts/review/sp004-ast.mjs --reference /d/my_project/budingWorkerSpace --reference-revision b5c9be8 --base dc94731`：48 改动文件 / 48 映射，自检 3 项 PASS，本仓单元 238、参考 14250、函数对 44941，命中「无」，结论 PASS。
 
 #### T-D3 文档收口
 
@@ -387,7 +387,7 @@
 - **预期行为**：
   1. 产品说明书章节同步；UNVERIFIED 项写明恢复条件。
 - **检查**：spec:check / skills:check
-- **状态记录**：（未开始）
+- **状态记录**：DONE 2026-11-20；PRODUCT.md §2/§4.3/§5.7/§6/§7/§8 与 docs/current-status.md 同步；SP/SP006/requirements-summary.md、SP/SP006/test-report.md、本迭代 STATUS.md 已写；`npm run spec:check`、`npm run skills:check`、`npm run test:checks` 通过。
 
 ## 全计划 AC 覆盖检查
 

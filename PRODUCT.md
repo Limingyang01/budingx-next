@@ -1,6 +1,8 @@
 # budingx 产品说明书
 
 > **npm 已发布版本**：0.5.4（`latest`）。详见 [0.5.4 发行说明](release-notes/v0.5.4.md)。
+>
+> **仓库已制备版本**：0.6.0（SP006，等待验收合入 master 后发布）。详见 [0.6.0 发行说明](release-notes/v0.6.0.md)。
 > **说明书版本**：v1.20
 > **更新日期**：2026-11-20
 > **产品形态**：独立 MIT 许可的终端 Coding Agent（Node.js ≥ 22.18 + TypeScript，不依赖 Bun）
@@ -37,6 +39,7 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | SP003       | 0.3.2 | model-manager | 供应商配置一次、多模型共用；MiniMax 中国站与百炼 Token Plan 模板；全屏会话与终端标签状态 | 已发布 |
 | SP003       | 0.3.1 | model-manager | 模型档案面板、供应商模板、自动拉取模型 ID、连接验证 | 已发布 |
 | SP003       | 0.3.0         | workspace-tools、change-preview、permission-controls、file-context         | 工作区文件工具（读取/写入/精确编辑/文件匹配/内容检索，含越界防护与读后编辑门）、结构化 diff 预览与本会话改动撤销、三档权限模式与审批三档、权限规则与拒绝记录、`@` 引用与统一补全 | **已发布** |
+| SP006       | 0.6.0（制备） | tui-parity-and-extensions | 四区骨架与布局计划、转录冻结缓存、键位系统（chord/保留键/用户覆盖）、状态栏内置与外部命令、项目指令加载、技能发现、MCP 客户端、hooks 八事件、WebFetch 工具、无头 CLI（text/json/stream-json）、命令注册表三型与 7 条新命令 | **已实现并通过回归，等待用户验收后合入 master 与发布 0.6.0** |
 | SP005       | 0.5.0–0.5.3 | context-budget、session-recovery、failure-recovery、project-memory        | 会话转录原子落盘与损坏隔离、跨进程恢复（只装载历史、不重放副作用）、上下文预算与确定性压缩（保留约束/计划/工具状态）、项目与会话记忆隔离、工具空转熔断与稳定失败错误码、`/sessions` `/resume` `/context` `/memory` 四个命令 | 功能随 0.5.0 发布，0.5.1 为同轮复审修复、0.5.2 为同轮长会话优化、0.5.3 为工作区会话与工具修复，均已发布；42 条 AC 见 [SP005 验收报告](SP/SP005/test-report.md) |
 
 ### 2.2 后续交付规划（[路线图 r8](docs/iteration-plan.md)）
@@ -45,7 +48,7 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | ----- | ----------------------- | ---------------------------------------------------------------------------------------------------------- | ---- |
 | SP004（0.4.0） | 计划、待办、命令与追问；普通命令要求已验证的执行隔离，提交限专用 worktree | 命令执行、后台任务、受控 Git 提交、计划模式与追问、四类会话卡片 | 已发布 |
 | SP005（0.5.0–0.5.3） | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         | 已合入 master。真实模型端到端两场景 PASS，0.5.4 已发布为 npm `latest` |
-| SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 规划中 |
+| SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 本轮实现完成，0.6.0 已制备，待验收合入 |
 | SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | 规划中 |
 | SP008 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | 规划中（契约轮，轻量测试客户端验证） |
 | SP009 | TUI 独立交付与 npm 发布工程 | tui-distribution、upgrade-compatibility、npm-publish-pipeline                                              | 规划中 |
@@ -119,6 +122,7 @@ budingx --prompt "Hello" --timeout 120000
 - 交互终端内使用 `/models` 管理本地模型档案，步骤见 [SP003 模型管理](#模型管理)。模型档案和密钥分别存放在 `~/.budingx/config.json` 和 `~/.budingx/credentials.json`。
 - 自动化或临时运行使用启动参数或环境变量。例如 `budingx --prompt "总结本目录" --timeout 120000`。管道模式的 `/models` 只列出档案；模型切换在交互终端的模型管理面板完成。
 - 公开的 0.3.0 使用旧版命令。本手册中的新面板和移除 `/provider` 的行为适用于 0.3.1。
+- **SP006 新增配置**：键位覆盖写在 `~/.budingx/keybindings.json`，hooks 写在 `~/.budingx/hooks.json`，MCP 服务器写在 `~/.budingx/mcp.json`（环境变量值只接受 `${ENV_NAME}` 引用）。状态栏外部命令在 `config.json` 的 `statusLine` 字段配置（`type: "command"`）。这些文件缺失或损坏时都会退回默认行为并给出提示，不会阻止启动。
 
 ## 5. 使用说明（按交付迭代）
 
@@ -274,11 +278,65 @@ budingx --prompt "Hello" --timeout 120000
 | `/cost` 或 `/usage` | 会话累计输入/输出 token、请求数、时长与预估费用（单价经 BUDINGX_PRICE_*_PER_MTOK 配置）。 |
 | `/permissions` 或 `/allowed-tools` | 打开权限白名单/规则面板（同 /rules）。 |
 
+### 5.7 SP006 · TUI 骨架、命令面与扩展能力
+
+SP006 在 0.5.4 的命令面之上补齐终端骨架、扩展机制与无头入口。默认行为保持兼容；新增能力都需显式配置或显式命令触发。
+
+#### 5.7.1 新增命令
+
+| 命令 | 操作与结果 |
+| --- | --- |
+| `/init` | 生成项目指令模板（AGENTS.md）。已有文件时拒绝覆盖；实际写文件仍需审批。 |
+| `/btw <问题>` | 旁路提问：独立请求模型，答案显示在会话中但不写入主会话历史，不影响正在进行的回合。 |
+| `/worktree [list\|create <名称>\|remove <路径或分支>]` | 列出、创建或删除隔离工作树。删除必须经宿主确认，并复用 SP004 的丢弃/未合并保护。 |
+| `/tasks` | 列出后台与未完成任务的状态、退出码和输出文件路径。 |
+| `/mcp` | 打开 MCP 服务器列表：名称、连接状态、工具数量。非交互模式输出文本。 |
+| `/skills` | 打开技能列表：名称、用户级/项目级来源、可用性与路径。 |
+| `/export [--format jsonl\|text] [--path <文件>]` | 导出当前会话。相对路径与默认位置位于 `~/.budingx` 内；已存在文件不覆盖。 |
+
+#### 5.7.2 终端骨架与键位
+
+- **四区布局**：页眉（有内容时）、转录区、输入区、页脚按终端高度分配；空间不足时优先压缩转录区，输入区至少 3 行、页脚至少 1 行。
+- **转录冻结**：已渲染且宽度/折叠状态未变的消息复用同一渲染结果，长会话滚动与流式增量不再全量重排。
+- **键位**：内置绑定覆盖全局、对话、输入、审批、转录、帮助、选择与页脚八类上下文，支持 `ctrl+x ctrl+e` 形式的 chord。`~/.budingx/keybindings.json` 可覆盖动作；`ctrl+c`、`ctrl+d` 等保留键与终端保留键会被拒绝并提示。损坏的键位文件不会阻止启动。
+- **状态栏**：默认显示模型、版本与上下文占用。配置 `statusLine: { "type": "command", "command": "...", "args": [...] }` 后，程序把会话与上下文 JSON 写入子进程 stdin，读取其 stdout 作为状态栏；超时或非零退出时静默回退内置文案。
+
+#### 5.7.3 项目指令与技能
+
+- **项目指令**：按「用户级 `~/.budingx/AGENTS.md` → 上级目录 → 工作区 `AGENTS.md` → 工作区 `CLAUDE.md`」加载，默认不向下扫描子目录。单文件超过 64 KiB、总量超过 128 KiB 会截断并提示。内容注入系统上下文，修改后下一回合生效。
+- **技能**：扫描 `~/.budingx/skills/<名称>/SKILL.md` 与 `<工作区>/.budingx/skills/<名称>/SKILL.md`，以 `/<名称>` 作为提示型命令调用；项目级同名技能覆盖用户级。缺少 frontmatter 或正文为空的技能会标记为不可用并在调用时说明原因。
+
+#### 5.7.4 MCP、hooks 与 WebFetch
+
+- **MCP**：`~/.budingx/mcp.json` 的 `mcpServers` 下按 stdio JSON-RPC 连接服务器，工具以 `mcp__<服务器>__<工具>` 暴露。所有 MCP 工具调用都经过现有审批通道；连接失败、超时或服务器退出的错误码以 `BUDINGX_MCP_` 开头，单台服务器故障不影响其他工具和回合。
+- **hooks**：`~/.budingx/hooks.json` 支持 SessionStart、UserPromptSubmit、PreToolUse、PostToolUse、PostToolUseFailure、Stop、StopFailure、Notification 八个事件。处理器输出 JSON 可阻断、放行或改写工具输入、追加模型上下文。退出码 2 视为阻断；其他失败与超时只告警，不让会话崩溃。损坏配置会备份为 `hooks.json.bak` 后停用。
+- **WebFetch**：内置 `WebFetch` 工具按 URL 抓取网页并转为可读文本，默认最多 512 KiB、15 秒超时、最多 3 次重定向。默认拒绝回环、私网与链路本地地址；如需访问内网，显式设置 `BUDINGX_WEB_FETCH_ALLOW_PRIVATE=1`。抓取前经过审批。
+
+#### 5.7.5 无头 CLI
+
+交互终端之外可用无头模式接入脚本或 CI：
+
+```powershell
+budingx --prompt "总结这个仓库" --output-format stream-json
+Get-Content prompts.jsonl | budingx --input-format stream-json --output-format json
+```
+
+- `--output-format text|json|stream-json`：纯文本、单个结果对象或逐行事件流。事件依次为 `system`（init/status）、`user`、`assistant`（增量与整段）、`tool_call`、`tool_result`、`result`。stdout 只承载协议内容，诊断写 stderr。
+- `--input-format stream-json`、`--input-file <文件>`：从 stdin 或文件读取逐行 JSON 输入；与 `--prompt` 互斥。
+- `--session <ID>`：恢复既有会话后再执行；无头模式默认不创建新会话、不写用户数据。
+- 参数错误（未知选项、非法枚举、缺值）退出码为 2；回合失败退出码为 1，且 `result.is_error` 为真。
+
+#### 5.7.6 0.6.0 验证与限制
+
+- 新增 20 组测试覆盖布局、帧差分、冻结缓存、键位、状态栏、无头协议、命令注册表与七条新命令、项目指令、技能、MCP（含审批拒绝）、hooks、WebFetch、制品台账与安装 smoke；全量回归在交付记录中列出。
+- 限制：状态栏配置在启动时读取，修改后需重启；无头模式不加载 MCP 与交互式面板；`/mcp` 与 `/skills` 在非交互模式只输出文本；WebFetch 的正文提取是启发式，不执行页面脚本。
+
 ## 6. 数据与隐私
 
 - 产品数据统一落在 `~/.budingx`；不读取、不回退、不写入 `~/.claude`。
 - 配置文件与凭据文件分离；密钥不作为普通共享明文配置保存，也不出现在日志与 UI 回显中。
 - 仓库与文档不包含真实密钥、真实会话与用户身份信息。
+- **扩展配置（SP006）**：键位、hooks、MCP 配置分别位于 `~/.budingx/keybindings.json`、`~/.budingx/hooks.json`、`~/.budingx/mcp.json`；导出文件默认写到 `~/.budingx/exports/`，后台任务日志写到 `~/.budingx/tasks/`。MCP 配置中的环境变量只保存 `${ENV_NAME}` 引用，不落明文密钥。
 - **会话与记忆（SP005）**：会话转录与记忆写在 `~/.budingx/sessions/` 与 `~/.budingx/memory/` 下，目录与文件只对当前用户可读写；写入采用原子方式，失败时保留原内容；损坏文件被隔离并保留备份而不是删除；程序不读取、不回退 `~/.claude`。恢复会话只装载历史，不重放工具调用，结果未知的调用标记为「需核对」。
 - **Langfuse 观测（仅开发环境，默认关闭，不面向普通用户）**：未显式设置 `BUDINGX_LANGFUSE_ENABLED=1` 时无任何 Langfuse 网络请求，启动也不再打印「Langfuse tracing: disabled」之类的内部诊断；启用后默认只采结构化元数据，正文须再显式开启并经脱敏与长度裁剪。凭据与验收报告只落 Git 忽略的开发目录。Windows 初始化通过系统返回的 SID 验证凭据目录与文件权限，支持内置管理员账户。启用方式见 [ops/langfuse/README.md](ops/langfuse/README.md)。模型观测会带上真实 token 用量，工具观测会带上输入参数与结果（受正文开关控制），因此可以直接在 Langfuse 里判断工具调用是否合适。
 
@@ -297,6 +355,7 @@ budingx --prompt "Hello" --timeout 120000
 | 图片与多模态                   | 读取图片只返回尺寸摘要，不发送图像内容                                          | SP007                 |
 | Desktop / VS Code / 移动端 / 远程/H5 / IM | 当前 SP 范围外，保留通用宿主接口 | 后续如需纳入，另行决定范围和排期 |
 | 真实服务 live 证据             | 已验证一个用户提供的服务：流式、工具审批回合、取消、鉴权错误；见 SP002 报告 §16 | 其他型号/服务仍未测   |
+| SP006 扩展能力 | 项目指令、技能、MCP、hooks、WebFetch、无头 CLI 与七条新命令已实现并通过本地回归；状态栏配置需重启生效；无头模式不加载 MCP 与交互面板；MCP 与 hooks 的真实第三方服务器/脚本兼容性未逐一验证；hooks 的 http/agent 处理器未实现 | 验收后随 0.6.0 发布；真实第三方兼容性后续补证 |
 | 真终端 CJK/IME 与 resize 体验  | 未验证（需 Windows Terminal + ConHost 人工 smoke）                              | 验收时补              |
 | macOS / Linux                  | 仅声明 Windows 已验证                                                           | SP009 后逐个平台验证  |
 
@@ -319,6 +378,7 @@ budingx --prompt "Hello" --timeout 120000
 | 0.4.0 | 2026-11-19 | SP004 真实编码任务：命令执行与后台任务、受控 Git 提交、计划与待办、四类会话卡片；追加可选本机 Langfuse 观测（默认关闭），见 [发行说明](release-notes/v0.4.0.md) | 已发布 |
 | 0.5.0 | 2026-11-20 | SP005 长会话与数据可靠性：会话转录落盘与跨进程恢复（不盲重放副作用）、上下文预算压缩（保留约束/计划/工具状态）、项目与会话记忆、原子写入与损坏隔离、稳定失败错误码与工具空转熔断、`/sessions` `/resume` `/context` `/memory` 四个命令；见 [发行说明](release-notes/v0.5.0.md) | 已发布 |
 | 0.5.3 | 2026-11-20 | 工作区会话隔离、追问与内置工具修复、中文思考强度选择、Bing 和 Tavily 联网搜索。见 [发行说明](release-notes/v0.5.3.md) | 已发布 |
+| 0.6.0 | 2026-11-20 | SP006：四区骨架与布局计划、转录冻结缓存、键位系统、内置/外部状态栏、项目指令、技能发现、MCP 客户端、hooks 八事件、WebFetch、无头 CLI（text/json/stream-json）、命令注册表三型与 `/init` `/btw` `/worktree` `/tasks` `/mcp` `/skills` `/export`；见 [发行说明](release-notes/v0.6.0.md) | 已制备，待验收合入后发布 |
 | 0.5.4 | 2026-11-20 | 命令按权限档位宿主信任执行（Bash 可用，对齐参考实现）；Git 命令不再被只读白名单硬拦；Shift+Tab 恢复三档轮播；联网搜索完全权限免审、可按会话记住；审批卡编号一致；追问卡回答后收起、过程性提示不堆叠、时长格式化、状态显示正在思考、底部元信息合并为一行；上下文占用改为真实用量的百分比；`/rules` 改为交互管理面板；移除 `/config` 与 `/model`；修复长会话 `Maximum update depth exceeded` 崩溃；Langfuse 仅开发环境；既有命令复刻改造（/new /continue /rewind /plan /context 网格 /compact /cost /permissions /help 技能清单）。见 [发行说明](release-notes/v0.5.4.md) | 已发布 |
 | 0.5.2 | 2026-11-20 | 长会话渲染优化（流式增量不再每帧全文重排、虚拟列表渐进挂载与高度缓存、状态栏常驻）、上下文用量与推理强度显示、`/effort` 命令、交互式 TUI 默认开启会话持久化；见 [发行说明](release-notes/v0.5.2.md) | 已发布 |
 | 0.5.1 | 2026-11-20 | SP005 复审修复：写入锁排他互斥与释放归属、记忆正文往返与真实损坏备份、凭据误判收敛、压缩保留项裁剪与压缩转录重放、预算阈值统一、工具熔断按回合重置、恢复权限不升权、`/memory` 用法提示；见 [发行说明](release-notes/v0.5.1.md) | 已发布 |

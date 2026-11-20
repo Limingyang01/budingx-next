@@ -15,6 +15,8 @@ test('SP006 版本在台账中恰好一条 prepared 记录', () => {
   assert.equal(entries.length, 1)
   assert.equal(entries[0].iteration, 'SP006')
   assert.equal(entries[0].status, 'prepared')
+  assert.match(entries[0].sourceCommit, /^[0-9a-f]{40}$/, 'prepared 记录必须有源码 SHA')
+  assert.ok('receipt' in entries[0], 'prepared 记录必须有回执占位字段')
   const prepared = ledger.releases.filter((entry) => entry.status === 'prepared')
   assert.equal(prepared.length, 1, '同时只允许一条 prepared 记录')
 })

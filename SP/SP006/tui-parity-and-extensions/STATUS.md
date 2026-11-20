@@ -7,17 +7,17 @@
 | 需求 slug | tui-parity-and-extensions |
 | 所属 SP | SP006（日常开发与 TUI 候选） |
 | 需求版本 | v1.0（SELF_REVIEWED） |
-| 设计版本 | v1.0（SELF_REVIEWED，design/design.zh.md） |
+| 设计版本 | v1.1（SELF_REVIEWED，design/design.zh.md） |
 | 实施计划版本 | v1.0（APPROVED，design/plan.zh.md） |
 | 生命周期 | ACTIVE |
-| 阶段 | 实施中：波次 A 完成（T-A1…T-A7） |
+| 阶段 | 实施完成：波次 A–D（T-A1…T-D3），等待用户验收合入 |
 | 功能分支 | feature/SP006/tui-parity-and-extensions |
 | 基线 | master dc94731（登记 0.5.4 发布回执并同步文档至 latest） |
 | 需求文档 | SP/SP006/tui-parity-and-extensions/requirements.md |
 | 设计文档 | SP/SP006/tui-parity-and-extensions/design/design.zh.md |
 | 实施计划 | SP/SP006/tui-parity-and-extensions/design/plan.zh.md |
-| 验收报告 | SP/SP006/tui-parity-and-extensions/test-report.md（待写） |
-| AC 总数 | 67（TU-15 / PI-05 / SM-09 / HK-08 / WR-05 / HC-07 / NP-05 / CMD-12 / AST-03） |
+| 验收报告 | SP/SP006/test-report.md（执行完成） |
+| AC 总数 | 69（TU-15 / PI-05 / SM-09 / HK-08 / WR-05 / HC-07 / NP-05 / CMD-12 / AST-03） |
 | Git 范围 | 本轮只在功能分支提交；**不合入 master、不推送远端**（用户 m00001） |
 
 ## 授权与来源
@@ -32,7 +32,7 @@
 | USER_CONFIRMED（docs/iteration-plan.md r9 SP006 TUI 还原度 P0 出口） | 「四区骨架收口（首屏/输入区/页脚）、消息区冻结缓存、帧缓冲差分、上下文键位系统（含 chord 与保留键校验）、状态栏可执行契约……P0 未过不得进入 P1 批次」 | TU-01…TU-13 的 P0 判定项 |
 | USER_CONFIRMED（docs/tui-command-roadmap.md 2026-11-20） | 「SP006 仍需落地：/init、/btw、/worktree、/tasks、/mcp、/skills、/export，以及命令注册表三型 + 模态槽收口」 | CMD-01…CMD-11 |
 | USER_CONFIRMED（2026-11-17 委托） | 「正式 SDD 中设计文档为 Agent 自审对象……自审通过即包含：从 master 创建 feature 分支、计划/实施/测试/交付的自主推进、各阶段完成后的本地提交（提交说明使用中文）」 | 流程授权（不含合入与推送） |
-| MODEL_PROPOSED | 需求文档中的模块划分、AC 编号与切分粒度、67 条 AC 的具体措辞 | 可在实施中调整，只需保持可判定性与出口门槛覆盖 |
+| MODEL_PROPOSED | 需求文档中的模块划分、AC 编号与切分粒度、69 条 AC 的具体措辞 | 可在实施中调整，只需保持可判定性与出口门槛覆盖 |
 
 ## 交付内容
 
@@ -56,19 +56,34 @@
 | D-06 | 命令面改为注册表驱动，既有内联命令全部迁入 | 路线图 SP006 命令面收口要求 + CMD-12 回归约束 |
 | D-07 | hooks / MCP / 抓取任一失败均降级不中断回合 | 边界规则「失败不扩散」；避免单点能力拖垮主回路 |
 | D-08 | 效果口径永久采用 O5=B（自有能力测量 + 能力清单覆盖度），不使用参考仓测试成绩 | docs/tui-fidelity-gap-baseline.md 与 AGENTS.md 禁止「已对齐/同等效果」宣称 |
+| D-09 | 项目指令除用户级/工作区级/子目录外，还加载工作区父目录（最多 3 层，遇 home 或根停止） | 需求 PI-02 要求「工作区根 + 逐级向上」；设计 §7.1 已同步修正 |
+| D-10 | 技能正文为空或缺 frontmatter 时标记为 invalid 并跳过，调用时说明原因 | SM-03/SM-05；避免把空技能当提示提交 |
+| D-11 | `CommandResult` 增加可选 `outcome` 桥接既有 `CommandOutcome` | 迁移 22 条既有命令时不改变宿主行为 |
+| D-12 | `/tasks` 读后台任务登记表（TaskRegistry），不复用待办列表 | CMD-08 要求状态、退出码与输出路径 |
+| D-13 | `/init` 已存在则拒绝；`/btw` 空参数只提示用法；`/mcp` `/skills` 非交互降级为文本 | CMD-05/06/09/10 的可判定降级 |
+| D-14 | `src/core/exec.ts` 的 `CommandResult` 增加 `command?`/`startedAt?`，后台快照回填 | /tasks 需要稳定的命令标识与启动时间 |
 
 ## 未验证项与恢复条件
 
 | 项 | 状态 | 恢复条件 |
 | --- | --- | --- |
-| 参考仓 hooks/MCP/无头协议的精确字段名与时序 | UNVERIFIED（等待三份参考侦察报告回填） | 报告回填后在 design.zh.md §2 补齐事实表并复核 AC |
-| 帧缓冲差分与 Ink 的兼容方式 | UNVERIFIED | 实施 TU-04 时以真实 Ink 帧输出量化验证；若与 Ink 重绘模型冲突，按 D-04 退化为「渲染层内部差分 + 可断言帧」 |
+| 参考仓 hooks/MCP/无头协议的精确字段名与时序 | PARTIAL：已按设计契约实现并用假服务器/真实子进程验证；未与参考仓逐字段对照 | 需要时按参考仓源码复核字段表 |
+| 帧缓冲差分与 Ink 的兼容方式 | RESOLVED（D-04）：差分/冻结为可断言单元，Ink 层用元素冻结接入 | 帧级 UI 测试已覆盖四区与状态栏 |
 | MCP 真实第三方服务器互通 | UNVERIFIED（本轮用仓库内假 MCP 服务器做协议级验证） | 后续轮次引入真实服务器做互通验证 |
+
+## 验证结果
+
+| 项 | 结果 |
+| --- | --- |
+| AC | 69 / 69 PASS，0 PARTIAL，0 FAIL，0 UNVERIFIED（逐条见 SP/SP006/test-report.md） |
+| 全量单测 | 906 项 / 905 通过 / 0 失败 / 1 跳过（跳过项仅 POSIX 文件权限） |
+| SP006 新增 | 17 个测试文件、103 例 |
+| 制品 | sp006-packaging.mjs 6 项 PASS，exit 0，未上传 |
+| AST | 48/48 映射，命中 0，自检 3/3 PASS |
+| 版本 | 0.6.0 prepared（sourceCommit 4b78cdb…，receipt 占位 null） |
 
 ## 下一步
 
-1. 波次 B：命令注册表三型（T-B1）、22 条既有命令迁移（T-B2）、7 条新命令（T-B3）。
-2. 波次 C：项目指令 / 技能 / MCP / hooks / web-fetch。
-3. 波次 D：制品脚本、AST 映射复核、文档收口与 test-report.md。
-4. 收口：npm test、npm run merge:gate、AST 复核、test-report.md、requirements-summary.md、PRODUCT.md 与 docs 同步。
-5. 停在功能分支，等用户检查后再合入 master。
+1. 等用户检查功能分支、测试报告与 0.6.0 制品；本轮**不合入 master、不推送远端**。
+2. 用户确认后再按 buding-merge 门禁合入、推送并按发布流程上传 0.6.0。
+3. 合入前若继续改代码，需重跑全量单测、制品 smoke 与 AST 复核。

@@ -107,6 +107,19 @@ function MeasuredMessage({
   return <Box flexShrink={0} flexDirection="column" ref={box}>{node}</Box>
 }
 
+// SP006 TU-03：冻结元素复用计数。只给测试读取，不影响渲染决策。
+let frozenHits = 0
+let frozenMisses = 0
+
+export function freezeCacheStats(): { hits: number; misses: number } {
+  return { hits: frozenHits, misses: frozenMisses }
+}
+
+export function resetFreezeCacheStats(): void {
+  frozenHits = 0
+  frozenMisses = 0
+}
+
 export function HistoryWindow({
   entries, width, offset, height, ascii, fullScreen, expanded, targetIndex, onTargetOffset, onPriorRowsChanged
 }: {
@@ -134,7 +147,11 @@ export function HistoryWindow({
   const messageNode = (entry: TranscriptEntry): ReactNode => {
     const cache = frozenElements.current
     const hit = cache.get(entry)
-    if (hit && hit.width === width && hit.ascii === ascii && hit.expanded === expanded) return hit.node
+    if (hit && hit.width === width && hit.ascii === ascii && hit.expanded === expanded) {
+      frozenHits += 1
+      return hit.node
+    }
+    frozenMisses += 1
     const node = <TranscriptMessage entry={entry} ascii={ascii} expanded={expanded} />
     cache.set(entry, { width, ascii, expanded, node })
     return node

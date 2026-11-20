@@ -7,6 +7,7 @@ import { test } from 'node:test'
 import { mountTty } from './helpers/mount-tty.mjs'
 import { createWorkspace } from '../dist/workspace/paths.js'
 import { createPermissionPolicy } from '../dist/workspace/policy.js'
+import { freezeCacheStats, resetFreezeCacheStats } from '../dist/tui/render/history-window.js'
 
 function policyFor(root) {
   const workspace = createWorkspace(root)
@@ -120,3 +121,25 @@ test('TU-10 外部命令失败静默回落，不中断会话', async (t) => {
   // 内置状态栏仍可用（外部失败不弹出错误）。
   assert.doesNotMatch(ui.last(), /statusLine(.*)失败/)
 })
+
+test('TU-03 已完成条目复用冻结元素：重渲染只命中缓存，不重建消息节点', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'budingx-sp006-freeze-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const { workspace, policy } = policyFor(root)
+  const provider = { async *stream() { yield { type: 'message_completed', finishReason: 'stop' } } }
+  const ui = await mountTty(t, {
+    fullScreen: true, columns: 100, rows: 40, provider, permissionPolicy: policy,
+    config: { model: 'fixture' },
+    commandOverrides: permissionOverrides(workspace, policy)
+  })
+  await ui.send('hi\r')
+  await ui.waitFor((frame) => !ui.session.isBusy && frame.includes('全自动'), 5000)
+  resetFreezeCacheStats()
+  // 仅输入区变化，历史条目对象与宽度不变。
+  await ui.send('x')
+  await new Promise((resolve) => setTimeout(resolve, 150))
+  const stats = freezeCacheStats()
+  assert.ok(stats.hits >= 1, 'expected frozen elements to be reused, got ' + JSON.stringify(stats))
+  assert.equal(stats.misses, 0, 'unchanged history must not rebuild message nodes')
+})
+
