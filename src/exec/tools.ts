@@ -168,7 +168,9 @@ export function createExecTools(options: ExecToolsOptions): ToolHandler[] {
         `工作目录：${options.defaultCwd}`,
         `超时：${args.timeoutMs ?? 120000}ms`,
         `执行方式：${args.runInBackground === true ? '后台' : '前台（超 15s 自动转后台）'}`,
-        `隔离后端：${backendId ?? '未启用（仅宿主托管操作）'}`
+        backendId !== undefined
+          ? `隔离后端：${backendId}`
+          : '执行方式：宿主信任执行（无 OS 隔离，按权限档位审批）'
       ]
       if (args.description !== undefined && args.description !== '') {
         lines.push(`说明：${args.description}`)
@@ -222,8 +224,8 @@ export function createExecTools(options: ExecToolsOptions): ToolHandler[] {
       summary: 'error' in interpreter
         ? interpreter.error
         : name === 'Bash'
-          ? '在具备已验证执行隔离的工作区运行 Bash 命令（前台/后台）。'
-          : '在具备已验证执行隔离的 Windows 工作区运行 PowerShell 命令（前台/后台）。',
+          ? '在工作区运行 Bash 命令（前台/后台），按权限档位审批；配置隔离后端时在隔离中执行。'
+          : '在 Windows 工作区运行 PowerShell 命令（前台/后台），按权限档位审批；配置隔离后端时在隔离中执行。',
       describe(input: unknown): string {
         const args = (() => {
           try {

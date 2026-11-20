@@ -44,6 +44,36 @@ export function renderTextLines(text: string, width: number): string[] {
   return lines
 }
 
+/**
+ * 把秒数格式化为「X 小时 Y 分钟 Z 秒」（0.5.4：此前只显示总秒数，长回合难读）。
+ * 省略为 0 的高位单位；不足 1 分钟只显示秒。英文用 h/m/s。
+ */
+export function formatDuration(totalSeconds: number, zh = true): string {
+  const s = Math.max(0, Math.floor(totalSeconds))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  const parts: string[] = []
+  if (h > 0) parts.push(zh ? `${h} 小时` : `${h}h`)
+  if (m > 0) parts.push(zh ? `${m} 分钟` : `${m}m`)
+  if (sec > 0 || parts.length === 0) parts.push(zh ? `${sec} 秒` : `${sec}s`)
+  return parts.join(' ')
+}
+
+/**
+ * 过程性提示：只在回合进行中有效，回合结束即收起，不长期占据显示区（0.5.4）。
+ * 其余提示（错误/告警、@ 引用反馈等）保留，供用户查看。
+ */
+const TRANSIENT_NOTICE_CODES = new Set([
+  'api_retry',
+  'stream_fallback',
+  'late_event_dropped',
+  'queue_recycled',
+  'approval_dismissed'
+])
+/** 只保留最新一条的提示：重试/回退这类「attempt N/M」状态不应逐条堆叠（0.5.4）。 */
+const LATEST_WINS_NOTICE_CODES = new Set(['api_retry', 'stream_fallback', 'late_event_dropped'])
+
 export function reduceFrame(
   frame: Frame,
   event: SessionEvent,
@@ -86,6 +116,8 @@ export function reduceFrame(
       next.liveText = ''
       next.thinking = false
       next.error = undefined
+      // 上一回合的 @ 引用反馈已过期，新回合开始时收起，避免长期占位（0.5.4）。
+      next.notices = next.notices.filter((notice) => notice.code !== 'file_context')
       return next
     }
     case 'text_delta': {
@@ -123,6 +155,11 @@ export function reduceFrame(
       return next
     }
     case 'tool_result': {
+      // 追问的答案随工具结果交付并进入转录后，实时追问卡即应消失，
+      // 不再长期占据卡片区域（0.5.4：此前 answered 汇总卡永不收起）。
+      if (next.question !== undefined && next.question.callId === event.callId) {
+        next.question = undefined
+      }
       if (next.command !== undefined && next.command.callId === event.callId) {
         const content = event.content
         const taskId = /^background_task_id: (\S+)$/m.exec(content)?.[1]
@@ -303,13 +340,21 @@ export function reduceFrame(
     }
     case 'notice': {
       if (event.code === 'queue_recycled') next.queue = []
+      // 重试/回退只保留最新一条；@ 引用反馈等每条都独立保留（0.5.4）。
+      const kept = LATEST_WINS_NOTICE_CODES.has(event.code)
+        ? next.notices.filter((notice) => notice.code !== event.code)
+        : next.notices
       next.notices = [
-        ...next.notices,
+        ...kept,
         { level: event.level, code: event.code, text: event.text }
       ].slice(-5)
       return next
     }
     case 'turn_finalized': {
+      // 回合结束即收起追问卡（兜底；正常路径已在 tool_result 时收起）。
+      next.question = undefined
+      // 过程性提示（重试/回退等）随回合结束收起，不再长期占位（0.5.4）。
+      next.notices = next.notices.filter((notice) => !TRANSIENT_NOTICE_CODES.has(notice.code))
       next.transcript = next.transcript.map((entry) =>
         entry.kind === 'tool' && entry.turnId === event.turnId && entry.status === 'pending'
           ? { ...entry, status: 'interrupted' }
@@ -339,7 +384,9 @@ export function reduceFrame(
         const label = options.english ? event.outcome : labels[event.outcome]
         next.transcript = [...next.transcript, {
           kind: 'meta',
-          text: options.english ? `${label} · ${elapsed}s · ${time}` : `${label} · 用时 ${elapsed} 秒 · ${time}`
+          text: options.english
+            ? `${label} · ${formatDuration(elapsed, false)} · ${time}`
+            : `${label} · 用时 ${formatDuration(elapsed, true)} · ${time}`
         }]
       }
       next.startedAt = undefined

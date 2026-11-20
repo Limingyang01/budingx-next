@@ -208,3 +208,18 @@ AC 区间：CB-01…07（7）、SR-01…11（11）、FR-01…09（9）、PM-01�
 | 审批卡 1/3 跳号 | 不可记住时显示 1/2，按键一致 | `sp0054-approval-options.test.mjs`：`.git` 硬审批显示 `1 允许一次 · 2 拒绝`，按 2 进入拒绝 |
 
 既有 `web-search.test.mjs`（含「出网前需授权」断言）保持通过；删除类工具硬性审批不受影响。全量单测 767 / 766 通过 / 0 失败 / 1 跳过。
+
+## 14. 0.5.4 命令执行与长会话显示修复（2026-11-20）
+
+用户报告：Bash 用不了、提问卡回答后不消失、重试提示堆叠占位、时长只显示总秒数、流式措辞。逐项修复与证据：
+
+| 项 | 修复 | 证据 |
+| --- | --- | --- |
+| Bash 不可用 | 对齐参考实现：权限审批为安全控制、沙箱可选；无后端时宿主信任执行 | `sandbox-policy.test.mjs` 宿主信任 4 例；`runtime.test.mjs` 只读免审/执行需审批真实运行；`plan/host.test.mjs` 命令真实启动 |
+| 追问卡不收起 | tool_result/turn_finalized 收起 question 卡 | `sp0054-display.test.mjs`、`sp004-cards.test.mjs` T15-8 |
+| 重试提示堆叠/常驻 | 同代码只留最新、回合结束收起过程性提示 | `sp0054-display.test.mjs` |
+| 时长格式 | formatDuration 小时/分钟/秒 | `sp0054-display.test.mjs` |
+| 流式措辞 | 请求/流式统一「正在思考…」 | `sp0054-status-wording.test.mjs`（真实 Ink 帧） |
+
+全量 `npm test` 通过（unit 778 项 / 0 失败 / 1 跳过，跳过项仅 POSIX 生效）；spec/skills/模块边界通过。命令执行默认无 OS 隔离的安全边界已在 PRODUCT.md 与发行说明明确标注。
+

@@ -123,7 +123,7 @@ test('S5 流式中文增量渲染与状态行迁移', async (t) => {
     config: { model: 'm', apiKey: 'k', baseUrl: 'https://api.example.test/v1' }
   })
   ui.session.submit('hi')
-  await ui.waitFor((frame) => frame.includes('你好') && /流式输出中/.test(frame))
+  await ui.waitFor((frame) => frame.includes('你好') && /正在思考/.test(frame))
   release()
   await ui.waitFor((frame) => frame.includes('你好，世界') && !ui.session.isBusy)
   assert.ok(
@@ -143,7 +143,7 @@ test('S6 执行中 Esc：打断提示可见、部分输出保留、会话回到�
     config: { model: 'm', apiKey: 'k', baseUrl: 'https://api.example.test/v1' }
   })
   ui.session.submit('hi')
-  await ui.waitFor((frame) => /流式输出中/.test(frame))
+  await ui.waitFor((frame) => /正在思考/.test(frame))
   await ui.send('\x1b')
   await ui.waitFor((frame) => /已请求打断|取消中/.test(frame))
   release()
@@ -167,7 +167,7 @@ test('S7 忙时追加输入：排队指示可见且回合结束后自动注入',
     config: { model: 'm', apiKey: 'k', baseUrl: 'https://api.example.test/v1' }
   })
   ui.session.submit('first')
-  await ui.waitFor((frame) => /流式输出中|请求中/.test(frame))
+  await ui.waitFor((frame) => /正在思考/.test(frame))
   await ui.send('second\r')
   const queuedFrame = await ui.waitFor((frame) => /排队/.test(frame))
   assert.ok(queuedFrame.indexOf('排队') > queuedFrame.indexOf('\n>'))
@@ -329,8 +329,8 @@ test('session tab title describes the first substantive prompt and signals activ
   assert.ok(ui.raw().includes('\x1b]0;budingx\x07'))
   await ui.send('大模型能力对比')
   await ui.send('\r')
-  const activeFrame = await ui.waitFor((frame) => frame.includes('● 请求中'))
-  assert.ok(activeFrame.indexOf('● 请求中') < activeFrame.indexOf('\n>'))
+  const activeFrame = await ui.waitFor((frame) => frame.includes('● 正在思考'))
+  assert.ok(activeFrame.indexOf('● 正在思考') < activeFrame.indexOf('\n>'))
   assert.ok(ui.raw().includes('\x1b]0;● 大模型能力对比 · budingx\x07'))
   release()
   await ui.waitFor(() => ui.raw().includes('\x1b]0;大模型能力对比 · budingx\x07'))
@@ -350,11 +350,11 @@ test('conversation shows question, elapsed time, completion and editable follow-
   ])
   const ui = await mountTty(t, { fullScreen: true, provider, config: { model: 'fixture' } })
   await ui.send('你是谁\r')
-  await ui.waitFor((frame) => frame.includes('› 你是谁') && /思考中 · [1-9]\d* 秒/.test(frame))
+  await ui.waitFor((frame) => frame.includes('› 你是谁') && /正在思考/.test(frame) && /[1-9]\d* 秒/.test(frame))
   assert.doesNotMatch(ui.raw(), /hidden-fixture/)
   release()
   await ui.waitFor((frame) =>
-    /已完成 · 用时 [1-9]\d* 秒 · \d{2}:\d{2}/.test(frame) && frame.includes('Tab 填入')
+    /已完成 · 用时 (?:\d+ 小时 )?(?:\d+ 分钟 )?[1-9]\d* 秒 · \d{2}:\d{2}/.test(frame) && frame.includes('Tab 填入')
   )
   assert.match(ui.last(), /› 你是谁[\s\S]*我是 budingx/)
   await ui.send('\t')

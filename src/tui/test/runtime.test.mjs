@@ -150,12 +150,13 @@ test('G15 配置超时作用于慢连接', async (t) => {
   assert.ok(Date.now() - start < 12000)
 })
 
-test('默认运行时保留 Shell 工具协议，并在审批或启动前报告隔离不可用', async (t) => {
+test('默认运行时提供 Shell 工具并按权限档位执行（0.5.4 宿主信任，对齐参考实现）', async (t) => {
   const home = mkdtempSync(join(tmpdir(), 'budingx-shell-gate-'))
   const cwd = join(home, 'workspace')
   mkdirSync(cwd)
   t.after(() => rmSync(home, { recursive: true, force: true }))
   const requests = []
+  let pendingCommand = 'node --version'
   const server = createServer(async (req, res) => {
     let body = ''
     for await (const chunk of req) body += chunk
@@ -165,12 +166,12 @@ test('默认运行时保留 Shell 工具协议，并在审批或启动前报告�
       ? { delta: { content: '已收到结果' }, finish_reason: 'stop' }
       : {
           delta: {
-            tool_calls: ['Bash', 'PowerShell'].map((name, index) => ({
-              index,
-              id: `call-${index}`,
+            tool_calls: [{
+              index: 0,
+              id: 'call-bash',
               type: 'function',
-              function: { name, arguments: '{"command":"node --version","run_in_background":true}' }
-            }))
+              function: { name: 'Bash', arguments: JSON.stringify({ command: pendingCommand }) }
+            }]
           },
           finish_reason: 'tool_calls'
         }
@@ -198,7 +199,7 @@ test('默认运行时保留 Shell 工具协议，并在审批或启动前报告�
       baseUrl,
       model: 'fixture',
       apiKey: '',
-      timeoutMs: 1000,
+      timeoutMs: 5000,
       source: 'file'
     }),
     approval: {
@@ -211,18 +212,38 @@ test('默认运行时保留 Shell 工具协议，并在审批或启动前报告�
   t.after(() => runtime.session.dispose())
   const events = []
   runtime.session.on((event) => events.push(event))
+
+  // 只读命令（node --version 在白名单内）：任何档位都免审批直接执行，不再被隔离门禁拒绝。
+  pendingCommand = 'node --version'
   for (const mode of ['workspace_edit', 'full_access']) {
     runtime.setPermissionMode(mode)
     events.length = 0
+    approvals.length = 0
     assert.equal((await turn(runtime.session, '运行命令')).outcome, 'completed')
-    assert.equal(approvals.length, 0)
-    assert.equal(events.some((event) => event.type === 'command_started'), false)
+    assert.equal(approvals.length, 0, '只读命令免审批')
+    assert.ok(events.some((event) => event.type === 'command_started'), '命令应真正启动')
     const results = events.filter((event) => event.type === 'tool_result')
-    assert.equal(results.length, 2)
-    assert.ok(results.every((event) => event.isError))
-    assert.match(results[0].content, /隔离/)
-    assert.match(results[1].content, process.platform === 'win32' ? /隔离/ : /仅在 Windows/)
+    assert.equal(results.length, 1)
+    assert.equal(results[0].isError, false)
+    assert.doesNotMatch(results[0].content, /隔离|EXEC_005/)
   }
+
+  // 非只读命令：工作区修改档位需审批，完全权限自动执行。
+  pendingCommand = 'node -e "console.log(1)"'
+  runtime.setPermissionMode('workspace_edit')
+  events.length = 0
+  approvals.length = 0
+  assert.equal((await turn(runtime.session, '运行命令')).outcome, 'completed')
+  assert.equal(approvals.length, 1, '工作区修改档位的执行命令需一次审批')
+  assert.ok(events.some((event) => event.type === 'command_started'))
+
+  runtime.setPermissionMode('full_access')
+  events.length = 0
+  approvals.length = 0
+  assert.equal((await turn(runtime.session, '运行命令')).outcome, 'completed')
+  assert.equal(approvals.length, 0, '完全权限自动执行')
+  assert.ok(events.some((event) => event.type === 'command_started'))
+
   const offered = requests[0].tools.map((item) => item.function.name)
   assert.ok(['Bash', 'PowerShell', 'Read'].every((name) => offered.includes(name)))
 })

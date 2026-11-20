@@ -264,7 +264,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   })
   // SP004 §4.7：隔离后端由宿主注入；本仓尚无已验证后端，因此 fail closed——
   // 普通命令在 spawn 之前即被拒绝（设计允许的宿主托管能力不受影响）。
-  const sandboxPolicy = createSandboxPolicy()
+  // 0.5.4：对齐参考实现——权限审批是安全控制，沙箱为可选加固。未配置隔离后端时
+  // 采用宿主信任执行：只读命令免审、其余按权限档位审批，命令可用而非一律拒绝。
+  const sandboxPolicy = createSandboxPolicy({ hostTrusted: true })
   const runner = createCommandRunner({
     defaultCwd: workspace.root,
     sandboxPolicy,

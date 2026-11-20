@@ -88,3 +88,29 @@ test('判定为纯同步决策：拒绝路径不产生任何进程（零 spawn �
   // 策略对象只暴露 decide/backend，没有执行入口；spawn 计数断言在 T3 runner 测试中以注入 spawn 完成。
   assert.deepEqual(Object.keys(policy).sort(), ['backend', 'decide'])
 })
+
+test('0.5.4 宿主信任模式：无隔离后端时放行，交由权限档位审批', () => {
+  const policy = createSandboxPolicy({ hostTrusted: true })
+  const decision = policy.decide({ tool: 'Bash', command: 'node -e "console.log(1)"' })
+  assert.equal(decision.action, 'allow')
+  assert.equal(decision.backendId, 'host-trusted')
+})
+
+test('0.5.4 宿主信任模式仍拒绝模型侧隔离控制字段', () => {
+  const policy = createSandboxPolicy({ hostTrusted: true })
+  const decision = policy.decide({ tool: 'Bash', command: 'ls', modelInput: { dangerouslyDisableSandbox: true } })
+  assert.equal(decision.action, 'deny')
+})
+
+test('0.5.4 已验收隔离后端优先于宿主信任（不降级隔离）', () => {
+  const policy = createSandboxPolicy({ hostTrusted: true, backend: backend() })
+  const decision = policy.decide({ tool: 'Bash', command: 'ls' })
+  assert.equal(decision.action, 'allow')
+  assert.equal(decision.backendId, 'synthetic-backend')
+})
+
+test('0.5.4 未验收后端即使开启宿主信任也拒绝（不能伪装隔离）', () => {
+  const policy = createSandboxPolicy({ hostTrusted: true, backend: backend({ verified: false }) })
+  const decision = policy.decide({ tool: 'Bash', command: 'ls' })
+  assert.equal(decision.action, 'deny')
+})
