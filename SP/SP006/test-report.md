@@ -1,6 +1,6 @@
 # SP006 验收报告
 
-状态：**执行完成（功能分支）**｜日期：2026-11-20｜分支 `feature/SP006/tui-parity-and-extensions`｜基线 master `dc94731`｜版本 0.6.0 prepared（未发布）
+状态：**执行完成（功能分支）**｜日期：2026-11-20｜分支 `feature/SP006/tui-parity-and-extensions`｜基线 master `dc94731`｜版本 0.6.0 prepared（未发布）｜含用户检查反馈的命令卡片修复（`f0b11eb`）
 
 ## 1. 方法与环境
 
@@ -203,6 +203,6 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 
 ## 7. 交付边界
 
-- 分支：`feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；提交 `cedf2a3`（A）、`031b99b`（B）、`4b78cdb`（C+B3）、波次 D 见 HEAD。
+- 分支：`feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；提交 `cedf2a3`（A）、`031b99b`（B）、`4b78cdb`（C+B3）、`06d7b2a`（D）、`f0b11eb`（命令卡片完成态隐藏与单行修复）。
 - **未合入 master、未推送远端**（用户 m00001 明确要求先检查）。
 - 版本 0.6.0 仅 `prepared`；未打 tag、未 npm 发布、未改远端设置。
