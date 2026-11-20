@@ -316,6 +316,6 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 
 ## 8. 交付边界
 
-- 分支：`feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；提交 `cedf2a3`（A）、`031b99b`（B）、`4b78cdb`（C+B3）、`06d7b2a`（D）、`f0b11eb`（命令卡片完成态隐藏与单行修复）、`47c5cb6`（台账源码 SHA 同步）、`1ef588a`（`/resume` 历史可见性与身份切换）、`55ea677`（`/resume` 历史碎片合并与输入框建议改模型生成）、`9e3e88f`（建议清洗按真实模型输出校正、退化终端多行命令输出）、`1877af6`（波次 H 文档收口）、`a869cd1`（`/undo` 文案本地化）、`<docs>`（波次 I 证据与文档数字收口）。
+- 分支：`feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；提交 `cedf2a3`（A）、`031b99b`（B）、`4b78cdb`（C+B3）、`06d7b2a`（D）、`f0b11eb`（命令卡片完成态隐藏与单行修复）、`47c5cb6`（台账源码 SHA 同步）、`1ef588a`（`/resume` 历史可见性与身份切换）、`55ea677`（`/resume` 历史碎片合并与输入框建议改模型生成）、`9e3e88f`（建议清洗按真实模型输出校正、退化终端多行命令输出）、`1877af6`（波次 H 文档收口）、`a869cd1`（`/undo` 文案本地化）、`9dbb6d7`（波次 I 证据与文档数字收口）。
 - **未合入 master**（用户 m02328、m03678 明确「先不要合入master分支」）；已按用户 m02328 授权推送远端分支 `origin/feature/SP006/tui-parity-and-extensions`（代码提交至 `a869cd1`，文档与台账同步提交随后推送），master 未改动。
 - 版本 0.6.0 仅 `prepared`；未打 tag、未 npm 发布、未改远端设置。

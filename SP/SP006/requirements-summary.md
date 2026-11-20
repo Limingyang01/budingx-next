@@ -32,7 +32,7 @@
 - 定向回归：`node --test src/tui/test/sp006-*.test.mjs sp0054-command-fidelity.test.mjs sp0054-enter-command.test.mjs sp0054-command-menu.test.mjs commands.test.mjs commands-zh.test.mjs` **158 通过 / 0 失败**（SP006 新增 120 + 既有相关 38）。
 - 制品：`node scripts/release/sp006-packaging.mjs` exit 0；tarball 142 文件，隔离安装 0.6.0，无头流式 7 事件且未写用户数据，`npm publish --dry-run` 不上传。
 - AST：`node scripts/review/sp004-ast.mjs --reference <参考仓> --reference-revision b5c9be8 --base dc94731`：53 改动文件 / 53 映射，自检 3 项 PASS，本仓单元 258、参考 14411、函数对 48743，命中「无」，结论 PASS。
-- 本地提交：波次 A `cedf2a3`、波次 B `031b99b`、波次 C 与命令面 `4b78cdb`、波次 D `06d7b2a`、命令卡片修复 `f0b11eb`、台账同步 `47c5cb6`、`/resume` 修复 `1ef588a`、波次 E 文档与 AST 映射补记 `a2fd0cc`、波次 F/G 修复 `55ea677`、波次 H 真实模型端到端修复 `9e3e88f`、波次 H 文档收口 `1877af6`、`/undo` 文案本地化 `a869cd1`、波次 I 文档与台账收口（本轮提交）；已推送远端分支 `origin/feature/SP006/tui-parity-and-extensions`（用户 m02328 授权），未合入 master。
+- 本地提交：波次 A `cedf2a3`、波次 B `031b99b`、波次 C 与命令面 `4b78cdb`、波次 D `06d7b2a`、命令卡片修复 `f0b11eb`、台账同步 `47c5cb6`、`/resume` 修复 `1ef588a`、波次 E 文档与 AST 映射补记 `a2fd0cc`、波次 F/G 修复 `55ea677`、波次 H 真实模型端到端修复 `9e3e88f`、波次 H 文档收口 `1877af6`、`/undo` 文案本地化 `a869cd1`、波次 I 文档与台账收口 `9dbb6d7`；已推送远端分支 `origin/feature/SP006/tui-parity-and-extensions`（用户 m02328 授权），未合入 master。
 - **集成状态：未合入 master**；远端推送按用户 m02328 授权在提交后执行。npm 0.6.0 仅 prepared，未上传。
 - 已知限制：状态栏外部命令配置在应用挂载时读取一次，修改后需重启；无头模式不加载 MCP/hooks 交互面板；TU-09 可选字段按外部状态栏协议省略。恢复条件见验收报告。
 
