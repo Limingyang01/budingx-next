@@ -656,6 +656,24 @@ export function diffCommand(
   }
 }
 
+/**
+ * 工作区检查点只返回语言无关的错误原因（见 src/workspace/checkpoint.ts）；TUI 层
+ * 负责把已知原因转成当前界面语言，未知原因原样透出，避免吞掉真实错误细节。
+ */
+function localizeUndoReason(
+  reason: string,
+  pick: (zh: string, en: string) => string
+): string {
+  if (reason === 'no session changes to undo') {
+    return pick('没有可撤销的会话改动', 'Nothing to undo')
+  }
+  const single = /^no session change to undo for (.+)$/.exec(reason)
+  if (single) {
+    return pick(`该文件本会话没有可撤销的改动：${single[1]}`, `No session change to undo for ${single[1]}`)
+  }
+  return reason
+}
+
 export function undoCommand(
   argument: string,
   context: CommandContext,
@@ -675,7 +693,9 @@ export function undoCommand(
   return {
     handled: true,
     error:
-      (outcome.reason ?? pick('没有可撤销的会话改动', 'Nothing to undo')) +
+      (outcome.reason
+        ? localizeUndoReason(outcome.reason, pick)
+        : pick('没有可撤销的会话改动', 'Nothing to undo')) +
       (outcome.paths.length > 0 ? pick(`；已恢复：${outcome.paths.join('、')}`, `; restored: ${outcome.paths.join(', ')}`) : '')
   }
 }
