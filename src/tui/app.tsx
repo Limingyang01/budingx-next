@@ -25,7 +25,7 @@ const STREAM_FRAME_MS = 16
 import type { SessionEvent } from '../core/events.js'
 import type { Session } from '../core/session.js'
 import type { InkApprovalGateway } from './approval.js'
-import { changePermissionMode, effortDisplayLabel, formatTokens, interactiveModeLabel, runCommand, type CommandContext } from './commands.js'
+import { changePermissionMode, discoverSkillCommands, effortDisplayLabel, formatTokens, interactiveModeLabel, runCommand, type CommandContext } from './commands.js'
 import { EditorBuffer } from './editor/buffer.js'
 import { useWheel } from './editor/mouse.js'
 import { applyKey } from './editor/keys.js'
@@ -80,26 +80,19 @@ const COMMAND_NAMES = [
   'help',
   'models',
   'permissions',
-  'rules',
   'diff',
-  'undo',
   'rewind',
   'denials',
   'clear',
-  'new',
-  'reset',
   'resume',
-  'continue',
   'sessions',
   'context',
   'compact',
   'cost',
-  'usage',
   'plan',
   'memory',
   'effort',
-  'exit',
-  'quit'
+  'exit'
 ]
 // 0.5.4：请求/流式阶段统一显示「正在思考」，不再暴露「流式输出」这类实现措辞。
 const STATUS_ZH: Record<string, string> = {
@@ -467,6 +460,9 @@ export function App({
         setPosition(undefined)
         setContextOpen(true)
         await new Promise<void>((resolve) => { managerDone.current = resolve })
+      } else if (result.skillPrompt) {
+        setHint(pick(`技能 /${result.skillPrompt.name} 已展开为提示`, `Skill /${result.skillPrompt.name} expanded to prompt`))
+        session.submit(result.skillPrompt.body)
       } else setHint(result.error ?? result.message ?? '')
     })
   }
@@ -505,13 +501,15 @@ export function App({
         dialog.source === 'current' ? undefined : dialog.source
       )
     : [])
+  // 0.5.4：/ 补全包含内置命令 + 已加载技能命令（对齐参考）。
+  const commandList = useMemo(() => [...COMMAND_NAMES, ...discoverSkillCommands().map((s) => s.name)], [context])
   const completion = useMemo(() => {
     if (dialog || frame.approval || overlayDismissed || modelManagerOpen || rulesManagerOpen || resumeOpen || rewindOpen || contextOpen) return null
     const lineText = editor.lines[editor.cursor.line] ?? ''
-    const token = activeToken(lineText, editor.cursor.col, COMMAND_NAMES)
+    const token = activeToken(lineText, editor.cursor.col, commandList)
     if (!token) return null
     if (token.kind === 'command') {
-      const candidates = commandCandidates(token.token, COMMAND_NAMES)
+      const candidates = commandCandidates(token.token, commandList)
       return candidates.length > 0 ? { token, candidates } : null
     }
     if (!permissionHandles) return null
@@ -1066,17 +1064,8 @@ export function App({
       return
     }
     if (key.shift && key.tab && permissionHandles) {
-      // 0.5.4 D1：三档权限轮播之外增加「规划」覆盖态（只读+审批后执行）。
-      if (session.planMode.active) {
-        void session.exitPlanMode({}).catch(() => {})
-        setHint(pick('退出规划模式（需审批）', 'Exiting plan mode (approval required)'))
-        return
-      }
-      if (permissionHandles.policy.getMode() === 'full_access') {
-        const entered = session.enterPlanMode()
-        setHint(entered.ok ? pick('规划模式：只读分析，计划获批后才执行', 'Plan mode: read-only until approved') : (entered.reason ?? ''))
-        return
-      }
+      // 0.5.4：Shift+Tab 稳定轮播三档权限（规划模式改由 /plan 进入/退出，避免卡审批）。
+      if (session.planMode.active) session.leavePlanMode()
       // SP003 design §3.8: cycle the three fixed modes.
       const next = nextMode(permissionHandles.policy.getMode())
       if (!changePermissionMode(permissionHandles, next)) {
