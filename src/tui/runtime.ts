@@ -140,13 +140,10 @@ export function setupTracing(options: {
 }): { tracer?: Tracer; shutdown?: () => Promise<void>; diagnostics: string[] } {
   const env = options.env ?? process.env
   const diagnostics: string[] = []
+  // 0.5.4：观测状态属于内部诊断，不再作为启动告警暴露给用户
+  //（此前每次启动都会打印「Warning: Langfuse tracing: disabled」）。
   const report = (message: string): void => {
     diagnostics.push(message)
-    try {
-      options.report?.(message)
-    } catch {
-      /* 诊断不得中断启动 */
-    }
   }
   const merged = loadTracingEnvironment(env, env.BUDINGX_LANGFUSE_ENV_FILE, report)
   if (merged.BUDINGX_LANGFUSE_ENABLED !== '1') {
