@@ -27,6 +27,7 @@ export type CommandOutcome = {
   message?: string
   error?: string
   openModels?: boolean
+  openEffort?: boolean
   /** Interactive hosts open the diff dialog on this instead of printing. */
   openDiffDialog?: boolean
 }
@@ -145,7 +146,7 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
   /context              查看上下文预算构成
   /memory               查看项目/会话记忆
   /memory <范围> add <标题>：<正文>  写入记忆
-  /effort [low|medium|high]  查看或设置推理强度
+  /effort [low|medium|high]  选择或直接设置思考强度
   /clear                清空会话
   /exit                 退出 budingx`
     : `Commands:
@@ -165,7 +166,7 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
   /context              show the context budget composition
   /memory               show project/session memory
   /memory <scope> add <title>: <body>   store a memory entry
-  /effort [low|medium|high]  show or set the reasoning effort
+  /effort [low|medium|high]  choose or set the reasoning effort
   /clear                clear the conversation
   /exit                 leave budingx`
 }
@@ -304,7 +305,12 @@ async function executeCommand(
   }
 }
 
-/** 0.5.2：推理强度。无参数时显示当前值与可选值，带参数时设置。 */
+const EFFORT_ZH: Record<ReasoningEffort, string> = { low: '低', medium: '中', high: '高' }
+
+export function effortDisplayLabel(effort: ReasoningEffort, zh: boolean): string {
+  return zh ? EFFORT_ZH[effort] : effort
+}
+
 function effortCommand(
   argument: string,
   context: CommandContext,
@@ -322,15 +328,17 @@ function effortCommand(
   }
   const requested = argument.trim().toLowerCase()
   if (!requested) {
+    if (context.interactive) return { handled: true, openEffort: true }
     return {
       handled: true,
       message: pick(
-        `当前推理强度：${effort.current()}（可选：${effort.choices.join(' / ')}）`,
+        `当前思考强度：${effortDisplayLabel(effort.current(), true)}（可选：${effort.choices.join(' / ')}）`,
         `Reasoning effort: ${effort.current()} (choose: ${effort.choices.join(' / ')})`
       )
     }
   }
-  if (!effort.choices.includes(requested as ReasoningEffort)) {
+  const choice = effort.choices.find((value) => value === requested || EFFORT_ZH[value] === requested)
+  if (!choice) {
     return {
       handled: true,
       error: pick(
@@ -339,12 +347,12 @@ function effortCommand(
       )
     }
   }
-  effort.set(requested as ReasoningEffort)
+  effort.set(choice)
   return {
     handled: true,
     message: pick(
-      `推理强度已设为 ${requested}（下一次请求生效）`,
-      `Reasoning effort set to ${requested} (applies to the next request)`
+      `思考强度已设为${EFFORT_ZH[choice]}（下一次请求生效）`,
+      `Reasoning effort set to ${choice} (applies to the next request)`
     )
   }
 }

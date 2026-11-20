@@ -21,6 +21,8 @@ export type PlanSnapshot = {
   root: string
   /** Git HEAD；非 Git 工作区或缺省时不参与绑定。 */
   head?: string
+  /** 送审草稿的正文指纹，仅在独立草稿存在时绑定。 */
+  draft?: string
   /** 目标文件前像：仓库相对路径 → 内容指纹。 */
   files: Record<string, string>
 }
@@ -29,6 +31,7 @@ export type PlanSnapshot = {
 export type PlanEvidence = {
   root: string
   head: string | null
+  draft?: string
   version: number
   files: Record<string, string>
 }
@@ -40,6 +43,7 @@ export function planEvidenceOf(plan: Pick<Plan, 'updatedAt'>, snapshot: PlanSnap
   return {
     root: snapshot.root,
     head: snapshot.head ?? null,
+    ...(snapshot.draft === undefined ? {} : { draft: snapshot.draft }),
     version: plan.updatedAt,
     files
   }

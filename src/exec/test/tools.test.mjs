@@ -1,6 +1,7 @@
 // SP004 T5 · Bash/PowerShell 工具适配器与同一权限入口（design §4.5–§4.9）。
 // 证据层级 L0（纯逻辑）+ L1（真实进程）；Session 集成用脚本化 provider。
 import assert from 'node:assert/strict'
+import { execFileSync, spawn as spawnRef } from 'node:child_process'
 import { test } from 'node:test'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -69,8 +70,6 @@ function withSpawnCounter(runnerOptions = {}) {
   })
   return { runner, spawned }
 }
-
-import { spawn as spawnRef } from 'node:child_process'
 
 test('T5-1 工具 schema：字段名、单位与必填项', () => {
   const runner = makeRunner()
@@ -342,10 +341,12 @@ test('T5-13 仅可查看模式：命令执行被硬性拒绝且零 spawn', async
   env.cleanup()
 })
 
-test('T5-14 工作区内修改模式：合格只读命令免审批直接执行', async () => {
+test('T5-14 工作区内修改模式：合格只读命令免审批直接执行', async (t) => {
   const env = makeEnv('workspace_edit')
-  const runner = makeRunner()
-  const { bash } = makeTools(runner)
+  t.after(env.cleanup)
+  execFileSync('git', ['init', '--quiet'], { cwd: env.root })
+  const runner = makeRunner({ defaultCwd: env.root })
+  const { bash } = makeTools(runner, { defaultCwd: env.root })
   const provider = scriptProvider([
     [
       {
@@ -369,14 +370,13 @@ test('T5-14 工作区内修改模式：合格只读命令免审批直接执行',
     permissionPolicy: env.policy,
     onEvent: (event) => events.push(event)
   })
+  t.after(() => session.dispose())
   session.submit('看下状态')
   await waitFor(() => events.some((event) => event.type === 'tool_result'), 8000)
   assert.equal(approvals.length, 0, '合格只读命令不应弹出审批')
   const results = events.filter((event) => event.type === 'tool_result')
   assert.equal(results.length, 1)
   assert.match(results[0].content, /exit_code: 0/)
-  session.dispose()
-  env.cleanup()
 })
 
 test('T5-15 工作区内修改模式：普通命令走审批，拒绝后不执行', async () => {

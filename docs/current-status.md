@@ -1,6 +1,8 @@
 # 当前状态
 
-日期：2026-11-20。**npm `latest` 为 0.5.1（SP005 长会话与数据可靠性 + 复审修复）；候选 0.5.2（长会话渲染优化与上下文可见性）已准备，尚未上传 npm**。[运行 #21](https://github.com/Limingyang01/budingx-next/actions/runs/44658158215) 基于源码 `9903776`，Ubuntu、Windows 和 OIDC 发布任务均通过。官方源独立安装、签名与 provenance 核验及本地 HTTP 流式冒烟均通过。见 [0.5.1 发行说明](../release-notes/v0.5.1.md)和[发布台账](../release-ledger.json)。SP005 的验证与未验证项见 [SP005 验收报告](../SP/SP005/test-report.md)。可选本机 Langfuse 观测默认关闭。
+源码候选 **0.5.3** 修复跨工作区会话恢复、追问提交、工作区及计划模式工具行为，加入中文思考强度选择和内置 `WebSearch`。联网搜索默认走 Bing，配置密钥后走 Tavily。详见 [0.5.3 发行说明](../release-notes/v0.5.3.md)。
+
+日期：2026-11-20。**npm `latest` 为 0.5.2（SP005 长会话与数据可靠性 + 复审修复 + 长会话渲染优化）**。[运行 #22](https://github.com/Limingyang01/budingx-next/actions/runs/44666668683) 基于源码 `1e7f33c`，Ubuntu、Windows 与 OIDC 发布均通过；官方制品 SHA-512 与 npm integrity、provenance 一致，独立安装与流式冒烟通过。见 [0.5.2 发行说明](../release-notes/v0.5.2.md)和[发布台账](../release-ledger.json)。[运行 #21](https://github.com/Limingyang01/budingx-next/actions/runs/44658158215) 基于源码 `9903776`，Ubuntu、Windows 和 OIDC 发布任务均通过。官方源独立安装、签名与 provenance 核验及本地 HTTP 流式冒烟均通过。见 [0.5.1 发行说明](../release-notes/v0.5.1.md)和[发布台账](../release-ledger.json)。SP005 的验证与未验证项见 [SP005 验收报告](../SP/SP005/test-report.md)。可选本机 Langfuse 观测默认关闭。
 
 ## 已有
 
@@ -61,14 +63,14 @@
 
 源/目标固定：`feature/SP005/fix-0.5.1`（HEAD `16f445b`）→ `master`（原 `0fe6e3c`），merge-base `0fe6e3c`，`--no-ff` 合并提交 `5ff99b5`，ancestry 证明通过。前置门禁 `npm run merge:gate` GREEN（`artifacts/merge-gate/feature-SP005-fix-0.5.1-2026-11-20T01-54-57-677Z.md`：outgoing 3 提交 29 文件、禁带路径违规 0、报告 FAIL 行 0；`npm test`、`spec:check`、`skills:check`、`pack-smoke` 退出码均为 0）。合入后复验：`npm run build` 无错误；SP005 相关套件 41 项 40 通过 / 0 失败 / 1 跳过（仅 POSIX 生效的文件权限断言）；`spec:check` 与 `skills:check` 通过。推送：`origin/master` `0fe6e3c..5ff99b5`、`origin/feature/SP005/fix-0.5.1` 新分支；`git ls-remote` 与本地一致。未执行：打 tag、npm 发布（由维护者在 Actions 手动触发）、分支删除。
 
-0.5.1 已通过 OIDC 发布（`src/tui/package.json` = 0.5.1，台账为 published，npm `latest` 已指向 0.5.1）；发布回执见 [0.5.1 发行说明](../release-notes/v0.5.1.md) 与 §10。
+0.5.1 已通过 OIDC 发布，回执见 [0.5.1 发行说明](../release-notes/v0.5.1.md) 与 §10。
 
 
 ## SP005 长会话优化（0.5.2）合入回执（2026-11-20）
 
 源/目标固定：`feature/SP005/fix-0.5.2`（HEAD `dabbafa`）→ `master`（原 `8ca8930`），`--no-ff` 合并提交 `7d21432`。前置门禁 `npm run merge:gate` GREEN（`artifacts/merge-gate/feature-SP005-fix-0.5.2-2026-11-20T03-06-12-062Z.md`：`npm test`、`spec:check`、`skills:check`、`pack-smoke` 退出码均为 0）。全量单测 706 项 / 705 通过 / 0 失败 / 1 跳过（跳过项仅 POSIX 生效）。推送：`origin/master` `8ca8930..7d21432`；首次推送因 GitHub 连接中断失败，重试后成功，`git ls-remote` 与本地一致。
 
-0.5.2 已准备（`src/tui/package.json` = 0.5.2，台账为 prepared），等待维护者触发发布；发布后需按回执流程登记。
+0.5.2 已通过 OIDC 发布（`src/tui/package.json` = 0.5.2，台账为 published，npm `latest` 已指向 0.5.2）；发布回执见 [0.5.2 发行说明](../release-notes/v0.5.2.md)。
 
 ## SP005 长会话渲染优化（0.5.2，2026-11-20）
 

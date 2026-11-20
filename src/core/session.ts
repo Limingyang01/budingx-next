@@ -225,6 +225,7 @@ export class Session {
   /** 计划模式单一状态（SP004 §6.2）：调研/待批与原权限档位。 */
   private planModeState?: {
     phase: PlanModePhase
+    approving?: boolean
     originalMode: PermissionMode
     baseline: PlanModeSnapshot
   }
@@ -358,6 +359,10 @@ export class Session {
     return { active: true, phase: state.phase, originalMode: state.originalMode }
   }
 
+  get canReadPlanDraft(): boolean {
+    return this.planModeState !== undefined || this.approvedPlanCheck !== undefined
+  }
+
   /**
    * 普通模式进入计划模式：记录原权限档位与研究基线，切换到工作区档位。
    * 底层硬拒绝仍然优先；调研期非只读工具要一次性批准（§6.2）。
@@ -408,18 +413,37 @@ export class Session {
    * 退出计划模式并提交计划审批（§6.2/§6.3）：读取会话计划文件、
    * 校验研究基线未漂移，再经 ApprovalGateway 取得批准或拒绝。
    */
-  async exitPlanMode(context: { turnId?: string; callId?: string } = {}): Promise<PlanModeExitResult> {
+  async exitPlanMode(context: {
+    turnId?: string
+    callId?: string
+    permissionIntents?: readonly string[]
+  } = {}): Promise<PlanModeExitResult> {
     const host = this.options.planMode
     const policy = this.options.permissionPolicy
     const state = this.planModeState
     if (!host || !policy) return { ok: false, message: '宿主未提供计划模式集成，无法退出计划模式' }
     if (!state) return { ok: false, message: '当前不在计划模式' }
-    if (state.phase === 'pending') return { ok: false, message: '计划审批仍在等待处理，请先批准或拒绝' }
-    const text = (await host.readPlanText().catch(() => undefined))?.trim()
+    if (state.approving) return { ok: false, message: '计划审批仍在等待处理，请先批准或拒绝' }
+    state.approving = true
+    try {
+      return await this.approvePlanMode(host, policy, state, context)
+    } finally {
+      state.approving = false
+    }
+  }
+
+  private async approvePlanMode(
+    host: PlanModeHost,
+    policy: PermissionPolicy,
+    state: NonNullable<Session['planModeState']>,
+    context: { turnId?: string; callId?: string; permissionIntents?: readonly string[] }
+  ): Promise<PlanModeExitResult> {
+    const draft = host.readDraft?.()
+    const text = (draft ?? await host.readPlanText().catch(() => undefined))?.trim()
+    if (this.planModeState !== state) return { ok: false, message: '计划模式已结束', cancelled: true }
     if (!text) return { ok: false, message: '会话计划文件缺失或为空：请先写入计划再退出计划模式' }
-    const plan = host.store.current()
-    if (!plan) return { ok: false, message: '当前没有计划：请先写入会话计划文件' }
-    const drift = host.diff(state.baseline, host.snapshot())
+    const approvalSnapshot = host.snapshot()
+    const drift = host.diff(state.baseline, approvalSnapshot)
     if (drift.length > 0) {
       return {
         ok: false,
@@ -427,10 +451,17 @@ export class Session {
         drift
       }
     }
+    let plan = host.store.current()
+    const goal = draft === undefined ? undefined : text.split('\n', 1)[0].replace(/^#+\s+/, '').trim()
+    if (goal !== undefined && (!plan || plan.approval === 'approved')) {
+      plan = host.store.create(goal || '实施计划', [{ title: '实施获批的会话计划' }])
+    }
+    if (!plan) return { ok: false, message: '当前没有计划：请先写入会话计划文件' }
     if (plan.approval === 'none' || plan.approval === 'rejected') host.store.requestApproval(text)
     state.phase = 'pending'
     this.emit({ type: 'plan_mode_changed', active: true, phase: 'pending', originalMode: state.originalMode })
     const pending = host.store.current() ?? plan
+    const pendingVersion = pending.updatedAt
     this.emit({ type: 'plan_updated', plan: pending })
     const turn = this.activeTurn
     const inTurn = !!turn && (context.turnId === undefined || context.turnId === turn.id)
@@ -442,10 +473,13 @@ export class Session {
       turnId,
       callId,
       name: 'ExitPlanMode',
-      summary: `批准计划：${pending.goal}`,
-      preview: text.split('\n').slice(0, 40),
+      summary: [
+        `批准计划：${goal || pending.goal}`,
+        ...(context.permissionIntents ?? []).map((intent) => `权限意图：${intent}`)
+      ].join('\n'),
+      preview: text.split('\n'),
       planId: pending.id,
-      planVersion: pending.updatedAt
+      planVersion: pendingVersion
     }
     this.emit({
       type: 'approval_requested',
@@ -468,16 +502,7 @@ export class Session {
       outcome: decision.outcome,
       via: decision.via
     })
-    if (decision.outcome === 'cancelled') {
-      state.phase = 'research'
-      this.emit({
-        type: 'plan_mode_changed',
-        active: true,
-        phase: 'research',
-        originalMode: state.originalMode
-      })
-      return { ok: false, message: '计划审批已取消，仍停留在调研阶段', cancelled: true }
-    }
+    if (this.planModeState !== state) return { ok: false, message: '计划模式已结束', cancelled: true }
     if (decision.outcome !== 'allow' && decision.outcome !== 'allow_session') {
       state.phase = 'research'
       try {
@@ -492,12 +517,29 @@ export class Session {
         phase: 'research',
         originalMode: state.originalMode
       })
+      if (decision.outcome === 'cancelled') {
+        return { ok: false, message: '计划审批已取消，仍停留在调研阶段', cancelled: true }
+      }
       const feedback = decision.feedback?.trim() ? `：${decision.feedback.trim()}` : ''
       return { ok: false, message: `计划未获批准${feedback}` }
     }
     let approved: Plan
+    const editedText = decision.editedText?.trim()
+    const approvedText = editedText || text
     try {
-      approved = host.store.approve(decision.editedText?.trim() ? decision.editedText : text)
+      const current = host.store.current()
+      if (current !== pending || current.updatedAt !== pendingVersion || current.approval !== 'pending') {
+        throw new Error('计划版本在审批期间发生变化，请重新提交')
+      }
+      if (host.readDraft && host.readDraft() !== draft) {
+        throw new Error('计划草稿在审批期间发生变化，请重新提交')
+      }
+      const approvalDrift = host.diff(approvalSnapshot, host.snapshot())
+      if (approvalDrift.length) {
+        throw new Error(`工作区在审批期间发生漂移，请重新提交：${describeDrift(approvalDrift)}`)
+      }
+      if (draft === undefined || editedText) host.writeDraft?.(approvedText)
+      approved = host.store.approve(approvedText)
     } catch (error) {
       state.phase = 'research'
       this.emit({
@@ -536,7 +578,8 @@ export class Session {
       message: `计划已批准（${approved.id}），已恢复权限档位 ${state.originalMode}`,
       planId: approved.id,
       version: approved.updatedAt,
-      edited: !!decision.editedText
+      edited: !!editedText,
+      text: approvedText
     }
   }
 
@@ -1405,13 +1448,21 @@ export class Session {
       // 计划模式的一次性批准：即使宿主勾选“本会话允许”，也不写入记忆（§6.2）。
       let planModeSingleUse = false
       if (policy) {
+        const capability = handler.capability?.(input) ?? 'read'
+        const target = handler.target?.(input)
+        const managedPlanDraft =
+          target?.kind === 'plan-draft' && target.path !== undefined &&
+          target.path === this.options.planMode?.draftPath &&
+          (capability === 'read'
+            ? this.canReadPlanDraft
+            : capability === 'write' && this.planModeState?.phase === 'research')
         permissionRequest = {
           tool: call.name,
-          capability: handler.capability?.(input) ?? 'read',
-          path: handler.target?.(input)?.path
+          capability,
+          path: target?.path,
+          ...(managedPlanDraft ? { managedPlanDraft } : {})
         }
         let verdict = policy.decide(permissionRequest)
-        const capability = permissionRequest.capability
         if (verdict.action === 'deny') {
           this.traceEnd(toolTrace, 'blocked')
           this.pushToolResult(
@@ -1480,7 +1531,7 @@ export class Session {
             continue
           }
           // 调研期：底层已准许的只读照常执行，其余非只读一律一次性批准。
-          if (this.planModeState.phase === 'research' && capability !== 'read') {
+          if (this.planModeState.phase === 'research' && capability !== 'read' && !managedPlanDraft) {
             verdict = { action: 'ask', reason: 'Plan mode: this step needs a one-time approval' }
             planModeSingleUse = true
           }

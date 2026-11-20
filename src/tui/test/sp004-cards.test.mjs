@@ -347,14 +347,17 @@ async function mountQuestion(t, questions) {
   return { ui, events }
 }
 
-test('T15-8 VIS-04 追问交互：空格选择推进两题，最后一题回车提交单一 tool_result', async (t) => {
+test('T15-8 VIS-04 追问交互：回答两题后在汇总页确认，只提交一个 tool_result', async (t) => {
   const { ui, events } = await mountQuestion(t, twoQuestions)
   assert.equal(ui.session.pendingQuestion?.questionId !== undefined, true)
 
   await ui.send(' ') // 选中 A 路线
   await ui.send('\r') // 下一题
   await ui.waitFor((_last, frames) => frames.join('\n').includes('◆ 提问 2/2'), 5000)
-  await ui.send('\r') // 选中「包含测试」并提交
+  await ui.send('\r') // 选中「包含测试」并进入汇总
+  await ui.waitFor((frame) => frame.includes('提交答案'), 2000)
+  assert.equal(events.filter((event) => event.type === 'tool_result').length, 0)
+  await ui.send('\r') // 提交汇总
 
   await ui.waitFor(() => !ui.session.isBusy, 8000)
   const results = events.filter((event) => event.type === 'tool_result')
@@ -372,6 +375,66 @@ test('T15-8 VIS-04 追问交互：空格选择推进两题，最后一题回车�
   const finalFrame = ui.last()
   assert.match(finalFrame, /◆ 提问 1\/2 · 单选|✓ 选择哪条路线？/)
   await ui.waitFor((_last, frames) => frames.join('\n').includes('✓ 选择哪条路线？ → A 路线'), 5000)
+})
+
+test('追问多选：Enter 保留勾选，汇总页返回修改后提交', async (t) => {
+  const { ui, events } = await mountQuestion(t, [{ ...twoQuestions[0], multiSelect: true }])
+  await ui.send(' ')
+  await ui.waitFor((frame) => frame.includes('◉ A 路线'), 2000)
+  await ui.send('\r')
+  await ui.waitFor((frame) => frame.includes('提交答案') && frame.includes('→ A 路线'), 2000)
+  assert.ok(ui.session.pendingQuestion)
+  await ui.send('\x1b[D')
+  await ui.waitFor((frame) => frame.includes('◉ A 路线'), 2000)
+  await ui.send('\x1b[B')
+  await ui.send(' ')
+  await ui.waitFor((frame) => frame.includes('◉ B 路线'), 2000)
+  await ui.send('\r')
+  await ui.waitFor((frame) => frame.includes('→ A 路线, B 路线'), 2000)
+  await ui.send('\r')
+  await ui.waitFor(() => !ui.session.isBusy, 2000)
+  assert.equal(events.find((event) => event.type === 'question_answered').answers['选择哪条路线？'], 'A 路线, B 路线')
+})
+
+test('追问单题单选：输入其他答案后一次回车即可提交当前文本', async (t) => {
+  const { ui, events } = await mountQuestion(t, [twoQuestions[0]])
+  await ui.send('\x1b[A')
+  await ui.send('先确认范围')
+  await ui.send('\r')
+  await ui.waitFor(() => !ui.session.isBusy, 2000)
+  assert.equal(events.find((event) => event.type === 'question_answered').answers['选择哪条路线？'], '先确认范围')
+})
+
+test('追问汇总：可用 Tab 检查答案，漏答时保留弹窗并提示', async (t) => {
+  const { ui, events } = await mountQuestion(t, twoQuestions)
+  await ui.send('\t')
+  await ui.waitFor((frame) => frame.includes('◆ 提问 2/2'), 2000)
+  await ui.send('\r')
+  await ui.waitFor((frame) => frame.includes('未回答') && frame.includes('提交答案'), 2000)
+  await ui.send('\r')
+  await ui.waitFor((frame) => frame.includes('请回答所有问题'), 2000)
+  assert.ok(ui.session.pendingQuestion)
+  assert.equal(events.filter((event) => event.type === 'tool_result').length, 0)
+  await ui.send('\x1b')
+  await ui.waitFor(() => !ui.session.isBusy, 2000)
+})
+
+test('追问选项预览：可填写备注并随原工具调用返回', async (t) => {
+  const question = {
+    ...twoQuestions[0],
+    options: [{ ...twoQuestions[0].options[0], preview: '布局\n第二行' }, twoQuestions[0].options[1]]
+  }
+  const { ui, events } = await mountQuestion(t, [question])
+  await ui.waitFor((frame) => frame.includes('第二行'), 2000)
+  await ui.send('n')
+  await ui.waitFor((frame) => frame.includes('正在编辑备注'), 2000)
+  await ui.send('保留现有入口')
+  await ui.send('\r')
+  await ui.send('\r')
+  await ui.waitFor(() => !ui.session.isBusy, 2000)
+  const result = events.find((event) => event.type === 'tool_result')
+  assert.equal(result.callId, 'call-q1')
+  assert.match(result.content, /备注：保留现有入口/)
 })
 
 test('T15-9 VIS-04 追问取消：Esc 发 question_cancelled 并以同一 call ID 返回取消结果', async (t) => {

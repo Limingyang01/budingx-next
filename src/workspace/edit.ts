@@ -1,10 +1,8 @@
 // Precise literal edits (SP003 design §3.5, AC WT-07/WT-08).
 // The semantics are deliberately strict: only a unique literal match is
 // replaced, ambiguous matches must be resolved by the caller, and there is
-// no fuzzy matching that could silently damage a file. The single
-// concession is a line-ending fallback (the tolerance path from the
-// reference behaviour inventory): a CRLF file can still be edited with an
-// LF old_string, and the dominant line ending is preserved.
+// no fuzzy matching that could silently damage a file. The fallback handles
+// line-ending and curly-quote differences while preserving file typography.
 import { isUtf8 } from 'node:buffer'
 import { readFileSync } from 'node:fs'
 import { ERROR_CODES } from '../core/constants.js'
@@ -39,6 +37,18 @@ function foldSmartQuotes(text: string): string {
   return text
     .replace(/[‘’]/g, "'")
     .replace(/[“”]/g, '"')
+}
+
+function matchQuoteStyle(replacement: string, matched: string): string {
+  const curlyDouble = /[“”]/.test(matched)
+  const curlySingle = /[‘’]/.test(matched)
+  if (!curlyDouble && !curlySingle) return replacement
+  return replacement.replace(/["']/g, (quote, offset: number) => {
+    const opening = offset === 0 || /[\s([{<—–]/.test(replacement[offset - 1])
+    if (quote === '"' && curlyDouble) return opening ? '“' : '”'
+    if (quote === "'" && curlySingle) return opening ? '‘' : '’'
+    return quote
+  })
 }
 
 function replaceOccurrences(
@@ -144,7 +154,8 @@ export function planWorkspaceEdit(
     for (const position of options.replaceAll ? [...positions].reverse() : [positions[0]]) {
       const start = originalOffset(position)
       const end = originalOffset(position + foldedOld.length)
-      out = out.slice(0, start) + replacement + out.slice(end)
+      const styled = matchQuoteStyle(replacement, original.slice(start, end))
+      out = out.slice(0, start) + styled + out.slice(end)
     }
     nextContent = out
   } else {

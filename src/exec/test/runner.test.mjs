@@ -137,8 +137,32 @@ test('CE-13 阻塞等待族命令拦截并指引后台', async () => {
   const runner = makeRunner()
   const result = await runner.run({ command: 'sleep 30' }, ctx())
   assert.equal(result.outcome, 'blocked')
-  assert.ok(result.reason.includes('runInBackground'))
+  assert.ok(result.reason.includes('run_in_background'))
 })
+
+for (const [interpreter, command] of [
+  ['Bash', 'sleep 30'],
+  ...(process.platform === 'win32' ? [['PowerShell', 'Start-Sleep -Seconds 30']] : [])
+]) {
+  test(`${interpreter} 显式后台等待在隔离门禁之后启动`, async (t) => {
+    const runner = makeRunner()
+    t.after(() => runner.dispose())
+    const spec = { command, interpreter, runInBackground: true }
+    const blockedRunner = createCommandRunner({
+      defaultCwd: process.cwd(),
+      spawn: () => assert.fail('缺隔离后端不得启动后台命令')
+    })
+    t.after(() => blockedRunner.dispose())
+    const blocked = await blockedRunner.run(spec, ctx())
+    assert.equal(blocked.outcome, 'blocked')
+    assert.match(blocked.reason, /隔离/)
+
+    const result = await runner.run(spec, ctx())
+    assert.equal(result.outcome, 'running')
+    assert.equal(runner.status(result.taskId)?.outcome, 'running')
+    assert.equal(runner.cancel(result.taskId), true)
+  })
+}
 
 test('CE-19 缺隔离后端拒绝且零 spawn', async () => {
   let calls = 0

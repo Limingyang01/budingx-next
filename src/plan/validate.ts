@@ -26,6 +26,7 @@ function isEvidence(value: unknown): value is PlanEvidence {
   return (
     typeof record.root === 'string' &&
     (record.head === null || typeof record.head === 'string') &&
+    (record.draft === undefined || typeof record.draft === 'string') &&
     typeof record.version === 'number' &&
     !!record.files &&
     typeof record.files === 'object'
@@ -68,6 +69,9 @@ export function validateBeforeExecute(plan: Plan | undefined, snapshot: PlanSnap
   }
   if (expected.version !== actual.version) {
     drift.push({ item: 'version', expected: show(expected.version), actual: show(actual.version) })
+  }
+  if (expected.draft !== actual.draft) {
+    drift.push({ item: 'draft', expected: show(expected.draft), actual: show(actual.draft) })
   }
   const paths = new Set([...Object.keys(expected.files), ...Object.keys(actual.files)])
   for (const path of [...paths].sort()) {

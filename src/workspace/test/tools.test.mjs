@@ -33,6 +33,78 @@ function makeEnv(files = {}) {
   return { base, root, workspace, tools, byName, checkpoint, context }
 }
 
+test('Read, Write and Edit accept file_path through target and execution', async (t) => {
+  const env = makeEnv()
+  t.after(() => rmSync(env.base, { recursive: true, force: true }))
+  const { ctx } = env.context()
+  const file_path = join(env.root, 'two words.txt')
+  for (const name of ['Read', 'Write', 'Edit']) {
+    assert.deepEqual(env.byName[name].target({ file_path }), { path: file_path, kind: 'file' })
+  }
+  assert.throws(() => env.byName.Read.target({ file_path, path: 'different.txt' }), /same file/)
+  await env.byName.Write.execute({ file_path, content: 'say “hello” now\r\n' }, ctx)
+  assert.equal(readFileSync(file_path, 'utf8'), 'say “hello” now\r\n')
+  assert.match(await env.byName.Read.execute({ file_path, limit: '1' }, ctx), /say “hello”/)
+  await env.byName.Edit.execute({
+    file_path,
+    old_string: 'say "hello" now',
+    new_string: 'say "hi" now',
+    replace_all: 'false'
+  }, ctx)
+  assert.equal(readFileSync(file_path, 'utf8'), 'say “hi” now\r\n')
+})
+
+test('Read reports empty files and reads Jupyter notebook cells with textual output', async (t) => {
+  const env = makeEnv({
+    'empty.txt': '',
+    'short.txt': 'one',
+    'notebook.ipynb': JSON.stringify({
+      cells: [
+        { cell_type: 'markdown', source: ['# Analysis\n', 'Markdown'] },
+        {
+          cell_type: 'code',
+          source: ['print(12)'],
+          outputs: [{ output_type: 'stream', name: 'stdout', text: ['12\n'] }]
+        }
+      ]
+    })
+  })
+  t.after(() => rmSync(env.base, { recursive: true, force: true }))
+  const { ctx } = env.context()
+  assert.match(await env.byName.Read.execute({ path: 'empty.txt' }, ctx), /contents are empty/)
+  assert.match(await env.byName.Read.execute({ path: 'short.txt', offset: 8 }, ctx), /shorter than the provided offset \(8\)/)
+  const notebook = await env.byName.Read.execute({ path: 'notebook.ipynb' }, ctx)
+  assert.match(notebook, /Cell 1 \(markdown\)\n# Analysis\nMarkdown/)
+  assert.match(notebook, /Cell 2 \(code\)\nprint\(12\)\nstdout:\n12/)
+})
+
+test('Grep defaults to file paths and accepts reference flags, context and glob lists', async (t) => {
+  const env = makeEnv({
+    'a.ts': 'too-far\nbefore\nNEEDLE\nafter\ntoo-far\n',
+    'nested/b.md': 'Needle\n',
+    'nested/c.txt': 'needle\n'
+  })
+  t.after(() => rmSync(env.base, { recursive: true, force: true }))
+  const { ctx } = env.context()
+  const files = await env.byName.Grep.execute({ pattern: '(?i)needle', glob: '*.ts,*.md' }, ctx)
+  assert.match(files, /^Found 2 files/m)
+  assert.match(files, /^a\.ts$/m)
+  assert.match(files, /^nested\/b\.md$/m)
+  assert.doesNotMatch(files, /NEEDLE|c\.txt/)
+  const content = await env.byName.Grep.execute({
+    pattern: 'needle',
+    output_mode: 'content',
+    path: 'a.ts',
+    '-i': 'true',
+    context: 1,
+    '-C': 2,
+    '-A': 2,
+    '-B': 2
+  }, ctx)
+  assert.match(content, /before[\s\S]*NEEDLE[\s\S]*after/)
+  assert.doesNotMatch(content, /too-far/)
+})
+
 test('五个工具注册且名称稳定', () => {
   const env = makeEnv()
   try {
@@ -174,7 +246,7 @@ test('Grep 返回 文件:行:内容 且非法正则为可读错误', async () =>
   const env = makeEnv({ 'a.ts': 'needle here\n' })
   try {
     const { ctx } = env.context()
-    const result = await env.byName.Grep.execute({ pattern: 'needle' }, ctx)
+    const result = await env.byName.Grep.execute({ pattern: 'needle', output_mode: 'content' }, ctx)
     assert.match(result, /a\.ts:1:needle here/)
     await assert.rejects(
       () => env.byName.Grep.execute({ pattern: '[bad(' }, ctx),

@@ -3,13 +3,16 @@
 // 工作区根、Git HEAD 与计划里显式提到的目标文件前像，避免跨外部改动误批。
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
-import { isAbsolute, relative } from 'node:path'
+import { lstatSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import type { PlanDriftItem, PlanModeHost, PlanModeSnapshot } from '../core/plan.js'
 import { createPlanStore } from './store.js'
 import { planFilePath } from './serialize.js'
 import { validateBeforeExecute } from './validate.js'
-import type { Workspace } from '../workspace/paths.js'
+import { ensurePrivateDirectory } from '../storage/private-file.js'
+import { createWorkspace, type Workspace } from '../workspace/paths.js'
+import { writeWorkspaceFile } from '../workspace/write.js'
 
 export type PlanModeHostOptions = {
   sessionId: string
@@ -32,17 +35,43 @@ function digest(content: string | Buffer): string {
 }
 
 /** 生产宿主的 PlanModeHost：计划文件 + 工作区/Git 快照 + 执行前校验。 */
-export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost {
+export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost & { draftWorkspace: Workspace; draftPath: string } {
+  if (!/^[a-z0-9_-]+$/i.test(options.sessionId)) throw new Error('计划会话标识不是有效的路径名称')
   const root = options.workspace.root
   const planId = `plan-${options.sessionId}`
-  const filePath = planFilePath(options.sessionId, planId, options.home)
+  const home = resolve(options.home ?? homedir())
+  const filePath = planFilePath(options.sessionId, planId, home)
+  const homeWorkspace = createWorkspace(home)
+  const draftPath = resolve(planFilePath(options.sessionId, `${planId}.draft`, home))
+  const expectedDraft = resolve(homeWorkspace.root, relative(home, draftPath))
+  const draftWorkspace: Workspace = {
+    ...homeWorkspace,
+    resolve(input) {
+      if (!isAbsolute(input) || relative(draftPath, resolve(input)) !== '') {
+        throw new Error('目标不是当前会话的计划草稿')
+      }
+      const target = homeWorkspace.resolve(draftPath)
+      const stats = lstatSync(draftPath, { throwIfNoEntry: false })
+      if (relative(expectedDraft, target.real) !== '' || (stats && (!stats.isFile() || stats.nlink !== 1))) {
+        throw new Error('计划草稿必须是当前会话目录内的普通文件')
+      }
+      return target
+    }
+  }
 
-  function readPlanText(): Promise<string | undefined> {
+  function readDraft(): string | undefined {
+    const target = draftWorkspace.resolve(draftPath)
+    return target.existed ? readFileSync(target.real, 'utf8') : undefined
+  }
+
+  async function readPlanText(): Promise<string | undefined> {
+    const draft = readDraft()
+    if (draft !== undefined) return draft
     try {
-      return Promise.resolve(readFileSync(filePath, 'utf8'))
+      return readFileSync(filePath, 'utf8')
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return Promise.resolve(undefined)
-      return Promise.reject(error)
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+      throw error
     }
   }
 
@@ -86,8 +115,14 @@ export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost {
 
   function snapshot(): PlanModeSnapshot {
     const files: Record<string, string> = {}
+    let draft: string | undefined
     const text = (() => {
       try {
+        const content = readDraft()
+        if (content !== undefined) {
+          draft = digest(content)
+          return content
+        }
         return readFileSync(filePath, 'utf8')
       } catch {
         return ''
@@ -102,7 +137,7 @@ export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost {
       if (value !== undefined) files[relativePath] = value
     }
     const head = gitHead()
-    return { root, ...(head !== undefined ? { head } : {}), files }
+    return { root, ...(head === undefined ? {} : { head }), ...(draft === undefined ? {} : { draft }), files }
   }
 
   function diff(baseline: PlanModeSnapshot, current: PlanModeSnapshot): PlanDriftItem[] {
@@ -136,6 +171,14 @@ export function createPlanModeHost(options: PlanModeHostOptions): PlanModeHost {
 
   return {
     store,
+    draftPath,
+    draftWorkspace,
+    readDraft,
+    writeDraft(text) {
+      const target = draftWorkspace.resolve(draftPath)
+      ensurePrivateDirectory(dirname(target.real))
+      writeWorkspaceFile(draftWorkspace, { path: draftPath, content: text })
+    },
     readPlanText,
     snapshot,
     diff,

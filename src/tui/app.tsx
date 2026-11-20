@@ -24,7 +24,7 @@ const STREAM_FRAME_MS = 16
 import type { SessionEvent } from '../core/events.js'
 import type { Session } from '../core/session.js'
 import type { InkApprovalGateway } from './approval.js'
-import { changePermissionMode, formatTokens, interactiveModeLabel, runCommand, type CommandContext } from './commands.js'
+import { changePermissionMode, effortDisplayLabel, formatTokens, interactiveModeLabel, runCommand, type CommandContext } from './commands.js'
 import { EditorBuffer } from './editor/buffer.js'
 import { useWheel } from './editor/mouse.js'
 import { applyKey } from './editor/keys.js'
@@ -224,6 +224,9 @@ export function App({
   const [questionCursor, setQuestionCursor] = useState(0)
   const [questionSelections, setQuestionSelections] = useState<Record<string, string[]>>({})
   const [questionOther, setQuestionOther] = useState<Record<string, string>>({})
+  const [questionNotes, setQuestionNotes] = useState<Record<string, string>>({})
+  const [editingQuestionNotes, setEditingQuestionNotes] = useState(false)
+  const [questionError, setQuestionError] = useState<string>()
   useEffect(() => {
     setCommandExpanded(false)
   }, [frame.command?.callId])
@@ -235,7 +238,39 @@ export function App({
     setQuestionCursor(0)
     setQuestionSelections({})
     setQuestionOther({})
+    setQuestionNotes({})
+    setEditingQuestionNotes(false)
+    setQuestionError(undefined)
   }, [frame.question?.questionId])
+  const pendingQuestion = frame.question?.state === 'pending' ? frame.question : undefined
+  const activeQuestion = pendingQuestion?.questions[questionIndex]
+  const questionReviewNeeded = pendingQuestion !== undefined &&
+    (pendingQuestion.questions.length > 1 || pendingQuestion.questions[0]?.multiSelect === true)
+  const questionReview = pendingQuestion !== undefined && questionIndex === pendingQuestion.questions.length
+  const questionOtherFocused = pendingQuestion?.allowFreeText === true &&
+    activeQuestion !== undefined && questionCursor === activeQuestion.options.length
+  const questionAnswers = Object.fromEntries((pendingQuestion?.questions ?? []).map((item) => {
+    const values = questionSelections[item.question] ?? []
+    const custom = questionOther[item.question]?.trim()
+    return [item.question, custom && (item.multiSelect || values.length === 0)
+      ? [...values, custom].join(', ')
+      : values.join(', ')]
+  }))
+
+  function appendQuestionText(value: string) {
+    if (!value || activeQuestion === undefined) return
+    if (!editingQuestionNotes && !questionOtherFocused) return
+    const question = activeQuestion.question
+    const setText = editingQuestionNotes ? setQuestionNotes : setQuestionOther
+    setText((drafts) => ({
+      ...drafts,
+      [question]: (drafts[question] ?? '') + value.replace(/[\r\n]+/g, ' ')
+    }))
+    if (!editingQuestionNotes && !activeQuestion.multiSelect) {
+      setQuestionSelections((selections) => ({ ...selections, [question]: [] }))
+    }
+    setQuestionError(undefined)
+  }
   const editor = useMemo(() => new EditorBuffer(), [])
   const query = search?.text.toLowerCase()
   const inputMatches = search && !transcriptMode
@@ -252,15 +287,14 @@ export function App({
   const [, bumpEditor] = useReducer((n: number) => n + 1, 0)
   const ctrlC = useRef(0)
   const pick = (a: string, b: string) => (zh ? a : b)
-  // 0.5.2：上下文用量文案；窗口未知时只报已用 token，绝不编造百分比。
+  const effort = commandContext.effort
+  const [effortIndex, setEffortIndex] = useState<number>()
   const contextLabel = contextInfo === undefined
     ? undefined
     : contextInfo.maxTokens === undefined
-      ? pick(`上下文 ${formatTokens(contextInfo.usedTokens)}`, `ctx ${formatTokens(contextInfo.usedTokens)}`)
-      : pick(
-          `上下文 ${contextInfo.percentUsed ?? 0}% · ${formatTokens(contextInfo.usedTokens)}/${formatTokens(contextInfo.maxTokens)}`,
-          `ctx ${contextInfo.percentUsed ?? 0}% · ${formatTokens(contextInfo.usedTokens)}/${formatTokens(contextInfo.maxTokens)}`
-        )
+      ? `${formatTokens(contextInfo.usedTokens)} tokens`
+      : `${formatTokens(contextInfo.usedTokens)}/${formatTokens(contextInfo.maxTokens)} tokens` +
+        (contextInfo.percentUsed === undefined ? '' : ` (${contextInfo.percentUsed.toFixed(1)}%)`)
   const contextTone = contextInfo?.percentUsed === undefined
     ? undefined
     : contextInfo.percentUsed >= 95
@@ -269,9 +303,9 @@ export function App({
         ? 'yellow'
         : undefined
   // 0.5.2：推理强度指示，参考实现把 effort 常驻在底部状态栏。
-  const effortLabel = commandContext.effort === undefined
+  const effortLabel = effort === undefined
     ? undefined
-    : `⊙ ${commandContext.effort.current()} · /effort`
+    : `${pick('⊙', '*')} ${effortDisplayLabel(effort.current(), zh)} · /effort`
   const suggestion = !working && !input && frame.suggestFollowUp
     ? followUp(frame.lastQuestion ?? '', frame.lastAnswer ?? '', zh)
     : ''
@@ -352,6 +386,11 @@ export function App({
       const result = await runCommand(text, { ...context, session, interactive: true })
       if (result.exit) {
         leave()
+        return
+      }
+      if (result.openEffort && effort) {
+        setHint('')
+        setEffortIndex(Math.max(0, effort.choices.indexOf(effort.current())))
         return
       }
       if (result.openModels) {
@@ -507,6 +546,11 @@ export function App({
       managerInput.current?.paste(text)
       return
     }
+    if (pendingQuestion !== undefined) {
+      appendQuestionText(text)
+      return
+    }
+    if (effortIndex !== undefined) return
     if (search) {
       setSearch({ text: search.text + text.replace(/\s+/g, ' '), index: 0 })
       return
@@ -540,6 +584,134 @@ export function App({
   useInput((text, key) => {
     if (managerDone.current) {
       managerInput.current?.key(text, key)
+      return
+    }
+    if (pendingQuestion !== undefined) {
+      if (editingQuestionNotes && (key.return || key.escape)) {
+        setEditingQuestionNotes(false)
+        return
+      }
+      if (key.escape || (key.ctrl && text === 'c')) {
+        session.cancelQuestion(pendingQuestion.questionId)
+        return
+      }
+      const maxIndex = pendingQuestion.questions.length - (questionReviewNeeded ? 0 : 1)
+      const navigate = (index: number) => {
+        const nextIndex = Math.max(0, Math.min(maxIndex, index))
+        const next = pendingQuestion.questions[nextIndex]
+        setQuestionIndex(nextIndex)
+        const saved = next?.options.findIndex((option) => option.label === questionSelections[next.question]?.[0]) ?? -1
+        setQuestionCursor(next && !next.multiSelect && saved < 0 && questionOther[next.question]?.trim()
+          ? next.options.length
+          : Math.max(0, saved))
+        setQuestionError(undefined)
+      }
+      const submit = (answers: Record<string, string>) => {
+        const annotations = Object.fromEntries(pendingQuestion.questions.flatMap((item) => {
+          const notes = questionNotes[item.question]?.trim()
+          const preview = item.options.find((option) => option.label === answers[item.question])?.preview
+          return notes || preview ? [[item.question, { notes, preview }] as const] : []
+        }))
+        const result = session.answerQuestion(pendingQuestion.questionId, answers,
+          Object.keys(annotations).length ? annotations : undefined)
+        if (!result.ok) {
+          setQuestionError(zh ? result.reason : 'Answer every question before submitting.')
+        }
+      }
+      if (!editingQuestionNotes && (key.leftArrow || (key.tab && key.shift))) {
+        navigate(questionIndex - 1)
+        return
+      }
+      if (!editingQuestionNotes && (key.rightArrow || key.tab)) {
+        navigate(questionIndex + 1)
+        return
+      }
+      if (questionReview) {
+        if (key.return) submit(questionAnswers)
+        return
+      }
+      if (activeQuestion === undefined) return
+      const title = activeQuestion.question
+      const optionCount = activeQuestion.options.length + (pendingQuestion.allowFreeText ? 1 : 0)
+      if (!editingQuestionNotes && (key.upArrow || key.downArrow)) {
+        setQuestionCursor((cursor) => (cursor + (key.downArrow ? 1 : optionCount - 1)) % optionCount)
+        return
+      }
+      if ((questionOtherFocused || editingQuestionNotes) && key.ctrl && text === 'v') {
+        try {
+          appendQuestionText(readClipboard())
+        } catch {
+          setQuestionError(pick('无法读取剪贴板', 'Clipboard read failed'))
+        }
+        return
+      }
+      if ((questionOtherFocused || editingQuestionNotes) && (key.backspace || key.delete)) {
+        const setText = editingQuestionNotes ? setQuestionNotes : setQuestionOther
+        setText((drafts) => ({
+          ...drafts,
+          [title]: Array.from(drafts[title] ?? '').slice(0, -1).join('')
+        }))
+        setQuestionError(undefined)
+        return
+      }
+      const option = activeQuestion.options[questionCursor]
+      if (editingQuestionNotes) {
+        if (text && !key.ctrl && !key.meta) appendQuestionText(text)
+        return
+      }
+      if (option?.preview && text === 'n' && !key.ctrl && !key.meta) {
+        setEditingQuestionNotes(true)
+        return
+      }
+      if (text === ' ' && option !== undefined) {
+        const label = option.label
+        setQuestionSelections((selections) => {
+          const picked = selections[title] ?? []
+          const values = !activeQuestion.multiSelect ? [label] : picked.includes(label)
+            ? picked.filter((value) => value !== label)
+            : [...picked, label]
+          return { ...selections, [title]: values }
+        })
+        setQuestionError(undefined)
+        return
+      }
+      if (key.return) {
+        const answer = activeQuestion.multiSelect
+          ? questionAnswers[title]
+          : questionOtherFocused ? questionOther[title]?.trim() : option?.label
+        if (!answer) {
+          setQuestionError(pick('请选择选项或输入自定义答案', 'Select an option or type a custom answer'))
+          return
+        }
+        if (!activeQuestion.multiSelect) {
+          setQuestionSelections((selections) => ({ ...selections, [title]: option ? [option.label] : [] }))
+          if (option) setQuestionOther((drafts) => ({ ...drafts, [title]: '' }))
+        }
+        if (questionReviewNeeded) navigate(questionIndex + 1)
+        else submit({ [title]: answer })
+        return
+      }
+      if (text && !key.ctrl && !key.meta) appendQuestionText(text)
+      return
+    }
+    if (effortIndex !== undefined && effort) {
+      if (key.escape || (key.ctrl && text === 'c')) {
+        setEffortIndex(undefined)
+      } else if (key.upArrow || key.downArrow) {
+        const count = effort.choices.length
+        const delta = key.downArrow ? 1 : count - 1
+        setEffortIndex((index) => ((index ?? 0) + delta) % count)
+      } else if (key.return) {
+        const choice = effort.choices[effortIndex]
+        if (choice !== undefined) {
+          effort.set(choice)
+          setHint(pick(
+            `思考强度已设为${effortDisplayLabel(choice, true)}（下一次请求生效）`,
+            `Reasoning effort set to ${choice} (applies to the next request)`
+          ))
+        }
+        setEffortIndex(undefined)
+      }
       return
     }
     // Ctrl+V paste fallback for terminals without bracketed-paste support
@@ -679,94 +851,6 @@ export function App({
       }
       else if (text === '/') setSearch({ text: '', index: 0 })
       return
-    }
-    // SP004 T15 VIS-04：追问挂起时键盘完全交给追问卡片。
-    const question = frame.question
-    if (question !== undefined && question.state === 'pending') {
-      if (key.escape) {
-        session.cancelQuestion(question.questionId)
-        return
-      }
-      if (planEditing !== null) return
-      const index = Math.min(questionIndex, question.questions.length - 1)
-      const current = question.questions[index]
-      if (current === undefined) return
-      const optionCount = current.options.length + 1
-      const answerFor = (merged: Record<string, string[]>): Record<string, string> => {
-        const answers: Record<string, string> = {}
-        for (const item of question.questions) {
-          const values = merged[item.question] ?? []
-          const other = questionOther[item.question] ?? ''
-          if (values.length > 0) answers[item.question] = values.join(', ')
-          else if (other !== '') answers[item.question] = other
-        }
-        return answers
-      }
-      const commit = (merged: Record<string, string[]>) => {
-        if (index + 1 < question.questions.length) {
-          setQuestionIndex(index + 1)
-          setQuestionCursor(0)
-          return
-        }
-        session.answerQuestion(question.questionId, answerFor(merged))
-      }
-      if (key.upArrow || (key.tab && key.shift)) {
-        setQuestionCursor((cursor) => (cursor + optionCount - 1) % optionCount)
-        return
-      }
-      if (key.downArrow || (key.tab && !key.shift)) {
-        setQuestionCursor((cursor) => (cursor + 1) % optionCount)
-        return
-      }
-      if (key.leftArrow) {
-        setQuestionIndex((current) => Math.max(0, current - 1))
-        setQuestionCursor(0)
-        return
-      }
-      if (key.rightArrow) {
-        setQuestionIndex((current) => Math.min(question.questions.length - 1, current + 1))
-        setQuestionCursor(0)
-        return
-      }
-      const keyText = current.question
-      const toggle = (label: string): Record<string, string[]> => {
-        const picked = questionSelections[keyText] ?? []
-        const next = current.multiSelect
-          ? picked.includes(label)
-            ? picked.filter((value) => value !== label)
-            : [...picked, label]
-          : [label]
-        return { ...questionSelections, [keyText]: next }
-      }
-      if (text === ' ' && questionCursor < current.options.length) {
-        setQuestionSelections(toggle(current.options[questionCursor].label))
-        return
-      }
-      if (key.return) {
-        if (questionCursor === current.options.length) {
-          const custom = editor.text.trim()
-          if (custom === '') {
-            setHint(pick('请先输入自定义答案，或 ↑↓ 选择选项', 'Type a custom answer first, or ↑↓ pick an option'))
-            return
-          }
-          const merged = { ...questionSelections, [keyText]: [] }
-          setQuestionOther({ ...questionOther, [keyText]: custom })
-          editor.setText('')
-          setInput('')
-          commit(merged)
-          return
-        }
-        const label = current.options[questionCursor].label
-        const merged = current.multiSelect
-          ? { ...questionSelections, [keyText]: [
-              ...(questionSelections[keyText] ?? []).filter((value) => value !== label),
-              ...((questionSelections[keyText] ?? []).includes(label) ? [] : [label])
-            ] }
-          : { ...questionSelections, [keyText]: [label] }
-        setQuestionSelections(merged)
-        commit(merged)
-        return
-      }
     }
     if (planEditing !== null && !typing) {
       if (key.escape) {
@@ -1084,9 +1168,6 @@ export function App({
     )
   }
   // SP004 T15：四类卡片按 追问 → 计划 → 待办 → 命令 的顺序显示，行宽与终端一致。
-  const activeQuestion = frame.question?.questions[
-    Math.min(questionIndex, Math.max(0, (frame.question?.questions.length ?? 1) - 1))
-  ]
   const cardLines: { key: string; dim: boolean; lines: string[] }[] = []
   if (frame.question !== undefined) {
     cardLines.push({
@@ -1099,6 +1180,10 @@ export function App({
           ? {}
           : { [activeQuestion.question]: questionSelections[activeQuestion.question] ?? [] },
         otherDraft: activeQuestion === undefined ? undefined : questionOther[activeQuestion.question],
+        questionNotes: activeQuestion === undefined ? undefined : questionNotes[activeQuestion.question],
+        editingQuestionNotes,
+        reviewAnswers: questionReview ? questionAnswers : undefined,
+        questionError,
         zh
       })
     })
@@ -1278,13 +1363,28 @@ export function App({
             )}
           </Text>
         )}
+        {effortIndex !== undefined && effort && (
+          <Box flexDirection="column">
+            <Text color={ACCENT}>{pick('选择思考强度', 'Choose reasoning effort')}</Text>
+            {effort.choices.map((choice, index) => (
+              <Text key={choice} color={index === effortIndex ? ACCENT : undefined}>
+                {index === effortIndex ? pick('❯ ', '> ') : '  '}{effortDisplayLabel(choice, zh)}
+              </Text>
+            ))}
+            <Text dimColor>{pick('↑↓ 选择 · Enter 确认 · Esc 取消', 'Up/Down to choose · Enter to confirm · Esc to cancel')}</Text>
+          </Box>
+        )}
         {(contextLabel !== undefined || effortLabel !== undefined) && (
-          <Box justifyContent="space-between">
-            <Text color={contextTone} dimColor={contextTone === undefined} wrap="truncate-end">
-              {contextLabel ?? ''}
-              {contextInfo?.source === 'estimate' && pick('（估算）', ' (estimated)')}
+          <Box justifyContent="flex-end">
+            <Text wrap="truncate-end">
+              <Text dimColor>{effortLabel}{effortLabel && contextLabel ? ' · ' : ''}</Text>
+              {contextLabel !== undefined && (
+                <Text color={contextTone} dimColor={contextTone === undefined}>
+                  {contextLabel}
+                  {contextInfo?.source === 'estimate' && pick('（估算）', ' (estimated)')}
+                </Text>
+              )}
             </Text>
-            {effortLabel !== undefined && <Text dimColor>{effortLabel}</Text>}
           </Box>
         )}
         {transcriptMode && (

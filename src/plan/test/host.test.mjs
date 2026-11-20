@@ -2,7 +2,9 @@
 // 覆盖：计划文件落盘、工作区/Git 快照指纹、漂移判定、执行前校验、工具调用成功与失败路径。
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { once } from 'node:events'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -93,6 +95,29 @@ test('T15-11b 生产 PlanModeHost：未提交的 HEAD 变化也计入漂移', (t
   assert.deepEqual(drift.map((d) => d.item), ['head'])
 })
 
+test('approved draft text drift blocks execution even when referenced files are unchanged', async (t) => {
+  const f = makeRepo(t)
+  const { workspace, host } = makeHost(f)
+  const original = '# Repair add\nUse src/app.mjs'
+  host.writeDraft(original)
+  const session = new Session({
+    provider: { stream: async function* () {} },
+    approval: { async request() { return { outcome: 'allow', via: 'user' } } },
+    resolveSnapshot: () => ({
+      modelId: 'fixture', model: 'fixture', baseUrlHost: 'fixture.invalid', capabilities: { tools: true }
+    }),
+    tools: [],
+    permissionPolicy: createPermissionPolicy({ workspace }),
+    planMode: host
+  })
+  t.after(() => session.dispose())
+  assert.equal(session.enterPlanMode().ok, true)
+  assert.equal((await session.exitPlanMode()).ok, true)
+  assert.equal(host.validate(host.store.current()).ok, true)
+  writeFileSync(host.draftPath, original + '\nNew unapproved requirement.')
+  assert.deepEqual(host.validate(host.store.current()).drift.map((item) => item.item), ['draft'])
+})
+
 test('T15-12 计划模式工具：EnterPlanMode 进入调研、ExitPlanMode 缺计划文件报错、批准后恢复原档位', async (t) => {
   const base = makeRepo(t)
   const workspace = createWorkspace(base.repo)
@@ -147,9 +172,101 @@ test('T15-12 计划模式工具：EnterPlanMode 进入调研、ExitPlanMode 缺�
   // 非法 allowedPrompts 在校验层被拒绝，不触发审批。
   await assert.rejects(
     () => exit.execute({ allowedPrompts: 'nope' }, context),
-    /allowedPrompts 必须是字符串数组/
+    /allowedPrompts/
   )
   assert.equal(requests.length, 1)
+})
+
+test('production plan tools send the complete edited plan under the original call id', async (t) => {
+  const f = makeRepo(t)
+  const draft = join(f.home, '.budingx', 'plans', 'wire-plan', 'plan-wire-plan.draft.md')
+  const other = join(f.home, '.budingx', 'plans', 'other-session', 'private.md')
+  mkdirSync(join(other, '..'), { recursive: true })
+  writeFileSync(other, 'private neighbor')
+  const plan = ['# Repair add', ...Array.from({ length: 45 }, (_, i) => `Line ${i + 1}`)].join('\n')
+  const edited = plan + '\nOnly the user may add this requirement.'
+  const script = [
+    ['enter-bad', 'EnterPlanMode', { unexpected: true }],
+    ['enter', 'EnterPlanMode', {}],
+    ['write-other', 'Write', { path: other, content: 'blocked' }],
+    ['write-plan', 'Write', { path: draft, content: plan }],
+    ['read-plan', 'Read', { path: draft }],
+    ['exit', 'ExitPlanMode', { allowedPrompts: [{ tool: 'Bash', prompt: 'run tests' }] }],
+    ['write-after', 'Write', { path: draft, content: 'too late' }]
+  ]
+  const requests = []
+  const server = createServer(async (req, res) => {
+    let text = ''
+    for await (const chunk of req) text += chunk
+    requests.push(JSON.parse(text))
+    const next = script.shift()
+    const choice = next
+      ? {
+          delta: {
+            tool_calls: [{
+              index: 0,
+              id: next[0],
+              type: 'function',
+              function: { name: next[1], arguments: JSON.stringify(next[2]) }
+            }]
+          },
+          finish_reason: 'tool_calls'
+        }
+      : { delta: { content: 'done' }, finish_reason: 'stop' }
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    res.end(`data: ${JSON.stringify({ choices: [choice] })}\n\ndata: [DONE]\n\n`)
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  t.after(() => server.close())
+  const baseUrl = `http://127.0.0.1:${server.address().port}/v1`
+  const configStore = new ConfigStore(join(f.base, 'config.json'))
+  configStore.save({ version: 1, models: [{ id: 'fixture', capabilities: { tools: true } }] })
+  const approvals = []
+  const runtime = createAgentRuntime({
+    cwd: f.repo,
+    getConfig: () => ({
+      baseUrl, model: 'fixture', profileId: 'fixture', apiKey: 'fixture-key',
+      timeoutMs: 1000, source: 'env'
+    }),
+    approval: {
+      async request(request) {
+        approvals.push(request)
+        return { outcome: 'allow', editedText: edited, via: 'user' }
+      }
+    },
+    configStore,
+    home: f.home,
+    sessionId: 'wire-plan'
+  })
+  t.after(() => runtime.session.dispose())
+  const { promise, resolve } = Promise.withResolvers()
+  const results = new Map()
+  runtime.session.on((event) => {
+    if (event.type === 'tool_result') results.set(event.callId, event)
+    if (event.type === 'turn_finalized') resolve(event)
+  })
+  runtime.session.submit('Plan the repair')
+  const timeout = setTimeout(() => resolve(undefined), 8000)
+  t.after(() => clearTimeout(timeout))
+  assert.ok(await promise, 'fixture turn did not finish')
+  assert.equal(results.get('enter-bad').isError, true)
+  assert.ok(results.get('enter').content.includes(draft))
+  assert.equal(results.get('write-other').isError, true)
+  assert.equal(results.get('write-plan').isError, false)
+  assert.match(results.get('read-plan').content, /Line 45/)
+  assert.equal(approvals.length, 1)
+  assert.equal(approvals[0].callId, 'exit')
+  assert.equal(approvals[0].planId, 'plan-wire-plan')
+  assert.equal(approvals[0].preview.join('\n'), plan)
+  assert.match(approvals[0].summary, /Bash.*run tests/)
+  assert.equal(results.get('exit').isError, false)
+  assert.equal(results.get('write-after').isError, true)
+  assert.equal(runtime.session.planMode.active, false)
+  assert.equal(readFileSync(draft, 'utf8'), edited)
+  assert.equal(readFileSync(other, 'utf8'), 'private neighbor')
+  const toolMessage = requests.at(-1).messages.find((message) => message.tool_call_id === 'exit')
+  assert.ok(toolMessage.content.includes(edited))
 })
 test('T15-13 生产 runtime 接线：四类工具就位、会话标识就绪，无已验证隔离后端时命令在 spawn 前被拒绝', async (t) => {
   const base = mkdtempSync(join(tmpdir(), 'budingx-runtime-'))
@@ -184,11 +301,13 @@ test('T15-13 生产 runtime 接线：四类工具就位、会话标识就绪，�
   const events = []
   runtime.session.on((event) => events.push(event))
   const bash = runtime.session.tools.find((tool) => tool.name === 'Bash')
-  const blocked = await bash.execute(
-    { command: 'node -e "require(\'fs\').writeFileSync(\'spawned.txt\', \'x\')"' },
-    { signal: new AbortController().signal }
+  await assert.rejects(
+    () => bash.execute(
+      { command: 'node -e "require(\'fs\').writeFileSync(\'spawned.txt\', \'x\')"' },
+      { signal: new AbortController().signal }
+    ),
+    /隔离后端/
   )
-  assert.match(String(blocked), /隔离后端/, '拒绝原因必须说明缺少已验证隔离后端')
   assert.equal(events.some((event) => event.type === 'command_started'), false)
   assert.equal(runtime.session.isBusy, false)
 })

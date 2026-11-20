@@ -18,6 +18,10 @@ export type CardRenderOptions = {
   cursor?: number
   selected?: Readonly<Record<string, readonly string[]>>
   otherDraft?: string
+  reviewAnswers?: Readonly<Record<string, string>>
+  questionError?: string
+  questionNotes?: string
+  editingQuestionNotes?: boolean
 }
 
 const COMMAND_SYMBOLS = {
@@ -241,35 +245,54 @@ export function questionCardLines(
     lines.push(truncateByWidth(`  ${pick(zh, '已取消，保持原提问结果身份', 'cancelled; original call result kept')}`, width))
     return lines
   }
+  if (options.reviewAnswers !== undefined) {
+    return [
+      pick(zh, '◆ 提交答案', '◆ Submit answers'),
+      ...card.questions.map((item) =>
+        `  ${item.question} → ${options.reviewAnswers?.[item.question] || pick(zh, '未回答', 'Unanswered')}`
+      ),
+      pick(zh, '  Enter 提交 · ←/Shift+Tab 返回修改 · Esc 取消', '  Enter submits · ←/Shift+Tab edits · Esc cancels'),
+      ...(options.questionError === undefined
+        ? []
+        : [pick(zh, `  请回答所有问题 · ${options.questionError}`, `  ${options.questionError}`)])
+    ].map((line) => truncateByWidth(line, width))
+  }
   if (question === undefined) return lines
   lines.push(truncateByWidth(`  ${question.header}: ${question.question}`, width))
   for (const [optionIndex, option] of question.options.entries()) {
     const marker = optionIndex === cursor ? '❯' : ' '
     const checked = picked.includes(option.label) ? '◉' : '○'
-    const preview = option.preview !== undefined ? ` · ${option.preview.split('\n')[0] ?? ''}` : ''
+    const preview = option.preview?.split(/\r?\n/) ?? []
     lines.push(
       truncateByWidth(
-        `  ${marker} ${checked} ${option.label} — ${option.description}${preview}`,
+        `  ${marker} ${checked} ${option.label} — ${option.description}${preview[0] ? ` · ${preview[0]}` : ''}`,
         width
       )
     )
+    if (optionIndex === cursor) {
+      for (const line of preview.slice(1, 4)) lines.push(truncateByWidth(`      ${line}`, width))
+      if (preview.length > 4) lines.push(truncateByWidth('      …', width))
+    }
   }
-  const otherActive = cursor === question.options.length
-  lines.push(
-    truncateByWidth(
+  if (card.allowFreeText) {
+    const otherActive = cursor === question.options.length
+    lines.push(truncateByWidth(
       `  ${otherActive ? '❯' : ' '} ◌ ${pick(zh, '其他（输入自定义答案）', 'Other (type a custom answer)')}${options.otherDraft ? `: ${options.otherDraft}` : ''}`,
       width
-    )
-  )
-  if (card.allowFreeText) {
-    lines.push(truncateByWidth(`  ${pick(zh, '可直接输入自定义答案后 Enter 提交本题', 'type a custom answer and Enter to submit')}`, width))
+    ))
   }
-  const notes = options.otherDraft !== undefined && options.otherDraft !== '' ? ' · 备注随答案提交' : ''
+  if (options.editingQuestionNotes) {
+    lines.push(truncateByWidth(pick(zh, '  正在编辑备注 · Enter 返回', '  Editing notes · Enter to return'), width))
+  } else if (question.options[cursor]?.preview) {
+    lines.push(truncateByWidth(pick(zh, '  n 编辑备注', '  n edits notes'), width))
+  }
+  if (options.questionNotes) lines.push(truncateByWidth(`  ${pick(zh, '备注', 'Notes')}: ${options.questionNotes}`, width))
   lines.push(
     truncateByWidth(
-      `  ${pick(zh, '↑↓ 光标 · 空格选择 · Tab 切题 · Enter 确认/下一题 · Esc 取消', '↑↓ cursor · space select · Tab switch · Enter confirm/next · Esc cancel')}${notes}`,
+      pick(zh, '  ↑↓ 光标 · 空格选择 · Tab 切题 · Enter 确认/下一题 · Esc 取消', '  ↑↓ cursor · space select · Tab switch · Enter confirm/next · Esc cancel'),
       width
     )
   )
+  if (options.questionError) lines.push(truncateByWidth(`  ${options.questionError}`, width))
   return lines
 }

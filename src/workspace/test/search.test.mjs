@@ -1,7 +1,7 @@
 // Glob and Grep tests (SP003 AC WT-09/WT-10/WT-13, plan T6).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createWorkspace } from '../../tui/dist/workspace/paths.js'
@@ -42,6 +42,15 @@ test('a top level pattern does not cross directories', () => {
   } finally {
     rmSync(tree.base, { recursive: true, force: true })
   }
+})
+
+test('Glob applies the result cap after sorting from oldest to newest', (t) => {
+  const tree = makeTree({ 'a.ts': 'x', 'b.ts': 'x' })
+  t.after(() => rmSync(tree.base, { recursive: true, force: true }))
+  const past = new Date('2020-01-01')
+  utimesSync(join(tree.root, 'b.ts'), past, past)
+  const result = globWorkspace(tree.workspace, { pattern: '*.ts', maxResults: 1 })
+  assert.match(result.text, /^b\.ts/)
 })
 
 test('ignored files never appear in glob results', () => {

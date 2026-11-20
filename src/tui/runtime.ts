@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { createAskUserQuestionTool } from '../core/questions.js'
+import { createWebSearchTool } from '../provider/web-search.js'
 import { Session, type SubmitOptions } from '../core/session.js'
 import type { ApprovalGateway, ToolHandler } from '../core/tools.js'
 import type { DenialRecord } from '../core/events.js'
@@ -8,7 +9,7 @@ import { createCommandRunner } from '../exec/runner.js'
 import { createSandboxPolicy } from '../exec/sandbox-policy.js'
 import { createExecTools } from '../exec/tools.js'
 import { createPlanModeHost } from '../plan/host.js'
-import { createPlanModeTools } from '../plan/tools.js'
+import { createPlanModeTools, routePlanDraftTools } from '../plan/tools.js'
 import { createOpenAiProvider } from '../provider/openai.js'
 import { ConfigStore } from '../storage/config-store.js'
 import { dataRoot, permissionsPath } from '../storage/paths.js'
@@ -263,18 +264,23 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   })
   // SP004 §4.7：隔离后端由宿主注入；本仓尚无已验证后端，因此 fail closed——
   // 普通命令在 spawn 之前即被拒绝（设计允许的宿主托管能力不受影响）。
+  const sandboxPolicy = createSandboxPolicy()
   const runner = createCommandRunner({
     defaultCwd: workspace.root,
-    sandboxPolicy: createSandboxPolicy({}),
+    sandboxPolicy,
     sessionId,
     ...(options.home ? { home: options.home } : {})
   })
   const execTools = createExecTools({
     runner,
     defaultCwd: workspace.root,
-    platform: process.platform
+    sandboxPolicy
   })
-  const tools: ToolHandler[] = [...workspaceTools, ...execTools]
+  const tools: ToolHandler[] = [
+    ...workspaceTools,
+    ...execTools,
+    createWebSearchTool(process.env.BUDINGX_TAVILY_API_KEY)
+  ]
   const denials: DenialRecord[] = []
   // SP005 §5：会话转录与索引。持久化是可选的，未开启时行为与 SP004 一致。
   // 0.5.2：推理强度在运行时可变；会话每次请求读取一次。
@@ -287,10 +293,14 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   let sessionStore: SessionStore | undefined
   let transcript: ReturnType<typeof startSession>['transcript'] | undefined
   if (persistence) {
-    sessionStore = createSessionStore(options.home ? { home: options.home } : {})
+    sessionStore = createSessionStore({
+      workspaceRoot: workspace.root,
+      ...(options.home ? { home: options.home } : {})
+    })
     try {
       transcript = startSession({
         sessionId,
+        workspaceRoot: workspace.root,
         ...(options.home ? { home: options.home } : {})
       }).transcript
     } catch (error) {
@@ -335,7 +345,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
   })
   // 追问与计划模式工具需要 Session 实例本身，因此在构造后追加（数组引用共享）。
-  tools.push(createAskUserQuestionTool(session), ...createPlanModeTools(session))
+  routePlanDraftTools(tools, session, planMode.draftPath, planMode.draftWorkspace)
+  tools.push(createAskUserQuestionTool(session), ...createPlanModeTools(session, planMode.draftPath))
   session.on((event) => {
     if (event.type === 'denial_recorded') denials.push(event.denial)
   })
@@ -469,7 +480,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           : { triggerTokens: Math.floor(target * 0.85) }),
         ...(window === undefined || window <= 0
           ? {}
-          : { percentUsed: Math.min(100, Math.round((usedTokens / window) * 100)) }),
+          : { percentUsed: Math.min(100, Math.round((usedTokens / window) * 1000) / 10) }),
         source: providerUsage?.inputTokens === undefined ? 'estimate' as const : 'provider' as const
       }
     }
