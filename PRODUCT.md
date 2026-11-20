@@ -1,7 +1,6 @@
 # budingx 产品说明书
 
-> **npm 已发布版本**：0.5.3（`latest`）。详见 [0.5.3 发行说明](release-notes/v0.5.3.md)。
-> **候选版本**：0.5.4（命令执行可用、联网搜索审批与长会话显示修复）已准备，尚未上传 npm；详见 [0.5.4 发行说明](release-notes/v0.5.4.md)。
+> **npm 已发布版本**：0.5.4（`latest`）。详见 [0.5.4 发行说明](release-notes/v0.5.4.md)。
 > **说明书版本**：v1.20
 > **更新日期**：2026-11-20
 > **产品形态**：独立 MIT 许可的终端 Coding Agent（Node.js ≥ 22.18 + TypeScript，不依赖 Bun）
@@ -45,7 +44,7 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | 迭代  | 目标                    | 主要功能目录                                                                                               | 状态 |
 | ----- | ----------------------- | ---------------------------------------------------------------------------------------------------------- | ---- |
 | SP004（0.4.0） | 计划、待办、命令与追问；普通命令要求已验证的执行隔离，提交限专用 worktree | 命令执行、后台任务、受控 Git 提交、计划模式与追问、四类会话卡片 | 已发布 |
-| SP005（0.5.0–0.5.3） | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         | 已合入 master。真实模型端到端两场景 PASS，0.5.3 已发布为 npm `latest` |
+| SP005（0.5.0–0.5.3） | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         | 已合入 master。真实模型端到端两场景 PASS，0.5.4 已发布为 npm `latest` |
 | SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 规划中 |
 | SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | 规划中 |
 | SP008 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | 规划中（契约轮，轻量测试客户端验证） |
@@ -320,7 +319,7 @@ budingx --prompt "Hello" --timeout 120000
 | 0.4.0 | 2026-11-19 | SP004 真实编码任务：命令执行与后台任务、受控 Git 提交、计划与待办、四类会话卡片；追加可选本机 Langfuse 观测（默认关闭），见 [发行说明](release-notes/v0.4.0.md) | 已发布 |
 | 0.5.0 | 2026-11-20 | SP005 长会话与数据可靠性：会话转录落盘与跨进程恢复（不盲重放副作用）、上下文预算压缩（保留约束/计划/工具状态）、项目与会话记忆、原子写入与损坏隔离、稳定失败错误码与工具空转熔断、`/sessions` `/resume` `/context` `/memory` 四个命令；见 [发行说明](release-notes/v0.5.0.md) | 已发布 |
 | 0.5.3 | 2026-11-20 | 工作区会话隔离、追问与内置工具修复、中文思考强度选择、Bing 和 Tavily 联网搜索。见 [发行说明](release-notes/v0.5.3.md) | 已发布 |
-| 0.5.4 | 2026-11-20 | 命令按权限档位宿主信任执行（Bash 可用，对齐参考实现）；Git 命令不再被只读白名单硬拦；Shift+Tab 恢复三档轮播；联网搜索完全权限免审、可按会话记住；审批卡编号一致；追问卡回答后收起、过程性提示不堆叠、时长格式化、状态显示正在思考、底部元信息合并为一行；上下文占用改为真实用量的百分比；`/rules` 改为交互管理面板；移除 `/config` 与 `/model`；修复长会话 `Maximum update depth exceeded` 崩溃；Langfuse 仅开发环境；既有命令复刻改造（/new /continue /rewind /plan /context 网格 /compact /cost /permissions /help 技能清单）。见 [发行说明](release-notes/v0.5.4.md) | 已准备，待发布 |
+| 0.5.4 | 2026-11-20 | 命令按权限档位宿主信任执行（Bash 可用，对齐参考实现）；Git 命令不再被只读白名单硬拦；Shift+Tab 恢复三档轮播；联网搜索完全权限免审、可按会话记住；审批卡编号一致；追问卡回答后收起、过程性提示不堆叠、时长格式化、状态显示正在思考、底部元信息合并为一行；上下文占用改为真实用量的百分比；`/rules` 改为交互管理面板；移除 `/config` 与 `/model`；修复长会话 `Maximum update depth exceeded` 崩溃；Langfuse 仅开发环境；既有命令复刻改造（/new /continue /rewind /plan /context 网格 /compact /cost /permissions /help 技能清单）。见 [发行说明](release-notes/v0.5.4.md) | 已发布 |
 | 0.5.2 | 2026-11-20 | 长会话渲染优化（流式增量不再每帧全文重排、虚拟列表渐进挂载与高度缓存、状态栏常驻）、上下文用量与推理强度显示、`/effort` 命令、交互式 TUI 默认开启会话持久化；见 [发行说明](release-notes/v0.5.2.md) | 已发布 |
 | 0.5.1 | 2026-11-20 | SP005 复审修复：写入锁排他互斥与释放归属、记忆正文往返与真实损坏备份、凭据误判收敛、压缩保留项裁剪与压缩转录重放、预算阈值统一、工具熔断按回合重置、恢复权限不升权、`/memory` 用法提示；见 [发行说明](release-notes/v0.5.1.md) | 已发布 |
 | —（规划调整，无产品行为变化） | 2026-11-17 | 路线图 r6：TUI 单端优先；SP008/SP009/SP016–SP018 暂缓、多端架构入口保留；TUI 三权限模式固定；能力清单分母 53→47；说明书 v1.3 | 规划文档调整 |

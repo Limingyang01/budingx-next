@@ -1,8 +1,8 @@
 # 当前状态
 
-截至 2026-11-20，**npm `latest` 为 0.5.3**；候选 **0.5.4**（命令执行可用、联网搜索审批与长会话显示修复）已准备，尚未上传 npm。0.5.3 修复跨工作区会话恢复、追问提交和计划模式工具，加入中文思考强度选择和内置 `WebSearch`（默认 Bing，配置密钥后 Tavily）。0.5.4 修正完全权限下联网搜索仍弹审批、`approved` 口径与审批卡编号问题，见 [0.5.4 发行说明](../release-notes/v0.5.4.md)。
+截至 2026-11-20，**npm `latest` 为 0.5.4**（命令执行可用、联网搜索审批、长会话显示与命令面复刻修复）。0.5.3 修复跨工作区会话恢复、追问提交和计划模式工具，加入中文思考强度选择和内置 `WebSearch`（默认 Bing，配置密钥后 Tavily）。0.5.4 修正完全权限下联网搜索仍弹审批、`approved` 口径与审批卡编号问题，见 [0.5.4 发行说明](../release-notes/v0.5.4.md)。
 
-[运行 #23](https://github.com/Limingyang01/budingx-next/actions/runs/44682798887) 以源码 `16f5e0c` 完成 Ubuntu、Windows 验证及 OIDC 发布。官方制品 SHA-512、来源证明、签名与独立安装均已核对。见 [0.5.3 发行说明](../release-notes/v0.5.3.md)、[发布台账](../release-ledger.json)及 [SP005 验收报告](../SP/SP005/test-report.md)。可选本机 Langfuse 观测默认关闭。
+[运行 #24](https://github.com/Limingyang01/budingx-next/actions/runs/44717769718) 以源码 `f67a65a` 完成 Ubuntu、Windows 验证及 OIDC 发布 0.5.4。官方制品 SHA-512、来源证明、签名与独立安装均已核对。见 [0.5.3 发行说明](../release-notes/v0.5.3.md)、[发布台账](../release-ledger.json)及 [SP005 验收报告](../SP/SP005/test-report.md)。可选本机 Langfuse 观测默认关闭。
 
 ## 已有
 

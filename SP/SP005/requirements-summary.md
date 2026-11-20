@@ -1,6 +1,6 @@
 # SP005 · 长会话与数据可靠性
 
-状态：**DELIVERED（实施与测试完成，真实模型端到端两场景 PASS、监测平台就绪，已合入 master `293a337` 并推送；0.5.0 已通过 OIDC 发布；0.5.0 发布后的独立复审修复已完成，0.5.1 也已通过 OIDC 发布，npm `latest` 已核对；0.5.2 长会话渲染优化与上下文可见性也已通过 OIDC 发布，npm `latest` 已核对）**｜功能分支 `feature/SP005/fix-0.5.1`（修复轮）｜实施基线 `17afe34`（master）｜轮次验收报告 [SP005/test-report.md](test-report.md)（复审修复见 §9）
+状态：**DELIVERED（实施与测试完成，真实模型端到端两场景 PASS、监测平台就绪，已合入 master `293a337` 并推送；0.5.0 已通过 OIDC 发布；0.5.0 发布后的独立复审修复已完成，0.5.1 也已通过 OIDC 发布，npm `latest` 已核对；0.5.2 长会话渲染优化与上下文可见性也已通过 OIDC 发布；0.5.4 命令执行/命令面复刻与长会话崩溃修复已发布，npm `latest` 已核对）**｜功能分支 `feature/SP005/fix-0.5.1`（修复轮）｜实施基线 `17afe34`（master）｜轮次验收报告 [SP005/test-report.md](test-report.md)（复审修复见 §9）
 
 ## 本轮目标与边界
 
