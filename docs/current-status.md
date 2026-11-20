@@ -72,6 +72,10 @@
 
 0.5.2 已通过 OIDC 发布，发布时 npm `latest` 指向 0.5.2。发布回执见 [0.5.2 发行说明](../release-notes/v0.5.2.md)。
 
+## SP005 联网搜索审批修复（0.5.4）合入回执（2026-11-20）
+
+源/目标：`feature/SP005/fix-0.5.4`（HEAD `5903cfb`）→ `master`（原 `eed5c80`），`--no-ff` 合并提交 `19b692b`。前置门禁 `npm run merge:gate` GREEN（`artifacts/merge-gate/feature-SP005-fix-0.5.4-2026-11-20T06-04-23-233Z.md`：npm test / spec:check / skills:check / pack-smoke 退出码均 0）。全量单测 767 项 / 766 通过 / 0 失败 / 1 跳过。推送 `origin/master` `eed5c80..19b692b`，`git ls-remote` 与本地一致。0.5.4 已准备（台账 prepared），待维护者触发发布。
+
 ## SP005 长会话渲染优化（0.5.2，2026-11-20）
 
 用户报告「长会话经常卡顿卡死」。定位与修复如下，均以真实渲染管线（真实 Ink + 真实 Session + 伪终端流）测量。
