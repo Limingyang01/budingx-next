@@ -1,6 +1,6 @@
 # 当前状态
 
-截至 2026-11-20，**npm `latest` 为 0.5.3**；候选 **0.5.4**（联网搜索审批修复）已准备，尚未上传 npm。0.5.3 修复跨工作区会话恢复、追问提交和计划模式工具，加入中文思考强度选择和内置 `WebSearch`（默认 Bing，配置密钥后 Tavily）。0.5.4 修正完全权限下联网搜索仍弹审批、`approved` 口径与审批卡编号问题，见 [0.5.4 发行说明](../release-notes/v0.5.4.md)。
+截至 2026-11-20，**npm `latest` 为 0.5.3**；候选 **0.5.4**（命令执行可用、联网搜索审批与长会话显示修复）已准备，尚未上传 npm。0.5.3 修复跨工作区会话恢复、追问提交和计划模式工具，加入中文思考强度选择和内置 `WebSearch`（默认 Bing，配置密钥后 Tavily）。0.5.4 修正完全权限下联网搜索仍弹审批、`approved` 口径与审批卡编号问题，见 [0.5.4 发行说明](../release-notes/v0.5.4.md)。
 
 [运行 #23](https://github.com/Limingyang01/budingx-next/actions/runs/44682798887) 以源码 `16f5e0c` 完成 Ubuntu、Windows 验证及 OIDC 发布。官方制品 SHA-512、来源证明、签名与独立安装均已核对。见 [0.5.3 发行说明](../release-notes/v0.5.3.md)、[发布台账](../release-ledger.json)及 [SP005 验收报告](../SP/SP005/test-report.md)。可选本机 Langfuse 观测默认关闭。
 
@@ -20,7 +20,7 @@
 
 ## 未实现
 
-**SP004 已发布**。普通命令仍需要已验证的执行隔离后端，默认在启动前被拒绝。完成证据闸门和 worktree 工具面尚未接入生产 runtime。仍全部未实现的有：Computer Use、团队、浏览器和调度；Desktop、VS Code、远程/H5 和 IM 已移出当前 SP。SP005 的转录持久化与恢复已完成实施、代码层验收与门禁 GREEN，并已合入 master（`293a337`）与推送；真实模型端到端两场景经本地 Langfuse 4.78.0 回查 PASS（tool-success / tool-error + 熔断停机）。0.5.0 起的 SP005 变更均已发布至 0.5.3；真实模型的长会话压缩场景仍为 UNVERIFIED。
+**SP004 已发布**。0.5.4 起普通命令按权限档位「宿主信任执行」（对齐参考实现：权限审批为安全控制、沙箱可选），默认无 OS 级隔离；配置已验收隔离后端时在隔离中执行。完成证据闸门和 worktree 工具面尚未接入生产 runtime。仍全部未实现的有：Computer Use、团队、浏览器和调度；Desktop、VS Code、远程/H5 和 IM 已移出当前 SP。SP005 的转录持久化与恢复已完成实施、代码层验收与门禁 GREEN，并已合入 master（`293a337`）与推送；真实模型端到端两场景经本地 Langfuse 4.78.0 回查 PASS（tool-success / tool-error + 熔断停机）。0.5.0 起的 SP005 变更均已发布至 0.5.3；真实模型的长会话压缩场景仍为 UNVERIFIED。
 
 首发使用 Node.js >=22.18、TypeScript 和 Node test runner，当前真实命令见 package.json 与 [开发指南](development.md)。禁止引入 Bun；不能把旧项目版本 0.5.0、旧测试成绩或 Git 发布状态当作本仓事实。
 

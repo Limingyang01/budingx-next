@@ -372,9 +372,10 @@ test('T15-8 VIS-04 追问交互：回答两题后在汇总页确认，只提交�
     '选择哪条路线？': 'A 路线',
     '是否包含测试？': '包含测试'
   })
-  const finalFrame = ui.last()
-  assert.match(finalFrame, /◆ 提问 1\/2 · 单选|✓ 选择哪条路线？/)
-  await ui.waitFor((_last, frames) => frames.join('\n').includes('✓ 选择哪条路线？ → A 路线'), 5000)
+  // 0.5.4：答案交付后追问卡应收起，不再长期占位；答案保留在转录的工具结果里。
+  await ui.waitFor((frame) => !frame.includes('◆ 提问'), 5000)
+  assert.doesNotMatch(ui.last(), /◆ 提问/)
+  assert.match(results[0].content, /用户已回答以下问题/)
 })
 
 test('追问多选：Enter 保留勾选，汇总页返回修改后提交', async (t) => {

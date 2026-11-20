@@ -28,7 +28,7 @@ import { changePermissionMode, effortDisplayLabel, formatTokens, interactiveMode
 import { EditorBuffer } from './editor/buffer.js'
 import { useWheel } from './editor/mouse.js'
 import { applyKey } from './editor/keys.js'
-import { reduceFrame, renderTextLines } from './render/reducer.js'
+import { formatDuration, reduceFrame, renderTextLines } from './render/reducer.js'
 import { ACCENT, renderHeader, sessionTopic, setupHint, terminalStrategy, terminalTitle } from './render/header.js'
 import { initialFrame, type TranscriptEntry } from './render/types.js'
 import { diffStats, diffViewLines } from './render/diff-view.js'
@@ -86,12 +86,20 @@ const COMMAND_NAMES = [
   'exit',
   'quit'
 ]
+// 0.5.4：请求/流式阶段统一显示「正在思考」，不再暴露「流式输出」这类实现措辞。
 const STATUS_ZH: Record<string, string> = {
-  requesting: '请求中…',
-  streaming: '流式输出中…',
+  requesting: '正在思考…',
+  streaming: '正在思考…',
   awaiting_approval: '等待审批',
   tool_running: '工具执行中…',
   cancelling: '取消中…'
+}
+const STATUS_EN: Record<string, string> = {
+  requesting: 'Thinking…',
+  streaming: 'Thinking…',
+  awaiting_approval: 'Awaiting approval',
+  tool_running: 'Running tool…',
+  cancelling: 'Cancelling…'
 }
 export function App({
   session,
@@ -174,8 +182,6 @@ export function App({
     workspace_edit: '#e5c07b',
     full_access: '#ff6b6b'
   }[frame.permissionMode]
-  const thinking = frame.thinking &&
-    (frame.status.state === 'requesting' || frame.status.state === 'streaming')
   useEffect(() => {
     if (fullScreen) stdout.write(terminalTitle(topic, working))
   }, [stdout, fullScreen, topic, working])
@@ -1362,10 +1368,10 @@ export function App({
         {working && (
           <Text color={ACCENT} wrap="truncate-end">
             {zh ? '● ' : '* '}
-            {thinking ? pick('思考中', 'Thinking') : zh ? STATUS_ZH[frame.status.state] : frame.status.state}
+            {(zh ? STATUS_ZH : STATUS_EN)[frame.status.state] ?? frame.status.state}
             {frame.startedAt !== undefined && (
               <Text dimColor>
-                {' · '}{Math.max(0, Math.floor((now - frame.startedAt) / 1000))}{pick(' 秒', 's')}
+                {' · '}{formatDuration(Math.floor((now - frame.startedAt) / 1000), zh)}
               </Text>
             )}
           </Text>

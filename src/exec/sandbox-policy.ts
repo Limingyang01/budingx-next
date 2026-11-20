@@ -42,11 +42,21 @@ export interface SandboxPolicy {
 const MODEL_CONTROL_FIELDS = ['dangerouslyDisableSandbox', 'sandbox', 'isolation'] as const
 
 /**
- * 创建受控隔离策略。无后端或未验收 → 普通 Bash/PowerShell 一律拒绝，
- * 只开放宿主托管操作（§4.5）；用户确认与完全权限均不得降级隔离。
+ * 创建执行策略。两种信任模式（0.5.4，对齐参考实现的「权限审批为主、沙箱可选」）：
+ *
+ * - 配置了已验收隔离后端 → 走隔离判定（网络域名策略等），模型不能降级隔离。
+ * - hostTrusted=true 且无隔离后端 → 「宿主信任执行」：命令交由 SP003 权限档位
+ *   审批（只读免审、工作区修改逐次确认、完全权限自动），不做 OS 级隔离。
+ *   这与参考实现一致——权限提示才是安全控制，沙箱是可选加固层。
+ * - 其余（无后端且未开宿主信任）→ 维持严格 fail-closed，spawn 前拒绝。
+ *
+ * 无论哪种模式，模型侧隔离控制字段（dangerouslyDisableSandbox 等）一律拒绝。
  */
-export function createSandboxPolicy(options: { backend?: SandboxBackend } = {}): SandboxPolicy {
+export function createSandboxPolicy(
+  options: { backend?: SandboxBackend; hostTrusted?: boolean } = {}
+): SandboxPolicy {
   const backend = options.backend
+  const hostTrusted = options.hostTrusted === true
   return {
     backend: () => backend,
     decide(request: SandboxRequest): SandboxDecision {
@@ -61,22 +71,33 @@ export function createSandboxPolicy(options: { backend?: SandboxBackend } = {}):
           }
         }
       }
-      if (backend === undefined || !backend.verified) {
-        return {
-          action: 'deny',
-          code: ERROR_CODES.execSandboxUnavailable,
-          reason: '无已验证的执行隔离后端：普通 Bash/PowerShell 命令不可用，仅开放宿主托管操作'
+      if (backend !== undefined) {
+        if (!backend.verified) {
+          return {
+            action: 'deny',
+            code: ERROR_CODES.execSandboxUnavailable,
+            reason: '隔离后端未经真实进程验收，拒绝执行'
+          }
         }
-      }
-      const capabilities = backend.capabilities
-      if (capabilities.networkDomains.length > 0 && !capabilities.canEnforceNetwork) {
-        return {
-          action: 'deny',
-          code: ERROR_CODES.execSandboxUnavailable,
-          reason: '隔离后端无法强制执行网络域名策略，拒绝该执行请求（网络默认关闭）'
+        const capabilities = backend.capabilities
+        if (capabilities.networkDomains.length > 0 && !capabilities.canEnforceNetwork) {
+          return {
+            action: 'deny',
+            code: ERROR_CODES.execSandboxUnavailable,
+            reason: '隔离后端无法强制执行网络域名策略，拒绝该执行请求（网络默认关闭）'
+          }
         }
+        return { action: 'allow', backendId: backend.id }
       }
-      return { action: 'allow', backendId: backend.id }
+      if (hostTrusted) {
+        // 无 OS 隔离；是否执行由权限档位审批决定（Session 在调用工具前已判定）。
+        return { action: 'allow', backendId: 'host-trusted' }
+      }
+      return {
+        action: 'deny',
+        code: ERROR_CODES.execSandboxUnavailable,
+        reason: '无已验证的执行隔离后端：普通 Bash/PowerShell 命令不可用，仅开放宿主托管操作'
+      }
     }
   }
 }

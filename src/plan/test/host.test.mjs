@@ -268,7 +268,7 @@ test('production plan tools send the complete edited plan under the original cal
   const toolMessage = requests.at(-1).messages.find((message) => message.tool_call_id === 'exit')
   assert.ok(toolMessage.content.includes(edited))
 })
-test('T15-13 生产 runtime 接线：四类工具就位、会话标识就绪，无已验证隔离后端时命令在 spawn 前被拒绝', async (t) => {
+test('T15-13 生产 runtime 接线：四类工具就位、会话标识就绪，命令按宿主信任执行（0.5.4）', async (t) => {
   const base = mkdtempSync(join(tmpdir(), 'budingx-runtime-'))
   t.after(() => rmSync(base, { recursive: true, force: true }))
   const config = {
@@ -297,17 +297,17 @@ test('T15-13 生产 runtime 接线：四类工具就位、会话标识就绪，�
   assert.equal(typeof runtime.session.id, 'string')
   assert.ok(runtime.session.id.length > 0, '会话标识用于后台输出与计划文件隔离')
 
-  // SP004 §4.7：隔离后端由宿主注入，本仓尚无已验证后端 → 命令在 spawn 前即被拒绝。
+  // 0.5.4：对齐参考实现——无隔离后端时采用宿主信任执行，命令可运行；
+  // 是否放行的安全控制在 Session 的权限档位审批，而非一律 spawn 前拒绝。
   const events = []
   runtime.session.on((event) => events.push(event))
   const bash = runtime.session.tools.find((tool) => tool.name === 'Bash')
-  await assert.rejects(
-    () => bash.execute(
-      { command: 'node -e "require(\'fs\').writeFileSync(\'spawned.txt\', \'x\')"' },
-      { signal: new AbortController().signal }
-    ),
-    /隔离后端/
+  const result = await bash.execute(
+    { command: 'node --version' },
+    { signal: new AbortController().signal, emit: (event) => events.push(event), turnId: 't', callId: 'c' }
   )
-  assert.equal(events.some((event) => event.type === 'command_started'), false)
+  assert.match(result, /exit_code: 0/)
+  assert.doesNotMatch(result, /隔离后端|EXEC_005/)
+  assert.ok(events.some((event) => event.type === 'command_started'), '命令应真正启动')
   assert.equal(runtime.session.isBusy, false)
 })
