@@ -173,6 +173,8 @@ export function createPermissionPolicy(
   }
 
   function canRemember(request: PermissionRequest): boolean {
+    // 0.5.4：出网确认可以记住，否则每次搜索都要重新点一次。
+    if (request.capability === 'network') return true
     // SP004: "allow for this session" also covers command execution in the
     // workspace-edit mode; execution has no path, so the key is tool-scoped.
     if (mode === 'workspace_edit' && request.capability === 'execute') return true
@@ -218,6 +220,17 @@ export function createPermissionPolicy(
           return { action: 'deny', reason: 'The read-only mode does not allow running commands' }
         }
         return { action: 'allow', reason: 'Read is allowed in every mode' }
+      }
+      // 5.2 出网（联网搜索等）：完全权限档位视为自动；其余档位每次确认，
+      // 但允许「本会话记住」，避免反复打断（0.5.4）。
+      if (request.capability === 'network') {
+        if (mode === 'full_access') {
+          return { action: 'allow', reason: 'Full access mode: automatic' }
+        }
+        if (memory.has(memoryKey(request))) {
+          return { action: 'allow', reason: 'Allowed for this session' }
+        }
+        return { action: 'ask', reason: `Network access for ${request.tool} needs confirmation` }
       }
       // 5.5 SP004: command execution (design §4.5). The read-only mode never runs
       // commands (CE-08); whitelisted host-managed read-only commands are classified

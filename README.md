@@ -1,6 +1,6 @@
 # budingx-next
 
-独立开发 Coding Agent 的仓库。**当前 npm `latest` 为 0.5.3**，包含工作区会话隔离、TUI 工具修复和联网搜索。产品全貌见 [产品说明书](PRODUCT.md)，使用说明见 [TUI README](src/tui/README.md)。
+独立开发 Coding Agent 的仓库。**当前 npm `latest` 为 0.5.3**，包含工作区会话隔离、TUI 工具修复和联网搜索；候选 0.5.4（联网搜索审批修复）已准备，待发布。产品全貌见 [产品说明书](PRODUCT.md)，使用说明见 [TUI README](src/tui/README.md)。
 
 默认主分支为 `master`；新项目统一使用 Node.js + TypeScript，不引入 Bun。
 

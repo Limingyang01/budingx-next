@@ -196,3 +196,15 @@ AC 区间：CB-01…07（7）、SR-01…11（11）、FR-01…09（9）、PM-01�
 - **PASS**。[GitHub Actions #23](https://github.com/Limingyang01/budingx-next/actions/runs/44682798887) 以 `16f5e0c9b9c2cff9a427863bda0071427419df66` 为源码，Windows、Ubuntu 和 OIDC 发布任务均成功。npm 官方源确认 `latest=0.5.3`，发布身份为 GitHub Trusted Publisher。
 - **PASS**。公开 tarball 的 SHA-512 与 registry integrity 和 provenance subject 一致。独立安装后的 npm 命令入口返回 0.5.3，本地 HTTP 流式冒烟通过 1 次请求。签名审计验证 53 个包的 registry 签名和 7 个包的 attestations。
 - **回执访问**。GitHub 原始 artifact 下载返回 HTTP 401。台账按公开运行、已验证的 npm provenance 与独立安装结果登记。见 [发行说明](../../release-notes/v0.5.3.md)和 [发布台账](../../release-ledger.json)。
+
+## 13. 0.5.4 联网搜索审批修复（2026-11-20）
+
+用户报告完全权限档位下 `WebSearch` 仍弹审批、审批卡只有 1/3 选项。三处修复与证据：
+
+| 项 | 修复 | 证据 |
+| --- | --- | --- |
+| 出网无条件强制审批 | 改为 `network` 能力，按档位判定 | `network-policy.test.mjs`：完全权限 allow、工作区修改 ask 且可记住、仅可查看 ask |
+| `approved` 仅审批通道置真 | 调用被授权执行即置真（含档位自动放行） | `sp0054-network-approval.test.mjs`：完全权限零审批完成、工作区修改恰一次审批 |
+| 审批卡 1/3 跳号 | 不可记住时显示 1/2，按键一致 | `sp0054-approval-options.test.mjs`：`.git` 硬审批显示 `1 允许一次 · 2 拒绝`，按 2 进入拒绝 |
+
+既有 `web-search.test.mjs`（含「出网前需授权」断言）保持通过；删除类工具硬性审批不受影响。全量单测 767 / 766 通过 / 0 失败 / 1 跳过。

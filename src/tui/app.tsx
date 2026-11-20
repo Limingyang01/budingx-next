@@ -947,13 +947,20 @@ export function App({
       return
     }
     if (approval && !typing && editor.isEmpty && /^[123]$/.test(text)) {
+      // 选项编号与按键必须始终一致：2 不可用时 2 表示拒绝，而不是留下空洞（0.5.4）。
+      const rememberable = session.canRememberApproval(approval.requestId)
       // SP003 AC PC-06: 1 allow once, 2 allow for session, 3 deny (+feedback).
-      if (text === '3') {
-        setRejectEntry({ requestId: approval.requestId, text: '' })
+      if (text === '1') {
+        gateway.resolve(approval.requestId, 'allow')
         return
       }
-      if (text === '2' && !session.canRememberApproval(approval.requestId)) return
-      gateway.resolve(approval.requestId, text === '1' ? 'allow' : 'allow_session')
+      if (text === '2' && rememberable) {
+        gateway.resolve(approval.requestId, 'allow_session')
+        return
+      }
+      if (text === '2' || (text === '3' && rememberable)) {
+        setRejectEntry({ requestId: approval.requestId, text: '' })
+      }
       return
     }
     if (approval && !typing && editor.isEmpty && /^[yn]$/i.test(text)) {
@@ -1335,10 +1342,10 @@ export function App({
               ? pick(
                   session.canRememberApproval(frame.approval.requestId)
                     ? '1 允许一次 · 2 本会话记住 · 3 拒绝（或 Esc）'
-                    : '1 允许一次 · 3 拒绝（或 Esc） · 每次审批',
+                    : '1 允许一次 · 2 拒绝（或 Esc） · 每次审批',
                   session.canRememberApproval(frame.approval.requestId)
                     ? '1 allow once · 2 allow for session · 3 deny (or Esc)'
-                    : '1 allow once · 3 deny (or Esc) · required each time'
+                    : '1 allow once · 2 deny (or Esc) · required each time'
                 )
               : pick('y 允许，n 或 Esc 拒绝', 'y allows; n or Esc denies')}
             {!editor.isEmpty
