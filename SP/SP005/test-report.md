@@ -119,3 +119,33 @@ AC 区间：CB-01…07（7）、SR-01…11（11）、FR-01…09（9）、PM-01�
 - [GitHub Actions #20](https://github.com/Limingyang01/budingx-next/actions/runs/44654008000) 基于 `751ba3b`，Windows、Ubuntu、OIDC 发布和发布后的安装验证均通过。npm 官方源确认版本 0.5.0 已公开且 `latest` 指向 0.5.0。
 - 官方包独立安装后的 CLI 版本为 0.5.0，本地 HTTP 流式冒烟通过（1 次 fixture 请求）。已核验 53 个包的 registry 签名和 7 个包的 attestations。公开制品的 SHA-512 与 npm 元数据、独立安装锁和 provenance 一致，provenance 指向同一源码 SHA、工作流及运行。
 - Actions 原始回执需要登录才能下载。证据来源已登记于[发布台账](../../release-ledger.json)和[发行说明](../../release-notes/v0.5.0.md)。真实模型长会话压缩和 TUI 观感的恢复条件见 §4。
+
+## 9. 0.5.1 复审修复（2026-11-20）
+
+0.5.0 发布后对 SP005 代码做独立复审。评审覆盖上下文压缩、会话持久化与记忆、TUI 命令与工具熔断、验收证据四个方向；每条关键结论都在隔离构建产物上用探针脚本或并发进程独立复现，再进入修复。修复分支 `feature/SP005/fix-0.5.1`，版本 0.5.1（尚未上传 npm）。
+
+### 9.1 修复项与证据
+
+| 编号 | 缺陷 | 修复 | 证据 |
+| --- | --- | --- | --- |
+| H1 | 写锁「先检查再写」，并发下多个进程同时持锁（实测 8 进程 6 个成功） | 改为 O_EXCL 排他创建 | `sp005-review-storage.test.mjs`：并发 6 子进程恰好 1 个获取 |
+| H2 | `release()` 无条件删锁，非持有者可删别人的锁 | 释放前核对 pid，仅创建者可删 | 同上：非持有者释放后锁仍在，第三方无法获取 |
+| H3 | 记忆正文含 `## ` 截断条目并伪造新条目；标题换行可注入 | 正文结构行转义、标题压单行并限长 | 同上：正文含 `## ` 与 `- created:` 往返一致 |
+| H4 | 保留项超预算仍返回「压缩成功」并下发超限请求 | 保留项按预算裁剪；仍超预算明确提示 | `sp005-review-compaction.test.mjs`：保留项 token ≤ floor 且 `withinBudget=true` |
+| H5 | 压缩不写转录，恢复退回压缩前历史 | 新增 `compaction` 转录记录（顺序/合成消息/丢弃 id），恢复时重放 | 同上：`messagesFromRecords` 重放得到压缩后顺序 |
+| M1 | 凭据 `键: 值` 规则误拒正常笔记（8 例） | 仅拒绝具密钥形状的值，保留特征模式 | `sp005-review-storage.test.mjs` 允许/拒绝两组 |
+| M2 | 损坏检测不可达，PM-06 声称的 `.bak` 未发生 | 无条目但有内容判损坏，保留原件 + `.bak` + 拒绝写入 | 同上：真实垃圾文件 → corrupt + `.bak` + 原文件不变 |
+| M3 | `/context` 预留额与阈值和会话不一致 | 两侧共用 `normalizeBudget`/`triggerTokens` | `sp005-review-compaction.test.mjs` |
+| M4 | 熔断计数跨回合累积；换键序可绕过 | 每回合重置；签名按稳定 JSON 序列化 | `sp005-review-breaker.test.mjs` 两条 |
+| M5 | 恢复权限不升权：降档函数生产路径从未调用 | `/resume` 应用记录模式，绝不升权 | `sp005-review-compaction.test.mjs` SR-10 |
+| M6 | `/memory` 缺分隔符把整串当标题 | 显式检查冒号缺失并给出用法 | `sp005-review-commands.test.mjs` |
+| M7 | 原子写改名后才收紧权限；`writeJsonAtomic` 从不收紧 | 临时文件先 0600 + ACL 再改名 | `sp005-review-storage.test.mjs`（POSIX 断言 0600） |
+
+### 9.2 未修复的限制
+
+- 预算过紧、历史已裁到只剩当前消息时，强制压缩无法再生效：此时明确报 `context_overflow` 并终止回合，不假装重试（FR-08 的实际边界）。
+- 恢复后的 `needs_review` 是提示而不是闸门：存储层不重放，但模型若在后续回合自行重发同一操作，当前版本不会二次拦截。
+
+### 9.3 证据口径修正
+
+本报告 §2 与 `long-session-reliability/test-report.md` 中 PM-06、SR-10 两条此前的 PASS 依据不足：PM-06 的「损坏文件」其实是可正常解析的条目，且从未断言 `.bak`；SR-10 只测了生产路径不会调用的函数。两条现已由 0.5.1 的真实用例覆盖（见 9.1），原表格保留但以本节为准。

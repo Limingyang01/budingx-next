@@ -46,6 +46,17 @@ export type TranscriptRecord =
       status: ToolStepStatus
       detail?: string
     }
+  | {
+      type: 'compaction'
+      ts: string
+      turnId: string
+      /** Message ids removed by this compaction. */
+      droppedIds: string[]
+      /** Full ordered id list after compaction, including synthetic ids. */
+      order: string[]
+      /** Payloads for ids that were synthesised by the compactor. */
+      synthetic: { id: string; role: Message['role']; blocks: MessageBlock[] }[]
+    }
   | { type: 'note'; ts: string; text: string }
 
 export type TranscriptRead = {

@@ -24,7 +24,10 @@ import {
   COMPACTION_CIRCUIT_LIMIT,
   collectConstraintItems,
   createContextBudgetManager,
+  normalizeBudget,
+  triggerTokens,
   unfinishedToolCalls,
+  type CompactionResult,
   type ContextBudgetManager,
   type PreservedItem
 } from './context-budget.js'
@@ -181,6 +184,18 @@ function formatQuestionResult(
   return lines.join('\n')
 }
 
+/** 稳定序列化：忽略对象键序与空白，用于工具调用签名。 */
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+      a.localeCompare(b)
+    )
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`).join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'null'
+}
+
 export class Session {
   /** 会话标识（SP004 §4.4 后台输出与 §6.1 计划文件的隔离键）。 */
   readonly id: string
@@ -272,6 +287,22 @@ export class Session {
     this.options.permissionPolicy?.setMode?.(ceiling)
     this.emit({ type: 'permission_changed', mode: ceiling })
     return ceiling
+  }
+
+  /**
+   * 恢复会话时应用其记录下来的权限模式（SR-10）：沿用原模式，但绝不升权。
+   * 旧会话没有记录模式时保持当前模式不变。
+   */
+  restorePermissionMode(recorded: PermissionMode | undefined): PermissionMode | undefined {
+    if (!recorded) return undefined
+    const rank: Record<PermissionMode, number> = { read_only: 0, workspace_edit: 1, full_access: 2 }
+    const current = this.options.permissionPolicy?.getMode?.()
+    const target = current && rank[current] < rank[recorded] ? current : recorded
+    if (target !== current) {
+      this.options.permissionPolicy?.setMode?.(target)
+      this.emit({ type: 'permission_changed', mode: target })
+    }
+    return target
   }
 
   /** UI-only query. No approval payload or session event shape changes. */
@@ -919,14 +950,13 @@ export class Session {
   private compactIfNeeded(turn: ActiveTurn): { messages: Message[]; compacted: boolean } {
     const budget = this.budget
     if (!budget) return { messages: this.messages, compacted: false }
-    const maxTokens = this.options.contextBudget?.maxTokens ?? 0
-    const reserved = this.options.contextBudget?.reservedOutputTokens ?? Math.floor(maxTokens / 4)
-    const estimate = budget.estimate({
-      messages: this.messages,
-      maxTokens,
-      reservedOutputTokens: reserved
-    })
-    const trigger = Math.floor((maxTokens - reserved) * 0.85)
+    const shape = normalizeBudget(
+      this.options.contextBudget?.maxTokens ?? 0,
+      this.options.contextBudget?.reservedOutputTokens
+    )
+    const estimate = budget.estimate({ messages: this.messages, ...shape })
+    // 触发阈值取自 context-budget 的单一常量，避免与 /context 展示的数字不一致。
+    const trigger = triggerTokens({ messages: this.messages, ...shape })
     if (estimate <= trigger) {
       this.compactionFailures = 0
       return { messages: this.messages, compacted: false }
@@ -941,14 +971,7 @@ export class Session {
       return { messages: this.messages, compacted: false }
     }
     const preserved = this.preservedItems()
-    const result = budget.compact(
-      {
-        messages: this.messages,
-        maxTokens,
-        reservedOutputTokens: reserved
-      },
-      preserved
-    )
+    const result = budget.compact({ messages: this.messages, ...shape }, preserved)
     if (!result.compacted) {
       this.compactionFailures++
       this.emit({
@@ -960,59 +983,24 @@ export class Session {
       return { messages: this.messages, compacted: false }
     }
     this.compactionFailures = 0
-    // 压缩结果写回会话历史：下一次请求不再重复压缩同一段历史，
-    // 转录也只保留压缩后的真实上下文。
-    this.messages.splice(0, this.messages.length, ...result.messages)
-    this.emit({
-      type: 'context_compacted',
-      turnId: turn.id,
-      replacedRange: result.replacedRange ?? { from: 0, to: 0 },
-      replacedCount: result.replacedCount,
-      preserved: result.preserved,
-      estimatedBefore: estimate,
-      estimatedAfter: result.estimatedTokens,
-      withinBudget: result.withinBudget
-    })
-    this.writeTranscript({
-      type: 'note',
-      ts: new Date().toISOString(),
-      text: `context compacted: ${result.replacedCount} messages replaced, ` +
-        `estimated ${estimate} -> ${result.estimatedTokens}`
-    })
-    return { messages: result.messages, compacted: true }
-  }
-
-  /**
-   * SP005 FR-08：上下文溢出时的强制压缩。
-   * 压缩失败或压缩后仍然超预算时返回 false，由调用方给出明确失败原因。
-   */
-  private compactForOverflow(turn: ActiveTurn): boolean {
-    const budget = this.budget
-    if (!budget) return false
-    const maxTokens = this.options.contextBudget?.maxTokens ?? 0
-    const reserved = this.options.contextBudget?.reservedOutputTokens ?? Math.floor(maxTokens / 4)
-    const preserved = this.preservedItems()
-    const estimatedBefore = budget.estimate({
-      messages: this.messages,
-      maxTokens,
-      reservedOutputTokens: reserved
-    })
-    // force：模型已明确报告溢出，本地估算可能因分词器差异而看起来正常，
-    // 因此这里忽略触发阈值，强制尝试裁剪一次。
-    const result = budget.compact(
-      { messages: this.messages, maxTokens, reservedOutputTokens: reserved, force: true },
-      preserved
-    )
-    if (!result.compacted) {
+    if (!result.withinBudget) {
+      // 压缩后仍然超预算时明确报出，不静默把超限请求发出去。
       this.emit({
         type: 'notice',
         level: 'error',
         code: 'context_overflow',
-        text: `the model reported a context overflow and the history cannot be compacted ` +
-          `(${result.overflowReason ?? 'unknown'})`
+        text: `context is still over the budget after compaction (${result.overflowReason ?? 'unknown'})`
       })
-      return false
     }
+    this.applyCompaction(turn, result, estimate)
+    return { messages: result.messages, compacted: true }
+  }
+
+  /**
+   * 把一次压缩同时写回会话内存与转录（SP005 review H5）。
+   * 只写内存会让跨进程恢复退回压缩前的历史，等于把压缩静默撤销。
+   */
+  private applyCompaction(turn: ActiveTurn, result: CompactionResult, estimatedBefore: number): void {
     this.messages.splice(0, this.messages.length, ...result.messages)
     this.emit({
       type: 'context_compacted',
@@ -1025,11 +1013,42 @@ export class Session {
       withinBudget: result.withinBudget
     })
     this.writeTranscript({
-      type: 'note',
+      type: 'compaction',
       ts: new Date().toISOString(),
-      text: `context compacted after an overflow report: ${result.replacedCount} messages replaced, ` +
-        `estimated ${estimatedBefore} -> ${result.estimatedTokens}`
+      turnId: turn.id,
+      droppedIds: result.artifacts?.droppedIds ?? [],
+      order: result.artifacts?.order ?? result.messages.map((message) => message.id),
+      synthetic: result.artifacts?.synthetic ?? []
     })
+  }
+
+  /**
+   * SP005 FR-08：上下文溢出时的强制压缩。
+   * 压缩失败或压缩后仍然超预算时返回 false，由调用方给出明确失败原因。
+   */
+  private compactForOverflow(turn: ActiveTurn): boolean {
+    const budget = this.budget
+    if (!budget) return false
+    const shape = normalizeBudget(
+      this.options.contextBudget?.maxTokens ?? 0,
+      this.options.contextBudget?.reservedOutputTokens
+    )
+    const preserved = this.preservedItems()
+    const estimatedBefore = budget.estimate({ messages: this.messages, ...shape })
+    // force：模型已明确报告溢出，本地估算可能因分词器差异而看起来正常，
+    // 因此这里忽略触发阈值，强制尝试裁剪一次。
+    const result = budget.compact({ messages: this.messages, ...shape, force: true }, preserved)
+    if (!result.compacted) {
+      this.emit({
+        type: 'notice',
+        level: 'error',
+        code: 'context_overflow',
+        text: `the model reported a context overflow and the history cannot be compacted ` +
+          `(${result.overflowReason ?? 'unknown'})`
+      })
+      return false
+    }
+    this.applyCompaction(turn, result, estimatedBefore)
     return true
   }
 
@@ -1072,6 +1091,9 @@ export class Session {
     let iteration = 0
     // SP005 FR-08：上下文溢出后最多再试一次（先压缩再重试）。
     let overflowRetried = false
+    // 熔断计数只在一个回合内有效：跨回合累积会让不相关的失败把后续回合误判成空转。
+    this.repeatedToolFailures.clear()
+    this.toolFailureStreaks.clear()
 
     while (iteration < maxIterations) {
       iteration++
@@ -1588,7 +1610,7 @@ export class Session {
       // 二级：同一工具 + 同一错误码连续失败 —— 模型换参数瞎试同一件事，
       //       参数签名变了但错误类型没变，同样不会带来新信息。
       // 两种情况都只会让长任务空转到最大迭代次数，因此必须显式停下并给出稳定原因。
-      const signature = `${call.name}:${call.arguments ?? '{}'}`
+      const signature = this.toolSignature(call.name, call.arguments)
       const streakKey = `${call.name}:${errorCode ?? 'unknown'}`
       if (isError) {
         const count = (this.repeatedToolFailures.get(signature) ?? 0) + 1
@@ -1635,6 +1657,19 @@ export class Session {
       }
     }
     return {}
+  }
+
+  /**
+   * 稳定的工具调用签名：解析 JSON 后忽略键序与空白，
+   * 避免模型换个写法就绕过「同参数空转」检测（SP005 review M5）。
+   */
+  private toolSignature(name: string, rawArguments: string | undefined): string {
+    const raw = rawArguments ?? '{}'
+    try {
+      return `${name}:${stableStringify(JSON.parse(raw) as unknown)}`
+    } catch {
+      return `${name}:${raw.trim()}`
+    }
   }
 
   private pushToolResult(

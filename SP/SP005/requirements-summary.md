@@ -1,6 +1,6 @@
 # SP005 · 长会话与数据可靠性
 
-状态：**DELIVERED（实施与测试完成，真实模型端到端两场景 PASS、监测平台就绪，已合入 master `293a337` 并推送；0.5.0 已通过 OIDC 发布，npm `latest` 已核对）**｜功能分支 `feature/SP005/long-session-reliability`（已推送远端）｜实施基线 `17afe34`（master）｜轮次验收报告 [SP005/test-report.md](test-report.md)
+状态：**DELIVERED（实施与测试完成，真实模型端到端两场景 PASS、监测平台就绪，已合入 master `293a337` 并推送；0.5.0 已通过 OIDC 发布，npm `latest` 已核对；0.5.0 发布后的独立复审修复已完成，版本准备为 0.5.1，尚未上传 npm）**｜功能分支 `feature/SP005/fix-0.5.1`（修复轮）｜实施基线 `17afe34`（master）｜轮次验收报告 [SP005/test-report.md](test-report.md)（复审修复见 §9）
 
 ## 本轮目标与边界
 
@@ -34,10 +34,11 @@
 ## 验收与交接
 
 - 出口门槛对照：① 压缩保留约束/计划/工具状态 → CB-01…CB-04（单元 + 真实 HTTP 请求体）PASS；② 跨进程恢复不盲重放副作用 → SR-02…SR-04、FR-06 真实子进程 PASS；③ 项目记忆/会话隔离、原子持久化、共享写入约束 → PM-01…PM-08 + SR-11 两进程互斥 PASS；④ 明确长任务失败原因 → FR-01…FR-09 PASS。
-- 自动化计数：`node --test src/*/test/*.test.mjs` **716/716**；`npm test` 全链路 **838 通过 / 0 失败**（langfuse 79，含真实栈冒烟 5 例、登录自检 3 例、工具调用质量判读 4 例、场景收尾判读 2 例）；`npm run test:checks`（core 不依赖 storage）通过；`npm run merge:gate` GREEN；AC 共 **42 条**（7+11+9+8+4+3）全部回填。
+- 自动化计数（0.5.1）：`node --test src/*/test/*.test.mjs` **733 项 / 732 通过 / 0 失败 / 1 跳过**（跳过项为只在 POSIX 生效的文件权限断言）；`npm test` 全链路 **857 项 / 856 通过 / 0 失败 / 1 跳过**（skills 10、spec 11、unit 733、checks 通过、langfuse 81、release 17、merge 5）；`npm run test:checks`（core 不依赖 storage）通过；AC 共 **42 条**（7+11+9+8+4+3）全部回填，其中 PM-06 与 SR-10 的补证见 [验收报告 §9](test-report.md#9-051-复审修复2026-11-20)。0.5.0 时的历史计数为 716/838，保留作对照。
 - 监测平台就绪：`npm run langfuse:init` / `npm run langfuse:receiver` / `npm run langfuse:observe`；健康检查 200、未鉴权 401、观测落盘 `.runtime/langfuse/local-receiver/`；边界与端点见 `ops/langfuse/README.md` 第 8 节。
 - 真实模型端到端（2026-11-20）：`npm run langfuse:observe` 对真实 Langfuse 4.78.0 跑两场景并回查 —— tool-success（1 次 Read、参数 `facts.txt`、usage 1228）与 tool-error（5 次变路径 Read → `BUDINGX_CORE_010` 熔断停机、usage 1362）均 PASS。该过程由 Langfuse 数据暴露并修复了两个产品缺陷：provider 不索要/不解析流式 usage；工具观测不写 input/output。
 - 未完成/延期项（UNVERIFIED，非本轮 FAIL）：真实模型长会话压缩（需真实模型填满预算）、TUI 长会话像素级观感（归 SP006）。恢复条件见 [STATUS](long-session-reliability/STATUS.md) 与[验收报告](long-session-reliability/test-report.md) §5。
+- 0.5.1 复审后已知限制（非缺陷）：预算过紧且历史已裁到只剩当前消息时强制压缩无法再生效，会明确报错终止；恢复后的「需核对」只是提示，模型自行重发同一操作不会被二次拦截。
 - 下一轮输入（供 SP006）：压缩与恢复的 UI 呈现（`/context` 网格、恢复会话选择器可视化）、系统提示词与指令文件（`@import`）接入项目记忆、完成证据闸门与压缩的交互。
 - 风险/回退：
   - 压缩后仍超限 ⇒ 熔断打开并以 `BUDINGX_CORE_007/008` 终止回合（不静默截断）。
@@ -61,3 +62,4 @@
 | 2026-11-19 | 真实栈登录取 `.env.e2e.local`：`langfuse:init` 复用该文件四个凭据、新增 `langfuse:login` 自检，重建数据卷后 UI 登录与项目 Key 双检通过 | 用户「用 .env.e2e.local 文件无法进入langfuse里面」→「按照这个账号密码去改，不要改账号密码」 |
 | 2026-11-19 | 真实档补强：接收端加只读查看页；WSL2 内 Docker 起真实 Langfuse 4.78.0 栈 + `langfuse:smoke` 接入链路验收（需求 v0.3）；顺手修后台任务句柄泄漏与子进程测试超时；全量 825 通过 | 用户「环境限制你帮我安装好就行了」→「不要桌面端 docker，装在 WSL 里」→「部署完成后检查 SP005 查漏补缺」；真实模型额度仍 402 |
 | 2026-11-20 | 真实模型端到端复跑（tool-success/tool-error）在 Langfuse 4.78.0 回查 PASS；修复 provider 流式 usage 与工具 input/output 观测；判读上限改读 `MAX_TOOL_FAILURE_STREAK`；全量 838 通过 | 用户「有token了，可以跑真实的测试了…发现问题直接修复，完成后提交并推送远端」 |
+| 2026-11-20 | 0.5.0 发布后独立复审：修复写入锁互斥与释放归属、记忆往返与真实损坏备份、凭据误判、压缩保留项裁剪与压缩转录重放、预算阈值统一、熔断按回合重置、恢复权限不升权、`/memory` 用法；新增 18 条回归，全量 857 项通过；版本准备为 0.5.1（待发布） | 用户「复审一下SP005的代码」→「master有新的提交，你按照最新的master拉出分支处理优化和修复」 |

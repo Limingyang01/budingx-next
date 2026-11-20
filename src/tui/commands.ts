@@ -432,10 +432,11 @@ function memoryCommand(
   const scope = match[1].toLowerCase() as 'project' | 'session'
   const rest = match[2]
   // Accept the ASCII colon and the full-width colon used by Chinese input.
-  const separator = Math.min(
-    ...[rest.indexOf(':'), rest.indexOf('：')].filter((index) => index >= 0)
-  )
-  if (separator < 0) {
+  // Math.min() of an empty list is Infinity, so a missing colon has to be
+  // checked explicitly or the title silently swallows the whole text
+  // (SP005 review M7).
+  const colonIndexes = [rest.indexOf(':'), rest.indexOf('：')].filter((index) => index >= 0)
+  if (colonIndexes.length === 0) {
     return {
       handled: true,
       error: pick(
@@ -444,6 +445,7 @@ function memoryCommand(
       )
     }
   }
+  const separator = Math.min(...colonIndexes)
   const title = rest.slice(0, separator).trim()
   const body = rest.slice(separator + 1).trim()
   const written = memory.write(scope, title, body)

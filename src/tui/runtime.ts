@@ -24,7 +24,7 @@ import {
   memoryContextText,
   type MemoryScope
 } from '../storage/project-memory.js'
-import { estimateTokens } from '../core/context-budget.js'
+import { estimateTokens, normalizeBudget, triggerTokens } from '../core/context-budget.js'
 import type { ResolvedConfig } from '../storage/profiles.js'
 import {
   createPermissionPolicy,
@@ -341,6 +341,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           }
           const restoredMessages = restored.messages as { id: string; role: string; blocks: unknown[] }[]
           session.restoreHistory(restoredMessages as unknown as Parameters<typeof session.restoreHistory>[0])
+          // SR-10：沿用会话记录的权限模式，且绝不因恢复而升权。
+          session.restorePermissionMode(restored.summary?.permissionMode)
           return {
             ok: true,
             messages: restoredMessages,
@@ -359,18 +361,21 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     ? {
         budget: () => {
           const history = session.history
-          const maxTokens = options.contextBudget!.maxTokens
-          const reservedOutputTokens = options.contextBudget!.reservedOutputTokens ?? 0
-          const target = Math.max(1, maxTokens - reservedOutputTokens)
+          // 与会话循环使用同一个归一化预算与阈值工厂，
+          // 避免 /context 展示的预留额与实际行为不一致（SP005 review M3）。
+          const shape = normalizeBudget(
+            options.contextBudget!.maxTokens,
+            options.contextBudget!.reservedOutputTokens
+          )
           const breakdown = history.map((message, index) => ({
             kind: `${index + 1}.${message.role}`,
             tokens: estimateTokens([message])
           }))
           return {
             estimatedTokens: estimateTokens(history),
-            maxTokens,
-            reservedOutputTokens,
-            triggerTokens: Math.floor(target * 0.85),
+            maxTokens: shape.maxTokens,
+            reservedOutputTokens: shape.reservedOutputTokens,
+            triggerTokens: triggerTokens({ messages: [...history], ...shape }),
             messages: history.length,
             breakdown
           }

@@ -110,45 +110,105 @@ export function memoryFilePath(scope: MemoryScope, options: ProjectMemoryOptions
   return join(directory, MEMORY_FILE)
 }
 
-/** Credential style content is refused instead of being written (PM-05). */
+/**
+ * Credential style content is refused instead of being written (PM-05).
+ *
+ * Only patterns with a real secret shape are matched here. The old catch-all
+ * `key: value` rule rejected ordinary engineering notes such as
+ * "password: none" or "token: not configured" (SP005 review M1), so generic
+ * `name: value` pairs are handled by looksLikeSecretValue below.
+ */
 const CREDENTIAL_PATTERNS: RegExp[] = [
   /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/,
-  /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/i,
-  /\bsk-[A-Za-z0-9_-]{8,}\b/,
+  /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/i,
+  /\bsk-[A-Za-z0-9_-]{16,}\b/,
   /\bgh[posru]_[A-Za-z0-9]{16,}\b/,
   /\bgithub_pat_[A-Za-z0-9_]{20,}\b/,
   /\bAKIA[0-9A-Z]{16}\b/,
   /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/,
   /\bAIza[0-9A-Za-z_-]{35}\b/,
-  /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\b/,
-  /\b(?:api[_-]?key|secret(?:[_-]?key)?|password|passwd|authorization|(?:access[_-]?|refresh[_-]?)?token|private[_-]?key|client[_-]?secret)\s*[:=]\s*\S+/i
+  /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\b/
 ]
+
+/** `name: value` pairs whose value might be a secret. */
+const GENERIC_SECRET_PATTERN =
+  /\b(?:api[_-]?key|secret(?:[_-]?key)?|password|passwd|client[_-]?secret|(?:access|refresh|id|auth)[_-]?token)\s*[:=]\s*(["']?)([^\s"']{6,})\1/gi
+
+/** Values that describe a credential instead of carrying one. */
+const PLACEHOLDER_VALUES = new Set([
+  'none', 'nil', 'null', 'true', 'false', 'variable', 'variables', 'unset',
+  'missing', 'required', 'redacted', 'changeme', 'change-me', 'example',
+  'placeholder', 'todo', 'configured', 'needed', 'see', 'readme', 'env',
+  'environment', 'secret', 'token', 'password', 'undefined', 'empty', 'blank',
+  'encrypted', 'optional'
+])
+
+/**
+ * True when a `name: value` pair carries an actual secret rather than prose.
+ * Placeholders, references, prose words and sentences are all allowed.
+ */
+function looksLikeSecretValue(raw: string): boolean {
+  const value = raw.replace(/^["']|["',;.)]+$/g, '')
+  if (!value) return false
+  if (value.startsWith('<') || value.startsWith('$') || value.startsWith('{')) return false
+  if (PLACEHOLDER_VALUES.has(value.toLowerCase())) return false
+  // A single lowercase dictionary word is prose ("secret: rotated monthly").
+  if (/^[a-z]{6,}$/.test(value)) return false
+  // A real secret has mixed case, digits or symbols.
+  return /[A-Z0-9]/.test(value) || /[-_.~+/=@!#%^*]/.test(value)
+}
 
 /** True when the text carries credential style content. */
 export function containsCredential(text: string): boolean {
-  return CREDENTIAL_PATTERNS.some((pattern) => pattern.test(text))
+  if (CREDENTIAL_PATTERNS.some((pattern) => pattern.test(text))) return true
+  for (const match of text.matchAll(GENERIC_SECRET_PATTERN)) {
+    if (looksLikeSecretValue(match[2])) return true
+  }
+  return false
 }
 
-function parseEntries(raw: string): { entries: MemoryEntry[]; corrupt: boolean; corruptReason?: string } {
+/**
+ * Lines inside a body that would otherwise be read as structure are escaped
+ * with a leading backslash (SP005 review H3). Without this, a body containing
+ * a Markdown H2 truncated the entry and invented a phantom one on read.
+ */
+const ESCAPED_BODY_LINE = /^\\##\s/
+const ESCAPED_META_LINE = /^\\-\s+(created|scope):/
+
+function escapeBodyLine(line: string): string {
+  return /^##\s/.test(line) || /^-\s+(created|scope):/.test(line) ? `\\${line}` : line
+}
+
+function unescapeBodyLine(line: string): string {
+  return ESCAPED_BODY_LINE.test(line) || ESCAPED_META_LINE.test(line) ? line.slice(1) : line
+}
+
+/** One line titles only: a newline in a title could forge a whole entry. */
+function sanitizeEntryTitle(title: string): string {
+  const single = title.replace(/\r?\n/g, ' ').trim()
+  return (single || 'Untitled note').slice(0, 120)
+}
+
+export function parseEntries(raw: string): { entries: MemoryEntry[]; corrupt: boolean; corruptReason?: string } {
   const lines = raw.split('\n')
   const entries: MemoryEntry[] = []
   let current: MemoryEntry | undefined
-  const body: string[] = []
+  let body: string[] = []
   const flush = () => {
     if (current) {
       entries.push({ ...current, body: body.join('\n').trim() })
     }
     current = undefined
-    body.length = 0
+    body = []
   }
   for (const line of lines) {
     const heading = line.match(/^##\s+(.+)$/)
     if (heading) {
       flush()
-      const raw = heading[1]
-      const separator = raw.indexOf('·')
-      const id = separator >= 0 ? raw.slice(0, separator).trim() : raw.trim()
-      const title = separator >= 0 ? raw.slice(separator + 1).trim() : ''
+      const headingText = heading[1]
+      const separator = headingText.indexOf('·')
+      const id = separator >= 0 ? headingText.slice(0, separator).trim() : headingText.trim()
+      const title = separator >= 0 ? headingText.slice(separator + 1).trim() : ''
       current = { id, title, body: '', scope: 'project', createdAt: '' }
       continue
     }
@@ -162,19 +222,36 @@ function parseEntries(raw: string): { entries: MemoryEntry[]; corrupt: boolean; 
       current.scope = scopeMeta[1].trim() === 'session' ? 'session' : 'project'
       continue
     }
-    if (current) body.push(line)
+    if (current) body.push(unescapeBodyLine(line))
   }
   flush()
+  // Integrity: a file with real content but no readable entry cannot be
+  // understood. Report it instead of pretending it is empty (PM-06).
+  const meaningful = lines
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !/^#[^#]/.test(line))
+  if (entries.length === 0 && meaningful.length > 0) {
+    return {
+      entries: [],
+      corrupt: true,
+      corruptReason: 'memory file has content but no readable entries'
+    }
+  }
   return { entries, corrupt: false }
 }
 
 function serializeEntry(entry: MemoryEntry): string {
+  const body = entry.body
+    .trim()
+    .split('\n')
+    .map(escapeBodyLine)
+    .join('\n')
   return [
     `## ${entry.id} · ${entry.title}`,
     `- created: ${entry.createdAt}`,
     `- scope: ${entry.scope}`,
     '',
-    entry.body.trim(),
+    body,
     ''
   ].join('\n')
 }
@@ -210,7 +287,10 @@ export class ProjectMemory {
     const raw = readPrivateFile(this.file)
     if (raw === undefined) return { entries: [], corrupt: false }
     try {
-      return parseEntries(raw)
+      const parsed = parseEntries(raw)
+      // Keep a copy of the original next to it before anything may rewrite it.
+      if (parsed.corrupt) this.backup()
+      return parsed
     } catch (error) {
       this.backup()
       return {
@@ -236,7 +316,8 @@ export class ProjectMemory {
         message: `memory entry is ${trimmedBody.length} characters; the limit is ${MAX_ENTRY_CHARS}`
       }
     }
-    if (containsCredential(trimmedBody) || containsCredential(title)) {
+    const entryTitle = sanitizeEntryTitle(title)
+    if (containsCredential(trimmedBody) || containsCredential(entryTitle)) {
       return {
         ok: false,
         code: 'memorySecretRejected',
@@ -260,10 +341,10 @@ export class ProjectMemory {
     }
     const entry: MemoryEntry = {
       id: createHash('sha256')
-        .update(`${this.now()}|${title}|${trimmedBody}`)
+        .update(`${this.now()}|${entryTitle}|${trimmedBody}`)
         .digest('hex')
         .slice(0, 12),
-      title: title.trim() || 'Untitled note',
+      title: entryTitle,
       body: trimmedBody,
       scope: this.scope,
       createdAt: this.now()
@@ -295,7 +376,16 @@ export class ProjectMemory {
     const content = ['# Memory', '']
       .concat(kept.flatMap((entry) => serializeEntry(entry).split('\n')))
       .join('\n')
-    writeTextAtomic(this.file, content.endsWith('\n') ? content : content + '\n')
+    const payload = content.endsWith('\n') ? content : content + '\n'
+    try {
+      ensurePrivateDirectory(join(this.file, '..'))
+      // Use the injected writer so the "failed write keeps the old content"
+      // guarantee also holds for removals.
+      this.writeFile(this.file, payload)
+      restrictToOwner(this.file)
+    } catch {
+      return false
+    }
     return true
   }
 
