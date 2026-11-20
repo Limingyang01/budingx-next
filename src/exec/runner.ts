@@ -118,10 +118,14 @@ export function createCommandRunner(options: CommandRunnerOptions): CommandRunne
     if (isInteractiveCommand(spec.command)) {
       return early({ outcome: 'failed', reason: '命令需要交互式输入，本产品不提供 TTY' })
     }
-    if (isBlockingWaitCommand(spec.command) && options.allowBlocking !== true) {
+    if (
+      spec.runInBackground !== true &&
+      options.allowBlocking !== true &&
+      isBlockingWaitCommand(spec.command)
+    ) {
       return early({
         outcome: 'blocked',
-        reason: '该命令属于阻塞等待族，前台执行会长时间占用回合；请改用 runInBackground 后台执行'
+        reason: '该命令属于阻塞等待族，前台执行会长时间占用回合；请设置 run_in_background: true'
       })
     }
     const interpreterTool = spec.interpreter ?? 'Bash'

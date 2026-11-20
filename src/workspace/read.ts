@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto'
 import { ERROR_CODES } from '../core/constants.js'
 import { MAX_FILE_BYTES, MAX_READ_RANGE_BYTES, MAX_READ_LINES } from './constants.js'
 import { WorkspaceError, type Workspace } from './paths.js'
+import { contentFingerprint } from './write.js'
 
 export type ReadKind = 'text' | 'binary' | 'image'
 
@@ -35,6 +36,8 @@ export type ReadOptions = {
   offset?: number
   limit?: number
   maxBytes?: number
+  /** Return a short notice when the requested offset is past EOF. */
+  allowEmptyRange?: boolean
 }
 
 /** Only the leading bytes are needed to identify image format and size. */
@@ -121,6 +124,83 @@ function imageInfo(extension: string, buffer: Buffer): ImageInfo | undefined {
   return size ? { mime, width: size.width, height: size.height } : { mime }
 }
 
+function notebookText(value: unknown, separator = ''): string {
+  if (typeof value === 'string') return value
+  if (Array.isArray(value)) return value.filter((line) => typeof line === 'string').join(separator)
+  return ''
+}
+
+function objectValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : {}
+}
+
+function notebookOutput(value: unknown): string {
+  const output = objectValue(value)
+  switch (output.output_type) {
+    case 'stream':
+      return `${output.name === 'stderr' ? 'stderr' : 'stdout'}:\n${notebookText(output.text)}`
+    case 'error':
+      return notebookText(output.traceback, '\n') ||
+        `Error: ${notebookText(output.ename)} ${notebookText(output.evalue)}`
+    case 'display_data':
+    case 'execute_result': {
+      const data = objectValue(output.data)
+      return notebookText(data['text/plain']) || notebookText(data['text/markdown']) ||
+        `[Rich output: ${Object.keys(data).join(', ')}]`
+    }
+    default:
+      return ''
+  }
+}
+
+function readNotebook(file: string, path: string, maxBytes: number): ReadResult {
+  const buffer = Buffer.alloc(maxBytes + 1)
+  const fd = openSync(file, 'r')
+  let size = 0
+  try {
+    while (size < buffer.length) {
+      const count = readSync(fd, buffer, size, buffer.length - size, null)
+      if (count === 0) break
+      size += count
+    }
+  } finally {
+    closeSync(fd)
+  }
+  const bytes = buffer.subarray(0, size)
+  if (bytes.length > maxBytes) {
+    throw new WorkspaceError(ERROR_CODES.workspaceTooLarge, `Notebook exceeds the maximum read size (${maxBytes} bytes): ${path}`)
+  }
+  let cells
+  try {
+    const document = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    cells = objectValue(JSON.parse(document)).cells
+  } catch {
+    throw new WorkspaceError(ERROR_CODES.workspaceEncodingUnsupported, `Invalid notebook JSON: ${path}`)
+  }
+  if (!Array.isArray(cells)) {
+    throw new WorkspaceError(ERROR_CODES.workspaceEncodingUnsupported, `Notebook has no cells array: ${path}`)
+  }
+  const text = cells.map((value, index) => {
+    const cell = objectValue(value)
+    const heading = `Cell ${index + 1} (${notebookText(cell.cell_type) || 'unknown'})`
+    const outputs = Array.isArray(cell.outputs) ? cell.outputs.map(notebookOutput).filter(Boolean) : []
+    return [heading, notebookText(cell.source), ...outputs].join('\n')
+  }).join('\n\n')
+  if (Buffer.byteLength(text) > maxBytes) {
+    throw new WorkspaceError(ERROR_CODES.workspaceTooLarge, `Notebook cells exceed the maximum read size (${maxBytes} bytes): ${path}`)
+  }
+  const lineCount = text ? text.split('\n').length : 0
+  return {
+    kind: 'text',
+    text: text || '[The notebook contains no cells.]',
+    totalLines: lineCount,
+    returnedLines: lineCount,
+    truncated: false,
+    bytes: bytes.length,
+    fingerprint: contentFingerprint(bytes)
+  }
+}
+
 export function readWorkspaceFile(
   workspace: Workspace,
   options: ReadOptions
@@ -139,11 +219,21 @@ export function readWorkspaceFile(
     )
   }
   const stats = statSync(resolved.real)
+  if (!stats.isFile()) {
+    throw new WorkspaceError(ERROR_CODES.workspaceNotAFile, `Path is not a regular file: ${resolved.relative}`)
+  }
   const wholeFile = options.offset === undefined && options.limit === undefined
   const limitBytes = wholeFile
     ? (options.maxBytes ?? MAX_FILE_BYTES)
     : (options.maxBytes ?? MAX_READ_RANGE_BYTES)
   const extension = resolved.relative.slice(resolved.relative.lastIndexOf('.')).toLowerCase()
+
+  if (extension === '.ipynb' && options.offset === undefined && options.limit === undefined) {
+    if (stats.size > limitBytes) {
+      throw new WorkspaceError(ERROR_CODES.workspaceTooLarge, `Notebook exceeds the maximum read size (${limitBytes} bytes): ${resolved.relative}`)
+    }
+    return readNotebook(resolved.real, resolved.relative, limitBytes)
+  }
 
   if (IMAGE_TYPES[extension]) {
     return {
@@ -237,6 +327,16 @@ export function readWorkspaceFile(
   }
 
   if (offset > totalLines) {
+    if (options.allowEmptyRange) {
+      return {
+        kind: 'text',
+        text: `[The file is shorter than the provided offset (${offset}). It has ${totalLines} lines.]`,
+        totalLines,
+        returnedLines: 0,
+        truncated: false,
+        bytes
+      }
+    }
     throw new WorkspaceError(
       ERROR_CODES.workspaceNotFound,
       `Line range out of bounds: offset ${offset} exceeds ${totalLines} lines`

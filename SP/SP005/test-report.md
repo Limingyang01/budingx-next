@@ -176,3 +176,19 @@ AC 区间：CB-01…07（7）、SR-01…11（11）、FR-01…09（9）、PM-01�
 - 官方 tarball 195872 字节 / 98 个文件，实测 SHA-512 与 npm 元数据、provenance subject 完全一致（`sha512-ScKp…YKA==`）。安装后 CLI 返回 0.5.2；本地 HTTP 流式冒烟通过（1 次请求、20 个片段全部到达、`reasoning_effort=high` 按配置下发、退出码 0）。provenance 指向 `master`、`.github/workflows/publish-tui.yml` 与运行 #22。
 - 发布后约 1 分钟内部分 CDN 边缘对不带查询串的 tarball URL 返回 404（元数据已先可见），加缓存绕过参数后稳定 200，约 3 分钟后恢复正常；最终制品 integrity 与 npm 记录一致，属传播延迟而非制品缺陷。
 - Actions 原始回执需登录下载，未取得；台账按公开运行结果、已验签的 npm provenance 与官方制品独立安装结果登记（`ciArtifactDownloaded: false`）。
+
+## 13. 0.5.3 工具与工作区会话回归（2026-11-20）
+
+- **会话隔离 PASS**。两个不同路径使用相同目录名。切到新目录后列表不显示旧会话，直接恢复会被拒绝，随后发送「继续」的 HTTP 请求没有旧工程的消息。回原目录可以恢复并继续。归属未知的旧转录被保留。
+- **追问与计划 PASS**。伪 TTY 覆盖勾选、汇总、返回修改、其他答案、漏答、备注和取消。计划用本地 OpenAI 兼容端点验证专用草稿、一次审批、编辑后的批准正文以及原工具调用 ID。
+- **文件与 Shell PASS**。工作区测试 108 项通过。Windows Shell 与运行时聚焦测试 91 项通过，Ubuntu WSL2 的 Shell 定向测试 3 项通过。后台执行使用测试后端，生产隔离未验证。
+- **搜索协议 PASS**。本地模型端点和搜索响应 fixture 覆盖无密钥 Bing、有密钥 Tavily、审批、域名过滤、取消、来源输出和原工具调用 ID。Bing 区域跳转只允许一次至官方 `cn.bing.com/search`，拒绝第三方跳转及非 RSS 响应。编译后的工具对 Bing 公共端点执行一次真实无密钥查询，返回 5 条来源。
+- **思考强度与状态栏 PASS**。真实 Ink 帧验证 `/effort` 菜单、取消、中文低中高和紧邻的 `84k/256k tokens (32.8%)`。本地模型端点确认菜单选高与命令切低之后，下一次请求分别收到 `high` 和 `low`。
+- **参考实现抽样 PASS**。用 TypeScript AST 提取文件工具、Shell、计划、追问、搜索和会话恢复所涉文件中 162 个与改动相交的代码块，每块至少 40 个非注释叶令牌。与参考实现的 1,413 个块比较原令牌和规范化语法形态，均无整块命中。抽样记录只覆盖比较范围。
+- **发布预演 PASS**。Windows 隔离源码副本执行锁定安装和 `CI=true npm run publish -- --dry-run --expected-version 0.5.3 --tag latest`。工具测试首轮发现依赖外层 Git 仓库，改为测试自建仓库后重跑通过。包含思考强度与 Bing 的最终预演运行 760 项产品测试，759 通过、1 项仅 POSIX 生效而跳过。全套 884 项，883 通过、0 失败。制品有 99 个文件，SHA-512 与回执一致，隔离安装返回 `0.5.3`，本地 HTTP 流式冒烟通过。回执位于 `artifacts/release/0.5.3-1795147005980/report.json`。`spec:check`、`skills:check` 和 `git diff --check` 均通过。仓库未配置专用 formatter。
+
+### 未验证项与恢复条件
+
+- **UNVERIFIED**。取得实际 Tavily 密钥并获准发起查询后验证 live 搜索。原生终端交互在实际 Windows Terminal 和目标平台复测。
+- **UNVERIFIED**。普通 Bash 和 PowerShell 仍需生产执行隔离后端及目标平台的真实隔离验证。图片内容、PDF 页、Notebook 图像和完整 ripgrep 方言仍有差距。
+- **UNVERIFIED**。0.5.3 未上传 npm，GitHub Actions 仍待维护者触发并核对发布回执。

@@ -4,12 +4,13 @@
 // The store never re-executes anything. Restoring a session gives back the
 // transcript contents, the recorded permission mode and the list of tool
 // steps whose outcome is unknown; the caller decides what to do next.
+import { createHash } from 'node:crypto'
 import {
   existsSync,
   readdirSync,
   rmSync
 } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import type { PermissionMode } from '../core/permissions.js'
 import { writeJsonAtomic } from './atomic.js'
@@ -55,7 +56,7 @@ export type SessionMeta = {
   permissionMode?: PermissionMode
 }
 
-export type RestoreStatus = 'restored' | 'not_found' | 'unsupported_schema' | 'corrupt' | 'locked'
+export type RestoreStatus = 'restored' | 'not_found' | 'unsupported_schema' | 'corrupt' | 'locked' | 'workspace_mismatch'
 
 export type RestoreResult = {
   status: RestoreStatus
@@ -72,6 +73,8 @@ export type RestoreResult = {
 export type SessionStoreOptions = {
   home?: string
   now?: () => string
+  /** Pass the same canonical root that the workspace tools use. */
+  workspaceRoot?: string
 }
 
 /** Messages restored from a transcript. */
@@ -79,6 +82,14 @@ type Message = { id: string; role: 'user' | 'assistant' | 'tool'; blocks: unknow
 
 function defaultNow(): string {
   return new Date().toISOString()
+}
+
+function sessionWorkspaceId(root: string): string {
+  return createHash('sha256').update(resolve(root)).digest('hex')
+}
+
+function validSessionId(sessionId: string): boolean {
+  return /^[a-z0-9][a-z0-9_-]{0,127}$/i.test(sessionId)
 }
 
 function sessionsRoot(home?: string): string {
@@ -252,25 +263,43 @@ export class SessionStore {
 
   /** Summary of one session, or undefined when there is none. */
   summary(sessionId: string): SessionSummary | undefined {
-    const meta = this.readMeta(sessionId)
-    if (meta) {
-      return {
-        sessionId: meta.sessionId,
-        title: meta.title,
-        createdAt: meta.createdAt,
-        updatedAt: meta.updatedAt,
-        turns: meta.turns,
-        ...(meta.permissionMode ? { permissionMode: meta.permissionMode } : {})
-      }
+    if (!validSessionId(sessionId)) return undefined
+    if (this.options.workspaceRoot === undefined) {
+      const meta = this.readMeta(sessionId)
+      if (meta) return this.metadataSummary(meta)
     }
+    const transcript = createSessionTranscript({ sessionId, home: this.options.home })
+    return this.summarize(sessionId, transcript.read().records)
+  }
+
+  private metadataSummary(meta: SessionMeta): SessionSummary {
+    return {
+      sessionId: meta.sessionId,
+      title: meta.title,
+      createdAt: meta.createdAt,
+      updatedAt: meta.updatedAt,
+      turns: meta.turns,
+      ...(meta.permissionMode ? { permissionMode: meta.permissionMode } : {})
+    }
+  }
+
+  private ownsTranscript(records: TranscriptRecord[]): boolean {
+    const root = this.options.workspaceRoot
+    if (root === undefined) return true
+    const started = records.find((record) => record.type === 'session_started')
+    return started?.workspaceId === sessionWorkspaceId(root)
+  }
+
+  private summarize(sessionId: string, records: TranscriptRecord[]): SessionSummary | undefined {
+    if (!this.ownsTranscript(records)) return undefined
+    const meta = this.readMeta(sessionId)
+    if (meta) return this.metadataSummary(meta)
     // Fall back to the transcript when meta.json is missing but a transcript
     // exists (for example after a crash between the two writes).
-    const transcript = createSessionTranscript({ sessionId, home: this.options.home })
-    const read = transcript.read()
-    if (read.records.length === 0) return undefined
-    const started = read.records.find((record) => record.type === 'session_started')
-    const turns = read.records.filter((record) => record.type === 'turn').length
-    const firstUser = read.records.find(
+    if (records.length === 0) return undefined
+    const started = records.find((record) => record.type === 'session_started')
+    const turns = records.filter((record) => record.type === 'turn').length
+    const firstUser = records.find(
       (record) => record.type === 'message' && record.role === 'user'
     )
     const title =
@@ -325,8 +354,7 @@ export class SessionStore {
    * permission mode of the restored session.
    */
   restore(sessionId: string): RestoreResult {
-    const directory = this.directory(sessionId)
-    if (!existsSync(directory)) {
+    if (!validSessionId(sessionId) || !existsSync(this.directory(sessionId))) {
       return {
         status: 'not_found',
         messages: [],
@@ -353,7 +381,16 @@ export class SessionStore {
       )
     }
     const records = read.records
-    const summary = this.summary(sessionId)
+    if (!this.ownsTranscript(records)) {
+      return {
+        status: 'workspace_mismatch',
+        messages: [],
+        needsReview: [],
+        warnings: [],
+        message: 'Session belongs to another workspace or has no saved workspace identity'
+      }
+    }
+    const summary = this.summarize(sessionId, records)
     if (!summary) {
       return {
         status: 'not_found',
@@ -411,20 +448,29 @@ export function startSession(options: {
   title?: string
   home?: string
   now?: () => string
+  workspaceRoot?: string
 }): { transcript: SessionTranscript; directory: string } {
+  if (!validSessionId(options.sessionId)) throw new Error('Invalid session ID')
   const directory = ensurePrivateDirectory(sessionDirectory(options.sessionId, options.home))
   const transcript = createSessionTranscript({
     sessionId: options.sessionId,
     home: options.home,
     ...(options.now ? { now: options.now } : {})
   })
-  const started = transcript.read().records.find((record) => record.type === 'session_started')
+  const read = transcript.read()
+  if (read.unsupported) throw new Error('Session transcript uses an unsupported schema')
+  const started = read.records.find((record) => record.type === 'session_started')
+  const workspaceId = options.workspaceRoot === undefined ? undefined : sessionWorkspaceId(options.workspaceRoot)
+  if (workspaceId && (read.records.length > 0 || read.corruptLines > 0) && started?.workspaceId !== workspaceId) {
+    throw new Error('Existing session cannot be attached to this workspace')
+  }
   if (!started) {
     transcript.append({
       type: 'session_started',
       ts: (options.now ?? defaultNow)(),
       schemaVersion: TRANSCRIPT_VERSION,
       sessionId: options.sessionId,
+      ...(workspaceId ? { workspaceId } : {}),
       ...(options.title ? { title: sanitizeTitle(options.title) } : {})
     })
   }

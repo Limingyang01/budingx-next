@@ -184,7 +184,7 @@ export function createPermissionPolicy(
   return {
     decide(request: PermissionRequest): PermissionVerdict {
       // 1. Floor rules: never overridable, in every mode (AC PC-08).
-      const { real, denied } = resolveTarget(request)
+      const { real, denied } = request.managedPlanDraft ? {} : resolveTarget(request)
       if (denied) return denied
       const floor = real && floorVerdict(request, real)
       if (floor) return floor
@@ -198,6 +198,7 @@ export function createPermissionPolicy(
           }
         }
       }
+      if (request.managedPlanDraft) return { action: 'allow', reason: 'Current session plan draft' }
       // 2.5 Version-control metadata is protected even in full access:
       // forced ask ahead of memory and allow rules (SP003 T18g, aligned
       // with the reference's mandatory safety check before allow rules).

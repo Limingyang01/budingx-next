@@ -150,6 +150,83 @@ test('G15 配置超时作用于慢连接', async (t) => {
   assert.ok(Date.now() - start < 12000)
 })
 
+test('默认运行时保留 Shell 工具协议，并在审批或启动前报告隔离不可用', async (t) => {
+  const home = mkdtempSync(join(tmpdir(), 'budingx-shell-gate-'))
+  const cwd = join(home, 'workspace')
+  mkdirSync(cwd)
+  t.after(() => rmSync(home, { recursive: true, force: true }))
+  const requests = []
+  const server = createServer(async (req, res) => {
+    let body = ''
+    for await (const chunk of req) body += chunk
+    const request = JSON.parse(body)
+    requests.push(request)
+    const choice = request.messages.at(-1).role === 'tool'
+      ? { delta: { content: '已收到结果' }, finish_reason: 'stop' }
+      : {
+          delta: {
+            tool_calls: ['Bash', 'PowerShell'].map((name, index) => ({
+              index,
+              id: `call-${index}`,
+              type: 'function',
+              function: { name, arguments: '{"command":"node --version","run_in_background":true}' }
+            }))
+          },
+          finish_reason: 'tool_calls'
+        }
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    res.end(`data: ${JSON.stringify({ choices: [choice] })}\n\ndata: [DONE]\n\n`)
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  t.after(() => {
+    server.closeAllConnections()
+    server.close()
+  })
+  const baseUrl = `http://127.0.0.1:${server.address().port}/v1`
+  const profile = createProfile({ label: 'shell', baseUrl, model: 'fixture', tools: true })
+  const configStore = new ConfigStore(join(home, 'config.json'))
+  configStore.save({ version: 1, models: [profile], defaultModelId: profile.id })
+  const approvals = []
+  const runtime = createAgentRuntime({
+    cwd,
+    home,
+    configStore,
+    mode: 'workspace_edit',
+    getConfig: () => ({
+      profileId: profile.id,
+      baseUrl,
+      model: 'fixture',
+      apiKey: '',
+      timeoutMs: 1000,
+      source: 'file'
+    }),
+    approval: {
+      request: async (request) => {
+        approvals.push(request)
+        return { outcome: 'allow', via: 'user' }
+      }
+    }
+  })
+  t.after(() => runtime.session.dispose())
+  const events = []
+  runtime.session.on((event) => events.push(event))
+  for (const mode of ['workspace_edit', 'full_access']) {
+    runtime.setPermissionMode(mode)
+    events.length = 0
+    assert.equal((await turn(runtime.session, '运行命令')).outcome, 'completed')
+    assert.equal(approvals.length, 0)
+    assert.equal(events.some((event) => event.type === 'command_started'), false)
+    const results = events.filter((event) => event.type === 'tool_result')
+    assert.equal(results.length, 2)
+    assert.ok(results.every((event) => event.isError))
+    assert.match(results[0].content, /隔离/)
+    assert.match(results[1].content, process.platform === 'win32' ? /隔离/ : /仅在 Windows/)
+  }
+  const offered = requests[0].tools.map((item) => item.function.name)
+  assert.ok(['Bash', 'PowerShell', 'Read'].every((name) => offered.includes(name)))
+})
+
 
 test('PC-11 restores explicit interactive permission choices and preserves stored rules', async (t) => {
   const home = mkdtempSync(join(tmpdir(), 'budingx-mode-'))

@@ -46,18 +46,41 @@ function stringField(input: unknown, name: string): string {
   return value
 }
 
+const filePathProperties = {
+  file_path: { type: 'string', description: 'Path to the file inside the workspace (absolute or relative)' },
+  path: { type: 'string', description: 'Compatibility alias for file_path' }
+}
+
+const filePathRequired = { anyOf: [{ required: ['file_path'] }, { required: ['path'] }] }
+
+function workspaceFilePath(input: unknown): string {
+  const { file_path, path } = asObject(input)
+  if (file_path !== undefined && path !== undefined && file_path !== path) {
+    throw new WorkspaceError(ERROR_CODES.coreToolFailed, 'file_path and path must name the same file; supply just one')
+  }
+  return stringField(input, file_path === undefined && path !== undefined ? 'path' : 'file_path')
+}
+
+function describeFile(operation: string, input: unknown): string {
+  const { file_path, path } = asObject(input)
+  return `${operation} ${String(file_path ?? path ?? '')}`
+}
+
 function optionalNumber(input: unknown, name: string): number | undefined {
   const value = asObject(input)[name]
   if (value === undefined || value === null) return undefined
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
+  const parsed = typeof value === 'string' && /^-?\d+(\.\d+)?$/.test(value) ? Number(value) : value
+  if (typeof parsed !== 'number' || !Number.isFinite(parsed)) {
     throw new WorkspaceError(ERROR_CODES.coreToolFailed, `${name} must be a number`)
   }
-  return Math.trunc(value)
+  return Math.trunc(parsed)
 }
 
 function optionalBoolean(input: unknown, name: string): boolean | undefined {
   const value = asObject(input)[name]
   if (value === undefined || value === null) return undefined
+  if (value === 'true') return true
+  if (value === 'false') return false
   if (typeof value !== 'boolean') {
     throw new WorkspaceError(ERROR_CODES.coreToolFailed, `${name} must be a boolean`)
   }
@@ -124,7 +147,7 @@ export function createWorkspaceTools(
   const pathKey = (path: string) => process.platform === 'win32' ? path.toLowerCase() : path
 
   function prepareWrite(input: unknown, operation: 'Write' | 'Edit'): PreparedTool {
-    const path = stringField(input, 'path')
+    const path = workspaceFilePath(input)
     const target = workspace.resolve(path)
     if (target.isDirectory) {
       throw new WorkspaceError(ERROR_CODES.workspaceNotAFile, `Path is a directory: ${target.relative}`)
@@ -150,7 +173,7 @@ export function createWorkspaceTools(
     }
     const before = bytes?.toString('utf8')
     const plan = operation === 'Write'
-      ? { content: textField(input, 'content').replace(/\r\n/g, '\n'), replacements: 0 }
+      ? { content: textField(input, 'content'), replacements: 0 }
       : planWorkspaceEdit(before, target.relative, {
           path,
           oldString: textField(input, 'old_string'),
@@ -191,25 +214,26 @@ export function createWorkspaceTools(
 
   const read: ToolHandler = {
     name: 'Read',
-    summary: 'Read a text file inside the workspace, with line numbers and an optional line range.',
+    summary: 'Read a numbered text file or Jupyter notebook inside the workspace. Text files support an optional line range.',
     parameters: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'Workspace-relative file path' },
+        ...filePathProperties,
         offset: { type: 'integer', description: 'First line to read (1-based)' },
         limit: { type: 'integer', description: 'Number of lines to read' }
       },
-      required: ['path']
+      ...filePathRequired
     },
-    describe: (input) => `Read ${String(asObject(input).path ?? '')}`,
+    describe: (input) => describeFile('Read', input),
     capability: (): ToolCapability => 'read',
-    target: (input) => ({ path: stringField(input, 'path'), kind: 'file' }),
+    target: (input) => ({ path: workspaceFilePath(input), kind: 'file' }),
     async execute(input) {
-      const path = stringField(input, 'path')
+      const path = workspaceFilePath(input)
       const result = readWorkspaceFile(workspace, {
         path,
         offset: optionalNumber(input, 'offset'),
-        limit: optionalNumber(input, 'limit')
+        limit: optionalNumber(input, 'limit'),
+        allowEmptyRange: true
       })
       if (result.fingerprint) {
         readState.set(pathKey(workspace.resolve(path).real), result.fingerprint)
@@ -220,7 +244,7 @@ export function createWorkspaceTools(
           image?.width && image?.height ? `${image.width}x${image.height}, ` : ''
         return `[image ${image?.mime ?? 'unknown'}, ${size}${result.bytes} bytes] image content is not sent to the model yet`
       }
-      return result.text
+      return result.bytes === 0 ? '[The file exists but its contents are empty.]' : result.text
     }
   }
 
@@ -230,15 +254,16 @@ export function createWorkspaceTools(
     parameters: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'Workspace-relative file path' },
+        ...filePathProperties,
         content: { type: 'string', description: 'Full new content of the file' }
       },
-      required: ['path', 'content']
+      required: ['content'],
+      ...filePathRequired
     },
-    describe: (input) => `Write ${String(asObject(input).path ?? '')}`,
+    describe: (input) => describeFile('Write', input),
     requiresApproval: () => true,
     capability: (): ToolCapability => 'write',
-    target: (input) => ({ path: stringField(input, 'path'), kind: 'file' }),
+    target: (input) => ({ path: workspaceFilePath(input), kind: 'file' }),
     prepareApproval: (input) => prepareWrite(input, 'Write'),
     async execute(input, context) {
       return prepareWrite(input, 'Write').execute(context)
@@ -252,17 +277,18 @@ export function createWorkspaceTools(
     parameters: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'Workspace-relative file path' },
+        ...filePathProperties,
         old_string: { type: 'string', description: 'Exact text to replace' },
         new_string: { type: 'string', description: 'Replacement text' },
         replace_all: { type: 'boolean', description: 'Replace every occurrence' }
       },
-      required: ['path', 'old_string', 'new_string']
+      required: ['old_string', 'new_string'],
+      ...filePathRequired
     },
-    describe: (input) => `Edit ${String(asObject(input).path ?? '')}`,
+    describe: (input) => describeFile('Edit', input),
     requiresApproval: () => true,
     capability: (): ToolCapability => 'write',
-    target: (input) => ({ path: stringField(input, 'path'), kind: 'file' }),
+    target: (input) => ({ path: workspaceFilePath(input), kind: 'file' }),
     prepareApproval: (input) => prepareWrite(input, 'Edit'),
     async execute(input, context) {
       return prepareWrite(input, 'Edit').execute(context)
@@ -309,14 +335,14 @@ export function createWorkspaceTools(
     parameters: {
       type: 'object',
       properties: {
-        pattern: { type: 'string', description: 'JavaScript regular expression' },
+        pattern: { type: 'string', description: 'Regular expression, including leading flags such as (?i)' },
         path: { type: 'string', description: 'File or directory to search (workspace-relative)' },
-        glob: { type: 'string', description: 'Only search files matching this glob' },
+        glob: { type: 'string', description: 'Only search files matching these globs, separated by commas or spaces' },
         type: { type: 'string', description: 'File type filter, e.g. ts, py, json' },
         output_mode: {
           type: 'string',
           enum: ['content', 'files_with_matches', 'count'],
-          description: 'What to return (default content)'
+          description: 'What to return (default files_with_matches)'
         },
         case_insensitive: { type: 'boolean', description: 'Ignore case when matching' },
         '-i': { type: 'boolean', description: 'Alias for case_insensitive' },
@@ -324,7 +350,8 @@ export function createWorkspaceTools(
         multiline: { type: 'boolean', description: 'Let . match newlines too' },
         '-B': { type: 'integer', description: 'Context lines before each match' },
         '-A': { type: 'integer', description: 'Context lines after each match' },
-        '-C': { type: 'integer', description: 'Context lines around each match' },
+        context: { type: 'integer', description: 'Context lines before and after each match' },
+        '-C': { type: 'integer', description: 'Alias for context' },
         head_limit: { type: 'integer', description: 'Max results (default 250, 0 = all)' },
         offset: { type: 'integer', description: 'Skip the first N results' }
       },
@@ -341,35 +368,26 @@ export function createWorkspaceTools(
     async execute(input, context) {
       if (context.signal.aborted) throw new WorkspaceError(ERROR_CODES.coreToolFailed, 'cancelled')
       const obj = asObject(input)
-      const around = optionalNumber(input, '-C')
+      const around = optionalNumber(input, 'context') ?? optionalNumber(input, '-C')
+      const outputMode = obj.output_mode ?? 'files_with_matches'
+      if (outputMode !== 'content' && outputMode !== 'files_with_matches' && outputMode !== 'count') {
+        throw new WorkspaceError(ERROR_CODES.coreToolFailed, 'output_mode must be content, files_with_matches, or count')
+      }
       return grepWorkspace(workspace, {
-        pattern: stringField(input, 'pattern'),
+        pattern: textField(input, 'pattern'),
         path: typeof obj.path === 'string' ? obj.path : undefined,
         glob: typeof obj.glob === 'string' ? obj.glob : undefined,
         caseInsensitive: optionalBoolean(input, 'case_insensitive') ?? optionalBoolean(input, '-i'),
         lineNumbers: optionalBoolean(input, '-n'),
         signal: context.signal,
-        ...(options.readDenied ? { exclude: options.readDenied } : {}),
-        ...(typeof obj.output_mode === 'string'
-          ? { outputMode: obj.output_mode as 'content' | 'files_with_matches' | 'count' }
-          : {}),
-        ...(typeof obj.type === 'string' ? { type: obj.type } : {}),
-        ...(optionalBoolean(input, 'multiline') !== undefined
-          ? { multiline: optionalBoolean(input, 'multiline') }
-          : {}),
-        ...(optionalNumber(input, '-A') !== undefined ? { after: optionalNumber(input, '-A') } : {}),
-        ...(optionalNumber(input, '-B') !== undefined
-          ? { before: optionalNumber(input, '-B') ?? around }
-          : around !== undefined
-            ? { before: around }
-            : {}),
-        ...(around !== undefined ? { after: (optionalNumber(input, '-A') ?? around) } : {}),
-        ...(optionalNumber(input, 'head_limit') !== undefined
-          ? { maxResults: optionalNumber(input, 'head_limit') }
-          : {}),
-        ...(optionalNumber(input, 'offset') !== undefined
-          ? { offset: optionalNumber(input, 'offset') }
-          : {})
+        exclude: options.readDenied,
+        outputMode,
+        type: typeof obj.type === 'string' ? obj.type : undefined,
+        multiline: optionalBoolean(input, 'multiline'),
+        before: around ?? optionalNumber(input, '-B'),
+        after: around ?? optionalNumber(input, '-A'),
+        maxResults: optionalNumber(input, 'head_limit'),
+        offset: optionalNumber(input, 'offset')
       }).text
     }
   }

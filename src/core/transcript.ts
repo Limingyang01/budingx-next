@@ -20,6 +20,7 @@ export type TranscriptRecord =
       schemaVersion: number
       sessionId: string
       title?: string
+      workspaceId?: string
     }
   | {
       type: 'message'

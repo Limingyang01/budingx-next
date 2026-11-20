@@ -1,6 +1,6 @@
 # budingx
 
-An independent **MIT** terminal agent for OpenAI-compatible APIs. Source version 0.5.1 (SP005 plus review fixes) adds long-session and data reliability: on-disk session transcripts with atomic writes, cross-process recovery that never replays side effects, context-budget compaction that keeps your constraints, plan and tool state, project/session memory with isolation, and explicit failure reasons with stable error codes. It keeps the coding task loop from 0.4.0 (Bash/PowerShell command cards with background tasks, plan mode with approval, todo and question cards, and controlled Git commits on dedicated worktrees), the workspace file tools, approval previews and session undo from 0.3.0, the model manager from 0.3.1, and the fixes released through 0.3.6.
+An independent **MIT** terminal agent for OpenAI-compatible APIs. Source version 0.5.3 updates the workspace tools, question and plan approvals, and adds an optional Tavily web search tool. It includes session transcripts and recovery, context compaction, project and session memory, approval previews, and session undo.
 
 ## Install
 
@@ -50,8 +50,9 @@ In piped input, `/models` lists profiles and `/model NAME` selects one. Interact
 - /models — open the model manager (list profiles in a pipe)
 - /model NAME — switch the model; the conversation is kept and the switch applies from the next turn
 - /clear — clear the in-memory conversation and its visible transcript (input history and pending prompts remain)
-- /sessions — list saved sessions with session ID, title, updated time and turn count
-- /resume SESSION_ID — restore a saved session's history; no tool call is replayed and unknown results are marked for review
+- /sessions — list sessions saved in the current workspace with session ID, title, updated time and turn count
+- /resume SESSION_ID — restore a saved session from this workspace. Records without a saved workspace identity remain on disk. Unknown tool results are marked for review.
+- /effort [low|medium|high] — choose a reasoning level or set it directly for the next request. Set `BUDINGX_CONTEXT_WINDOW` to show usage against the window next to the active level.
 - /context — show context usage and budget: used tokens, limit, reserved output, compaction threshold and per-message cost
 - /effort [low|medium|high] — show or set the reasoning effort (also shown in the status bar)
 - /memory — show project and session memory entries; /memory PROJECT|SESSION add TITLE:BODY writes one entry
@@ -85,6 +86,8 @@ A cancelled turn keeps the text that was already produced. A turn cancelled befo
 ## Workspace tools
 
 A tool-enabled model can use `Read`, `Glob`, `Grep`, `Write`, and `Edit` in your working directory. Use `@path#L10-20` for a line range or `@"folder/file name.txt"` for a path with spaces. Tab completes paths.
+
+`WebSearch` uses Bing's public search feed when `BUDINGX_TAVILY_API_KEY` is unset, and uses Tavily when the key is set. A tool-enabled model can request a search. Approve the query and destination before it is sent. Search returns up to five URLs and snippets. For multiple questions or a multiple-select question, confirm the answer summary with Enter. Press Left or Shift+Tab to return to the questions.
 
 Interactive sessions default to Allow edits. Ordinary workspace writes run directly, and sensitive targets require approval. Use `/permission edit|full` or Shift+Tab to change modes. For an approval, use Up/Down to review the diff and 1 or 3 to allow once or deny. An approval shows 2 only when session memory is available for that operation. Use `/rules` to manage permission rules and `/denials` to inspect refusals.
 

@@ -167,7 +167,7 @@ test('Grep multiline matches blank lines without a synthetic final match', (t) =
 test('Grep accepts the reference case and line number flags', async (t) => {
   const f = fixture(t)
   f.writeSeedFile('flags.txt', 'Needle\n')
-  const result = await handler(f, 'Grep', { pattern: 'needle', '-i': true, '-n': false })
+  const result = await handler(f, 'Grep', { pattern: 'needle', output_mode: 'content', '-i': true, '-n': false })
   assert.equal(result, 'flags.txt:Needle')
 })
 

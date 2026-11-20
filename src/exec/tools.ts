@@ -8,6 +8,7 @@ import type { ToolContext, ToolHandler } from '../core/tools.js'
 import { destructiveWarningText, detectDestructiveCommand } from './destructive.js'
 import { selectInterpreter } from './interpreter.js'
 import { isBlockingWaitCommand, isInteractiveCommand, isReadOnlyCommand } from './readonly-commands.js'
+import type { SandboxPolicy } from './sandbox-policy.js'
 
 export type ExecToolName = 'Bash' | 'PowerShell'
 
@@ -19,6 +20,8 @@ export type ExecToolsOptions = {
   platform?: NodeJS.Platform
   /** 已验收的隔离后端标识，仅用于审批预览展示。 */
   sandboxBackendId?: string
+  /** 与执行器共用的隔离策略，在审批前检查命令是否可启动。 */
+  sandboxPolicy?: SandboxPolicy
 }
 
 const ALLOWED_FIELDS = ['command', 'timeout', 'description', 'run_in_background'] as const
@@ -54,9 +57,9 @@ type Args = {
   runInBackground?: boolean
 }
 
-function inputError(message: string): Error & { code: string } {
+function inputError(message: string, code: string = ERROR_CODES.coreToolFailed): Error & { code: string } {
   const error = new Error(message) as Error & { code: string }
-  error.code = ERROR_CODES.coreToolFailed
+  error.code = code
   return error
 }
 
@@ -146,24 +149,34 @@ export function createExecTools(options: ExecToolsOptions): ToolHandler[] {
     const interpreter = selectInterpreter(name, platform)
     const interpreterLabel = 'error' in interpreter ? name : interpreter.label
 
+    function checkAvailability(args: Args): void {
+      if ('error' in interpreter) {
+        throw inputError(interpreter.error, ERROR_CODES.execInterpreterUnavailable)
+      }
+      const decision = options.sandboxPolicy?.decide({ tool: name, command: args.command })
+      if (decision?.action === 'deny') {
+        throw inputError(decision.reason, decision.code)
+      }
+    }
+
     function previewOf(args: Args) {
       const destructive = detectDestructiveCommand(args.command)
+      const backendId = options.sandboxPolicy?.backend()?.id ?? options.sandboxBackendId
       const lines = [
         `命令：${args.command}`,
         `解释器：${interpreterLabel}`,
         `工作目录：${options.defaultCwd}`,
         `超时：${args.timeoutMs ?? 120000}ms`,
         `执行方式：${args.runInBackground === true ? '后台' : '前台（超 15s 自动转后台）'}`,
-        `隔离后端：${options.sandboxBackendId ?? '未启用（仅宿主托管操作）'}`
+        `隔离后端：${backendId ?? '未启用（仅宿主托管操作）'}`
       ]
       if (args.description !== undefined && args.description !== '') {
         lines.push(`说明：${args.description}`)
       }
-      if ('error' in interpreter) lines.push(`⚠ 解释器不可用：${interpreter.error}`)
       if (isInteractiveCommand(args.command)) {
         lines.push('⚠ 该命令需要交互式输入，本产品不提供 TTY，预期会失败')
       }
-      if (isBlockingWaitCommand(args.command)) {
+      if (args.runInBackground !== true && isBlockingWaitCommand(args.command)) {
         lines.push('⚠ 该命令属于阻塞等待族，建议改用 run_in_background')
       }
       if (destructive.destructive) {
@@ -175,7 +188,7 @@ export function createExecTools(options: ExecToolsOptions): ToolHandler[] {
     async function runCommand(args: Args, context: ToolContext): Promise<string> {
       const guidance = gitGuidance(args.command)
       if (guidance !== undefined) throw inputError(guidance)
-      if ('error' in interpreter) throw inputError(interpreter.error)
+      checkAvailability(args)
       const startedAt = Date.now()
       const emitStarted = (taskId?: string) => {
         context.emit?.({
@@ -206,10 +219,11 @@ export function createExecTools(options: ExecToolsOptions): ToolHandler[] {
     return {
       name,
       parameters: TOOL_PARAMETERS as unknown as Record<string, unknown>,
-      summary:
-        name === 'Bash'
-          ? '在工作区执行 shell 命令（前台/后台）；用于运行测试、构建和只读探查。'
-          : '在 Windows PowerShell 中执行命令（前台/后台）；用于 Windows 专属脚本。',
+      summary: 'error' in interpreter
+        ? interpreter.error
+        : name === 'Bash'
+          ? '在具备已验证执行隔离的工作区运行 Bash 命令（前台/后台）。'
+          : '在具备已验证执行隔离的 Windows 工作区运行 PowerShell 命令（前台/后台）。',
       describe(input: unknown): string {
         const args = (() => {
           try {
@@ -242,6 +256,7 @@ export function createExecTools(options: ExecToolsOptions): ToolHandler[] {
       },
       prepareApproval(input: unknown) {
         const args = readArgs(input)
+        checkAvailability(args)
         return {
           ...previewOf(args),
           execute: (context: ToolContext) => runCommand(args, context)

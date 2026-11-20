@@ -122,9 +122,19 @@ export function globWorkspace(
     signal: options.signal,
     ...(options.exclude ? { exclude: options.exclude } : {})
   })
-  const matched = walk.relative.filter((rel) =>
-    matchSearchGlob(options.pattern, withoutBase(rel, baseRel))
-  )
+  const matches: { path: string; modified: number }[] = []
+  for (let index = 0; index < walk.relative.length; index++) {
+    const path = walk.relative[index]
+    if (!matchSearchGlob(options.pattern, withoutBase(path, baseRel))) continue
+    try {
+      const stat = statSync(walk.files[index])
+      if (stat.isFile()) matches.push({ path, modified: stat.mtimeMs })
+    } catch {
+      // A file that vanished during traversal cannot be returned.
+    }
+  }
+  matches.sort((a, b) => a.modified - b.modified)
+  const matched = matches.map((match) => match.path)
   const max = options.maxResults ?? MAX_GLOB_RESULTS
   const shown = matched.slice(0, max)
   const capped = walk.capped
@@ -145,6 +155,21 @@ function matchSearchGlob(pattern: string, path: string): boolean {
   return /[\[{]/.test(normalized)
     ? posix.matchesGlob(path, normalized)
     : matchGlob(normalized, path)
+}
+
+function grepGlobFilter(globs: string): (path: string) => boolean {
+  const patterns = globs.match(/(?:\{[^}]*\}|\[[^\]]*\]|[^\s,])+/g) ?? []
+  const hasIncludes = patterns.some((pattern) => !pattern.startsWith('!'))
+  return (path) => {
+    let included = !hasIncludes
+    for (const pattern of patterns) {
+      const negated = pattern.startsWith('!')
+      const glob = negated ? pattern.slice(1) : pattern
+      const subject = glob.includes('/') ? path : posix.basename(path)
+      if (matchSearchGlob(glob, subject)) included = !negated
+    }
+    return included
+  }
 }
 
 /** Strip the search base from a root-relative path for pattern matching. */
@@ -184,6 +209,7 @@ const TYPE_EXTENSIONS: Record<string, string[]> = {
   json: ['json'],
   go: ['go'],
   rs: ['rs'],
+  rust: ['rs'],
   java: ['java'],
   css: ['css'],
   scss: ['scss'],
@@ -206,12 +232,16 @@ export function grepWorkspace(
   workspace: Workspace,
   options: GrepOptions
 ): SearchSummary {
-  const flags = (options.caseInsensitive ? 'i' : '') + (options.multiline ? 'ms' : '')
+  const flags = new Set((options.caseInsensitive ? 'i' : '') + (options.multiline ? 'ms' : ''))
+  const pattern = options.pattern.replace(/^(?:\(\?[imsu]+\))+/, (prefix) => {
+    for (const flag of prefix.match(/[imsu]/g) ?? []) flags.add(flag)
+    return ''
+  })
   let regex: RegExp
   let globalRegex: RegExp
   try {
-    regex = new RegExp(options.pattern, flags)
-    globalRegex = new RegExp(options.pattern, flags + 'g')
+    regex = new RegExp(pattern, [...flags].join(''))
+    globalRegex = new RegExp(pattern, regex.flags + 'g')
   } catch (error) {
     throw new WorkspaceError(
       ERROR_CODES.coreToolFailed,
@@ -243,6 +273,7 @@ export function grepWorkspace(
   const max = unlimited ? Number.POSITIVE_INFINITY : (options.maxResults ?? MAX_GREP_RESULTS)
   const skip = Math.max(0, options.offset ?? 0)
   const maxFileBytes = options.maxFileBytes ?? 32 * 1024 * 1024
+  const globFilter = options.glob ? grepGlobFilter(options.glob) : undefined
 
   type Hit = { rel: string; occurrences: number; mtimeMs: number; lines: string[] }
   const hits: Hit[] = []
@@ -255,7 +286,7 @@ export function grepWorkspace(
       throw new WorkspaceError(ERROR_CODES.coreToolFailed, 'Search cancelled')
     }
     const rel = walk.relative[index]
-    if (options.glob && !matchSearchGlob(options.glob, withoutBase(rel, baseRel))) continue
+    if (globFilter && !globFilter(withoutBase(rel, baseRel))) continue
     if (typeExtensions) {
       const dot = rel.lastIndexOf('.')
       if (dot === -1 || !typeExtensions.includes(rel.slice(dot + 1).toLowerCase())) continue
@@ -297,7 +328,10 @@ export function grepWorkspace(
       let match: RegExpExecArray | null
       while ((match = globalRegex.exec(text)) !== null) {
         const length = match[0].length
-        if (length === 0) globalRegex.lastIndex++
+        if (length === 0) {
+          const codePoint = text.codePointAt(globalRegex.lastIndex) ?? 0
+          globalRegex.lastIndex += globalRegex.unicode && codePoint > 0xffff ? 2 : 1
+        }
         const startLine = lineAt(match.index)
         if (startLine > linesOf.length) break
         const endLine = lineAt(match.index + Math.max(0, length - 1))

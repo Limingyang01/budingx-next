@@ -14,6 +14,8 @@ export type PermissionRequest = {
   capability: ToolCapability
   /** Workspace-relative path when the call targets one. */
   path?: string
+  /** Set by Session for the current host's exact private draft target. */
+  managedPlanDraft?: boolean
 }
 
 export type PermissionVerdict = {

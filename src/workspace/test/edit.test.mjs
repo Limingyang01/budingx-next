@@ -143,7 +143,7 @@ test('弯引号容错：直引号 old_string 能命中弯引号文件，其他�
     assert.equal(result.replacements, 1)
     const disk = readFileSync(join(tree.root, 'q.txt'), 'utf8')
     assert.match(disk, /“kept”/)
-    assert.match(disk, /say "hi" now/)
+    assert.match(disk, /say “hi” now/)
   } finally {
     rmSync(tree.base, { recursive: true, force: true })
   }

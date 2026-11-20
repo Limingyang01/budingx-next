@@ -49,13 +49,14 @@ export interface PlanStore {
   progress(): { total: number; completed: number; inProgress: number; blocked: number; pending: number }
 }
 
-/** 指纹漂移项：item 为 root/head/version/fingerprint/approval 或 files:<path>（TP-05）。 */
+/** 指纹漂移项：item 为 root/head/version/draft/fingerprint/approval 或 files:<path>。 */
 export type PlanDriftItem = { item: string; expected: string; actual: string }
 
 /** 计划模式可观察的工作区基线；由宿主按真实文件与 Git HEAD 提供（设计 §6.2）。 */
 export type PlanModeSnapshot = {
   root: string
   head?: string
+  draft?: string
   files: Record<string, string>
 }
 
@@ -76,6 +77,10 @@ export type PlanModeState = {
  */
 export type PlanModeHost = {
   store: PlanStore
+  /** 当前会话的模型可编辑草稿，与宿主持久化的审批状态隔离。 */
+  draftPath?: string
+  readDraft?: () => string | undefined
+  writeDraft?: (text: string) => void
   /** 读取当前会话计划文件正文；缺失或为空返回 undefined。 */
   readPlanText: () => Promise<string | undefined>
   snapshot: () => PlanModeSnapshot
@@ -84,7 +89,7 @@ export type PlanModeHost = {
 }
 
 export type PlanModeExitResult =
-  | { ok: true; message: string; planId: string; version: number; edited: boolean }
+  | { ok: true; message: string; planId: string; version: number; edited: boolean; text: string }
   | { ok: false; message: string; drift?: PlanDriftItem[]; cancelled?: boolean }
 
 export const TODO_STATUSES = ['pending', 'in_progress', 'completed'] as const
