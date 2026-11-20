@@ -223,3 +223,14 @@ AC 区间：CB-01…07（7）、SR-01…11（11）、FR-01…09（9）、PM-01�
 
 全量 `npm test` 通过（unit 778 项 / 0 失败 / 1 跳过，跳过项仅 POSIX 生效）；spec/skills/模块边界通过。命令执行默认无 OS 隔离的安全边界已在 PRODUCT.md 与发行说明明确标注。
 
+## 15. 0.5.4 显示压缩、模式轮播与 Git 白名单（2026-11-20）
+
+| 项 | 修复 | 证据 |
+| --- | --- | --- |
+| 底部占据行数过多 | 模式/上下文/推理强度/快捷键合并为一行；删除单独「可获准的写入免审批」行与独立上下文行 | `sp0054-compact-footer.test.mjs` |
+| Shift+Tab 无法回到仅可查看 | 恢复三档完整轮播；徽标「写入锁定」更名「仅可查看」 | `policy.test.mjs`、`approval-tiers.test.mjs`、`sp0054-git-and-modes.test.mjs` |
+| 全自动下 Git 命令被「不在只读白名单」拒绝 | 移除工具层白名单硬拦，Git 命令与其它命令一致按权限档位审批 | `tools.test.mjs` T5-5、`sp0054-git-and-modes.test.mjs` |
+
+全量 `npm test` 通过（782 项 / 0 失败 / 1 跳过）。
+
+

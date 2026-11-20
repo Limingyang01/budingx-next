@@ -99,7 +99,7 @@ test('拒绝后磁盘不变、会话继续，/denials 可见记录（PC-10）', 
   }
 })
 
-test('Shift+Tab 轮播两模式且徽标可见；完全权限自动执行不弹卡（PC-02/PC-05）', async (t) => {
+test('Shift+Tab 轮播三档模式且徽标可见；完全权限自动执行不弹卡（PC-02/PC-05）', async (t) => {
   const fixture = agentFixture({ mode: 'read_only' })
   try {
     const ui = await mount(t, fixture, [
@@ -107,13 +107,13 @@ test('Shift+Tab 轮播两模式且徽标可见；完全权限自动执行不弹�
       [{ type: 'message_completed', finishReason: 'stop' }]
     ])
     fixture.attach(ui.session)
-    await ui.waitFor((frame) => frame.includes('写入锁定'))
-    assert.match(ui.raw(), /\x1b\[38;2;86;182;194m(?:\x1b\[[0-9;]*m)*写入锁定/)
+    await ui.waitFor((frame) => frame.includes('仅可查看'))
+    assert.match(ui.raw(), /\x1b\[38;2;86;182;194m(?:\x1b\[[0-9;]*m)*仅可查看/)
     await ui.send('\x1b[Z')
     await ui.waitFor((frame) => frame.includes('编辑'))
     assert.match(ui.raw(), /\x1b\[38;2;229;192;123m(?:\x1b\[[0-9;]*m)*允许编辑/)
     await ui.send('\x1b[Z')
-    await ui.waitFor((frame) => frame.includes('全自动') && frame.includes('写入免审批'))
+    await ui.waitFor((frame) => frame.includes('全自动') && frame.includes('免审批'))
     assert.match(ui.raw(), /\x1b\[38;2;255;107;107m.*全自动/)
     await ui.send('write now\r')
     await ui.waitFor(() => !ui.session.isBusy)

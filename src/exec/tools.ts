@@ -108,13 +108,6 @@ function readArgs(input: unknown): Args {
   }
 }
 
-/** Git 写操作必须走 §7 受控入口；通用命令入口只放行只读白名单内的 git 调用。 */
-function gitGuidance(command: string): string | undefined {
-  if (!/^\s*git(\s|$)/i.test(command)) return undefined
-  if (isReadOnlyCommand(command)) return undefined
-  return '该 Git 命令不在只读白名单内，不能用通用命令入口执行；写操作请使用受控 Git 入口（未经授权不会改动仓库）'
-}
-
 function formatResult(result: CommandResult): string {
   const lines: string[] = []
   if (result.outcome === 'running') {
@@ -188,8 +181,8 @@ export function createExecTools(options: ExecToolsOptions): ToolHandler[] {
     }
 
     async function runCommand(args: Args, context: ToolContext): Promise<string> {
-      const guidance = gitGuidance(args.command)
-      if (guidance !== undefined) throw inputError(guidance)
+      // 0.5.4：Git 命令不再被「只读白名单」硬拦；是否执行由权限档位审批决定
+      // （仅可查看拒绝、工作区内修改逐次确认、完全权限自动），与其它命令一致。
       checkAvailability(args)
       const startedAt = Date.now()
       const emitStarted = (taskId?: string) => {

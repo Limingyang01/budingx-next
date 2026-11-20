@@ -66,8 +66,16 @@ export const MODES_EN: Record<PermissionMode, string> = {
 }
 
 /** Cycle used by Shift+Tab (SP003 design §3.8). */
+/**
+ * Shift+Tab 的模式轮播：仅可查看 → 工作区内修改 → 完全权限 → 仅可查看。
+ * 0.5.4：此前全自动会跳回工作区内修改，导致无法再回到仅可查看。
+ */
 export function nextMode(mode: PermissionMode): PermissionMode {
-  return mode === 'workspace_edit' ? 'full_access' : 'workspace_edit'
+  return mode === 'read_only'
+    ? 'workspace_edit'
+    : mode === 'workspace_edit'
+      ? 'full_access'
+      : 'read_only'
 }
 
 function memoryKey(request: PermissionRequest): string {

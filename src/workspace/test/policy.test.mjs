@@ -154,9 +154,10 @@ test('模式切换事件与轮播顺序', () => {
   env.policy.setMode('workspace_edit')
   env.policy.setMode('workspace_edit')
   assert.deepEqual(seen, ['workspace_edit'])
+  // 0.5.4：三档完整轮播，全自动之后回到仅可查看（此前会跳过仅可查看）。
   assert.equal(nextMode('read_only'), 'workspace_edit')
   assert.equal(nextMode('workspace_edit'), 'full_access')
-  assert.equal(nextMode('full_access'), 'workspace_edit')
+  assert.equal(nextMode('full_access'), 'read_only')
   rmSync(env.base, { recursive: true, force: true })
 })
 

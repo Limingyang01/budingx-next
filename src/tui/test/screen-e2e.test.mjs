@@ -275,7 +275,7 @@ test('full screen pins the prompt and mode hint through height and width resize'
     const inputRow = lines.findIndex((line) => line.startsWith('>'))
     assert.ok(inputRow >= rows - 5 && inputRow < rows, 'prompt should be near the bottom')
     assert.ok(frameWidths(frame, stringWidth).every((wd) => wd <= columns))
-    assert.match(frame, /Shift\+Tab 切换模式/)
+    assert.match(frame, /Shift\+Tab 切换/)
   }
   assertPinned(ui.last(), 24, 60)
   assert.ok(ui.raw().includes('\x1b[?1049h'), 'enter alternate screen')
@@ -386,7 +386,7 @@ test('assistant Markdown and user prompts have distinct transcript styles', asyn
   await ui.resize(32, 24)
   assert.ok(frameWidths(ui.last(), stringWidth).every((w) => w <= 32))
   assert.match(ui.last(), /› 你是谁/)
-  assert.match(ui.last(), /写入锁定 · Shift\+Tab/)
+  assert.match(ui.last(), /仅可查看 · Shift\+Tab/)
   assert.doesNotMatch(ui.last(), /就绪/)
   assert.match(ui.raw(), /\x1b\[[^m]*48;2;[^m]+m[^\r\n]*你是谁/)
   assert.match(ui.raw(), /\x1b\[2m(?:\x1b\[[0-9;]+m)*已完成/)
