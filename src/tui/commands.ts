@@ -24,98 +24,9 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 
-export type CommandOutcome = {
-  handled: boolean
-  exit?: boolean
-  message?: string
-  error?: string
-  openModels?: boolean
-  openEffort?: boolean
-  openRules?: boolean
-  openResume?: boolean
-  openRewind?: boolean
-  openContext?: boolean
-  skillPrompt?: { name: string; body: string }
-  /** Interactive hosts open the diff dialog on this instead of printing. */
-  openDiffDialog?: boolean
-}
+import type { CommandContext, CommandOutcome } from './commands/types.js'
 
-export type CommandContext = {
-  session: Session
-  configStore: ConfigStore
-  credentialStore: CredentialStore
-  getConfig: () => ResolvedConfig
-  setConfig: (config: ResolvedConfig) => void
-  exit: () => void
-  probe?: typeof probe
-  discoverModels?: typeof discoverModels
-  interactive?: boolean
-  lang?: 'zh' | 'en'
-  /** SP003: present once the workspace runtime is wired. */
-  permission?: {
-    policy: BudingPermissionPolicy
-    setMode?: (mode: PermissionMode) => boolean
-    store: PermissionsStore
-    workspace: Workspace
-    checkpointChanges: () => ChangeRecord[]
-    undo: (path?: string) => UndoOutcome
-    denials: () => DenialRecord[]
-    modes: { order: PermissionMode[]; zh: Record<string, string>; en: Record<string, string> }
-  }
-  /** SP005: present once the session persistence runtime is wired. */
-  sessions?: {
-    /** List known sessions with id, title, updated time and turn count. */
-    list: () => { sessionId: string; title: string; updatedAt: string; turns: number }[]
-    /** Restore a session by id; unknown ids must fail explicitly. */
-    resume: (sessionId: string) => {
-      ok: boolean
-      message?: string
-      messages?: unknown[]
-      needsReview?: { name: string; callId: string; detail?: string }[]
-      warnings?: string[]
-    }
-  }
-  /**
-   * 0.5.2：上下文用量。usedTokens 优先取 provider 真实 usage，
-   * 缺失时用本地估算；window 未知时只报已用 token。
-   */
-  contextUsage?: {
-    usage: () => {
-      usedTokens?: number
-      maxTokens?: number
-      reservedOutputTokens?: number
-      triggerTokens?: number
-      percentUsed?: number
-      source: 'provider' | 'none'
-    }
-  }
-  /** SP005: context budget composition for /context. */
-  context?: {
-    budget: () => {
-      estimatedTokens: number
-      maxTokens: number
-      reservedOutputTokens: number
-      triggerTokens: number
-      messages: number
-      breakdown: { kind: string; tokens: number }[]
-    }
-  }
-  /**
-   * 0.5.2：推理强度（/effort）。参考实现的底部状态栏会常驻显示它。
-   */
-  effort?: {
-    current: () => ReasoningEffort
-    set: (next: ReasoningEffort) => void
-    choices: readonly ReasoningEffort[]
-    /** True when the provider ignores the setting. */
-    supported?: boolean
-  }
-  /** SP005: project and session memory for /memory. */
-  memory?: {
-    read: (scope: 'project' | 'session') => { entries: { title: string; text: string }[]; message?: string }
-    write: (scope: 'project' | 'session', title: string, text: string) => { ok: boolean; message?: string }
-  }
-}
+export type { CommandContext, CommandOutcome } from './commands/types.js'
 
 const MODE_ALIASES: Record<string, PermissionMode> = {
   read: 'read_only',
@@ -187,6 +98,16 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
   /exit                 leave budingx`
 }
 
+let registryPromise:
+  | Promise<import('./commands/registry.js').CommandRegistry>
+  | undefined
+
+function defaultRegistry(): Promise<import('./commands/registry.js').CommandRegistry> {
+  // 懒加载注册表：内置命令模块反向引用本文件的既有实现，动态导入避免初始化环。
+  registryPromise ??= import('./commands/index.js').then((module) => module.getDefaultRegistry())
+  return registryPromise
+}
+
 export async function runCommand(
   input: string,
   context: CommandContext
@@ -208,151 +129,26 @@ async function executeCommand(
   input: string,
   context: CommandContext
 ): Promise<CommandOutcome> {
-  const lang = context.lang ?? 'en'
-  const pick = (zh: string, en: string) => (lang === 'zh' ? zh : en)
   const text = input.trim()
   if (!text.startsWith('/')) return { handled: false }
-  // The command name ends at the first whitespace; everything after it is the
-  // argument, with the original spacing kept so bodies stay readable.
+  const registry = await defaultRegistry()
+  const resolved = registry.resolve(text)
+  if (resolved) {
+    const result = await resolved.definition.run(resolved.args, context)
+    if (result.outcome) return result.outcome
+    return result.value ? { handled: true, message: result.value } : { handled: true }
+  }
+  const lang = context.lang ?? 'en'
+  const pick = (zh: string, en: string) => (lang === 'zh' ? zh : en)
+  // 0.5.4：已加载技能可作为 /<skill> 命令展开为提示（prompt 型，对齐参考）。
   const body = text.slice(1)
   const separator = body.search(/\s/)
-  const command = (separator < 0 ? body : body.slice(0, separator)).toLowerCase()
-  const argument = separator < 0 ? '' : body.slice(separator + 1).trim()
-
-  switch (command) {
-    case 'help':
-      return { handled: true, message: commandHelp(lang, context.interactive) + skillHelpSection(context, pick) }
-    case 'exit':
-    case 'quit':
-      context.exit()
-      return { handled: true, exit: true }
-    case 'clear':
-    case 'new':
-    case 'reset': {
-      context.session.clearHistory()
-      return { handled: true, message: pick('会话已清空（项目规则保留）', 'Conversation cleared (project rules kept)') }
-    }
-    case 'config': {
-      const config = context.getConfig()
-      const key = config.apiKey
-      return {
-        handled: true,
-        message: [
-          pick(`端点：${config.baseUrl}`, `Endpoint: ${config.baseUrl}`),
-          pick(`模型：${config.model || '（未配置）'}`, `Model: ${config.model || '(not configured)'}`),
-          pick(`密钥：${maskKey(key)}`, `API key: ${maskKey(key)}`),
-          pick(`来源：${config.source}`, `Source: ${config.source}`),
-          pick(`超时：${config.timeoutMs} ms`, `Timeout: ${config.timeoutMs} ms`)
-        ].join('\n')
-      }
-    }
-    case 'models': {
-      if (argument) return { handled: true, error: pick('用法：/models', 'Usage: /models') }
-      if (context.interactive) return { handled: true, openModels: true }
-      const stored = context.configStore.load()
-      if (stored.models.length === 0) {
-        return {
-          handled: true,
-          message: pick('尚未存储模型档案', 'No model profiles stored yet')
-        }
-      }
-      const lines = stored.models.map(
-        (profile) =>
-          `${profile.id === stored.defaultModelId ? '*' : ' '} ${profile.label} — ${profile.model} (${profile.baseUrl})`
-      )
-      return { handled: true, message: lines.join('\n') }
-    }
-    case 'model': {
-      if (!argument) {
-        const config = context.getConfig()
-        return {
-          handled: true,
-          message: pick(
-            `模型：${config.model || '（未配置）'}`,
-            `Model: ${config.model || '(not configured)'}`
-          )
-        }
-      }
-      const stored = context.configStore.load()
-      const profile = stored.models.find(
-        (entry) => entry.id === argument || entry.label === argument
-      )
-      if (!profile) {
-        return {
-          handled: true,
-          error: pick(`未知模型档案：${argument}`, `Unknown model profile: ${argument}`)
-        }
-      }
-      selectProfile(context, profile)
-      return {
-        handled: true,
-        message: pick(
-          `已切换到 ${profile.label}；会话保留，自下一回合生效`,
-          `Model switched to ${profile.label}; the conversation is kept and the switch applies from the next turn`
-        )
-      }
-    }
-    case 'permission':
-      // 0.5.4：与 /permissions 统一为规则面板（参考仓只有一个 permissions）；
-      // 带参数仍保留模式切换以兼容脚本。
-      if (!argument && context.interactive && context.permission) return { handled: true, openRules: true }
-      return permissionCommand(argument, context, pick)
-    case 'rules':
-      // 0.5.4：交互模式下无参数打开规则管理面板（参照 /models）。
-      if (!argument && context.interactive && context.permission) {
-        return { handled: true, openRules: true }
-      }
-      return rulesCommand(argument, context, pick)
-    case 'diff':
-      return diffCommand(argument, context, pick)
-    case 'undo':
-      // /undo 保留文件撤销语义；对话+文件回滚面板用 /rewind（Esc+Esc）。
-      return undoCommand(argument, context, pick)
-    case 'rewind':
-      if (!argument && context.interactive) return { handled: true, openRewind: true }
-      return undoCommand(argument, context, pick)
-    case 'denials':
-      return denialsCommand(context, pick)
-    case 'sessions':
-      return sessionsCommand(context, pick)
-    case 'resume':
-      if (!argument && context.interactive) return { handled: true, openResume: true }
-      return resumeCommand(argument, context, pick)
-    case 'continue': {
-      const latest = context.sessions?.list()[0]
-      if (!latest) return { handled: true, error: pick('当前工作区没有可恢复的会话', 'No resumable session in this workspace') }
-      return resumeCommand(latest.sessionId, context, pick)
-    }
-    case 'context':
-      if (context.interactive) return { handled: true, openContext: true }
-      return contextCommand(context, pick)
-    case 'compact': {
-      const result = context.session.compactNow(argument || undefined)
-      if (!result.ok) return { handled: true, error: pick(`压缩失败：${result.message}`, `Compact failed: ${result.message}`) }
-      return { handled: true, message: pick(`已压缩：${formatTokens(result.before)} → ${formatTokens(result.after)} token`, `Compacted: ${formatTokens(result.before)} → ${formatTokens(result.after)} tokens`) }
-    }
-    case 'cost':
-    case 'usage':
-      return costCommand(context, pick)
-    case 'plan':
-      return planCommand(argument, context, pick)
-    case 'permissions':
-    case 'allowed-tools':
-      if (context.interactive && context.permission) return { handled: true, openRules: true }
-      return rulesCommand(argument, context, pick)
-    case 'memory':
-      return memoryCommand(argument, context, pick)
-    case 'effort':
-      return effortCommand(argument, context, pick)
-    default: {
-      // 0.5.4：已加载技能可作为 /<skill> 命令展开为提示（prompt 型，对齐参考）。
-      const body = loadSkillBody(command)
-      if (body !== undefined) return { handled: true, skillPrompt: { name: command, body } }
-      return {
-        handled: true,
-        error: pick('未知命令；使用 /help', 'Unknown command; use /help')
-      }
-    }
+  const name = (separator < 0 ? body : body.slice(0, separator)).toLowerCase()
+  const skillBody = loadSkillBody(name)
+  if (skillBody !== undefined) return { handled: true, skillPrompt: { name, body: skillBody } }
+  return {
+    handled: true,
+    error: pick('未知命令；使用 /help', 'Unknown command; use /help')
   }
 }
 
@@ -362,7 +158,7 @@ export function effortDisplayLabel(effort: ReasoningEffort, zh: boolean): string
   return zh ? EFFORT_ZH[effort] : effort
 }
 
-function effortCommand(
+export function effortCommand(
   argument: string,
   context: CommandContext,
   pick: (zh: string, en: string) => string
@@ -418,7 +214,7 @@ export function formatTokens(count: number): string {
 }
 
 /** SP005: list known sessions on disk. */
-function sessionsCommand(
+export function sessionsCommand(
   context: CommandContext,
   pick: (zh: string, en: string) => string
 ): CommandOutcome {
@@ -444,7 +240,7 @@ function sessionsCommand(
 }
 
 /** SP005: restore a session by id. Unknown ids fail explicitly. */
-function resumeCommand(
+export function resumeCommand(
   argument: string,
   context: CommandContext,
   pick: (zh: string, en: string) => string
@@ -500,7 +296,7 @@ function resumeCommand(
 }
 
 /** SP005: context budget composition (the grid view itself belongs to SP006). */
-function contextCommand(
+export function contextCommand(
   context: CommandContext,
   pick: (zh: string, en: string) => string
 ): CommandOutcome {
@@ -555,7 +351,7 @@ function contextCommand(
 }
 
 /** SP005: project and session memory. */
-function memoryCommand(
+export function memoryCommand(
   argument: string,
   context: CommandContext,
   pick: (zh: string, en: string) => string
@@ -645,7 +441,7 @@ function nextRuleId(rules: PermissionRule[]): string {
   return `r-${max + 1}`
 }
 
-function permissionCommand(
+export function permissionCommand(
   argument: string,
   context: CommandContext,
   pick: (zh: string, en: string) => string
@@ -709,7 +505,7 @@ export function changePermissionMode(
   return true
 }
 
-function rulesCommand(
+export function rulesCommand(
   argument: string,
   context: CommandContext,
   pick: (zh: string, en: string) => string
@@ -779,7 +575,7 @@ function rulesCommand(
   }
 }
 
-function diffCommand(
+export function diffCommand(
   argument: string,
   context: CommandContext,
   pick: (zh: string, en: string) => string
@@ -816,7 +612,7 @@ function diffCommand(
   }
 }
 
-function undoCommand(
+export function undoCommand(
   argument: string,
   context: CommandContext,
   pick: (zh: string, en: string) => string
@@ -840,7 +636,7 @@ function undoCommand(
   }
 }
 
-function denialsCommand(
+export function denialsCommand(
   context: CommandContext,
   pick: (zh: string, en: string) => string
 ): CommandOutcome {
@@ -860,7 +656,7 @@ function denialsCommand(
 }
 
 /** 0.5.4 /cost：累计 token 与预估费用（价格可配置，未配置只报 token/时长）。 */
-function costCommand(context: CommandContext, pick: (zh: string, en: string) => string): CommandOutcome {
+export function costCommand(context: CommandContext, pick: (zh: string, en: string) => string): CommandOutcome {
   const totals = context.session.usageTotals
   const minutes = Math.floor(totals.elapsedMs / 60000)
   const seconds = Math.floor((totals.elapsedMs % 60000) / 1000)
@@ -881,7 +677,7 @@ function costCommand(context: CommandContext, pick: (zh: string, en: string) => 
 }
 
 /** 0.5.4 /plan：进入/退出规划模式（只读，审批后才执行）。 */
-function planCommand(argument: string, context: CommandContext, pick: (zh: string, en: string) => string): CommandOutcome {
+export function planCommand(argument: string, context: CommandContext, pick: (zh: string, en: string) => string): CommandOutcome {
   const session = context.session
   if (argument === 'open') {
     return { handled: true, message: session.planMode.active ? pick('当前处于规划模式', 'Plan mode active') : pick('当前不在规划模式', 'Not in plan mode') }
@@ -901,7 +697,7 @@ function planCommand(argument: string, context: CommandContext, pick: (zh: strin
 }
 
 /** 0.5.4 /help：附加已加载的自定义技能命令（.budingx/skills）。 */
-function skillHelpSection(context: CommandContext, pick: (zh: string, en: string) => string): string {
+export function skillHelpSection(context: CommandContext, pick: (zh: string, en: string) => string): string {
   const skills = discoverSkillCommands()
   if (skills.length === 0) return ''
   const lines = skills.map((skill) => `  /${skill.name}  ${skill.description}`)

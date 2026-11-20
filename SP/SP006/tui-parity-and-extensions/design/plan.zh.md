@@ -215,7 +215,7 @@
   2. 最小实现：`/new extra args` → `{command:'new',args:'extra args'}`；别名解析；未知名 → undefined；重名注册抛错；三型 kind 保留。
   3. 目标成功：5 组断言。
 - **检查**：—
-- **状态记录**：（未开始）
+- **状态记录**：DONE 2026-11-20；`src/tui/commands/{types,registry,index,util}.ts`；7 例 PASS（含别名/重名/hidden/三型 kind）
 
 #### T-B2 既有命令迁移
 
@@ -232,7 +232,7 @@
   2. 最小实现：逐条包装；技能命令降级保留。
   3. 目标成功：22 条全部可解析且 sp0054 用例全绿。
 - **检查**：既有 sp0054 系列回归
-- **状态记录**：（未开始）
+- **状态记录**：DONE 2026-11-20；`builtin-session/config/permission/view.ts` 54 例回归 PASS；`runCommand` 懒加载注册表，`CommandResult.outcome` 桥接宿主副作用
 
 #### T-B3 新增命令
 

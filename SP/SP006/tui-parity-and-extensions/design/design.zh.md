@@ -453,6 +453,8 @@ export type CommandKind = 'local' | 'local-jsx' | 'prompt'
 export interface CommandResult {
   kind: 'text'
   value: string
+  /** 宿主副作用（面板/退出/技能提示），既有 CommandOutcome 的桥接，见 D-11 */
+  outcome?: CommandOutcome
 }
 
 export interface CommandDefinition {
@@ -848,6 +850,7 @@ npm test                 # 全量门禁
 | D-08 | 状态栏配置并入 `~/.budingx/config.json`（参考仓用 `settings.json`） | 复用既有 ConfigStore 原子写与版本迁移；避免第三种文件格式 | 无功能差异 |
 | D-09 | **单一终端模式**（参考仓有 classic scrollback + fullscreen 双模式） | 路线图 r9：「渲染模式先单一普通滚动 + 冻结缓存，fullscreen/虚拟列表/鼠标/备用屏列受控扩展预算，超预算拆轮」 | 本仓现有 `alternateScreen` 行为保持不变，不新增模式 |
 | D-10 | 粘贴截断（>10000 字截断为首尾各 500 + 占位）、图片粘贴、外部编辑器、stash、kill-ring、`ctrl+r` 历史搜索 **不在本轮实现** | 属 P1 输入编辑完整性批次，超出 SP006 出口门槛 | 记 OPEN，归属后续轮次 |
+| D-11 | `CommandResult` 在文本结果外增加可选 `outcome`（`CommandOutcome` 桥接） | 既有 22 条命令的面板/退出副作用必须原样保留（CMD-12 行为不变），纯文本结果无法表达 | 契约是设计 §6.1 的超集；新增命令可只返回文本 |
 
 ### 15.2 风险
 
