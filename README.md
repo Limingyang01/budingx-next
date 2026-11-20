@@ -1,8 +1,6 @@
 # budingx-next
 
-独立开发 Coding Agent 的仓库。**当前 npm `latest` 为 0.5.2（SP005 长会话与数据可靠性 + 复审修复 + 长会话渲染优化）**。产品全貌见 [产品说明书](PRODUCT.md)，使用说明见 [TUI README](src/tui/README.md)。
-
-源码候选为 [0.5.3](release-notes/v0.5.3.md)，包含 TUI 工具修复和可选的联网搜索。
+独立开发 Coding Agent 的仓库。**当前 npm `latest` 为 0.5.3**，包含工作区会话隔离、TUI 工具修复和联网搜索。产品全貌见 [产品说明书](PRODUCT.md)，使用说明见 [TUI README](src/tui/README.md)。
 
 默认主分支为 `master`；新项目统一使用 Node.js + TypeScript，不引入 Bun。
 
@@ -26,4 +24,4 @@
 
 推荐 TUI 发布方式现为 [GitHub Actions + npm Trusted Publishing](docs/github-actions-npm.md)：在 Actions 手动 Run workflow，无需 NPM_TOKEN secret。首次建包及账号授信仍需维护者在个人可信设备上验证，未配置前不宣称可发布。
 
-npm 已发布 [0.5.2](https://www.npmjs.com/package/budingx/v/0.5.2)，可用 `npm install -g budingx@latest` 安装或升级。详见 [0.5.2 发行说明与发布回执](release-notes/v0.5.2.md)；更早版本见 [0.5.1](release-notes/v0.5.1.md) 与 [0.5.0](release-notes/v0.5.0.md) 发行说明。
+npm 已发布 [0.5.3](https://www.npmjs.com/package/budingx/v/0.5.3)，可用 `npm install -g budingx@latest` 安装或升级。详见 [0.5.3 发行说明与发布回执](release-notes/v0.5.3.md)及 [0.5.2 发行说明](release-notes/v0.5.2.md)。

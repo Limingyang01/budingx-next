@@ -17,7 +17,7 @@
 
 规范依据：[npm SemVer 说明](https://docs.npmjs.com/about-semantic-versioning/)。
 
-准备工具入口为 `npm run version:prepare -- kind --iteration SPnnn`，替换为已确定的类型/迭代；SP005 的 0.5.0 与 0.5.1（同轮复审修复）均已发布，npm `latest` 指向 0.5.1，[0.5.1 发布回执](../release-notes/v0.5.1.md)与 [0.5.0 发布回执](../release-notes/v0.5.0.md)均已核对。同轮修复使用 patch（0.5.2 为 SP005 同轮长会话优化，已发布并核对 npm `latest`），新 SP 首次交付使用 minor。要求当前版本有 published 回执且无未处理 prepared 版本；保留台账未知字段。命令不修改根维护包版本或执行 Git 写操作。
+准备工具入口为 `npm run version:prepare -- kind --iteration SPnnn`，按已确定的类型与迭代替换参数。SP005 的同轮修复使用 patch，当前 npm `latest` 指向 [0.5.3](../release-notes/v0.5.3.md)。新 SP 首次交付使用 minor。准备前需要当前版本已有 published 回执且无未处理 prepared 版本。命令保留台账未知字段，根维护包版本沿用现有值。
 
 ## Actions 发布回执
 

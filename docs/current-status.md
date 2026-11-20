@@ -1,8 +1,8 @@
 # 当前状态
 
-源码候选 **0.5.3** 修复跨工作区会话恢复、追问提交、工作区及计划模式工具行为，加入中文思考强度选择和内置 `WebSearch`。联网搜索默认走 Bing，配置密钥后走 Tavily。详见 [0.5.3 发行说明](../release-notes/v0.5.3.md)。
+截至 2026-11-20，**npm `latest` 为 0.5.3**。此版修复跨工作区会话恢复、追问提交和计划模式工具，加入中文思考强度选择和内置 `WebSearch`。联网搜索默认走 Bing，配置密钥后走 Tavily。
 
-日期：2026-11-20。**npm `latest` 为 0.5.2（SP005 长会话与数据可靠性 + 复审修复 + 长会话渲染优化）**。[运行 #22](https://github.com/Limingyang01/budingx-next/actions/runs/44666668683) 基于源码 `1e7f33c`，Ubuntu、Windows 与 OIDC 发布均通过；官方制品 SHA-512 与 npm integrity、provenance 一致，独立安装与流式冒烟通过。见 [0.5.2 发行说明](../release-notes/v0.5.2.md)和[发布台账](../release-ledger.json)。[运行 #21](https://github.com/Limingyang01/budingx-next/actions/runs/44658158215) 基于源码 `9903776`，Ubuntu、Windows 和 OIDC 发布任务均通过。官方源独立安装、签名与 provenance 核验及本地 HTTP 流式冒烟均通过。见 [0.5.1 发行说明](../release-notes/v0.5.1.md)和[发布台账](../release-ledger.json)。SP005 的验证与未验证项见 [SP005 验收报告](../SP/SP005/test-report.md)。可选本机 Langfuse 观测默认关闭。
+[运行 #23](https://github.com/Limingyang01/budingx-next/actions/runs/44682798887) 以源码 `16f5e0c` 完成 Ubuntu、Windows 验证及 OIDC 发布。官方制品 SHA-512、来源证明、签名与独立安装均已核对。见 [0.5.3 发行说明](../release-notes/v0.5.3.md)、[发布台账](../release-ledger.json)及 [SP005 验收报告](../SP/SP005/test-report.md)。可选本机 Langfuse 观测默认关闭。
 
 ## 已有
 
@@ -20,13 +20,13 @@
 
 ## 未实现
 
-**SP004 已发布**。普通命令仍需要已验证的执行隔离后端，默认在启动前被拒绝。完成证据闸门和 worktree 工具面尚未接入生产 runtime。仍全部未实现的有：Computer Use、团队、浏览器和调度；Desktop、VS Code、远程/H5 和 IM 已移出当前 SP。SP005 的转录持久化与恢复已完成实施、代码层验收与门禁 GREEN，并已合入 master（`293a337`）与推送；真实模型端到端两场景经本地 Langfuse 4.78.0 回查 PASS（tool-success / tool-error + 熔断停机）。0.5.0 已发布，0.5.1 复审修复也已发布并为当前 `latest`；真实模型的长会话压缩场景仍为 UNVERIFIED。
+**SP004 已发布**。普通命令仍需要已验证的执行隔离后端，默认在启动前被拒绝。完成证据闸门和 worktree 工具面尚未接入生产 runtime。仍全部未实现的有：Computer Use、团队、浏览器和调度；Desktop、VS Code、远程/H5 和 IM 已移出当前 SP。SP005 的转录持久化与恢复已完成实施、代码层验收与门禁 GREEN，并已合入 master（`293a337`）与推送；真实模型端到端两场景经本地 Langfuse 4.78.0 回查 PASS（tool-success / tool-error + 熔断停机）。0.5.0 起的 SP005 变更均已发布至 0.5.3；真实模型的长会话压缩场景仍为 UNVERIFIED。
 
 首发使用 Node.js >=22.18、TypeScript 和 Node test runner，当前真实命令见 package.json 与 [开发指南](development.md)。禁止引入 Bun；不能把旧项目版本 0.5.0、旧测试成绩或 Git 发布状态当作本仓事实。
 
 用户 2026-11-16 确认参考实现定位：本仓设计与主要核心逻辑必须严格参考本地 `budingWorkerSpace` 参考项目（文档不写死绝对路径，位置以用户环境为准），重点参考其 TUI 命令设计、Agent 主循环与核心工具；设计文档、计划文档和真实开发全程对照该参考，不允许脱离参考开发，允许优化但核心逻辑不得背离、使用体验不得下降；按「读机制、不抄代码」独立编写实现并对齐效果。该参考仓无 LICENSE 声明，本仓制品保持自有 MIT 独立可发布、不嵌入参考代码；细则见 [独立实现与复用边界](independent-development.md)。
 
-用户已授权简易 TUI 验证后发布 npm，并确认 MIT；0.1.0、0.1.1 是历史已发布版本；0.2.0、0.3.0、0.3.1、0.3.2、0.3.4、0.3.5、0.3.6 和 0.4.0 为历史已发布版本，0.5.0 为历史已发布版本，0.5.1（SP005 复审修复）为当前 `latest`。发布状态及 integrity 见[发布台账](../release-ledger.json)。没有读取旧用户配置或凭据。用户数据统一通过当前用户 home 解析为 ~/.budingx，禁止使用 ~/.claude。
+用户已授权简易 TUI 验证后发布 npm，并确认 MIT；0.1.0、0.1.1 是历史已发布版本；0.2.0、0.3.0、0.3.1、0.3.2、0.3.4、0.3.5、0.3.6 和 0.4.0 为历史已发布版本，SP005 的 0.5.0–0.5.3 均已发布。发布状态及 integrity 见[发布台账](../release-ledger.json)。没有读取旧用户配置或凭据。用户数据统一通过当前用户 home 解析为 ~/.budingx，禁止使用 ~/.claude。
 
 ## SP002 交付现状（等待验收）
 
@@ -70,7 +70,7 @@
 
 源/目标固定：`feature/SP005/fix-0.5.2`（HEAD `dabbafa`）→ `master`（原 `8ca8930`），`--no-ff` 合并提交 `7d21432`。前置门禁 `npm run merge:gate` GREEN（`artifacts/merge-gate/feature-SP005-fix-0.5.2-2026-11-20T03-06-12-062Z.md`：`npm test`、`spec:check`、`skills:check`、`pack-smoke` 退出码均为 0）。全量单测 706 项 / 705 通过 / 0 失败 / 1 跳过（跳过项仅 POSIX 生效）。推送：`origin/master` `8ca8930..7d21432`；首次推送因 GitHub 连接中断失败，重试后成功，`git ls-remote` 与本地一致。
 
-0.5.2 已通过 OIDC 发布（`src/tui/package.json` = 0.5.2，台账为 published，npm `latest` 已指向 0.5.2）；发布回执见 [0.5.2 发行说明](../release-notes/v0.5.2.md)。
+0.5.2 已通过 OIDC 发布，发布时 npm `latest` 指向 0.5.2。发布回执见 [0.5.2 发行说明](../release-notes/v0.5.2.md)。
 
 ## SP005 长会话渲染优化（0.5.2，2026-11-20）
 

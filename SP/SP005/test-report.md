@@ -191,4 +191,8 @@ AC 区间：CB-01…07（7）、SR-01…11（11）、FR-01…09（9）、PM-01�
 
 - **UNVERIFIED**。取得实际 Tavily 密钥并获准发起查询后验证 live 搜索。原生终端交互在实际 Windows Terminal 和目标平台复测。
 - **UNVERIFIED**。普通 Bash 和 PowerShell 仍需生产执行隔离后端及目标平台的真实隔离验证。图片内容、PDF 页、Notebook 图像和完整 ripgrep 方言仍有差距。
-- **UNVERIFIED**。0.5.3 未上传 npm，GitHub Actions 仍待维护者触发并核对发布回执。
+## 14. 0.5.3 正式发布回执（2026-11-20）
+
+- **PASS**。[GitHub Actions #23](https://github.com/Limingyang01/budingx-next/actions/runs/44682798887) 以 `16f5e0c9b9c2cff9a427863bda0071427419df66` 为源码，Windows、Ubuntu 和 OIDC 发布任务均成功。npm 官方源确认 `latest=0.5.3`，发布身份为 GitHub Trusted Publisher。
+- **PASS**。公开 tarball 的 SHA-512 与 registry integrity 和 provenance subject 一致。独立安装后的 npm 命令入口返回 0.5.3，本地 HTTP 流式冒烟通过 1 次请求。签名审计验证 53 个包的 registry 签名和 7 个包的 attestations。
+- **回执访问**。GitHub 原始 artifact 下载返回 HTTP 401。台账按公开运行、已验证的 npm provenance 与独立安装结果登记。见 [发行说明](../../release-notes/v0.5.3.md)和 [发布台账](../../release-ledger.json)。

@@ -1,7 +1,6 @@
 # budingx 产品说明书
 
-> **npm 已发布版本**：0.5.2（`latest`）
-> **源码候选版本**：0.5.3（TUI 工具修复与联网搜索）。详见 [0.5.3 发行说明](release-notes/v0.5.3.md)。
+> **npm 已发布版本**：0.5.3（`latest`）。详见 [0.5.3 发行说明](release-notes/v0.5.3.md)。
 > **说明书版本**：v1.19
 > **更新日期**：2026-11-20
 > **产品形态**：独立 MIT 许可的终端 Coding Agent（Node.js ≥ 22.18 + TypeScript，不依赖 Bun）
@@ -38,14 +37,14 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | SP003       | 0.3.2 | model-manager | 供应商配置一次、多模型共用；MiniMax 中国站与百炼 Token Plan 模板；全屏会话与终端标签状态 | 已发布 |
 | SP003       | 0.3.1 | model-manager | 模型档案面板、供应商模板、自动拉取模型 ID、连接验证 | 已发布 |
 | SP003       | 0.3.0         | workspace-tools、change-preview、permission-controls、file-context         | 工作区文件工具（读取/写入/精确编辑/文件匹配/内容检索，含越界防护与读后编辑门）、结构化 diff 预览与本会话改动撤销、三档权限模式与审批三档、权限规则与拒绝记录、`@` 引用与统一补全 | **已发布** |
-| SP005       | 0.5.0 / 0.5.1 / 0.5.2 | context-budget、session-recovery、failure-recovery、project-memory        | 会话转录原子落盘与损坏隔离、跨进程恢复（只装载历史、不重放副作用）、上下文预算与确定性压缩（保留约束/计划/工具状态）、项目与会话记忆隔离、工具空转熔断与稳定失败错误码、`/sessions` `/resume` `/context` `/memory` 四个命令 | 功能随 0.5.0 发布，0.5.1 为同轮复审修复、0.5.2 为同轮长会话优化，均已发布；42 条 AC 见 [SP005 验收报告](SP/SP005/test-report.md) |
+| SP005       | 0.5.0–0.5.3 | context-budget、session-recovery、failure-recovery、project-memory        | 会话转录原子落盘与损坏隔离、跨进程恢复（只装载历史、不重放副作用）、上下文预算与确定性压缩（保留约束/计划/工具状态）、项目与会话记忆隔离、工具空转熔断与稳定失败错误码、`/sessions` `/resume` `/context` `/memory` 四个命令 | 功能随 0.5.0 发布，0.5.1 为同轮复审修复、0.5.2 为同轮长会话优化、0.5.3 为工作区会话与工具修复，均已发布；42 条 AC 见 [SP005 验收报告](SP/SP005/test-report.md) |
 
 ### 2.2 后续交付规划（[路线图 r8](docs/iteration-plan.md)）
 
 | 迭代  | 目标                    | 主要功能目录                                                                                               | 状态 |
 | ----- | ----------------------- | ---------------------------------------------------------------------------------------------------------- | ---- |
 | SP004（0.4.0） | 计划、待办、命令与追问；普通命令要求已验证的执行隔离，提交限专用 worktree | 命令执行、后台任务、受控 Git 提交、计划模式与追问、四类会话卡片 | 已发布 |
-| SP005（0.5.0 / 0.5.1） | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         | 已合入 master；代码层验收全绿、真实模型端到端两场景 PASS；0.5.0 已发布；0.5.1 复审修复已发布并为当前 `latest` |
+| SP005（0.5.0–0.5.3） | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         | 已合入 master。真实模型端到端两场景 PASS，0.5.3 已发布为 npm `latest` |
 | SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 规划中 |
 | SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | 规划中 |
 | SP008 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | 规划中（契约轮，轻量测试客户端验证） |
@@ -305,10 +304,10 @@ budingx --prompt "Hello" --timeout 120000
 | 0.3.5 | 2026-11-18 | 会话排版与状态栏修复，见 [发行说明](release-notes/v0.3.5.md) | 已发布 |
 | 0.3.6 | 2026-11-18 | SP002／SP003 终端交互修复，见 [发行说明](release-notes/v0.3.6.md) | 已发布 |
 | 0.4.0 | 2026-11-19 | SP004 真实编码任务：命令执行与后台任务、受控 Git 提交、计划与待办、四类会话卡片；追加可选本机 Langfuse 观测（默认关闭），见 [发行说明](release-notes/v0.4.0.md) | 已发布 |
-| 0.5.0 | 2026-11-20 | SP005 长会话与数据可靠性：会话转录落盘与跨进程恢复（不盲重放副作用）、上下文预算压缩（保留约束/计划/工具状态）、项目与会话记忆、原子写入与损坏隔离、稳定失败错误码与工具空转熔断、`/sessions` `/resume` `/context` `/memory` 四个命令；见 [发行说明](release-notes/v0.5.0.md) | 已发布，`latest` |
-| 0.5.3 | 2026-11-20 | TUI 追问、工作区工具、计划审批和命令反馈修复，新增 Tavily 联网搜索。见 [发行说明](release-notes/v0.5.3.md) | 候选 |
-| 0.5.2 | 2026-11-20 | 长会话渲染优化（流式增量不再每帧全文重排、虚拟列表渐进挂载与高度缓存、状态栏常驻）、上下文用量与推理强度显示、`/effort` 命令、交互式 TUI 默认开启会话持久化；见 [发行说明](release-notes/v0.5.2.md) | 已发布，`latest` |
-| 0.5.1 | 2026-11-20 | SP005 复审修复：写入锁排他互斥与释放归属、记忆正文往返与真实损坏备份、凭据误判收敛、压缩保留项裁剪与压缩转录重放、预算阈值统一、工具熔断按回合重置、恢复权限不升权、`/memory` 用法提示；见 [发行说明](release-notes/v0.5.1.md) | 已发布，`latest` |
+| 0.5.0 | 2026-11-20 | SP005 长会话与数据可靠性：会话转录落盘与跨进程恢复（不盲重放副作用）、上下文预算压缩（保留约束/计划/工具状态）、项目与会话记忆、原子写入与损坏隔离、稳定失败错误码与工具空转熔断、`/sessions` `/resume` `/context` `/memory` 四个命令；见 [发行说明](release-notes/v0.5.0.md) | 已发布 |
+| 0.5.3 | 2026-11-20 | 工作区会话隔离、追问与内置工具修复、中文思考强度选择、Bing 和 Tavily 联网搜索。见 [发行说明](release-notes/v0.5.3.md) | 已发布，`latest` |
+| 0.5.2 | 2026-11-20 | 长会话渲染优化（流式增量不再每帧全文重排、虚拟列表渐进挂载与高度缓存、状态栏常驻）、上下文用量与推理强度显示、`/effort` 命令、交互式 TUI 默认开启会话持久化；见 [发行说明](release-notes/v0.5.2.md) | 已发布 |
+| 0.5.1 | 2026-11-20 | SP005 复审修复：写入锁排他互斥与释放归属、记忆正文往返与真实损坏备份、凭据误判收敛、压缩保留项裁剪与压缩转录重放、预算阈值统一、工具熔断按回合重置、恢复权限不升权、`/memory` 用法提示；见 [发行说明](release-notes/v0.5.1.md) | 已发布 |
 | —（规划调整，无产品行为变化） | 2026-11-17 | 路线图 r6：TUI 单端优先；SP008/SP009/SP016–SP018 暂缓、多端架构入口保留；TUI 三权限模式固定；能力清单分母 53→47；说明书 v1.3 | 规划文档调整 |
 | —（规划调整） | 2026-11-18 | 路线图 r7：移出五个原暂缓 SP，保留通用宿主契约，必交能力仍为 47 | 规划文档调整 |
 | —（规划调整） | 2026-11-18 | 路线图 r8：现行 SP001–SP016 连续编号，能力与产品版本不变 | 规划文档调整 |
