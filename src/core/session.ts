@@ -251,6 +251,11 @@ export class Session {
    * context window is in use (0.5.2 context usage display).
    */
   private lastUsage?: Usage
+  // 0.5.4 /cost：会话累计用量（跨回合），清空会话时重置。
+  private totalUsage = { inputTokens: 0, outputTokens: 0, requests: 0 }
+  // 0.5.4 /rewind：回合顺序日志，用于把文件撤销对齐到对话检查点。
+  private turnLog: { turnId: string }[] = []
+  private readonly startedAt = Date.now()
   /**
    * SP005 FR-05：同一工具 + 同一参数的连续失败计数。
    * 达到上限后熔断，避免模型在同一个失败调用上空转。
@@ -286,6 +291,65 @@ export class Session {
    */
   restoreHistory(messages: readonly Message[]): void {
     this.messages.splice(0, this.messages.length, ...messages)
+  }
+
+  /** 0.5.4 /rewind：对话检查点（用户消息）列表，供选择面板使用。 */
+  get rewindCheckpoints(): { id: string; text: string; index: number }[] {
+    const out: { id: string; text: string; index: number }[] = []
+    this.messages.forEach((message, index) => {
+      if (message.role !== 'user') return
+      const text = message.blocks.map((block) => (block as { text?: string }).text ?? '').join(' ').trim()
+      if (text) out.push({ id: message.id, text, index })
+    })
+    return out
+  }
+
+  /**
+   * 0.5.4 /rewind：把对话回滚到指定用户消息之前（不含该消息），
+   * 返回需撤销文件的回合数。只回滚转录与内存历史，不回滚外部副作用（D4）。
+   */
+  rewindTo(messageId: string): { ok: boolean; removedTurns: number; removedMessages: number } {
+    const index = this.messages.findIndex((message) => message.id === messageId)
+    if (index < 0) return { ok: false, removedTurns: 0, removedMessages: 0 }
+    const kept = this.messages.slice(0, index)
+    const removedMessages = this.messages.length - kept.length
+    this.messages.splice(0, this.messages.length, ...kept)
+    const entries = kept
+      .filter((message) => message.role === 'user' || message.role === 'assistant')
+      .map((message) => ({
+        kind: message.role as 'user' | 'assistant',
+        text: message.blocks.map((block) => (block as { text?: string }).text ?? '').join('')
+      }))
+      .filter((entry) => entry.text.trim().length > 0)
+    this.emit({ type: 'conversation_rewound', entries, removedCount: removedMessages })
+    const userIndex = kept.filter((message) => message.role === 'user').length
+    const removedTurns = Math.max(0, this.turnLog.length - userIndex)
+    this.turnLog.splice(userIndex)
+    return { ok: true, removedTurns, removedMessages }
+  }
+
+  /**
+   * 0.5.4 /compact：手动压缩（忽略触发阈值），可附自定义摘要指令。
+   * 复用 SP005 确定性压缩核心，指令作为保留约束写入，压缩后仍保留。
+   */
+  compactNow(instruction?: string): { ok: boolean; before: number; after: number; message?: string } {
+    const budget = this.budget
+    if (!budget) return { ok: false, before: 0, after: 0, message: '上下文预算未接入' }
+    const shape = normalizeBudget(
+      this.options.contextBudget?.maxTokens ?? 0,
+      this.options.contextBudget?.reservedOutputTokens
+    )
+    const before = budget.estimate({ messages: this.messages, ...shape })
+    const preserved = this.preservedItems()
+    if (instruction && instruction.trim()) {
+      preserved.push({ kind: 'constraint', id: 'compact-instruction', text: instruction.trim(), reason: '用户自定义压缩指令' })
+    }
+    const result = budget.compact({ messages: this.messages, ...shape, force: true }, preserved)
+    if (!result.compacted) {
+      return { ok: false, before, after: before, message: result.overflowReason ?? '没有可压缩的历史' }
+    }
+    this.applyCompaction(`manual-${Date.now()}`, result, before)
+    return { ok: true, before, after: result.estimatedTokens }
   }
 
   /**
@@ -338,6 +402,11 @@ export class Session {
   /** Provider-reported usage of the last request, when it sent one. */
   get usage(): Usage | undefined {
     return this.lastUsage
+  }
+
+  /** 0.5.4 /cost：累计 token 与会话时长。 */
+  get usageTotals(): { inputTokens: number; outputTokens: number; requests: number; elapsedMs: number } {
+    return { ...this.totalUsage, elapsedMs: Date.now() - this.startedAt }
   }
 
   get history(): readonly Message[] {
@@ -768,6 +837,7 @@ export class Session {
   /** Clear the conversation. Only allowed at a turn boundary. */
   clearHistory(): void {
     this.lastUsage = undefined
+    this.totalUsage = { inputTokens: 0, outputTokens: 0, requests: 0 }
     if (this.state !== 'idle') return
     this.messages.length = 0
     this.emit({ type: 'conversation_cleared' })
@@ -916,6 +986,7 @@ export class Session {
       messageIds: []
     }
     this.activeTurn = turn
+    this.turnLog.push({ turnId: turn.id })
     turn.traceRoot = this.traceBegin('agent.run', {
       'session.id': this.id,
       'turn.id': turn.id,
@@ -1053,7 +1124,7 @@ export class Session {
         text: `context is still over the budget after compaction (${result.overflowReason ?? 'unknown'})`
       })
     }
-    this.applyCompaction(turn, result, estimate)
+    this.applyCompaction(turn.id, result, estimate)
     return { messages: result.messages, compacted: true }
   }
 
@@ -1061,11 +1132,11 @@ export class Session {
    * 把一次压缩同时写回会话内存与转录（SP005 review H5）。
    * 只写内存会让跨进程恢复退回压缩前的历史，等于把压缩静默撤销。
    */
-  private applyCompaction(turn: ActiveTurn, result: CompactionResult, estimatedBefore: number): void {
+  private applyCompaction(turnId: string, result: CompactionResult, estimatedBefore: number): void {
     this.messages.splice(0, this.messages.length, ...result.messages)
     this.emit({
       type: 'context_compacted',
-      turnId: turn.id,
+      turnId,
       replacedRange: result.replacedRange ?? { from: 0, to: 0 },
       replacedCount: result.replacedCount,
       preserved: result.preserved,
@@ -1076,7 +1147,7 @@ export class Session {
     this.writeTranscript({
       type: 'compaction',
       ts: new Date().toISOString(),
-      turnId: turn.id,
+      turnId,
       droppedIds: result.artifacts?.droppedIds ?? [],
       order: result.artifacts?.order ?? result.messages.map((message) => message.id),
       synthetic: result.artifacts?.synthetic ?? []
@@ -1109,7 +1180,7 @@ export class Session {
       })
       return false
     }
-    this.applyCompaction(turn, result, estimatedBefore)
+    this.applyCompaction(turn.id, result, estimatedBefore)
     return true
   }
 
@@ -1231,7 +1302,12 @@ export class Session {
               finishReason = event.finishReason
               usage = event.usage
               modelUsage = event.usage
-              if (event.usage) this.lastUsage = event.usage
+              if (event.usage) {
+                this.lastUsage = event.usage
+                this.totalUsage.inputTokens += event.usage.inputTokens ?? 0
+                this.totalUsage.outputTokens += event.usage.outputTokens ?? 0
+                this.totalUsage.requests += 1
+              }
               break
             case 'retry':
               this.emit({

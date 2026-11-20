@@ -37,6 +37,7 @@
 ## 3. 迭代归属与依赖
 
 - SP005（已收口）提供 /rewind、/compact、/cost、/resume 的地基：转录检查点、确定性压缩、真实用量上报、会话 cwd 隔离。
+- **0.5.4 提前交付（既有命令改造）**：/new /reset /continue /rewind(Esc+Esc) /plan(Shift+Tab) /context 网格 /compact [指令] /cost(/usage) /permissions(/allowed-tools) /help 技能清单 已随 0.5.4 落地（对照参考行为、独立实现）；SP006 仍负责 /init /btw /worktree /tasks /mcp /skills /export 与注册表三型收口。
 - SP006 出口门槛补充：命令注册表三型 + 模态槽；上表除 /agents 外的缺口全部在本轮落地；/init、/skills、/mcp、/help 技能清单随 project-instructions 与 skills-and-mcp。
 - SP007：/agents 的定义加载、权限/预算/取消传播与真实子代理链路。
 - SP011：worktree 团队隔离复用 /worktree 命令面与 SP004 安全边界。
