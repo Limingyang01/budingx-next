@@ -288,9 +288,9 @@ test('PC-11 restores explicit interactive permission choices and preserves store
       modes: { zh: {}, en: {}, order: ['read_only', 'workspace_edit', 'full_access'] }
     }
   }
+  // 0.5.4：/permission 无参数交互统一打开规则面板（对齐参考仓单一 permissions）。
   const listed = await runCommand('/permission', commandContext)
-  assert.match(listed.message, /Allow edits[\s\S]*Full auto/)
-  assert.doesNotMatch(listed.message, /read_only|read-only/i)
+  assert.equal(listed.openRules, true)
   assert.match((await runCommand('/permission read', commandContext)).error, /edit\|full/)
   assert.equal((await runCommand('/permission edit', commandContext)).error, undefined)
   assert.equal(first.policy.getMode(), 'workspace_edit')

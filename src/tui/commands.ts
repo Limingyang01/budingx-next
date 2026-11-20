@@ -139,7 +139,7 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
     ? `命令：
   /help                 显示本帮助
   /models               打开模型管理（管道模式列出档案）
-  /permission           查看权限模式；/permission ${modes} 切换
+  /permissions          权限白名单/规则面板（Shift+Tab 切换模式）
   /rules                管理权限规则（交互模式打开面板；管道模式列出）
   /rules add <allow|deny> <tool|*> [path-glob]  新增规则
   /rules rm <id>        删除规则
@@ -163,7 +163,7 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
     : `Commands:
   /help                 show this help
   /models               open model management (list profiles in pipes)
-  /permission           show the permission mode; /permission ${modes} to switch
+  /permissions          permission whitelist/rules panel (Shift+Tab cycles mode)
   /rules                manage permission rules (opens a panel interactively; lists in pipes)
   /rules add <allow|deny> <tool|*> [path-glob]  add a rule
   /rules rm <id>        remove a rule
@@ -292,6 +292,9 @@ async function executeCommand(
       }
     }
     case 'permission':
+      // 0.5.4：与 /permissions 统一为规则面板（参考仓只有一个 permissions）；
+      // 带参数仍保留模式切换以兼容脚本。
+      if (!argument && context.interactive && context.permission) return { handled: true, openRules: true }
       return permissionCommand(argument, context, pick)
     case 'rules':
       // 0.5.4：交互模式下无参数打开规则管理面板（参照 /models）。

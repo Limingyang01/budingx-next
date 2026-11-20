@@ -43,6 +43,7 @@ import {
   activeToken,
   applyCompletion,
   commandCandidates,
+  commandDescription,
   fileCandidates,
   longestCommonPrefix
 } from './render/completion.js'
@@ -78,7 +79,6 @@ type DiffDialog = {
 const COMMAND_NAMES = [
   'help',
   'models',
-  'permission',
   'permissions',
   'rules',
   'diff',
@@ -1354,18 +1354,28 @@ export function App({
       lines: commandCardLines(frame.command, width, { expanded: commandExpanded, zh })
     })
   }
+  const menuRows = 9
+  const menuTotal = completion?.candidates.length ?? 0
+  const menuStart = completion
+    ? Math.max(0, Math.min(completionIndexSafe - Math.floor(menuRows / 2), menuTotal - menuRows))
+    : 0
+  const menuVisible = completion ? completion.candidates.slice(menuStart, menuStart + menuRows) : []
   const completionMenu = completion && (
     <Box flexDirection="column">
-      {completion.candidates.map((candidate, index) => (
-        <Text key={candidate.value} inverse={index === completionIndexSafe}>
-          {(completion.token.kind === 'command' ? '/' : '@') + candidate.value}
-          {candidate.directory
-            ? pick('  [目录]', '  [dir]')
-            : candidate.kind === 'command'
-              ? pick('  [命令]', '  [cmd]')
-              : ''}
-        </Text>
-      ))}
+      {menuVisible.map((candidate, i) => {
+        const index = menuStart + i
+        const desc = candidate.kind === 'command' ? commandDescription(candidate.value, zh ? 'zh' : 'en') : ''
+        return (
+          <Text key={candidate.value} inverse={index === completionIndexSafe}>
+            {(completion.token.kind === 'command' ? '/' : '@') + candidate.value}
+            {candidate.directory
+              ? pick('  [目录]', '  [dir]')
+              : desc
+                ? '  ' + desc
+                : ''}
+          </Text>
+        )
+      })}
       <Text dimColor>
         {completion.token.kind === 'command'
           ? pick('↑↓ 选择 · Enter 执行 · Tab 插入 · Esc 关闭', 'up/down · Enter run · tab insert · esc dismiss')
