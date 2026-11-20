@@ -1300,7 +1300,7 @@ export function App({
               columns: width,
               strategy,
               compact: fullScreen
-            }).slice(0, fullScreen && rows < 18 ? 1 : undefined).map((line, i) => (
+            }).slice(0, fullScreen ? (rows < 8 ? 1 : rows < 18 ? 3 : undefined) : undefined).map((line, i) => (
               <Text key={i} wrap={fullScreen ? 'truncate-end' : 'wrap'}>
                 {line.map((span, j) => (
                   <Text

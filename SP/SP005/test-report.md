@@ -242,3 +242,4 @@ AC 区间：CB-01…07（7）、SR-01…11（11）、FR-01…09（9）、PM-01�
 | 上下文只显示 token 数 | 改为「饼图字形 + 百分比」，只用 Provider 真实 inputTokens，不使用估算；窗口缺省 200k | sp0052-status.test.mjs、sp0052-long-session.test.mjs |
 | /config /model 出现在命令面 | 从 /help 与 / 补全移除，开关分支移除，模型切换统一 /models | commands.test.mjs、commands-zh.test.mjs、app.test.mjs、cli.test.mjs |
 | /rules 只是纯文本命令 | 参照 /models 增加交互管理面板（↑↓/a/d/Esc），管道模式保留列表 | sp0054-rules-manager.test.mjs |
+| 短终端首屏只剩 logo 一行 | rows<18 时保留 3 行头部（版本/模型/目录），rows<8 才降为 1 行 | sp0054-short-header.test.mjs |
