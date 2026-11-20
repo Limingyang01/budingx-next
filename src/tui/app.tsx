@@ -988,6 +988,19 @@ export function App({
         )
         return
       }
+      // 0.5.4：选中命令后回车直接执行。先把补全写满整条命令，再走正常提交路径
+      // （保留 /diff 等提交期拦截），而不是仅插入文本等待二次回车。
+      if (key.return && completion.token.kind === 'command') {
+        const chosen = completion.candidates[completionIndexSafe]
+        if (chosen) {
+          const lineText = editor.lines[editor.cursor.line] ?? ''
+          editor.lines[editor.cursor.line] = applyCompletion(lineText, completion.token, chosen, false)
+          editor.cursor.col = Array.from(editor.lines[editor.cursor.line]).length
+          setInput(editor.text)
+          bumpEditor()
+          // 不 return：继续走 applyKey→submit，立即执行该命令。
+        }
+      }
       if (key.tab && !key.shift) {
         // SP003 T18e: Tab first extends to the longest common prefix,
         // like the reference typeahead; only exhausted picks apply fully.
@@ -1354,7 +1367,9 @@ export function App({
         </Text>
       ))}
       <Text dimColor>
-        {pick('↑↓ 选择 · Tab 插入 · Esc 关闭', 'up/down select · tab insert · esc dismiss')}
+        {completion.token.kind === 'command'
+          ? pick('↑↓ 选择 · Enter 执行 · Tab 插入 · Esc 关闭', 'up/down · Enter run · tab insert · esc dismiss')
+          : pick('↑↓ 选择 · Tab 插入 · Esc 关闭', 'up/down select · tab insert · esc dismiss')}
       </Text>
     </Box>
   )
