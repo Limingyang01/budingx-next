@@ -258,3 +258,104 @@ test('SP006：TUI 用真实 /resume 命令与真实会话存储恢复出历史',
   assert.match(frame, /旧会话的回答/, '恢复出的助手消息必须出现在消息区')
   assert.equal(current.session.id, 'sess-existing', '恢复后当前会话身份切换到被恢复会话')
 })
+
+test('SP006 波次 F：旧转录里的碎片文本块在恢复时合并为一条记录', () => {
+  const legacy = [
+    { id: 'u1', role: 'user', blocks: [{ type: 'text', text: '调整一下' }] },
+    {
+      id: 'a1',
+      role: 'assistant',
+      blocks: [
+        { type: 'text', text: '我调整' },
+        { type: 'text', text: '颗粒度' },
+        { type: 'thinking', text: '内部思考不显示' },
+        { type: 'text', text: '（比如深挖某一板块）' },
+        { type: 'tool_use', id: 'call-1', name: 'Read', input: { path: 'a.txt' } }
+      ]
+    },
+    {
+      id: 't1',
+      role: 'tool',
+      blocks: [{ type: 'tool_result', callId: 'call-1', content: '文件内容', isError: false }]
+    }
+  ]
+  const entries = restoredTranscriptEntries(legacy)
+  assert.deepEqual(
+    entries.map((entry) => [entry.kind, entry.text]),
+    [
+      ['user', '调整一下'],
+      ['assistant', '我调整颗粒度（比如深挖某一板块）'],
+      ['tool', 'Read(a.txt)']
+    ],
+    '同一条消息里的连续文本块必须合并，思考块不打断合并也不进入转录'
+  )
+  assert.equal(entries[2].status, 'success')
+})
+
+test('SP006 波次 F：多增量流式回答落盘为单块，恢复后整段显示', async (t) => {
+  const home = mkdtempSync(join(tmpdir(), 'budingx-resume-frag-'))
+  t.after(() => rmSync(home, { recursive: true, force: true }))
+  const sentence = '恢复后的整段回答应当完整显示'
+  const server = createServer(async (req, res) => {
+    const chunks = []
+    for await (const chunk of req) chunks.push(chunk)
+    res.writeHead(200, { 'content-type': 'text/event-stream' })
+    // 逐段推送，复现真实 Provider 的流式增量。
+    for (const piece of ['恢复后的', '整段回答', '应当完整显示']) {
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: piece }, finish_reason: null }] })}\n\n`)
+    }
+    res.end('data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n')
+  })
+  server.listen(0, '127.0.0.1')
+  t.after(() => {
+    server.closeAllConnections()
+    server.close()
+  })
+  await once(server, 'listening')
+  const baseUrl = `http://127.0.0.1:${server.address().port}/v1`
+  const workspace = join(home, 'repo')
+  mkdirSync(workspace, { recursive: true })
+  const configStore = new ConfigStore(join(home, 'config.json'))
+  const open = (sessionId) => {
+    const runtime = createAgentRuntime({
+      cwd: workspace,
+      home,
+      sessionId,
+      persistence: true,
+      configStore,
+      getConfig: () => ({ baseUrl, model: 'fixture', apiKey: '', timeoutMs: 3000, source: 'env' }),
+      approval: { request: async () => ({ outcome: 'deny', via: 'policy' }) }
+    })
+    t.after(() => runtime.session.dispose())
+    return runtime
+  }
+  const send = (runtime, prompt) =>
+    new Promise((resolve) => {
+      const off = runtime.session.on((event) => {
+        if (event.type === 'turn_finalized') {
+          off()
+          resolve(event.outcome)
+        }
+      })
+      runtime.session.submit(prompt)
+    })
+
+  const writer = open('sess-frag')
+  assert.equal(await send(writer, '旧问题'), 'completed')
+  const assistant = writer.session.history.filter((message) => message.role === 'assistant').at(-1)
+  const textBlocks = assistant.blocks.filter((block) => block.type === 'text')
+  assert.equal(textBlocks.length, 1, '一条助手消息只应保留一个文本块')
+  assert.equal(textBlocks[0].text, sentence)
+
+  const current = open('sess-current')
+  const ui = await mountTty(t, {
+    config: { model: 'fixture' },
+    sessionFactory: () => current.session,
+    commandOverrides: { sessions: current.sessions }
+  })
+  await ui.send('/resume sess-frag')
+  await ui.send('\r')
+  const frame = await ui.waitFor((candidate) => candidate.includes(sentence), 5000)
+  assert.ok(frame.includes(sentence), '恢复后的整段回答必须在同一行内连续显示')
+  assert.equal(current.session.history.length, 2)
+})

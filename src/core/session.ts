@@ -13,6 +13,7 @@ import {
 import type {
   ErrorInfo,
   Message,
+  MessageBlock,
   SessionEvent,
   SessionState,
   TurnOutcome,
@@ -167,6 +168,35 @@ const ALLOWED_TRANSITIONS: Record<SessionState, SessionState[]> = {
   tool_running: ['requesting', 'awaiting_approval', 'cancelling', 'idle'],
   awaiting_approval: ['tool_running', 'requesting', 'cancelling', 'idle'],
   cancelling: ['idle']
+}
+
+/**
+ * SP006 波次 F：把流式增量并进同一个内容块。
+ *
+ * 一条助手消息只保留一个 text 块（thinking 同理）。协议按片段推送增量，
+ * 若每个增量各建一个块，落盘转录会碎成上百段短块：恢复会话时每段各自
+ * 成行、塌成一列窄字，模型上下文也要拼接上百次。参考实现一条助手消息
+ * 只有一个文本块，本仓对齐该数据模型。
+ */
+function appendStreamBlock(
+  blocks: MessageBlock[],
+  kind: 'text' | 'thinking',
+  text: string
+): void {
+  const last = blocks.at(-1)
+  if (kind === 'text') {
+    if (last && last.type === 'text') {
+      last.text += text
+      return
+    }
+    blocks.push({ type: 'text', text })
+    return
+  }
+  if (last && last.type === 'thinking') {
+    last.text += text
+    return
+  }
+  blocks.push({ type: 'thinking', text })
 }
 
 function previewOf(text: string): string {
@@ -1407,7 +1437,7 @@ export class Session {
           if (turn.finalized) break
           switch (event.type) {
             case 'text_delta':
-              assistant.blocks.push({ type: 'text', text: event.text })
+              appendStreamBlock(assistant.blocks, 'text', event.text)
               this.emit({
                 type: 'text_delta',
                 turnId: turn.id,
@@ -1417,7 +1447,7 @@ export class Session {
               this.setState('streaming')
               break
             case 'thinking_delta':
-              assistant.blocks.push({ type: 'thinking', text: event.text })
+              appendStreamBlock(assistant.blocks, 'thinking', event.text)
               this.emit({
                 type: 'thinking_delta',
                 turnId: turn.id,

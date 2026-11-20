@@ -261,6 +261,8 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
       version,
       cwd: process.cwd(),
       fullScreen,
+      // SP006 波次 G：输入框下一句建议复用同一 provider；未启用时不注入。
+      ...(runtime.suggestions ? { suggestNextPrompt: runtime.suggestions.generate } : {}),
       onExit: () => {
         instance.unmount()
       }

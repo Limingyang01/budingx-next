@@ -44,6 +44,7 @@ export async function mountTty(t, options = {}) {
     rows = 40,
     fullScreen = false,
     strategy = 'pixel',
+    suggestNextPrompt,
     onExit = () => {}
   } = options
   // Pin the terminal strategy: the test runner has no modern-terminal env,
@@ -121,6 +122,7 @@ export async function mountTty(t, options = {}) {
       version: '0.1.1',
       cwd: 'D:\\fixture\\repo',
       fullScreen,
+      ...(suggestNextPrompt ? { suggestNextPrompt } : {}),
       commandContext: {
         ...stores,
         getConfig: () => config,

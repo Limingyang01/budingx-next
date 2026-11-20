@@ -101,6 +101,7 @@ const REFERENCE_ALLOWLIST = [
   { ours: 'src/tui/render/tool-summary.ts', theirs: ['src/components/messages/AssistantToolUseMessage.tsx', 'src/components/messages/GroupedToolUseContent.tsx', 'src/utils/collapseReadSearch.ts'] },
   { ours: 'src/tui/skills.ts', theirs: ['src/utils/skills', 'src/tools/DiscoverSkillsTool'] },
   { ours: 'src/tui/statusline-command.ts', theirs: ['src/components/StatusLine.tsx'] },
+  { ours: 'src/tui/suggestion.ts', theirs: ['src/services/PromptSuggestion', 'src/hooks/usePromptSuggestion.ts'] },
   { ours: 'src/tui/tasks.ts', theirs: ['src/tasks', 'src/tools/TaskListTool'] },
   { ours: 'src/tui/use-statusline.ts', theirs: ['src/components/StatusLine.tsx'] },
   { ours: 'src/tui/worktree.ts', theirs: ['src/tools/EnterWorktreeTool', 'src/tools/ExitWorktreeTool'] }

@@ -14,6 +14,7 @@ import { createPlanModeHost } from '../plan/host.js'
 import { createPlanModeTools, routePlanDraftTools } from '../plan/tools.js'
 import { createOpenAiProvider } from '../provider/openai.js'
 import { loadProjectInstructionsSync } from './project-instructions.js'
+import { generatePromptSuggestion } from './suggestion.js'
 import { ConfigStore } from '../storage/config-store.js'
 import { dataRoot, permissionsPath } from '../storage/paths.js'
 import { PermissionsStore, readPermissionMode, savePermissionMode } from '../storage/permissions.js'
@@ -132,6 +133,13 @@ export type AgentRuntime = {
     current: () => ReasoningEffort
     set: (next: ReasoningEffort) => void
     choices: readonly ReasoningEffort[]
+  }
+  /**
+   * SP006 波次 G：输入框「下一句」建议，依据当前对话由模型生成。
+   * 关闭 BUDINGX_PROMPT_SUGGESTIONS=0 时不提供该端口（不产生额外请求）。
+   */
+  suggestions?: {
+    generate: (signal: AbortSignal) => Promise<string | undefined>
   }
   /** SP005：项目与会话记忆。 */
   memory?: {
@@ -546,6 +554,22 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
   }
 
+  // SP006 波次 G：输入框下一句建议。只在用户空闲时按需生成，失败静默。
+  const suggestionsSurface = process.env.BUDINGX_PROMPT_SUGGESTIONS === '0'
+    ? undefined
+    : {
+        generate: async (signal: AbortSignal): Promise<string | undefined> => {
+          if (session.isBusy) return undefined
+          const config = options.getConfig()
+          return generatePromptSuggestion({
+            provider: provider(),
+            model: config.model,
+            history: session.history,
+            signal
+          })
+        }
+      }
+
   return {
     session, workspace, policy, setPermissionMode, permissionStore, checkpoint, denials, warnings,
     toolNames: tools.map((tool) => tool.name),
@@ -580,6 +604,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     ...(sessionsSurface ? { sessions: sessionsSurface } : {}),
     ...(contextSurface ? { context: contextSurface } : {}),
     ...(memorySurface ? { memory: memorySurface } : {}),
+    ...(suggestionsSurface ? { suggestions: suggestionsSurface } : {}),
     ...(options.mcp ? { mcp: { statuses: options.mcp.statuses } } : {})
   }
 }

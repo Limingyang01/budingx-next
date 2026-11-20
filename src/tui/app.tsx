@@ -72,6 +72,11 @@ export type AppProps = {
   version: string
   cwd?: string
   fullScreen?: boolean
+  /**
+   * SP006 波次 G：输入框「下一句」建议的生成端口。
+   * 交互式宿主注入真实模型调用；未注入时输入框不显示建议。
+   */
+  suggestNextPrompt?: (signal: AbortSignal) => Promise<string | undefined>
   onExit: () => void
 }
 
@@ -122,6 +127,7 @@ export function App({
   version,
   cwd,
   fullScreen = false,
+  suggestNextPrompt,
   onExit
 }: AppProps) {
   const { exit } = useApp()
@@ -147,6 +153,9 @@ export function App({
     (mode) => initialFrame(mode ?? 'read_only')
   )
   const [input, setInput] = useState('')
+  // SP006 波次 G：输入框「下一句」建议。文本由模型生成，这里只保存结果与取消句柄。
+  const [suggestionText, setSuggestionText] = useState('')
+  const suggestionAbort = useRef<AbortController | undefined>(undefined)
   const [previewTools, setPreviewTools] = useState<readonly string[]>([])
   useEffect(() => session.onToolPreview(setPreviewTools), [session])
   const [topic, setTopic] = useState<string>()
@@ -397,9 +406,9 @@ export function App({
   const effortLabel = effort === undefined
     ? undefined
     : `${pick('⊙', '*')} ${effortDisplayLabel(effort.current(), zh)} · /effort`
-  const suggestion = !working && !input && frame.suggestFollowUp
-    ? followUp(frame.lastQuestion ?? '', frame.lastAnswer ?? '', zh)
-    : ''
+  // SP006 波次 G：建议文本由模型按当前对话生成，不再用固定话术；
+  // 生成未完成、被清空或用户已开始输入时不显示。
+  const suggestion = !working && !input && frame.suggestFollowUp ? suggestionText : ''
   const inputBox = useRef<DOMElement>(null)
   const { setCursorPosition } = useCursor()
   const [cursorPosition, setPosition] = useState<{ x: number; y: number } | undefined>(
@@ -434,6 +443,7 @@ export function App({
       clearTimeout(typingTimer.current)
       clearTimeout(deltaTimer.current)
       managerDone.current?.()
+      suggestionAbort.current?.abort()
       gateway.cancelAll()
     },
     [gateway]
@@ -620,11 +630,36 @@ export function App({
     setCompletionIndex(0)
   }, [completion?.token.token, completion?.token.kind])
   const approvalPageSize = Math.max(1, Math.min(10, rows - 13))
+  /**
+   * SP006 波次 G：回合完成后异步生成「用户下一句可能输入什么」的建议。
+   * 生成失败、超时、被新回合打断都静默丢弃，绝不阻塞主流程，也不影响模型上下文。
+   */
+  const requestSuggestion = useCallback(() => {
+    suggestionAbort.current?.abort()
+    suggestionAbort.current = undefined
+    setSuggestionText('')
+    if (!suggestNextPrompt) return
+    const controller = new AbortController()
+    suggestionAbort.current = controller
+    void suggestNextPrompt(controller.signal)
+      .then((text) => {
+        if (controller.signal.aborted || !mounted.current) return
+        if (session.isBusy || !editor.isEmpty) return
+        setSuggestionText(text ?? '')
+      })
+      .catch(() => {})
+  }, [suggestNextPrompt, session, editor])
+  const clearSuggestion = useCallback(() => {
+    suggestionAbort.current?.abort()
+    suggestionAbort.current = undefined
+    setSuggestionText('')
+  }, [])
   const submitPrompt = (text: string) => {
     if (!context.getConfig().model.trim()) {
       setHint(pick('请先配置并选择模型', 'Configure and select a model first'))
       return
     }
+    clearSuggestion()
     const permission = commandContext.permission
     setTopic((previous) => previous ?? sessionTopic(text, context.getConfig().apiKey))
     session.submit(text, permission
@@ -668,12 +703,15 @@ export function App({
         if (event.type === 'conversation_cleared') {
           setTopic(undefined)
           setScrollTop(undefined)
+          clearSuggestion()
         }
         if (event.type === 'conversation_restored') {
           // SP006：恢复出的历史重建了转录，滚动位置与话题都要回到新内容。
           setTopic(undefined)
           setScrollTop(undefined)
+          clearSuggestion()
         }
+        if (event.type === 'turn_started') clearSuggestion()
         if (event.type === 'turn_finalized' || event.type === 'change_set') {
           // Files may have appeared or disappeared; refresh completion.
           fileCache.current = null
@@ -687,9 +725,11 @@ export function App({
             editor.setText(event.restoreText)
             setInput(editor.text)
           }
+          if (event.outcome === 'completed') requestSuggestion()
+          else clearSuggestion()
         }
       }),
-    [session, gateway, editor, deliverEvent]
+    [session, gateway, editor, deliverEvent, requestSuggestion, clearSuggestion]
   )
   usePaste((text) => {
     if (managerDone.current) {
@@ -1760,12 +1800,3 @@ export function App({
   )
 }
 
-function followUp(question: string, answer: string, zh: boolean): string {
-  if (/你好|你是谁|who are you|^hello/i.test(question)) {
-    return zh ? '介绍这个项目的主要功能' : 'Describe the main features of this project'
-  }
-  if (/修复|错误|报错|error|fix|bug/i.test(question + answer)) {
-    return zh ? '如何验证这个修复？' : 'How can I verify this fix?'
-  }
-  return zh ? '结合项目给我一个具体示例' : 'Show me a concrete example from this project'
-}
