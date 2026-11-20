@@ -41,6 +41,16 @@ export function mcpPath(home?: string): string {
   return join(dataRoot(home), 'mcp.json')
 }
 
+/** 会话导出目录（SP006 CMD-11）。 */
+export function exportsDir(home?: string): string {
+  return join(dataRoot(home), 'exports')
+}
+
+/** 后台任务日志目录（SP006 CMD-08）。 */
+export function tasksDir(home?: string): string {
+  return join(dataRoot(home), 'tasks')
+}
+
 export function backupPath(file: string): string {
   return `${file}.bak`
 }

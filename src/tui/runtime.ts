@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
+import { homedir } from 'node:os'
 import { createAskUserQuestionTool } from '../core/questions.js'
 import { createWebSearchTool } from '../provider/web-search.js'
+import { createWebFetchTool } from '../provider/web-fetch.js'
 import { Session, type SubmitOptions } from '../core/session.js'
 import type { ApprovalGateway, ToolHandler } from '../core/tools.js'
 import type { DenialRecord } from '../core/events.js'
@@ -11,6 +13,7 @@ import { createExecTools } from '../exec/tools.js'
 import { createPlanModeHost } from '../plan/host.js'
 import { createPlanModeTools, routePlanDraftTools } from '../plan/tools.js'
 import { createOpenAiProvider } from '../provider/openai.js'
+import { loadProjectInstructionsSync } from './project-instructions.js'
 import { ConfigStore } from '../storage/config-store.js'
 import { dataRoot, permissionsPath } from '../storage/paths.js'
 import { PermissionsStore, readPermissionMode, savePermissionMode } from '../storage/permissions.js'
@@ -26,6 +29,8 @@ import {
   type MemoryScope
 } from '../storage/project-memory.js'
 import { estimateTokens, normalizeBudget, triggerTokens } from '../core/context-budget.js'
+import type { McpServerStatus } from './mcp/types.js'
+import type { SessionHooks } from '../core/hooks.js'
 import type { ReasoningEffort } from '../core/provider.js'
 import type { ResolvedConfig } from '../storage/profiles.js'
 import {
@@ -83,6 +88,10 @@ export type AgentRuntime = {
   shutdownTracing?: () => Promise<void>
   /** SP006 §11：无头 system init 事件声明的工具名（注册顺序）。 */
   toolNames: string[]
+  /** SP006 CMD-08：后台任务快照（来自 exec runner 的后台任务表）。 */
+  tasks?: { list: () => import('./tasks.js').TaskRecord[] }
+  /** SP006 §8.2：MCP 服务器连接状态（/mcp 与诊断用）。 */
+  mcp?: { statuses: McpServerStatus[] }
   /** SP005：会话列表与恢复能力；未开启持久化时为 undefined。 */
   sessions?: {
     list: () => { sessionId: string; title: string; updatedAt: string; turns: number }[]
@@ -208,6 +217,10 @@ export type AgentRuntimeOptions = {
   persistence?: boolean
   /** 0.5.2: initial reasoning effort; /effort changes it at runtime. */
   reasoningEffort?: ReasoningEffort
+  /** SP006 §8.2：已连接的 MCP 服务器提供的工具与状态。 */
+  mcp?: { tools: ToolHandler[]; statuses: McpServerStatus[] }
+  /** SP006 §9：hooks 运行器；未提供时不触发任何 hook。 */
+  hooks?: SessionHooks
 }
 
 /**
@@ -280,7 +293,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   const tools: ToolHandler[] = [
     ...workspaceTools,
     ...execTools,
-    createWebSearchTool(process.env.BUDINGX_TAVILY_API_KEY)
+    createWebSearchTool(process.env.BUDINGX_TAVILY_API_KEY),
+    createWebFetchTool(
+      process.env.BUDINGX_WEB_FETCH_ALLOW_PRIVATE === '1' ? { allowPrivateHosts: true } : {}
+    ),
+    ...(options.mcp?.tools ?? [])
   ]
   const denials: DenialRecord[] = []
   // SP005 §5：会话转录与索引。持久化是可选的，未开启时行为与 SP004 一致。
@@ -312,14 +329,27 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       )
     }
   }
+  // SP006 §7：每个请求前重读项目指令，文件改动下一回合生效；读取失败只告警不中断。
+  const instructionHome = options.home ?? homedir()
+  let instructionWarningsSeen = 0
   const session = new Session({
     id: sessionId,
     resolveReasoningEffort: () => reasoningEffort,
+    resolveSystemContext: () => {
+      const instructions = loadProjectInstructionsSync({
+        workspaceDir: workspace.root,
+        homeDir: instructionHome
+      })
+      for (const line of instructions.warnings.slice(instructionWarningsSeen)) warnings.push(line)
+      instructionWarningsSeen = instructions.warnings.length
+      return instructions.content || undefined
+    },
     provider: provider(),
     resolveProvider: provider,
     approval: options.approval,
     tools,
     planMode,
+    ...(options.hooks ? { hooks: options.hooks } : {}),
     disposers: [() => runner.dispose?.()],
     permissionPolicy: policy,
     ...(tracing.tracer ? { tracer: tracing.tracer } : {}),
@@ -495,6 +525,25 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   return {
     session, workspace, policy, setPermissionMode, permissionStore, checkpoint, denials, warnings,
     toolNames: tools.map((tool) => tool.name),
+    tasks: {
+      list: () =>
+        runner.list().map((result) => ({
+          id: result.taskId ?? 'task',
+          title: result.command ?? result.taskId ?? 'task',
+          status:
+            result.outcome === 'completed'
+              ? 'completed'
+              : result.outcome === 'running'
+                ? 'running'
+                : result.outcome === 'cancelled'
+                  ? 'cancelled'
+                  : 'failed',
+          ...(result.exitCode === undefined ? {} : { exitCode: result.exitCode }),
+          ...(result.persistedOutputPath ? { outputPath: result.persistedOutputPath } : {}),
+          startedAt: result.startedAt ?? Date.now(),
+          ...(result.outcome === 'running' ? {} : { endedAt: (result.startedAt ?? Date.now()) + result.durationMs })
+        }))
+    },
     contextUsage: contextUsageSurface,
     effort: {
       current: () => reasoningEffort ?? DEFAULT_EFFORT,
@@ -506,7 +555,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     ...(tracing.shutdown ? { shutdownTracing: tracing.shutdown } : {}),
     ...(sessionsSurface ? { sessions: sessionsSurface } : {}),
     ...(contextSurface ? { context: contextSurface } : {}),
-    ...(memorySurface ? { memory: memorySurface } : {})
+    ...(memorySurface ? { memory: memorySurface } : {}),
+    ...(options.mcp ? { mcp: { statuses: options.mcp.statuses } } : {})
   }
 }
 

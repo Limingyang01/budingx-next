@@ -6,6 +6,8 @@ import type { ConfigStore } from '../storage/config-store.js'
 import type { ResolvedConfig } from '../storage/profiles.js'
 import type { SessionEvent, TurnFinalizedEvent, Usage } from '../core/events.js'
 import { createAgentRuntime, workspacePromptOptions, type AgentRuntime } from './runtime.js'
+import { startMcp } from './mcp/index.js'
+import { startHooks } from './hooks/index.js'
 
 export type HeadlessOutputFormat = 'text' | 'json' | 'stream-json'
 export type HeadlessInputFormat = 'text' | 'stream-json'
@@ -278,6 +280,17 @@ export async function runHeadless(
     return 1
   }
 
+  const mcp = await startMcp({ ...(io.home === undefined ? {} : { homeDir: io.home }) })
+  for (const warning of mcp.warnings) {
+    io.stderr.write(`Warning: ${warning}\n`)
+  }
+  const hooks = startHooks({ ...(io.home === undefined ? {} : { homeDir: io.home }) })
+  for (const warning of hooks.loaded.warnings) {
+    io.stderr.write(`Warning: ${warning}\n`)
+  }
+  const rawEffort = process.env.BUDINGX_REASONING_EFFORT
+  const reasoningEffort =
+    rawEffort === 'low' || rawEffort === 'medium' || rawEffort === 'high' ? rawEffort : undefined
   const runtime: AgentRuntime = createAgentRuntime({
     cwd: io.cwd ?? process.cwd(),
     getConfig: () => config,
@@ -288,6 +301,9 @@ export async function runHeadless(
     },
     configStore: stores.configStore,
     mode: 'read_only',
+    mcp: { tools: mcp.tools, statuses: mcp.statuses },
+    hooks: hooks.runner,
+    ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
     ...(io.home === undefined ? {} : { home: io.home }),
     ...(options.session === undefined
       ? {}
@@ -299,6 +315,7 @@ export async function runHeadless(
     if (!resumed?.ok) {
       io.stderr.write(`Error: session not found: ${options.session}\n`)
       session.dispose()
+      await mcp.close()
       return 1
     }
   }
@@ -414,5 +431,6 @@ export async function runHeadless(
   if (options.outputFormat === 'text') io.stdout.write('\n')
   session.dispose()
   await runtime.shutdownTracing?.()
+  await mcp.close()
   return isError ? 1 : exitCode
 }

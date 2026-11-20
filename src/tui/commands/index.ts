@@ -5,6 +5,7 @@ import { registerSessionCommands } from './builtin-session.js'
 import { registerConfigCommands } from './builtin-config.js'
 import { registerPermissionCommands } from './builtin-permission.js'
 import { registerViewCommands } from './builtin-view.js'
+import { EXTENDED_COMMANDS } from './builtin-extended.js'
 
 export type {
   CommandContext,
@@ -23,6 +24,7 @@ export function registerBuiltinCommands(registry: CommandRegistry): CommandRegis
   registerConfigCommands(registry)
   registerPermissionCommands(registry)
   registerViewCommands(registry)
+  for (const command of EXTENDED_COMMANDS) registry.register(command)
   return registry
 }
 

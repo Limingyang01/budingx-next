@@ -30,6 +30,9 @@ export type CommandOutcome = (typeof COMMAND_OUTCOMES)[number]
 
 export type CommandResult = {
   outcome: CommandOutcome
+  /** 后台任务对应的命令文本与启动时间（/tasks 展示用）。 */
+  command?: string
+  startedAt?: number
   /** 进程退出码；被信号终止、未启动或仍在后台运行时为 undefined。 */
   exitCode?: number
   stdout: string

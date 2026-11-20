@@ -77,7 +77,9 @@ test('CMD-03 三型 kind 保留，hidden 不进默认清单', () => {
   )
 })
 
-test('CMD-12 注册表覆盖全部 22 条既有命令且可直接解析', () => {
+const EXTENDED = ['init', 'btw', 'worktree', 'tasks', 'mcp', 'skills', 'export']
+
+test('CMD-12 注册表覆盖 22 条既有命令与 7 条新增命令且可直接解析', () => {
   const registry = getDefaultRegistry()
   const listed = new Set(registry.list({ includeHidden: true }).map((entry) => entry.name))
   for (const name of ALL) {
@@ -86,7 +88,11 @@ test('CMD-12 注册表覆盖全部 22 条既有命令且可直接解析', () => 
     assert.ok(registry.get(name).summary.length > 0)
     assert.ok(registry.get(name).run.length >= 1)
   }
-  assert.equal(listed.size, ALL.length)
+  for (const name of EXTENDED) {
+    assert.ok(registry.get(name), `missing /${name}`)
+    assert.ok(listed.has(name), `/${name} 未列出`)
+  }
+  assert.equal(listed.size, ALL.length + EXTENDED.length)
 })
 
 test('CMD-12 runCommand 委派注册表后行为不变（清理/退出/配置/帮助/未知）', async () => {

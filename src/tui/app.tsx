@@ -286,6 +286,12 @@ export function App({
   const diffDetailPageSize = Math.max(1, Math.min(24, rows - 5))
   const [approvalScroll, setApprovalScroll] = useState(0)
   useEffect(() => setApprovalScroll(0), [frame.approval?.requestId])
+  // SP006 §6.3：命令确认（/worktree remove 等）与 local-jsx 只读列表、/btw 回答回显。
+  const [commandConfirm, setCommandConfirm] = useState<
+    { summary: string; preview: string[]; resolve: (approved: boolean) => void } | undefined
+  >()
+  const [commandOverlay, setCommandOverlay] = useState<{ title: string; lines: string[] } | undefined>()
+  const [sideAnswer, setSideAnswer] = useState<string | undefined>()
   const [overlayDismissed, setOverlayDismissed] = useState(false)
   const [completionIndex, setCompletionIndex] = useState(0)
   const fileCache = useRef<string[] | null>(null)
@@ -434,6 +440,7 @@ export function App({
   const [, bumpConfig] = useReducer((n: number) => n + 1, 0)
   const context = {
     ...commandContext,
+    ...(commandContext.cwd || !cwd ? {} : { cwd }),
     lang: (zh ? 'zh' : 'en') as 'zh' | 'en',
     setConfig: (next: Parameters<CommandContext['setConfig']>[0]) => {
       commandContext.setConfig(next)
@@ -472,7 +479,16 @@ export function App({
         })
       }
       if (!mounted.current) return
-      const result = await runCommand(text, { ...context, session, interactive: true })
+      const result = await runCommand(text, {
+        ...context,
+        session,
+        interactive: true,
+        // 命令级确认：复用页脚 y/n 交互，不经过模型工具审批通道。
+        confirm: (request) =>
+          new Promise<boolean>((resolve) => {
+            setCommandConfirm({ ...request, resolve })
+          })
+      })
       if (result.exit) {
         leave()
         return
@@ -508,7 +524,23 @@ export function App({
         await new Promise<void>((resolve) => { managerDone.current = resolve })
       } else if (result.skillPrompt) {
         setHint(pick(`技能 /${result.skillPrompt.name} 已展开为提示`, `Skill /${result.skillPrompt.name} expanded to prompt`))
-        session.submit(result.skillPrompt.body)
+        // SM-02：调用记录保留技能名，正文随下一轮提示注入。
+        session.submit(`# Skill /${result.skillPrompt.name}\n\n${result.skillPrompt.body}`)
+      } else if (result.prompt) {
+        setSideAnswer(undefined)
+        if (result.prompt.progress) setHint(result.prompt.progress)
+        session.submit(result.prompt.text)
+      } else if (result.sideQuestion) {
+        setSideAnswer(pick('正在旁路提问…', 'Asking on the side…'))
+        const answer = await session.submitSideQuestion(result.sideQuestion)
+        setSideAnswer(
+          answer.ok
+            ? pick('旁路回答（未写入会话）：', 'Side answer (not stored):') + '\n' + answer.text
+            : pick('旁路提问失败：', 'Side question failed: ') + (answer.error ?? '')
+        )
+      } else if (result.openList) {
+        setPosition(undefined)
+        setCommandOverlay(result.openList)
       } else setHint(result.error ?? result.message ?? '')
     })
   }
@@ -989,6 +1021,23 @@ export function App({
         setPlanEditing(null)
         return
       }
+    }
+    if (commandConfirm) {
+      if (key.escape || (text && text.toLowerCase() === 'n')) {
+        commandConfirm.resolve(false)
+        setCommandConfirm(undefined)
+        return
+      }
+      if (text && text.toLowerCase() === 'y') {
+        commandConfirm.resolve(true)
+        setCommandConfirm(undefined)
+        return
+      }
+      return
+    }
+    if (commandOverlay) {
+      if (key.escape) setCommandOverlay(undefined)
+      return
     }
     const approval = frame.approval
     const previewLength = approval?.preview?.length ?? 0
@@ -1543,6 +1592,32 @@ export function App({
           </Text>
         </Box>
       )}
+      {commandConfirm && (
+        <Box flexDirection="column" borderStyle="round" borderColor="yellow">
+          <Text color="yellow">{commandConfirm.summary}</Text>
+          {commandConfirm.preview.map((line, index) => (
+            <Text key={index} wrap="truncate-end">{line}</Text>
+          ))}
+          <Text>{pick('y 确认 · n 或 Esc 取消', 'y confirm · n or Esc cancel')}</Text>
+        </Box>
+      )}
+      {commandOverlay && (
+        <Box flexDirection="column" borderStyle="round" borderColor={ACCENT}>
+          <Text color={ACCENT}>{commandOverlay.title}</Text>
+          {commandOverlay.lines.map((line, index) => (
+            <Text key={index} wrap="truncate-end">{line}</Text>
+          ))}
+          <Text dimColor>{pick('Esc 关闭', 'Esc to close')}</Text>
+        </Box>
+      )}
+      {sideAnswer && (
+        <Box flexDirection="column" borderStyle="single" borderColor="gray">
+          <Text dimColor>{sideAnswer.split('\n')[0]}</Text>
+          {sideAnswer.split('\n').slice(1).map((line, index) => (
+            <Text key={index} wrap="truncate-end">{line}</Text>
+          ))}
+        </Box>
+      )}
       {!fullScreen && frame.error && <Text color="red">{frame.error}</Text>}
       <Box flexDirection="column" flexShrink={0}>
         {working && (
@@ -1590,7 +1665,7 @@ export function App({
           />
         )}
         <Box ref={inputBox}>
-          {search ? (
+          {commandOverlay || commandConfirm ? null : search ? (
             <Box flexDirection="column">
               <Text color={ACCENT} wrap="truncate-end">
                 {transcriptMode ? pick('搜索会话', 'Search transcript') : pick('搜索输入历史', 'Search input history')}
@@ -1622,7 +1697,7 @@ export function App({
         {commandCount > 0 && (
           <Text dimColor>{pick('排队命令：', 'Queued commands: ')}{commandCount}</Text>
         )}
-        {(showStatusLine || permissionHandles || contextLabel !== undefined || effortLabel !== undefined || (!fullScreen && hint)) && (
+        {(showStatusLine || permissionHandles || contextLabel !== undefined || effortLabel !== undefined || footerHint || (!fullScreen && hint)) && (
           // SP006 §4.1：页脚是独立区域（固定行数 = 元信息行 + 可选状态栏行），
           // 与输入区、消息区分离；外部状态栏输出不挤占输入框。
           <Box flexDirection="column" flexShrink={0} height={footerHeight + (footerHint ? 1 : 0)}>

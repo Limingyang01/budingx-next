@@ -46,6 +46,10 @@ export type NoticeCode =
   | 'storage_write_failed'
   /** 恢复提示：存在结果未知的工具步骤，需人工核对而非自动重放（SP005 §5）。 */
   | 'recovery_needs_review'
+  /** SP006 §9：hook 的普通输出、执行告警与阻断结果。 */
+  | 'hook_output'
+  | 'hook_warning'
+  | 'hook_blocked'
 
 export type ErrorClass =
   | 'auth'

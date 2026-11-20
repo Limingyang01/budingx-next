@@ -20,9 +20,8 @@ import type { BudingPermissionPolicy, PermissionRule } from '../workspace/policy
 import { changeDiffs, type ChangeRecord, type UndoOutcome } from '../workspace/checkpoint.js'
 import type { Workspace } from '../workspace/paths.js'
 import { diffStats, diffText } from './render/diff-view.js'
-import { readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { homedir } from 'node:os'
+import { discoverSkills, findSkill, type SkillEntry } from './skills.js'
 
 import type { CommandContext, CommandOutcome } from './commands/types.js'
 
@@ -70,6 +69,13 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
   /memory               查看项目/会话记忆
   /memory <范围> add <标题>：<正文>  写入记忆
   /effort [low|medium|high]  选择或直接设置思考强度
+  /init                 生成项目指令（AGENTS.md）骨架
+  /btw <问题>           旁路提问，不进入主会话上下文
+  /worktree [list|create <名称>|remove <路径>]  管理隔离工作树
+  /tasks                列出后台或未完成任务
+  /mcp                  查看 MCP 服务器与工具
+  /skills               查看已发现技能
+  /export [--format jsonl|text] [--path <路径>]  导出会话
   /clear                清空会话（别名 /new /reset，保留项目规则）
   /exit                 退出 budingx`
     : `Commands:
@@ -94,6 +100,13 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
   /memory               show project/session memory
   /memory <scope> add <title>: <body>   store a memory entry
   /effort [low|medium|high]  choose or set the reasoning effort
+  /init                 generate project instructions (AGENTS.md) skeleton
+  /btw <question>       side question without polluting the main context
+  /worktree [list|create <name>|remove <path>]  manage isolated worktrees
+  /tasks                list background or unfinished tasks
+  /mcp                  show MCP servers and tools
+  /skills               show discovered skills
+  /export [--format jsonl|text] [--path <path>]  export the session
   /clear                clear the conversation (aliases /new /reset, keeps project rules)
   /exit                 leave budingx`
 }
@@ -135,8 +148,39 @@ async function executeCommand(
   const resolved = registry.resolve(text)
   if (resolved) {
     const result = await resolved.definition.run(resolved.args, context)
-    if (result.outcome) return result.outcome
-    return result.value ? { handled: true, message: result.value } : { handled: true }
+    if (result.outcome) {
+      const outcome = result.outcome
+      const hasMessage = outcome.message !== undefined || outcome.error !== undefined
+      const hasEffect =
+        outcome.prompt !== undefined ||
+        outcome.sideQuestion !== undefined ||
+        outcome.openList !== undefined ||
+        outcome.openModels !== undefined ||
+        outcome.openEffort !== undefined ||
+        outcome.openRules !== undefined ||
+        outcome.openResume !== undefined ||
+        outcome.openRewind !== undefined ||
+        outcome.openContext !== undefined ||
+        outcome.openDiffDialog !== undefined ||
+        outcome.exit === true
+      // 只带 handled 的结果把文本交给宿主展示（local-jsx 的非交互降级）。
+      if (hasMessage || hasEffect || !result.value) return outcome
+      return { ...outcome, message: result.value }
+    }
+    if (!result.value) return { handled: true }
+    // SP006 CMD-04：prompt 型命令把文本交给宿主作为下一轮输入，并附带进度提示。
+    if (resolved.definition.kind === 'prompt') {
+      return {
+        handled: true,
+        prompt: {
+          text: result.value,
+          ...(resolved.definition.progressMessage
+            ? { progress: resolved.definition.progressMessage }
+            : {})
+        }
+      }
+    }
+    return { handled: true, message: result.value }
   }
   const lang = context.lang ?? 'en'
   const pick = (zh: string, en: string) => (lang === 'zh' ? zh : en)
@@ -704,40 +748,19 @@ export function skillHelpSection(context: CommandContext, pick: (zh: string, en:
   return '\n' + pick('自定义技能命令：', 'Custom skill commands:') + '\n' + lines.join('\n')
 }
 
+/** SM-03：只暴露有效技能；无效条目留在 /skills 面板解释原因。 */
 export function discoverSkillCommands(): { name: string; description: string }[] {
-  const roots = [join(homedir(), '.budingx', 'skills'), join(process.cwd(), '.budingx', 'skills')]
-  const out: { name: string; description: string }[] = []
-  const seen = new Set<string>()
-  for (const root of roots) {
-    let dirs: string[] = []
-    try { dirs = readdirSync(root) } catch { continue }
-    for (const dir of dirs) {
-      const file = join(root, dir, 'SKILL.md')
-      let text = ''
-      try { text = readFileSync(file, 'utf8') } catch { continue }
-      const name = /^name:\s*(.+)$/m.exec(text)?.[1]?.trim() ?? dir
-      const description = /^description:\s*(.+)$/m.exec(text)?.[1]?.trim() ?? ''
-      if (seen.has(name)) continue
-      seen.add(name)
-      out.push({ name, description })
-    }
-  }
-  return out
+  return listSkills()
+    .filter((skill) => skill.valid)
+    .map((skill) => ({ name: skill.name, description: skill.description }))
+}
+
+export function listSkills(): SkillEntry[] {
+  return discoverSkills({ homeDir: homedir(), workspaceDir: process.cwd() })
 }
 
 export function loadSkillBody(name: string): string | undefined {
-  const roots = [join(homedir(), '.budingx', 'skills'), join(process.cwd(), '.budingx', 'skills')]
-  for (const root of roots) {
-    let dirs: string[] = []
-    try { dirs = readdirSync(root) } catch { continue }
-    for (const dir of dirs) {
-      const file = join(root, dir, 'SKILL.md')
-      let text = ''
-      try { text = readFileSync(file, 'utf8') } catch { continue }
-      const skillName = /^name:\s*(.+)$/m.exec(text)?.[1]?.trim() ?? dir
-      if (skillName !== name) continue
-      return text.replace(/^---[\s\S]*?---\n?/, '').trim()
-    }
-  }
-  return undefined
+  const skill = findSkill(listSkills(), name)
+  if (!skill || !skill.valid) return undefined
+  return skill.body
 }

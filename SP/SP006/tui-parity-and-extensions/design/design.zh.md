@@ -4,7 +4,7 @@
 | --- | --- |
 | 需求 slug | tui-parity-and-extensions |
 | 所属 SP | SP006 |
-| 版本 | v1.0（自审通过） |
+| 版本 | v1.1（自审通过；实施偏差补记 D-12…D-14，2026-11-20） |
 | 状态 | SELF_REVIEWED（Agent 自审 ≥2 轮，见 §16；无需人工审阅点，2026-11-17 委托） |
 | 材料来源 | ①用户 m00001 原话；②`docs/iteration-plan.md` r9 SP006 行与出口门槛；③`docs/tui-command-roadmap.md`（2026-11-20）；④`docs/tui-fidelity-gap-baseline.md` §3.6；⑤`skills/buding-sdd/references/reference-repo-inventory.md` 行为事实锚点；⑥参考仓 `D:\my_project\budingWorkerSpace` 的**只读**行为侦察（本轮亲自核实，文件路径见各节「参考对照」） |
 | 身份区分 | USER_CONFIRMED：功能目录、出口门槛、P0 判定项、命令清单、分支与不合入 master；MODEL_PROPOSED：模块切分、命名、字段契约的取舍与实现方式；OPEN：见 §15 |
@@ -520,9 +520,10 @@ export interface ModalSlot {
 优先级由高到低：
 
 1. `~/.budingx/AGENTS.md`（用户级）
-2. 工作区根 `<workspace>/AGENTS.md`
-3. 工作区根 `<workspace>/CLAUDE.md`（兼容既有生态习惯）
-4. 子目录 `AGENTS.md`（仅当用户显式启用 `--include-nested-instructions`，默认关闭）
+2. 工作区父目录 `AGENTS.md` / `CLAUDE.md`（PI-02：受限向上，默认最多 3 层，遇到用户主目录或文件系统根即停；更远者靠前）
+3. 工作区根 `<workspace>/AGENTS.md`
+4. 工作区根 `<workspace>/CLAUDE.md`（兼容既有生态习惯）
+5. 子目录 `AGENTS.md`（仅当用户显式启用 `--include-nested-instructions`，默认关闭）
 
 冲突：用户级与工作区级**都加载**，工作区级排在后面（更具体者靠后）；同名冲突以工作区级为准。
 
@@ -851,6 +852,9 @@ npm test                 # 全量门禁
 | D-09 | **单一终端模式**（参考仓有 classic scrollback + fullscreen 双模式） | 路线图 r9：「渲染模式先单一普通滚动 + 冻结缓存，fullscreen/虚拟列表/鼠标/备用屏列受控扩展预算，超预算拆轮」 | 本仓现有 `alternateScreen` 行为保持不变，不新增模式 |
 | D-10 | 粘贴截断（>10000 字截断为首尾各 500 + 占位）、图片粘贴、外部编辑器、stash、kill-ring、`ctrl+r` 历史搜索 **不在本轮实现** | 属 P1 输入编辑完整性批次，超出 SP006 出口门槛 | 记 OPEN，归属后续轮次 |
 | D-11 | `CommandResult` 在文本结果外增加可选 `outcome`（`CommandOutcome` 桥接） | 既有 22 条命令的面板/退出副作用必须原样保留（CMD-12 行为不变），纯文本结果无法表达 | 契约是设计 §6.1 的超集；新增命令可只返回文本 |
+| D-12 | `/tasks` 读宿主**后台任务登记表**（真实子进程记录：状态/退出码/输出路径）；不读 todo/计划清单 | CMD-08 明确要求状态、退出码、输出路径，todo 清单没有这些字段；登记表由 `TaskRegistry` 提供，命令只读 | 命令面与设计 §6.3 语义一致；后台任务来源为 `src/tui/tasks.ts`，agent 回合暂不自动登记 |
+| D-13 | `/init` 在 `AGENTS.md` 已存在时直接拒绝并输出路径；`/btw` 为空时输出用法；`/mcp`、`/skills` 在非交互模式降级为文本列表 | CMD-05 要求不覆盖、需确认；空问题不应提交给模型；local-jsx 在无 UI 宿主必须有等价输出（CMD-01/CMD-12） | 与设计 §6.3 语义一致；模态槽在 TUI 内由 `commandOverlay` 承载 |
+| D-14 | `src/core/exec.ts` 的 `CommandResult` 增加 `command?`、`startedAt?`；后台任务快照回填二者 | /tasks 需要展示实际命令行与启动时间；既有字段不足以区分同类任务 | 纯增量字段，既有调用方无需改动 |
 
 ### 15.2 风险
 
@@ -903,5 +907,5 @@ npm test                 # 全量门禁
 ### 16.3 AC 覆盖自检结论
 
 - requirements.md 的 67 条 AC 在本设计中均有落点（§14.2 映射表）；未落点项：无。
-- 全部有意偏离集中在 D-01…D-10，均给出理由、影响与后续归属，不以「已对齐/同等效果」表述。
+- 全部有意偏离集中在 D-01…D-14，均给出理由、影响与后续归属，不以「已对齐/同等效果」表述。
 - P0 五项（四区骨架 / 冻结缓存 / 帧缓冲差分 / 上下文键位 / 状态栏契约）各有独立设计节与验证入口。

@@ -26,6 +26,12 @@ export type CommandOutcome = {
   skillPrompt?: { name: string; body: string }
   /** Interactive hosts open the diff dialog on this instead of printing. */
   openDiffDialog?: boolean
+  /** prompt 型命令：宿主把 text 作为下一次模型输入，progress 作为进度提示（CMD-04）。 */
+  prompt?: { text: string; progress?: string }
+  /** prompt 型旁路命令：宿主单独提问且不写入会话历史（CMD-06）。 */
+  sideQuestion?: string
+  /** local-jsx 命令：宿主用模态槽展示只读列表（CMD-03/CMD-09/CMD-10）。 */
+  openList?: { title: string; lines: string[] }
 }
 
 export type CommandContext = {
@@ -91,6 +97,19 @@ export type CommandContext = {
     read: (scope: 'project' | 'session') => { entries: { title: string; text: string }[]; message?: string }
     write: (scope: 'project' | 'session', title: string, text: string) => { ok: boolean; message?: string }
   }
+  /** SP006 CMD-08：后台/未完成任务登记表；缺省视为没有任务。 */
+  tasks?: {
+    list: () => import('../tasks.js').TaskRecord[]
+  }
+  /** SP006 CMD-09：MCP 连接状态（由宿主在启动时注入）。 */
+  mcp?: {
+    statuses: import('../mcp/types.js').McpServerStatus[]
+  }
+  /** SP006 CMD-07：删除类命令的宿主确认；返回 false 表示用户取消。 */
+  confirm?: (request: { summary: string; preview: string[] }) => Promise<boolean>
+  /** 当前工作区与数据根；缺省用 process.cwd()/homedir()。 */
+  cwd?: string
+  home?: string
 }
 
 /** SP006 §6.1：命令型 -> 输出语义（本仓统一文本结果）。 */

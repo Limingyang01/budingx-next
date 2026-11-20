@@ -86,7 +86,10 @@ test('0.5.4 /help 列出已加载自定义技能命令', async () => {
   const prev = process.cwd()
   try {
     mkdirSync(join(dir, '.budingx', 'skills', 'demo'), { recursive: true })
-    writeFileSync(join(dir, '.budingx', 'skills', 'demo', 'SKILL.md'), 'name: demo\ndescription: 演示技能\n')
+    writeFileSync(
+      join(dir, '.budingx', 'skills', 'demo', 'SKILL.md'),
+      'name: demo\ndescription: 演示技能\n\n演示技能正文。\n'
+    )
     process.chdir(dir)
     const out = await runCommand('/help', baseCtx())
     assert.match(out.message, /\/demo/)

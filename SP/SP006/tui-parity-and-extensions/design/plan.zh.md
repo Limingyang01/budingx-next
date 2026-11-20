@@ -237,19 +237,19 @@
 #### T-B3 新增命令
 
 - **AC**：CMD-05…CMD-11
-- **文件**：Create `src/tui/commands/builtin-project.ts`（/init /btw /export /worktree /tasks）、`builtin-extensions.ts`（/mcp /skills）；Modify `src/tui/commands/index.ts`
+- **文件**：Create `src/tui/commands/builtin-extended.ts`（七条同文件，按 session/config/permission/view 之后的第五组）；Create `src/tui/init.ts`、`src/tui/export.ts`、`src/tui/worktree.ts`、`src/tui/tasks.ts`；Modify `src/tui/commands/index.ts`、`src/tui/commands.ts`
 - **Consumes**：T-B1；/init 依赖 T-C1；/skills /mcp 依赖 T-C2/T-C3
-- **Produces**：7 条新命令
+- **Produces**：7 条新命令（含 prompt 型进度提示、sideQuestion 旁路通道、openList 只读模态）
 - **依赖**：T-B1、T-C1、T-C2、T-C3
 - **责任/复用**：7 条命令行为（CMD-05…CMD-11）
 - **工作目录**：仓库根
-- **验证命令**：`npm run build && node --test src/tui/test/sp006-commands.test.mjs`
+- **验证命令**：`npm run build && node --test src/tui/test/sp006-commands-extended.test.mjs src/tui/test/sp006-command-ui.test.mjs`
 - **预期行为**：
   1. RED：7 条命令未注册 → 用例失败。
-  2. 最小实现：/init 生成/追加工作区 AGENTS.md；/btw 包装为 `prompt` 型侧问；/worktree 列出现有 worktree 与安全边界提示；/tasks 列出当前 todos；/mcp 打开 ModalSlot；/skills 打开 ModalSlot；/export 导出 Markdown 到 `~/.budingx/exports/`。
+  2. 最小实现：/init 生成项目指令提示词且不覆盖既有 AGENTS.md；/btw 包装为 `prompt` 型侧问（宿主走 `submitSideQuestion`，不写主历史）；/worktree 列出/创建/删除（删除经宿主确认并复用 SP004 授权）；/tasks 列出宿主后台任务登记表（状态/退出码/输出路径，取 CMD-08 而非 todos）；/mcp 打开只读列表；/skills 打开只读列表；/export 导出 JSONL/文本到 `~/.budingx/exports/`。
   3. 目标成功：7 条各自断言（含 /export 文件落盘）。
 - **检查**：—
-- **状态记录**：（未开始）
+- **状态记录**：DONE 2026-11-20；10 例 PASS（sp006-commands-extended.test.mjs）+ 2 例帧级 PASS（sp006-command-ui.test.mjs）；偏差 D-12/D-13
 
 ### 波次 C：扩展能力
 
@@ -258,7 +258,7 @@
 - **AC**：PI-01…PI-05
 - **文件**：Create `src/tui/project-instructions.ts`；Create `src/tui/test/sp006-project-instructions.test.mjs`；Modify `src/tui/runtime.ts`（注入首条用户消息前）
 - **Consumes**：设计 §7
-- **Produces**：`loadProjectInstructions({workspaceDir,homeDir,includeNested?})` → `{files,text,warnings}`
+- **Produces**：`loadProjectInstructions({workspaceDir,homeDir,includeNested?})` → `{files,content,sources,warnings}`（另导出同步版与常量）
 - **依赖**：无
 - **责任/复用**：优先级：`~/.budingx/AGENTS.md` → 工作区 `AGENTS.md` → `CLAUDE.md`
 - **工作目录**：仓库根
@@ -268,7 +268,7 @@
   2. 最小实现：单文件 64KiB、总 128KiB 截断并警告；不存在 → 空；首条用户消息前缀注入（带围栏标记）。
   3. 目标成功：优先级/截断/空/注入位置 4 组断言。
 - **检查**：—
-- **状态记录**：（未开始）
+- **状态记录**：DONE 2026-11-20；9 例 PASS（sp006-project-instructions.test.mjs，末例真实 HTTP + createAgentRuntime 断言 system 注入）；实现为 resolveSystemContext 每次请求重读（PI-02 向上受限发现）
 
 #### T-C2 技能发现
 
@@ -285,12 +285,12 @@
   2. 最小实现：扫两类根下 `<dir>/SKILL.md`；frontmatter 缺失用目录名；正文空 → `valid:false` 调用时降级；项目级优先同名。
   3. 目标成功：4 组断言。
 - **检查**：—
-- **状态记录**：（未开始）
+- **状态记录**：DONE 2026-11-20；7 例 PASS（sp006-skills.test.mjs）；parseFrontmatter 兼容旧式无围栏头
 
 #### T-C3 MCP stdio 客户端
 
 - **AC**：SM-05…SM-09
-- **文件**：Create `src/tui/mcp/types.ts`、`client.ts`、`index.ts`；Create `src/tui/test/sp006-mcp.test.mjs`；Create `src/tui/test/helpers/fake-mcp-server.mjs`；Modify `src/storage/paths.ts`（`mcpPath`）
+- **文件**：Create `src/tui/mcp/types.ts`、`client.ts`、`index.ts`；Create `src/tui/test/sp006-mcp.test.mjs`、`sp006-mcp-approval.test.mjs`；Create `src/tui/test/helpers/fake-mcp-server.mjs`；Modify `src/storage/paths.ts`（`mcpPath`）、`src/tui/runtime.ts`、`cli.ts`、`headless.ts`
 - **Consumes**：设计 §8.2
 - **Produces**：`McpClient`（`connect`/`listTools`/`callTool`/`close`）、`loadMcpConfig(homeDir)`、`toAgentTools(client)`（名 `mcp__<server>__<tool>`）
 - **依赖**：无
@@ -302,12 +302,12 @@
   2. 最小实现：initialize → notifications/initialized → tools/list；连接 10s、调用 30s；非 0/协议错结构化；工具调用走既有审批；密钥从 env 注入不落日志。
   3. 目标成功：假 MCP 服务器（真实子进程）4 组断言。
 - **检查**：—
-- **状态记录**：（未开始）
+- **状态记录**：DONE 2026-11-20；6 例协议/配置 PASS + 2 例审批/宿主 PASS；runtime/cli/headless 已接入
 
 #### T-C4 受控 hooks
 
 - **AC**：HK-01…HK-08
-- **文件**：Create `src/tui/hooks/types.ts`、`engine.ts`、`index.ts`；Create `src/tui/test/sp006-hooks.test.mjs`；Modify `src/storage/paths.ts`（`hooksPath`）、`src/tui/runtime.ts`
+- **文件**：Create `src/core/hooks.ts`、`src/tui/hooks/types.ts`、`config.ts`、`runner.ts`、`index.ts`；Create `src/tui/test/sp006-hooks.test.mjs`；Modify `src/storage/paths.ts`（`hooksPath`）、`src/core/session.ts`、`src/core/events.ts`、`src/tui/runtime.ts`、`cli.ts`、`headless.ts`
 - **Consumes**：设计 §9
 - **Produces**：`HookEvent`（8 事件）、`HookResponse`、`runHooks(event,payload,config,{spawn,timeoutMs=30000})` → `{blocked,reason,additionalContext,systemMessages,warnings}`
 - **依赖**：无
@@ -319,12 +319,12 @@
   2. 最小实现：command 处理器 stdin JSON、stdout 解析、退出码 2 → 阻塞；prompt 展开系统片段；PreToolUse `permissionDecision` allow/deny/ask；损坏隔离；超时/非 0 非 2 降级。
   3. 目标成功：6 组断言（含真实 hook 脚本子进程）。
 - **检查**：—
-- **状态记录**：（未开始）
+- **状态记录**：DONE 2026-11-20；8 例 PASS（sp006-hooks.test.mjs）；Session 接入 8 事件 + permissionDecision/updatedInput/additionalContext
 
 #### T-C5 网页正文抓取
 
 - **AC**：WR-01…WR-05
-- **文件**：Create `src/tui/tools/web-fetch.ts`；Create `src/tui/test/sp006-web-fetch.test.mjs`；Modify `src/tui/runtime.ts`（注册工具）
+- **文件**：Create `src/provider/web-fetch.ts`；Create `src/tui/test/sp006-web-fetch.test.mjs`；Modify `src/tui/runtime.ts`（注册工具）
 - **Consumes**：设计 §10
 - **Produces**：`createWebFetchTool(options)`、`isPrivateHost(hostname)`、`extractReadableText(html)`
 - **依赖**：无
@@ -336,7 +336,7 @@
   2. 最小实现：本地 fixture 抓正文；私网 → `BUDINGX_WEB_PRIVATE_HOST`；超 512KiB 截断；非 2xx 结构化；重定向 ≤3；审批拒绝不发起。
   3. 目标成功：5 组断言（含真实 HTTP 服务）。
 - **检查**：—
-- **状态记录**：（未开始）
+- **状态记录**：DONE 2026-11-20；7 例 PASS（sp006-web-fetch.test.mjs）；工具名 WebFetch，env 开关 BUDINGX_WEB_FETCH_ALLOW_PRIVATE=1
 
 ### 波次 D：制品、AST 与文档收口
 
