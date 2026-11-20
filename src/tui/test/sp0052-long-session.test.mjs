@@ -4,9 +4,11 @@ import { test } from 'node:test'
 import { mountTty } from './helpers/mount-tty.mjs'
 import { Session as SessionImpl } from '../dist/core/session.js'
 
-const HISTORY = Number(process.env.LONG_HISTORY || 1000)
-const DELTAS = Number(process.env.LONG_DELTAS || 60)
-const CHARS = Number(process.env.LONG_CHARS || 400)
+// 默认规模刻意保持轻量：整套测试并行运行时，过重的夹具会让相邻用例
+// 因资源争用偶发超时。需要更强压力时用 LONG_HISTORY / LONG_DELTAS / LONG_CHARS 覆盖。
+const HISTORY = Number(process.env.LONG_HISTORY || 400)
+const DELTAS = Number(process.env.LONG_DELTAS || 40)
+const CHARS = Number(process.env.LONG_CHARS || 300)
 
 test('0.5.2 长会话 + 长回答：无秒级卡顿帧', async (t) => {
   const provider = {

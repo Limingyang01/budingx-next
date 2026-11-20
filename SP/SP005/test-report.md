@@ -170,3 +170,9 @@ AC 区间：CB-01…07（7）、SR-01…11（11）、FR-01…09（9）、PM-01�
 
 验证：新增 `long-session-render.test.mjs`（6 项）、`sp0052-status.test.mjs`（2 项）、`sp0052-long-session.test.mjs`（压测）、`sp0052-e2e.test.mjs`（真实 CLI 子进程 + 本地流式服务，断言内容完整、effort 下发、退出码 0）。
 
+## 12. 0.5.2 正式发布回执（2026-11-20）
+
+- [GitHub Actions #22](https://github.com/Limingyang01/budingx-next/actions/runs/44666668683) 基于源码 `1e7f33c`，Ubuntu、Windows、OIDC 发布与发布后安装验证均通过。npm 官方源确认 0.5.2 已公开且 `latest=0.5.2`。
+- 官方 tarball 195872 字节 / 98 个文件，实测 SHA-512 与 npm 元数据、provenance subject 完全一致（`sha512-ScKp…YKA==`）。安装后 CLI 返回 0.5.2；本地 HTTP 流式冒烟通过（1 次请求、20 个片段全部到达、`reasoning_effort=high` 按配置下发、退出码 0）。provenance 指向 `master`、`.github/workflows/publish-tui.yml` 与运行 #22。
+- 发布后约 1 分钟内部分 CDN 边缘对不带查询串的 tarball URL 返回 404（元数据已先可见），加缓存绕过参数后稳定 200，约 3 分钟后恢复正常；最终制品 integrity 与 npm 记录一致，属传播延迟而非制品缺陷。
+- Actions 原始回执需登录下载，未取得；台账按公开运行结果、已验签的 npm provenance 与官方制品独立安装结果登记（`ciArtifactDownloaded: false`）。
