@@ -19,7 +19,7 @@ const MAX_SUGGESTION_CHARS_ZH = 24
 const MAX_SUGGESTION_CHARS_EN = 80
 const MAX_SUGGESTION_WORDS = 12
 /** 建议请求的输出上限与超时。 */
-const MAX_OUTPUT_TOKENS = 64
+const MAX_OUTPUT_TOKENS = 256
 const DEFAULT_TIMEOUT_MS = 15_000
 
 const SYSTEM_ZH = [
@@ -28,7 +28,7 @@ const SYSTEM_ZH = [
   '要预测的是用户在输入框里会亲手打出的那句话，不是你认为他应该做的事。',
   '判断标准：他看到这句话会觉得「我正想这么说」。',
   '要求：只写一句短语（中文 2–20 字，英文 2–12 个词）；使用用户最近使用的语言；',
-  '不加引号、列表、标点结尾或任何解释；不要复述助手的话；不要评价已完成的回答。',
+  '不加引号、列表或任何解释；句末不要句号，但真是一个问题时可保留问号；不要复述助手的话；不要评价已完成的回答。',
   '如果下一步并不明显，只输出 NONE。',
   '只输出建议本身。'
 ].join('\n')
@@ -39,7 +39,7 @@ const SYSTEM_EN = [
   'Predict the line the user would type themselves, not what you think they should do.',
   'The test: would they think "I was about to type that"?',
   'Rules: one short phrase (2-12 words); use the language the user last used;',
-  'no quotes, lists, trailing punctuation or explanation; do not restate the assistant; do not praise the answer.',
+  'no quotes, lists or explanation; no trailing period, but keep the question mark when the natural next line is a question; do not restate the assistant; do not praise the answer.',
   'If the next step is not obvious, output only NONE.',
   'Output the suggestion only.'
 ].join('\n')
@@ -119,10 +119,10 @@ export function sanitizeSuggestion(raw: string | undefined): string | undefined 
   if (/^[(\[\uff08\u3010].*[)\]\uff09\u3011]$/.test(text)) return undefined
   // 带标签前缀或评价式回答，说明模型没有按「用户口吻」输出。
   if (/^(建议|提示|答案|suggestion|answer|response|reply)\s*[:：]/i.test(text)) return undefined
-  if (/^(让我|我来|我会|我可以|我先|以下是|下面|我将|let me|i'?ll\b|i will|i can|i'?m|here'?s|here is|sure[,，])/i.test(text)) return undefined
+  if (/^(让我|我来|我会|我可以|我先|以下是|下面|我将|好的|当然|没问题|明白|收到|let me|i'?ll\b|i will|i can|i'?m|here'?s|here is|sure[,，])/i.test(text)) return undefined
   if (/(谢谢|多谢|辛苦了|听起来不错|看起来不错|很好|thanks|thank you|looks good|sounds good)/i.test(lower)) return undefined
-  // 疑问句不是「用户接下来会打的字」。
-  if (/[?？]$/.test(text)) return undefined
+  // 追问是用户最常打的下一句（参考实现也不过滤疑问句）；只排除针对建议本身的元问题。
+  if (/^(下一步|接下来)?(该|要)?(问|说|打)什么[?？]?$/.test(text)) return undefined
   const cjk = (text.match(/[\u4e00-\u9fff]/g) ?? []).length
   if (cjk >= 2) {
     if (text.length > MAX_SUGGESTION_CHARS_ZH) return undefined

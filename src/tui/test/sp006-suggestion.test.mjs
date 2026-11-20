@@ -72,6 +72,10 @@ test('G-03 建议清洗：只接受一句用户口吻的短句', () => {
   assert.equal(sanitizeSuggestion('/commit'), '/commit')
   assert.equal(sanitizeSuggestion('yes'), 'yes')
   assert.equal(sanitizeSuggestion('  补一个回归用例  '), '补一个回归用例')
+  // 追问是用户最常打的下一句，必须保留（真实模型产出即此形态）。
+  assert.equal(sanitizeSuggestion('怎么验证？'), '怎么验证？')
+  assert.equal(sanitizeSuggestion('跳过的项是什么原因？'), '跳过的项是什么原因？')
+  assert.equal(sanitizeSuggestion('which test covers this?'), 'which test covers this?')
   // 英文按词数约束：12 词以内即使超过 40 字符也应保留。
   assert.equal(
     sanitizeSuggestion('check the failing test in the storage module'),
@@ -89,8 +93,9 @@ test('G-03 建议清洗：只接受一句用户口吻的短句', () => {
     '我来看看日志',
     '以下是建议',
     '建议：补测试',
-    '怎么验证？',
-    '下一步该做什么？',
+    '好的，继续实现',
+    '没问题，我来改',
+    '该问什么？',
     '- 补测试',
     '**补测试**',
     '补测试\n再跑一遍',
@@ -108,7 +113,7 @@ test('G-04 生成建议：小请求、无工具、失败静默', async () => {
   const history = [message('user', '改完了吗'), message('assistant', '改完了')]
   assert.equal(await generatePromptSuggestion({ provider, model: 'fixture', history }), '跑一遍单元测试')
   assert.equal(seen.length, 1)
-  assert.equal(seen[0].maxTokens, 64)
+  assert.equal(seen[0].maxTokens, 256)
   assert.equal(seen[0].tools, undefined)
   assert.ok(seen[0].messages.length >= 2)
 

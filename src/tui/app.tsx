@@ -1754,14 +1754,26 @@ export function App({
         {commandCount > 0 && (
           <Text dimColor>{pick('排队命令：', 'Queued commands: ')}{commandCount}</Text>
         )}
-        {(showStatusLine || permissionHandles || contextLabel !== undefined || effortLabel !== undefined || footerHint || (!fullScreen && hint)) && (
+        {!fullScreen && hint && hint.includes('\n') && (
+          // 多行命令输出（如 /help）：退化终端里不再压成一行状态提示，
+          // 而是作为分块正文打印，最多 40 行，超出提示截断。
+          <Box flexDirection="column" flexShrink={0}>
+            {hint.split('\n').slice(0, 40).map((line, index) => (
+              <Text key={'hint-' + index} dimColor wrap="wrap">{line}</Text>
+            ))}
+            {hint.split('\n').length > 40 && (
+              <Text dimColor>{pick('…（输出过长，已截断）', '… (output truncated)')}</Text>
+            )}
+          </Box>
+        )}
+        {(showStatusLine || permissionHandles || contextLabel !== undefined || effortLabel !== undefined || footerHint || (!fullScreen && hint && !hint.includes('\n'))) && (
           // SP006 §4.1：页脚是独立区域（固定行数 = 元信息行 + 可选状态栏行），
           // 与输入区、消息区分离；外部状态栏输出不挤占输入框。
           <Box flexDirection="column" flexShrink={0} height={footerHeight + (footerHint ? 1 : 0)}>
             {showStatusLine && (
               <Text dimColor wrap="truncate-end">{statusView.text}</Text>
             )}
-            {(permissionHandles || contextLabel !== undefined || effortLabel !== undefined || (!fullScreen && hint)) && (
+            {(permissionHandles || contextLabel !== undefined || effortLabel !== undefined || (!fullScreen && hint && !hint.includes('\n'))) && (
               // 0.5.4：底部元信息合并为一行（模式 · 上下文 · 推理强度 · 快捷键），
               // 不再让上下文/免审批各自占一行（用户反馈占据行数过多）。
               <Box justifyContent="space-between">
@@ -1776,7 +1788,7 @@ export function App({
               {working && !frame.approval && (
                 <Text dimColor>{permissionHandles ? ' · ' : ''}{pick('Esc 打断', 'Esc interrupt')}</Text>
               )}
-              {!fullScreen && hint ? ` — ${hint}` : ''}
+              {!fullScreen && hint && !hint.includes('\n') ? ` — ${hint}` : ''}
             </Text>
             {(effortLabel !== undefined || contextLabel !== undefined) && (
               <Text wrap="truncate-end">
