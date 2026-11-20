@@ -1,10 +1,10 @@
 # SP006 验收报告
 
-状态：**执行完成（功能分支）**｜日期：2026-11-20｜分支 `feature/SP006/tui-parity-and-extensions`｜基线 master `dc94731`｜版本 0.6.0 prepared（未发布）｜含用户检查反馈的命令卡片修复（`f0b11eb`）与 `/resume` 历史可见性修复
+状态：**执行完成（功能分支）**｜日期：2026-11-20｜分支 `feature/SP006/tui-parity-and-extensions`｜基线 master `dc94731`｜版本 0.6.0 prepared（未发布）｜含用户检查反馈的命令卡片修复（`f0b11eb`）、`/resume` 历史可见性修复与真实模型端到端暴露的建议/退化终端修复
 
 ## 1. 方法与环境
 
-- 设计/计划：[design.zh.md](tui-parity-and-extensions/design/design.zh.md) v1.1、[plan.zh.md](tui-parity-and-extensions/design/plan.zh.md) v1.1。
+- 设计/计划：[design.zh.md](tui-parity-and-extensions/design/design.zh.md) v1.4、[plan.zh.md](tui-parity-and-extensions/design/plan.zh.md) v1.3。
 - 验证代码：Node.js 22.18、TypeScript 构建产物（`npm run build`）、Node test runner、Ink 8 伪终端（`mountTty`）、本地 HTTP/SSE fixture、真实子进程（headless、MCP 假服务器、hooks 脚本、git worktree、后台任务）。
 - 计数命令：`npm run test:unit`；定向 `node --test src/tui/test/sp006-*.test.mjs ...`；制品 `node scripts/release/sp006-packaging.mjs`；AST `node scripts/review/sp004-ast.mjs --reference <参考仓> --reference-revision b5c9be8 --base dc94731`。
 - 参考仓只用于行为对照；SP006 全部实现独立编写，AST 复核见 §4。
@@ -14,15 +14,15 @@
 | 指标 | 结果 |
 | --- | --- |
 | AC 总数 | **69**（TU 15、PI 5、SM 9、HK 8、WR 5、HC 7、NP 5、CMD 12、AST 3） |
-| PASS | **67** |
+| PASS | **69** |
 | PARTIAL | **0** |
 | FAIL | **0** |
 | UNVERIFIED | **0** |
-| 全量回归 | **914 项 / 913 通过 / 0 失败 / 1 跳过**，EXIT=0（跳过项仅 POSIX 文件权限） |
-| SP006 新增测试 | 20 个文件 / **110 例** |
-| 定向回归 | **135 通过 / 0 失败** |
+| 全量回归 | **925 项 / 924 通过 / 0 失败 / 1 跳过**，EXIT=0（跳过项仅 POSIX 文件权限） |
+| SP006 新增测试 | 21 个文件 / **120 例**；另在既有 SP005.4 用例文件补 1 例非全屏 `/help` 回归 |
+| 定向回归 | **157 通过 / 0 失败** |
 | 制品 smoke | **6/6 PASS**，exit 0，未上传 npm |
-| AST | **52/52 映射，命中 0，自检 3/3 PASS** |
+| AST | **53/53 映射，命中 0，自检 3/3 PASS** |
 
 历史失败与修复（保留为回归证据，不掩盖）：
 
@@ -30,6 +30,10 @@
 - sp0054-command-fidelity 的 fixture 只有 frontmatter、正文为空 → 按 SM-03 现为 invalid，测试改为写入正文；sp0054-enter-command 的 `/help` 帧因新增七条命令变长，谓词改为检查「自定义技能命令」；注册表测试由 22 改为 29。
 - 2026-11-20 用户检查发现完成态命令卡片常驻且单次调用占多行（用户报告 m01955）。根因是 `app.tsx` 无条件渲染 `frame.command`，reducer 在完成/失败/取消后只改状态不清除。修复为 `activeCommandCard` 仅保留 running/background，运行中 `compact` 单行，完成态默认隐藏、`Ctrl+E` 按需展开；新增 `sp004-cards.test.mjs` 的 T15-3b 与 `sp006-command-card.test.mjs` 的 T15-3c（真实子进程 + 全屏 Ink 帧）。复测 908 / 907 通过 / 0 失败 / 1 跳过。
 - 2026-11-20 用户检查发现 `/resume` 恢复会话后消息区为空、看不到历史对话（用户报告 m02285）。根因是 `Session.restoreHistory()` 只替换模型上下文里的 `this.messages`、不发事件，而可见转录 `Frame.transcript` 只由 `reduceFrame` 从会话事件累积，于是模型看得见历史、用户看不见。修复走会话事件通路：新增 `conversation_restored` 事件（携带恢复出的消息）、`Session.restoreHistory()` 发出该事件、渲染层按 `conversation_rewound` 同构重建转录（新增 `restored-transcript.ts` 负责消息到转录条目的映射，工具结果按 `callId` 回填，无结果的工具调用标为「已中断」而非继续转圈）；同时按参考实现的 `switchSession` 语义切换会话身份与转录端口（`Session.adoptIdentity`），使续写落回被恢复会话。证据：`sp006-resume-history.test.mjs` 5 例（纯函数、真实 Ink 帧、真实运行时 + 真实会话存储、真实 `/resume` 命令路径）与 `sp006-resume-e2e.test.mjs` 1 例（两个真实 CLI 子进程 + 真实 HTTP provider）。复测 914 / 913 通过 / 0 失败 / 1 跳过。
+- 2026-11-20 用户第二轮检查发现 `/resume` 恢复后历史显示成极窄碎片列（用户报告 m03012：每行 2–6 个汉字的竖条）。根因是 `Session` 把每个流式 delta 各 push 成一个独立 text 块，助手消息落盘成十几个短块；恢复映射按块逐条输出 entry，渲染层每条 entry 独立成段，于是挤成窄列。修复分两层：源头 `appendStreamBlock` 按类型把连续增量并入同一块；恢复层 `restoredTranscriptEntries` 对同一条消息内连续 text 块合并成一条，旧转录文件无需迁移。证据：`sp006-resume-history.test.mjs` 新增 2 例（旧形状碎片合并、多增量流式回答恢复后整段连续），7 例全 PASS。
+- 2026-11-20 用户检查发现输入框占位建议语境与当前对话无关（用户报告 m03632：固定话术「结合项目给我一个具体示例」）。根因是建议由写死的 `followUp()` 按关键词三选一，与模型无关。修复为模型生成：新增 `src/tui/suggestion.ts`（对话节选、语言判定、请求构建、清洗、生成），宿主端口 `AgentRuntime.suggestions.generate` 在回合结束（completed）后异步生成，App 用 `AbortSignal` 在提交/新回合/清空/恢复/unmount 时取消，Tab 填入；失败、超时、NONE 或清洗被拒时完全不显示；`BUDINGX_PROMPT_SUGGESTIONS=0` 关闭额外请求。证据：`sp006-suggestion.test.mjs` 8 例（含帧级 G-06/G-07/G-08）与 `screen-e2e.test.mjs` 改为注入假生成器。复测 924 / 923 通过 / 0 失败 / 1 跳过。
+- 2026-11-20 真实模型端到端测试发现：输入框建议的清洗规则把「以问号结尾」当作不合格丢弃，而真实模型（MiniMax-M3.1-Flash）几乎只产出自然追问（如「那 local 类型的命令定义在哪里？」），导致建议在真实场景 100% 消失——单测注入假生成器只返回陈述句，掩盖了该缺陷。修复：取消问号拒绝，只拒针对建议本身的元问题与助手口吻前缀；输出预算 `maxTokens` 64→256（思考型模型会把小预算耗在思考 token 上）；SYSTEM 提示词允许问句形态。用例改为接受真实形态（`sp006-suggestion.test.mjs` 8 例仍 PASS），真实交互 TUI 的建议显示与 Tab 填入通过。
+- 2026-11-20 真实模型端到端测试发现：`fullScreen=false`（退化终端）下执行 `/help`，30+ 行命令列表被塞进单行状态提示并折行裁切，用户只能看到「尚未配置 · 运行 /models 显示本帮助」。修复：页脚内联仅限单行 hint，多行 hint 改在页脚上方以正文块逐行渲染（最多 40 行，超出提示截断）；全屏行为不变。回归：`sp0054-command-menu.test.mjs` 新增「非全屏退化终端 /help 以正文块列出命令」1 例。复测 925 / 924 通过 / 0 失败 / 1 跳过。
 
 ## 3. 逐条 AC
 
@@ -143,7 +147,7 @@
 
 | AC | 结果 | 证据 |
 | --- | --- | --- |
-| AST-01 | PASS | 52 个改动源码文件全部有映射或「无对应参考模块」说明，未覆盖 0 |
+| AST-01 | PASS | 53 个改动源码文件全部有映射或「无对应参考模块」说明，未覆盖 0 |
 | AST-02 | PASS | 命中「无」；映射中的处置项无 UNRESOLVED |
 | AST-03 | PASS | 自检 3/3：相似片段命中、无关实现不命中、<60 节点短样板排除 |
 
@@ -151,21 +155,21 @@
 
 ```text
 npm run build                         exit 0
-node --test src/tui/test/*.test.mjs   914 tests / 913 pass / 0 fail / 1 skipped
-定向 135 例                          135 pass / 0 fail
+node --test src/tui/test/*.test.mjs   925 tests / 924 pass / 0 fail / 1 skipped
+定向 157 例                          157 pass / 0 fail
 
 node scripts/release/sp006-packaging.mjs
 ledger: PASS 0.6.0 SP006 prepared
 release notes: PASS 0.6.0
-tarball: PASS budingx-0.6.0.tgz 141 files
+tarball: PASS budingx-0.6.0.tgz 142 files
 isolated install: PASS 0.6.0
 headless stream-json: PASS 7 events; no user data written
 publish --dry-run: PASS (no upload)
 
 node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8 --base dc94731
-参考仓 @ b5c9be8；基线 dc94731；改动文件 52，映射 52
+参考仓 @ b5c9be8；基线 dc94731；改动文件 53，映射 53
 自检：PASS 相似片段命中 / PASS 无关实现不命中 / PASS 样板排除
-本仓单元 252，参考单元 14381，函数对 49285；命中：无；结论：PASS
+本仓单元 257，参考单元 14411，函数对 48379；命中：无；结论：PASS
 ```
 
 ## 5. 新增测试文件
@@ -190,10 +194,50 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 | `sp006-web-fetch.test.mjs` | 7 | WR-01…WR-05 |
 | `sp006-release-ledger.test.mjs` | 3 | NP-05 |
 | `sp006-command-card.test.mjs` | 1 | 命令卡片完成态隐藏（用户 m01955 回归） |
-| `sp006-resume-history.test.mjs` | 5 | `/resume` 历史可见性（用户 m02285 回归）：reducer 重建转录、工具结果回填、真实 Ink 帧、真实运行时身份切换、真实 `/resume` 命令 + 真实会话存储 |
+| `sp006-suggestion.test.mjs` | 8 | 输入框下一句建议由模型生成（用户 m03632 回归）：节选/语言/清洗/小请求静默失败/超时取消/帧级显示与 Tab 填入/未注入端口不显示/建议被拒 |
+| `sp006-resume-history.test.mjs` | 7 | `/resume` 历史可见性（用户 m02285 回归）：reducer 重建转录、工具结果回填、真实 Ink 帧、真实运行时身份切换、真实 `/resume` 命令 + 真实会话存储；旧转录碎片合并、多增量流式回答落盘单块 |
 | `sp006-resume-e2e.test.mjs` | 1 | 端到端：两个真实 CLI 进程 + 真实会话目录 + 真实 HTTP provider，恢复后带历史续写并写回同一会话 |
 
-## 6. 限制与剩余风险
+## 6. 真实模型端到端证据（2026-11-20）
+
+用户要求「整体 TUI 全部功能再端到端测试一遍，发现问题及时修复」（m03678）。本节只记录**真实 Provider**（MiniMax-M3.1-Flash，`api.minimax.cn`）的执行结果；夹具用例见 §3、§5，两者不可互相替代。
+
+### 6.1 无头事件流
+
+| 场景 | 结果 | 证据 |
+| --- | --- | --- |
+| 工具调用 + 流式回答 | PASS | `node src/tui/dist/tui/cli.js --prompt … --output-format stream-json`：`Read` 调用 → `tool_result` → 增量 assistant → `result success` |
+| 会话续写连续性（指定 `--session`） | PASS | 两轮同一 session：第二轮正确回答第一轮写入的暗号「紫罗兰」，证明历史进入模型上下文 |
+| 无 `--session` 时不落盘 | 符合设计 | 无头模式默认不持久化；第一轮的「续写」因此无效，属预期而非缺陷 |
+
+### 6.2 交互 TUI（真实按键回放 + 真实模型）
+
+脚本用 `mountTty` + `createAgentRuntime`（真实 provider/工具/持久化/命令面）回放按键；`artifacts/` 已 gitignore，脚本未入库。
+
+| 编号 | 场景 | 结果 |
+| --- | --- | --- |
+| E2E-01 | 首屏渲染（Logo、模型、cwd、输入区） | PASS |
+| E2E-02 | 真实流式回答在消息区可见 | PASS |
+| E2E-03 | 思考内容不泄露到正文 | PASS |
+| E2E-03b | 第二轮问答上下文连续 | PASS |
+| E2E-04 | 回合结束后显示模型生成的下一句建议 | PASS |
+| E2E-05 | 建议不是固定话术（随对话变化） | PASS |
+| E2E-06 | Tab 填入建议 | PASS（例：「这个文件里注册了哪些命令？」） |
+| E2E-07 | `/help` 列出命令面 | PASS（全屏下断言 `/tasks`、`/skills`；`/resume` 已在可视窗口上方滚出） |
+| E2E-08 | `/sessions` 列出会话 | PASS |
+| E2E-09 | `/resume <id>` 后历史可见 | PASS |
+| E2E-10 | 恢复的整段回答连续显示（宽度 ≥12） | PASS |
+| E2E-11 | 不再出现 2–6 字碎片行 | PASS |
+| E2E-12 | `/clear` 清空会话 | PASS |
+| E2E-13 | 允许编辑档位下非只读命令请求审批 | PASS（`node -e …`；`echo` 属只读白名单 CE-09 免审，不能用作审批样本） |
+| E2E-13b | 选择「1 允许一次」后工具真实执行、结果可见 | PASS（输出 `e2e-approval`、`exit_code: 0`） |
+| E2E-14 | Esc 打断进行中的长回答 | PASS（出现「已请求打断/已中断/已取消」） |
+| E2E-15 | 跨进程 `/resume` 后历史工具记录可见 | PASS |
+| E2E-15b | 显示恢复提示 | PASS |
+
+本轮真实测试暴露并修复的产品缺陷见 §2 历史失败列表最后两条（建议清洗过严、退化终端多行输出被压成一行）；对应设计偏离为 D-18 修正与 D-19（design v1.4 §15.1/§16.6）。
+
+## 7. 限制与剩余风险
 
 **PARTIAL：0。** 早期 TU-03（缺 UI 级缓存命中计数）已在收口时补齐：`history-window.tsx` 增加仅测试可读的 `freezeCacheStats()/resetFreezeCacheStats()`，帧级用例断言仅输入区变化时命中 ≥1 且未命中为 0。TU-09 按设计 §4.4 规则 8 判定：可选字段缺失即省略、必填字段占位，属设计已解决的口径，无偏离。
 
@@ -204,8 +248,8 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 - `/worktree` 删除依赖宿主确认回调；非交互环境明确取消，不静默删除。
 - 参考仓为本地只读材料且无 LICENSE；本仓保持 MIT 独立可发布，未嵌入参考源码。AST 为相似度复核，不等同法律洁净室认证。
 
-## 7. 交付边界
+## 8. 交付边界
 
-- 分支：`feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；提交 `cedf2a3`（A）、`031b99b`（B）、`4b78cdb`（C+B3）、`06d7b2a`（D）、`f0b11eb`（命令卡片完成态隐藏与单行修复）、`47c5cb6`（台账源码 SHA 同步）、`1ef588a`（`/resume` 历史可见性与身份切换）。
-- **未合入 master**（用户 m02328 明确「先不要合入master分支」）；已按用户 m02328 授权推送远端分支 `origin/feature/SP006/tui-parity-and-extensions`（HEAD `a2fd0cc`），master 未改动。
+- 分支：`feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；提交 `cedf2a3`（A）、`031b99b`（B）、`4b78cdb`（C+B3）、`06d7b2a`（D）、`f0b11eb`（命令卡片完成态隐藏与单行修复）、`47c5cb6`（台账源码 SHA 同步）、`1ef588a`（`/resume` 历史可见性与身份切换）、`55ea677`（`/resume` 历史碎片合并与输入框建议改模型生成）、`9e3e88f`（建议清洗按真实模型输出校正、退化终端多行命令输出）、`<docs>`（本节证据与文档数字收口）。
+- **未合入 master**（用户 m02328、m03678 明确「先不要合入master分支」）；已按用户 m02328 授权推送远端分支 `origin/feature/SP006/tui-parity-and-extensions`（代码提交至 `9e3e88f`，文档与台账同步提交随后推送），master 未改动。
 - 版本 0.6.0 仅 `prepared`；未打 tag、未 npm 发布、未改远端设置。

@@ -4,11 +4,11 @@
 | --- | --- |
 | 需求目录 | `SP/SP006/tui-parity-and-extensions/` |
 | 已确认 SP | SP006（用户 m00001 明确「开始SP006的开发」） |
-| 依据设计 | `design/design.zh.md` v1.2（SELF_REVIEWED，含 §16 三轮自审与用户检查反馈修复补记） |
+| 依据设计 | `design/design.zh.md` v1.3（SELF_REVIEWED，含 §16 四轮自审与用户检查反馈修复补记） |
 | 功能分支 | `feature/SP006/tui-parity-and-extensions` |
 | 文档起点 SHA | `dc94731`（master：「登记 0.5.4 发布回执并同步文档至 latest」） |
 | 核对 master SHA | `dc94731`（建分支时工作区干净） |
-| 版本 | v1.1（补记波次 E：用户检查反馈修复） |
+| 版本 | v1.3（补记波次 E/F/G/H：用户检查反馈修复与真实模型端到端修复） |
 | 状态 | APPROVED（计划为 Agent 自审对象；RED 证据随实施记录） |
 
 > 执行方式：每任务严格遵守「先写失败用例（RED，必须真实失败、不得靠 skip 制造）→ 最小实现转 GREEN → 跑本任务验证命令 → 跑相邻回归 → 回填完成事实」。完成事实栏不预填，只在真实执行后写入命令与结果。
@@ -443,6 +443,154 @@
   3. 目标成功：52 改动文件 / 52 映射，自检 3 项 PASS，命中「无」，结论 PASS。
 - **检查**：—
 - **状态记录**：DONE 2026-11-20；52 改动文件 / 52 映射，自检 3/3 PASS，本仓单元 252、参考单元 14381、函数对 49285，命中「无」，结论 PASS
+
+### 波次 F：`/resume` 恢复后历史显示成碎片列修复（2026-11-20）
+
+> 触发：用户第二轮检查提出「`/resume` 恢复后历史显示有问题」（m03012，截图可见极窄碎片列），要求参考参考仓的恢复做法修复。本波次不新增 AC，修的是落盘形状与恢复映射。
+
+#### T-F1 流式增量按类型合并进同一文本块
+
+- **AC**：用户检查回归（会话恢复可读性）
+- **文件**：Modify `src/core/session.ts`；Modify `src/tui/test/sp006-resume-history.test.mjs`
+- **Consumes**：`SessionEvent.text_delta`/`thinking_delta`、`MessageBlock`
+- **Produces**：`appendStreamBlock(blocks, kind, text)` —— 同类型连续增量并入最后一块，遇到异类型才新开块
+- **依赖**：波次 E（`conversation_restored` 恢复通路）
+- **责任/复用**：模型上下文一直由 `textOf()` 拼接，故只改落盘形状，不改上下文语义；对齐参考仓「一条助手消息一个文本块」
+- **工作目录**：仓库根
+- **验证命令**：`npm run build && node --test src/tui/test/sp006-resume-history.test.mjs`
+- **预期行为**：
+  1. RED：一轮 13 个 delta 落盘成 13 个 text 块 → 断言失败（复现用户截图）。
+  2. 最小实现：按类型合并。
+  3. 目标成功：多增量 SSE 流式回答落盘为单块，恢复后整段连续。
+- **检查**：既有流式/转录用例不回归
+- **状态记录**：DONE 2026-11-20；提交 `55ea677`；resume 历史用例 7 例 PASS
+
+#### T-F2 恢复层合并同一条消息内的连续文本块（兼容旧转录）
+
+- **AC**：用户检查回归（已有会话文件无需迁移）
+- **文件**：Modify `src/tui/render/restored-transcript.ts`
+- **Consumes**：`messagesFromRecords` 复原出的 `Message[]`
+- **Produces**：`restoredTranscriptEntries(messages)` 对同一消息内连续 text 块合并为一条 entry；`tool_use`/`context`/`interrupt_mark` 保持顺序插入
+- **依赖**：T-F1（新转录形状）
+- **责任/复用**：旧转录（含用户报的 `7f93f578` 会话）不迁移文件，由该层兼容；thinking 块跳过且不打断合并
+- **工作目录**：仓库根
+- **验证命令**：`node --test src/tui/test/sp006-resume-history.test.mjs`
+- **预期行为**：
+  1. RED：旧形状转录恢复出 14 条碎片 entry → 断言失败。
+  2. 最小实现：逐消息累积文本，非文本块先 flush。
+  3. 目标成功：旧形状合并为 user + assistant 两条记录，帧内整段连续显示。
+- **检查**：`/resume` 帧级用例
+- **状态记录**：DONE 2026-11-20；提交 `55ea677`；同批 2 例新增回归 PASS
+
+### 波次 G：输入框「下一句」建议改为模型生成（2026-11-20）
+
+> 触发：用户指出输入框占位建议「提示词语境不对，不符合上下文逻辑」（m03632，截图显示固定话术「结合项目给我一个具体示例」），要求 AI 结合当前上下文生成。本波次不新增 AC。
+
+#### T-G1 `suggestion.ts`：节选、清洗与生成
+
+- **AC**：用户检查回归（输入区建议贴合上下文）
+- **文件**：Create `src/tui/suggestion.ts`；Create `src/tui/test/sp006-suggestion.test.mjs`
+- **Consumes**：`ModelProvider.stream`、`ChatRequest`、`Message`
+- **Produces**：`suggestionExcerpt(messages, maxChars?)`、`conversationLanguage(messages)`、`buildSuggestionMessages(messages)`、`sanitizeSuggestion(raw)`、`generatePromptSuggestion({ provider, model, history, signal?, timeoutMs? })`
+- **依赖**：无（纯逻辑 + provider 端口）
+- **责任/复用**：不覆盖父请求参数（复用缓存）；`maxTokens=64`、无 tools、15s 超时、失败/NONE 静默；清洗阈值 24 汉字 / 80 字符 / 12 词，拒评价式与助手口吻
+- **工作目录**：仓库根
+- **验证命令**：`node --test src/tui/test/sp006-suggestion.test.mjs`
+- **预期行为**：
+  1. RED：无生成器时只能显示固定话术 → 用例失败。
+  2. 最小实现：节选最近非工具消息 + 小请求 + 清洗。
+  3. 目标成功：G-01…G-05 纯逻辑/流用例 PASS。
+- **检查**：—
+- **状态记录**：DONE 2026-11-20；提交 `55ea677`；用例 8 例 PASS
+
+#### T-G2 宿主端口与 App 接线
+
+- **AC**：用户检查回归
+- **文件**：Modify `src/tui/runtime.ts`、`src/tui/app.tsx`、`src/tui/cli.ts`、`src/tui/test/helpers/mount-tty.mjs`；Modify `src/tui/test/screen-e2e.test.mjs`
+- **Consumes**：`AgentRuntime`、`AppProps`
+- **Produces**：`AgentRuntime.suggestions.generate(signal)`；`AppProps.suggestNextPrompt?`；`requestSuggestion`/`clearSuggestion`
+- **依赖**：T-G1
+- **责任/复用**：渲染层不直连 provider；未注入端口即不显示建议（测试与无 UI 宿主安全）；`BUDINGX_PROMPT_SUGGESTIONS=0` 关闭额外请求
+- **工作目录**：仓库根
+- **验证命令**：`npm run build && node --test src/tui/test/screen-e2e.test.mjs src/tui/test/sp006-suggestion.test.mjs`
+- **预期行为**：
+  1. RED：回合结束仍显示固定话术 → 帧级断言失败。
+  2. 最小实现：回合完成（completed）异步生成，AbortSignal 在提交/新回合/清空/恢复/unmount 处取消。
+  3. 目标成功：G-06…G-08 帧级用例 PASS。
+- **检查**：迟到结果不覆盖用户输入
+- **状态记录**：DONE 2026-11-20；提交 `55ea677`
+
+#### T-G3 AST 映射与全量门禁
+
+- **AC**：AST-01
+- **文件**：Modify `scripts/review/sp004-ast.mjs`（REFERENCE_ALLOWLIST 增 `src/tui/suggestion.ts` → `src/services/PromptSuggestion`、`src/hooks/usePromptSuggestion.ts`）
+- **Consumes**：设计 §13
+- **Produces**：53/53 映射
+- **依赖**：T-G1/T-G2 落盘后
+- **责任/复用**：阈值不变
+- **工作目录**：仓库根
+- **验证命令**：`node scripts/review/sp004-ast.mjs --reference /d/my_project/budingWorkerSpace --reference-revision b5c9be8 --base dc94731`
+- **预期行为**：
+  1. RED：新文件未映射 → 结论 FAIL（先验证）。
+  2. 最小实现：补映射条目。
+  3. 目标成功：53 改动文件 / 53 映射，自检 3/3 PASS，命中「无」。
+- **检查**：全量回归 + 制品
+- **状态记录**：DONE 2026-11-20；提交 `55ea677`；53/53，本仓单元 257、参考单元 14411、函数对 48379，结论 PASS；全量 924 项 / 923 通过 / 0 失败 / 1 跳过
+
+### 波次 H：真实模型端到端测试暴露的缺陷修复（2026-11-20）
+
+> 触发：用户要求「整体 TUI 全部功能再端到端测试一遍，发现问题及时修复」（m03678）。本波次用真实 Provider 跑无头事件流与交互 TUI，暴露了三类只有真机才会出现的问题：建议清洗把真实模型的主要输出形态（自然追问）全部丢弃、思考型模型吃掉小 token 预算、退化终端多行命令输出被压成一行。本波次不新增 AC，修的是既有行为的可用性。
+
+#### T-H1 建议清洗阈值与预算按真实模型输出校正
+
+- **AC**：用户检查回归（输入区建议贴合上下文且真实可用）
+- **文件**：Modify `src/tui/suggestion.ts`、`src/tui/test/sp006-suggestion.test.mjs`
+- **Consumes**：`generatePromptSuggestion`、`sanitizeSuggestion`
+- **Produces**：允许问句形态建议；只拒元问题/助手口吻/评价式/格式化/超长
+- **依赖**：T-G1/T-G2
+- **责任/复用**：`MAX_OUTPUT_TOKENS` 64→256（思考型模型先消耗思考 token）；超时、取消、失败仍静默；不覆盖父请求参数
+- **工作目录**：仓库根
+- **验证命令**：`node --test src/tui/test/sp006-suggestion.test.mjs`
+- **预期行为**：
+  1. RED：真实模型返回「那 local 类型的命令定义在哪里？」被 `/[?？]$/` 丢弃 → 建议恒为空（单测用假生成器只返回陈述句，掩盖了问题）。
+  2. 最小实现：删问号拒绝、补元问题拒绝、补助手口吻前缀、抬高输出预算。
+  3. 目标成功：8/8 PASS；真实交互 TUI 的 E2E-04/E2E-05/E2E-06 通过。
+- **检查**：真实模型采样（不是假端口）
+- **状态记录**：DONE 2026-11-20；提交 `9e3e88f`；用例 8 例 PASS；真实模型建议例「这个文件里注册了哪些命令？」可显示并可 Tab 填入
+
+#### T-H2 退化终端多行命令输出按正文块渲染
+
+- **AC**：CMD-01…CMD-12 在 `fullScreen=false` 下同样可读
+- **文件**：Modify `src/tui/app.tsx`；Modify `src/tui/test/sp0054-command-menu.test.mjs`
+- **Consumes**：命令分发 `setHint`
+- **Produces**：多行 hint 在页脚上方以正文块渲染（最多 40 行，超出提示截断）；单行 hint 行为不变；全屏不变
+- **依赖**：无
+- **责任/复用**：渲染层只做展示，不解析命令语义
+- **工作目录**：仓库根
+- **验证命令**：`npm run build && node --test src/tui/test/sp0054-command-menu.test.mjs`
+- **预期行为**：
+  1. RED：`fullScreen=false` 执行 `/help`，帧里只剩折行裁切的单行提示 → 断言含 `/resume`、`/tasks` 失败。
+  2. 最小实现：页脚内联仅限单行；多行改正文块逐行输出。
+  3. 目标成功：4/4 PASS，含新增「非全屏退化终端 /help 以正文块列出命令」。
+- **检查**：全屏模式无回归
+- **状态记录**：DONE 2026-11-20；提交 `9e3e88f`；`sp0054-command-menu.test.mjs` 4/4 PASS
+
+#### T-H3 真实模型端到端证据与文档收口
+
+- **AC**：交付证据完整性（不属于 69 条产品 AC，属交付要求）
+- **文件**：Modify `SP/SP006/test-report.md`、`STATUS.md`、`SP/SP006/requirements-summary.md`、`PRODUCT.md`、`release-notes/v0.6.0.md`、`docs/current-status.md`、`release-ledger.json`、`design/design.zh.md`（D-18 校正、D-19、§16.6）、`design/plan.zh.md`（本波次）
+- **Consumes**：`artifacts/e2e/` 下的真实模型脚本（未入库，`artifacts/` 已 gitignore）
+- **Produces**：test-report §6 真实模型端到端记录；文档数字与设计偏离表同步
+- **依赖**：T-H1/T-H2
+- **责任/复用**：证据只记录真实执行结果；未执行项标 UNVERIFIED
+- **工作目录**：仓库根
+- **验证命令**：`npm run test:unit`、`npm run test:checks`、`npm run spec:check`、`npm run skills:check`、`node scripts/release/sp006-packaging.mjs`、AST 脚本
+- **预期行为**：
+  1. RED：文档仍写 924 项与旧建议阈值 → 与实测不符。
+  2. 最小实现：按实测更新数字与条目。
+  3. 目标成功：门禁全 PASS，文档数字与实测一致。
+- **检查**：AST 仍 53/53（本轮不新增源文件）
+- **状态记录**：DONE 2026-11-20；全量 925 项 / 924 通过 / 0 失败 / 1 跳过；AST 53/53，本仓单元 257、参考 14411、函数对 48379，结论 PASS；真实模型交互 e2e 18 项 PASS
 
 ## 全计划 AC 覆盖检查
 

@@ -15,7 +15,7 @@
 
 | 功能/优化目录 | 来源 / 身份 | 验收目标 | 责任范围 | 阶段 | 需求 / 设计 / 计划 / STATUS | 验证 | 集成状态 | 下一步 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `tui-usability` · TU-01…TU-15 | 路线图 P0；AC MODEL_PROPOSED | 四区、resize、冻结、帧差分、键位上下文/chord/保留键/用户覆盖、状态栏字段与外部命令、CJK、多行、快捷键、无头事件与退出码 | `src/tui/render/{layout,frame-buffer,freeze-cache,statusline}.ts`、`src/tui/keybindings/*`、`strategy`、`app.tsx`、`headless.ts` | 需求/设计/计划 v1.1 · 实施 T-A1…T-A7 完成 | [需求](tui-parity-and-extensions/requirements.md) ／ [设计 v1.1](tui-parity-and-extensions/design/design.zh.md) ／ [计划 v1.1](tui-parity-and-extensions/design/plan.zh.md) ／ [STATUS](tui-parity-and-extensions/STATUS.md) | TU-01…TU-15 全部 PASS（含 UI 帧级缓存命中计数） | 仅功能分支，未合入 master | 用户检查后合入 |
+| `tui-usability` · TU-01…TU-15 | 路线图 P0；AC MODEL_PROPOSED | 四区、resize、冻结、帧差分、键位上下文/chord/保留键/用户覆盖、状态栏字段与外部命令、CJK、多行、快捷键、无头事件与退出码 | `src/tui/render/{layout,frame-buffer,freeze-cache,statusline}.ts`、`src/tui/keybindings/*`、`strategy`、`app.tsx`、`headless.ts` | 需求/设计/计划 v1.1 · 实施 T-A1…T-A7 完成 | [需求](tui-parity-and-extensions/requirements.md) ／ [设计 v1.4](tui-parity-and-extensions/design/design.zh.md) ／ [计划 v1.3](tui-parity-and-extensions/design/plan.zh.md) ／ [STATUS](tui-parity-and-extensions/STATUS.md) | TU-01…TU-15 全部 PASS（含 UI 帧级缓存命中计数） | 仅功能分支，未合入 master | 用户检查后合入 |
 | 同上 · PI-01…PI-05 | 路线图；AC MODEL_PROPOSED | 用户级/祖先/工作区/子目录分层发现、64/128 KiB 截断标注、工作区隔离、不读 `~/.claude` | 新增 `src/tui/project-instructions.ts`；`src/core/session.ts` 系统上下文端口 | 实施 T-C1 完成 | 同上 | 9 例 PASS（含真实请求体） | 仅功能分支 | 用户检查 |
 | 同上 · SM-01…SM-09 | 路线图；AC MODEL_PROPOSED | 技能两源发现/项目覆盖/正文注入/无效跳过；stdio MCP 握手、工具注册、调用、审批、崩溃降级、密钥引用 | 新增 `src/tui/skills.ts`、`src/tui/mcp/{types,client,index}.ts` | 实施 T-C2/T-C3 完成 | 同上 | 7 + 8 例 PASS（含假 MCP 子进程与真实审批） | 仅功能分支 | 用户检查 |
 | 同上 · HK-01…HK-08 | 路线图；AC MODEL_PROPOSED | 八事件、command/prompt、continue/block/suppress/systemMessage、PreToolUse allow/deny/ask、退出码 2、超时降级、禁用、损坏备份 | 新增 `src/core/hooks.ts`、`src/tui/hooks/{types,config,runner,index}.ts`；Session 接线 | 实施 T-C4 完成 | 同上 | 8 例 PASS（含真实回合事件顺序） | 仅功能分支 | 用户检查 |
@@ -23,16 +23,16 @@
 | 同上 · HC-01…HC-07 | 路线图；AC MODEL_PROPOSED | text/json/stream-json、事件顺序与字段、失败退出码 1、用法错误 2、非 TTY、不写用户数据 | `src/tui/headless.ts`、`cli.ts` | 实施 T-A7 完成 | 同上 | 5 例 PASS（真实子进程） | 仅功能分支 | 用户检查 |
 | 同上 · NP-01…NP-05 | 路线图；AC MODEL_PROPOSED | tarball 白名单、仓库外隔离安装、真实流式任务、publish dry-run、台账字段 | `scripts/release/sp006-packaging.mjs`、`release-ledger.json`、`sp006-release-ledger.test.mjs` | 实施 T-D1 完成 | 同上 | 脚本 exit 0，6 项 PASS；台账 3 例 PASS | 仅功能分支 | 用户检查后发布 |
 | 同上 · CMD-01…CMD-12 | `docs/tui-command-roadmap.md`；AC MODEL_PROPOSED | 三型注册表、模态槽、prompt 进度、七条新命令、22 条既有命令回归 | `src/tui/commands/{types,registry,util,builtin-*,index}.ts`、`commands.ts`、`app.tsx` | 实施 T-B1…T-B3 完成 | 同上 | 注册表 7 例 + 命令 10 例 + UI 2 例 PASS | 仅功能分支 | 用户检查 |
-| 同上 · AST-01…AST-03 | 用户指令 m00001；AC MODEL_PROPOSED | 改动文件全映射、命中全处置、自检全 PASS | `scripts/review/sp004-ast.mjs` | 实施 T-D2 完成 | 同上 | 52/52 映射，命中 0，自检 3/3 PASS | 仅功能分支 | 用户检查 |
+| 同上 · AST-01…AST-03 | 用户指令 m00001；AC MODEL_PROPOSED | 改动文件全映射、命中全处置、自检全 PASS | `scripts/review/sp004-ast.mjs` | 实施 T-D2 完成 | 同上 | 53/53 映射，命中 0，自检 3/3 PASS | 仅功能分支 | 用户检查 |
 
 ## 验收与交接
 
 - AC 共 **69 条**（TU 15、PI 5、SM 9、HK 8、WR 5、HC 7、NP 5、CMD 12、AST 3）：**69 PASS / 0 PARTIAL / 0 FAIL / 0 UNVERIFIED**。逐条证据见 [验收报告](test-report.md)。
-- 全量回归：`npm run test:unit` **914 项 / 913 通过 / 0 失败 / 1 跳过**，EXIT=0，54.0s；跳过项为仅在 POSIX 生效的文件权限断言。SP006 新增 20 个测试文件、110 例。
-- 定向回归：`node --test src/tui/test/sp006-*.test.mjs sp0054-command-fidelity.test.mjs sp0054-enter-command.test.mjs commands.test.mjs commands-zh.test.mjs` **135 通过 / 0 失败**。
-- 制品：`node scripts/release/sp006-packaging.mjs` exit 0；tarball 141 文件，隔离安装 0.6.0，无头流式 7 事件且未写用户数据，`npm publish --dry-run` 不上传。
-- AST：`node scripts/review/sp004-ast.mjs --reference <参考仓> --reference-revision b5c9be8 --base dc94731`：52 改动文件 / 52 映射，自检 3 项 PASS，本仓单元 252、参考 14381、函数对 49285，命中「无」，结论 PASS。
-- 本地提交：波次 A `cedf2a3`、波次 B `031b99b`、波次 C 与命令面 `4b78cdb`、波次 D `06d7b2a`、命令卡片修复 `f0b11eb`、台账同步 `47c5cb6`、`/resume` 修复 `1ef588a`、波次 E 文档与 AST 映射补记 `a2fd0cc`；已推送远端分支 `origin/feature/SP006/tui-parity-and-extensions`（用户 m02328 授权），未合入 master。
+- 全量回归：`npm run test:unit` **925 项 / 924 通过 / 0 失败 / 1 跳过**，EXIT=0，53.3s；跳过项为仅在 POSIX 生效的文件权限断言。SP006 新增 21 个测试文件、120 例；另在既有 SP005.4 用例文件补 1 例非全屏 `/help` 回归。
+- 定向回归：`node --test src/tui/test/sp006-*.test.mjs sp0054-command-fidelity.test.mjs sp0054-enter-command.test.mjs sp0054-command-menu.test.mjs commands.test.mjs commands-zh.test.mjs` **157 通过 / 0 失败**。
+- 制品：`node scripts/release/sp006-packaging.mjs` exit 0；tarball 142 文件，隔离安装 0.6.0，无头流式 7 事件且未写用户数据，`npm publish --dry-run` 不上传。
+- AST：`node scripts/review/sp004-ast.mjs --reference <参考仓> --reference-revision b5c9be8 --base dc94731`：53 改动文件 / 53 映射，自检 3 项 PASS，本仓单元 257、参考 14411、函数对 48379，命中「无」，结论 PASS。
+- 本地提交：波次 A `cedf2a3`、波次 B `031b99b`、波次 C 与命令面 `4b78cdb`、波次 D `06d7b2a`、命令卡片修复 `f0b11eb`、台账同步 `47c5cb6`、`/resume` 修复 `1ef588a`、波次 E 文档与 AST 映射补记 `a2fd0cc`、波次 F/G 修复 `55ea677`、波次 H 真实模型端到端修复 `9e3e88f`、文档与台账收口（本轮提交）；已推送远端分支 `origin/feature/SP006/tui-parity-and-extensions`（用户 m02328 授权），未合入 master。
 - **集成状态：未合入 master**；远端推送按用户 m02328 授权在提交后执行。npm 0.6.0 仅 prepared，未上传。
 - 已知限制：状态栏外部命令配置在应用挂载时读取一次，修改后需重启；无头模式不加载 MCP/hooks 交互面板；TU-09 可选字段按外部状态栏协议省略。恢复条件见验收报告。
 
@@ -48,3 +48,6 @@
 | 2026-11-20 | 两轮设计自审（D-01…D-14）、回归修复、全量 906 项通过 | 自审委托与质量门槛 |
 | 2026-11-20 | 用户检查反馈修复一：命令卡片完成后不消失、单次调用占多行（`f0b11eb`） | 用户 m01955 报告 |
 | 2026-11-20 | 用户检查反馈修复二：`/resume` 恢复后历史不可见（新增 `conversation_restored` 事件 + 转录重建 + 会话身份切换），全量 914 项通过 | 用户 m02285 报告；m02328 要求端到端测试后提交并推送远端、不合入 master |
+| 2026-11-20 | 用户检查反馈修复三：`/resume` 恢复后历史碎片列（流式增量合并 + 恢复层合并旧转录），全量 924 项通过 | 用户 m03012 报告 |
+| 2026-11-20 | 用户检查反馈修复四：输入框占位建议改由模型按当前对话生成（新增 `suggestion.ts` 与宿主端口），删除固定话术 | 用户 m03632 报告；m03678 要求整体端到端测试后提交推送、不合入 master |
+| 2026-11-20 | 真实模型端到端修复：建议清洗不再丢弃问句形态（真实模型主要输出）、输出预算 64→256；退化终端多行命令输出改正文块渲染；全量 925 项通过 | 用户 m03678 要求整体 TUI 端到端测试、发现问题即修 |

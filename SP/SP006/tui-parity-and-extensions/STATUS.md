@@ -72,20 +72,21 @@
 | 参考仓 hooks/MCP/无头协议的精确字段名与时序 | PARTIAL：已按设计契约实现并用假服务器/真实子进程验证；未与参考仓逐字段对照 | 需要时按参考仓源码复核字段表 |
 | 帧缓冲差分与 Ink 的兼容方式 | RESOLVED（D-04）：差分/冻结为可断言单元，Ink 层用元素冻结接入 | 帧级 UI 测试已覆盖四区与状态栏 |
 | MCP 真实第三方服务器互通 | UNVERIFIED（本轮用仓库内假 MCP 服务器做协议级验证） | 后续轮次引入真实服务器做互通验证 |
+| 真实模型交互 e2e 的自动化程度 | PARTIAL：用 `mountTty` 回放按键 + 真实 Provider 跑通 18 项，但不是人工在真终端逐键操作 | 需要时由用户真终端复验观感 |
 
 ## 验证结果
 
 | 项 | 结果 |
 | --- | --- |
 | AC | 69 / 69 PASS，0 PARTIAL，0 FAIL，0 UNVERIFIED（逐条见 SP/SP006/test-report.md） |
-| 全量单测 | 914 项 / 913 通过 / 0 失败 / 1 跳过（跳过项仅 POSIX 文件权限） |
-| SP006 新增 | 20 个测试文件、110 例 |
+| 全量单测 | 925 项 / 924 通过 / 0 失败 / 1 跳过（跳过项仅 POSIX 文件权限） |
+| SP006 新增 | 21 个测试文件、120 例；另在既有 SP005.4 用例补 1 例非全屏 `/help` 回归 |
 | 制品 | sp006-packaging.mjs 6 项 PASS，exit 0，未上传 |
-| AST | 52/52 映射，命中 0，自检 3/3 PASS |
-| 版本 | 0.6.0 prepared（sourceCommit 1ef588a…，receipt 占位 null） |
+| AST | 53/53 映射，命中 0，自检 3/3 PASS |
+| 版本 | 0.6.0 prepared（sourceCommit 见 release-ledger.json，receipt 占位 null） |
 
 ## 下一步
 
-1. 功能分支已按用户 m02328 授权推送远端（`origin/feature/SP006/tui-parity-and-extensions`，HEAD `a2fd0cc`）；等用户检查功能分支、测试报告与 0.6.0 制品，本轮**不合入 master**。
+1. 功能分支已按用户 m02328、m03678 授权推送远端（`origin/feature/SP006/tui-parity-and-extensions`，代码提交至 `9e3e88f`，文档与台账同步提交随后推送）；等用户检查功能分支、测试报告与 0.6.0 制品，本轮**不合入 master**。
 2. 用户确认后再按 buding-merge 门禁合入、推送并按发布流程上传 0.6.0。
 3. 合入前若继续改代码，需重跑全量单测、制品 smoke 与 AST 复核。
