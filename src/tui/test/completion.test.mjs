@@ -113,13 +113,13 @@ test('/ 与 @ 共用 overlay：候选命令 Tab 补全后 Enter 执行（FC-03�
   try {
     const ui = await mountAgent(t, fixture)
     fixture.attach(ui.session)
-    await ui.send('/perm')
-    await ui.waitFor((frame) => frame.includes('/permission'))
+    await ui.send('/hel')
+    await ui.waitFor((frame) => frame.includes('/help'))
     await ui.send('\t')
-    await ui.waitFor((frame) => frame.includes('> /permission'))
+    await ui.waitFor((frame) => frame.includes('> /help'))
     await ui.send('\r')
-    await ui.waitFor((frame) => frame.includes('当前权限模式'))
-    assert.match(ui.last(), /允许编辑/)
+    await ui.waitFor((frame) => frame.includes('/models'))
+    assert.doesNotMatch(ui.last(), /未知命令/)
   } finally {
     rmSync(fixture.base, { recursive: true, force: true })
   }

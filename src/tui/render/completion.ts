@@ -70,10 +70,40 @@ export function activeToken(
 }
 
 export function commandCandidates(token: string, commands: string[]): CompletionCandidate[] {
+  // 0.5.4：/ 唤起全部命令（不再截断为 5 条），由 UI 做滚动窗口。
   return commands
     .filter((command) => command.startsWith(token))
-    .slice(0, MAX_CANDIDATES)
     .map((command) => ({ value: command, kind: 'command' as const, directory: false }))
+}
+
+const COMMAND_DESCRIPTIONS: Record<string, { zh: string; en: string }> = {
+  help: { zh: '显示帮助与技能命令', en: 'show help & skill commands' },
+  models: { zh: '管理模型档案', en: 'manage model profiles' },
+  permissions: { zh: '权限白名单/规则面板', en: 'permission rules panel' },
+  rules: { zh: '权限规则面板', en: 'permission rules panel' },
+  diff: { zh: '查看未提交/会话改动', en: 'view uncommitted changes' },
+  undo: { zh: '撤销最近文件改动', en: 'undo latest file changes' },
+  rewind: { zh: '回滚对话+文件到检查点', en: 'rewind conversation+files' },
+  denials: { zh: '查看拒绝历史', en: 'show denial history' },
+  clear: { zh: '清空会话', en: 'clear conversation' },
+  new: { zh: '清空会话（同 /clear）', en: 'clear conversation' },
+  reset: { zh: '清空会话（同 /clear）', en: 'clear conversation' },
+  resume: { zh: '恢复会话（当前工作区）', en: 'resume a session' },
+  continue: { zh: '恢复最近会话', en: 'resume latest session' },
+  sessions: { zh: '列出已保存会话', en: 'list saved sessions' },
+  context: { zh: '上下文占用网格', en: 'context usage grid' },
+  compact: { zh: '手动压缩历史', en: 'compact history' },
+  cost: { zh: '累计 token 与费用', en: 'tokens & cost' },
+  usage: { zh: '累计 token 与费用', en: 'tokens & cost' },
+  plan: { zh: '规划模式（只读）', en: 'plan mode (read-only)' },
+  memory: { zh: '项目/会话记忆', en: 'project/session memory' },
+  effort: { zh: '思考强度', en: 'reasoning effort' },
+  exit: { zh: '退出', en: 'exit' },
+  quit: { zh: '退出', en: 'exit' }
+}
+
+export function commandDescription(name: string, lang: 'zh' | 'en'): string {
+  return COMMAND_DESCRIPTIONS[name]?.[lang] ?? ''
 }
 
 /**
