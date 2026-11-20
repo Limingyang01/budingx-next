@@ -57,6 +57,13 @@
 
 本次变更**不授权任何开发**；SP004 实施已于 2026-11-18 获用户放行。
 
+## SP005 复审修复合入回执（2026-11-20）
+
+源/目标固定：`feature/SP005/fix-0.5.1`（HEAD `16f445b`）→ `master`（原 `0fe6e3c`），merge-base `0fe6e3c`，`--no-ff` 合并提交 `5ff99b5`，ancestry 证明通过。前置门禁 `npm run merge:gate` GREEN（`artifacts/merge-gate/feature-SP005-fix-0.5.1-2026-11-20T01-54-57-677Z.md`：outgoing 3 提交 29 文件、禁带路径违规 0、报告 FAIL 行 0；`npm test`、`spec:check`、`skills:check`、`pack-smoke` 退出码均为 0）。合入后复验：`npm run build` 无错误；SP005 相关套件 41 项 40 通过 / 0 失败 / 1 跳过（仅 POSIX 生效的文件权限断言）；`spec:check` 与 `skills:check` 通过。推送：`origin/master` `0fe6e3c..5ff99b5`、`origin/feature/SP005/fix-0.5.1` 新分支；`git ls-remote` 与本地一致。未执行：打 tag、npm 发布（由维护者在 Actions 手动触发）、分支删除。
+
+0.5.1 已准备（`src/tui/package.json` = 0.5.1，台账为 prepared），等待维护者触发发布；发布后需按回执流程登记 `release:sync`。
+
+
 ## SP005 复审修复（0.5.1，2026-11-20）
 
 0.5.0 发布后对 SP005 代码做了独立复审（4 路并行评审 + 对每条关键结论的独立复现），发现并修复了一批缺陷。修复分支 `feature/SP005/fix-0.5.1` 基于 0.5.0 发布提交之上的 master 最新提交，版本已准备为 **0.5.1**（[发行说明](../release-notes/v0.5.1.md)），尚未上传 npm。
