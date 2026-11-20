@@ -133,3 +133,44 @@ test('SR-10 恢复权限沿用会话原模式，且绝不升权', () => {
   assert.equal(session.restorePermissionMode(undefined), undefined)
 })
 
+test('CB-01 会话压缩把 compaction 记录写入转录（恢复不再撤销压缩）', async () => {
+  const records = []
+  const transcript = {
+    append: (record) => records.push(record),
+    read: () => ({ records: [], corruptLines: 0, unsupported: false }),
+    directory: () => '/tmp/sp005-review'
+  }
+  const session = new Session({
+    provider: {
+      async *stream() {
+        yield { type: 'message_completed', finishReason: 'stop' }
+      }
+    },
+    approval: { async request() { return { outcome: 'allow', via: 'user' } } },
+    resolveSnapshot: () => SNAPSHOT,
+    transcript,
+    contextBudget: { maxTokens: 60, reservedOutputTokens: 0 }
+  })
+  session.restoreHistory([
+    { id: 'h1', role: 'user', blocks: [{ type: 'text', text: 'x'.repeat(400) }] },
+    { id: 'h2', role: 'assistant', blocks: [{ type: 'text', text: 'y'.repeat(400) }] },
+    { id: 'h3', role: 'user', blocks: [{ type: 'text', text: 'ok' }] }
+  ])
+  const finalized = new Promise((resolve) => {
+    const off = session.on((event) => {
+      if (event.type === 'turn_finalized') {
+        off()
+        resolve(event)
+      }
+    })
+  })
+  session.submit('next')
+  const event = await finalized
+  assert.equal(event.outcome, 'completed')
+  const compaction = records.find((record) => record.type === 'compaction')
+  assert.ok(compaction, 'a compaction record must be written to the transcript')
+  assert.ok(compaction.droppedIds.includes('h1'))
+  assert.ok(compaction.droppedIds.includes('h2'))
+  assert.ok(compaction.order.includes('h3'))
+  assert.equal(compaction.order.length, 2)
+})
