@@ -35,6 +35,7 @@ export type CommandOutcome = {
   openResume?: boolean
   openRewind?: boolean
   openContext?: boolean
+  skillPrompt?: { name: string; body: string }
   /** Interactive hosts open the diff dialog on this instead of printing. */
   openDiffDialog?: boolean
 }
@@ -343,11 +344,15 @@ async function executeCommand(
       return memoryCommand(argument, context, pick)
     case 'effort':
       return effortCommand(argument, context, pick)
-    default:
+    default: {
+      // 0.5.4：已加载技能可作为 /<skill> 命令展开为提示（prompt 型，对齐参考）。
+      const body = loadSkillBody(command)
+      if (body !== undefined) return { handled: true, skillPrompt: { name: command, body } }
       return {
         handled: true,
         error: pick('未知命令；使用 /help', 'Unknown command; use /help')
       }
+    }
   }
 }
 
@@ -886,19 +891,24 @@ function planCommand(argument: string, context: CommandContext, pick: (zh: strin
     if (!result.ok) return { handled: true, error: result.reason ?? 'cannot enter plan mode' }
     return { handled: true, message: pick('已进入规划模式：只读分析，计划获批后才执行修改', 'Plan mode: read-only research; changes run only after approval') }
   }
-  void session.exitPlanMode({}).catch(() => {})
-  return { handled: true, message: pick('已请求退出规划模式（需审批）', 'Exiting plan mode (approval required)') }
+  // 已提交计划走审批退出；仅调研期直接离开并恢复原档位，避免卡住。
+  if (session.planMode.phase === 'pending') {
+    void session.exitPlanMode({}).catch(() => {})
+    return { handled: true, message: pick('已请求退出规划模式（需审批）', 'Exiting plan mode (approval required)') }
+  }
+  session.leavePlanMode()
+  return { handled: true, message: pick('已退出规划模式，恢复原权限档位', 'Left plan mode, restored permission mode') }
 }
 
 /** 0.5.4 /help：附加已加载的自定义技能命令（.budingx/skills）。 */
 function skillHelpSection(context: CommandContext, pick: (zh: string, en: string) => string): string {
-  const skills = discoverSkillCommands(context)
+  const skills = discoverSkillCommands()
   if (skills.length === 0) return ''
   const lines = skills.map((skill) => `  /${skill.name}  ${skill.description}`)
   return '\n' + pick('自定义技能命令：', 'Custom skill commands:') + '\n' + lines.join('\n')
 }
 
-function discoverSkillCommands(context: CommandContext): { name: string; description: string }[] {
+export function discoverSkillCommands(): { name: string; description: string }[] {
   const roots = [join(homedir(), '.budingx', 'skills'), join(process.cwd(), '.budingx', 'skills')]
   const out: { name: string; description: string }[] = []
   const seen = new Set<string>()
@@ -917,4 +927,21 @@ function discoverSkillCommands(context: CommandContext): { name: string; descrip
     }
   }
   return out
+}
+
+export function loadSkillBody(name: string): string | undefined {
+  const roots = [join(homedir(), '.budingx', 'skills'), join(process.cwd(), '.budingx', 'skills')]
+  for (const root of roots) {
+    let dirs: string[] = []
+    try { dirs = readdirSync(root) } catch { continue }
+    for (const dir of dirs) {
+      const file = join(root, dir, 'SKILL.md')
+      let text = ''
+      try { text = readFileSync(file, 'utf8') } catch { continue }
+      const skillName = /^name:\s*(.+)$/m.exec(text)?.[1]?.trim() ?? dir
+      if (skillName !== name) continue
+      return text.replace(/^---[\s\S]*?---\n?/, '').trim()
+    }
+  }
+  return undefined
 }
