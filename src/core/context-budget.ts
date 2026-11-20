@@ -63,6 +63,11 @@ export type CompactionResult = {
   withinBudget: boolean
   /** 未能达标时的原因。 */
   overflowReason?: 'single_message_too_large' | 'preserved_exceeds_budget' | 'no_compactable_range'
+  /**
+   * 压缩产生的合成消息与最终顺序（SP005 review H5）。
+   * 转录据此可重放压缩，而不是在恢复时把压缩静默撤销。
+   */
+  artifacts?: { order: string[]; synthetic: Message[]; droppedIds: string[] }
 }
 
 /** 压缩器端口：core 内部只持有纯函数实现。 */
@@ -221,6 +226,54 @@ export function compactFloor(input: ContextBudgetInput): number {
   return Math.floor(targetTokens(input) * COMPACT_FLOOR_RATIO)
 }
 
+/**
+ * 为输出预留的 token 数（SP005 review M3）。
+ * 会话循环与 `/context` 必须读同一个函数，否则用户看到的阈值与真实行为不一致。
+ */
+export function reservedOutputFor(maxTokens: number, reservedOutputTokens?: number): number {
+  return reservedOutputTokens ?? Math.floor(maxTokens / 4)
+}
+
+/** 归一化后的预算：上限与预留输出。 */
+export function normalizeBudget(
+  maxTokens: number,
+  reservedOutputTokens?: number
+): { maxTokens: number; reservedOutputTokens: number } {
+  return { maxTokens, reservedOutputTokens: reservedOutputFor(maxTokens, reservedOutputTokens) }
+}
+
+/**
+ * 把保留项收敛到预算以内（SP005 review H4）。
+ * 保留约束很重要，但把超预算的请求发给模型只会换来一次溢出错误，
+ * 因此单条先按预算均分裁剪，仍放不下时只保留最近且装得下的部分。
+ */
+export function clampPreservedItems(
+  preserved: PreservedItem[],
+  budget: number
+): { items: PreservedItem[]; truncated: boolean } {
+  if (preserved.length === 0) return { items: [], truncated: false }
+  const costOf = (item: PreservedItem): number =>
+    estimateTokens([{ id: item.id, role: 'user', blocks: [{ type: 'text', text: item.text }] }])
+  const total = preserved.reduce((sum, item) => sum + costOf(item), 0)
+  if (total <= budget) return { items: preserved, truncated: false }
+
+  const limit = Math.max(1, Math.floor(budget / preserved.length))
+  const capped = preserved.map((item) => ({ ...item, text: capPreservedText(item.text, limit) }))
+  const kept: PreservedItem[] = []
+  let used = 0
+  for (const item of capped) {
+    const cost = costOf(item)
+    if (used + cost > budget) break
+    kept.push(item)
+    used += cost
+  }
+  if (kept.length === 0) {
+    const newest = preserved[preserved.length - 1]
+    kept.push({ ...newest, text: capPreservedText(newest.text, Math.max(1, budget)) })
+  }
+  return { items: kept, truncated: true }
+}
+
 /** 消息是否是「可压缩单元」的起点（用户消息视为回合边界）。 */
 function isBoundary(message: Message): boolean {
   return message.role === 'user'
@@ -313,11 +366,14 @@ export function createContextBudgetManager(): ContextBudgetManager {
     const trigger = triggerTokens(input)
     const floor = compactFloor(input)
     const target = targetTokens(input)
+    // 保留项本身不能占满预算，否则压缩只会产出一个更糟的请求。
+    const clamped = clampPreservedItems(preserved, floor)
+    const effectivePreserved = clamped.items
     const base: CompactionResult = {
       compacted: false,
       messages: [...messages],
       replacedCount: 0,
-      preserved,
+      preserved: effectivePreserved,
       estimatedTokens: estimatedBefore,
       withinBudget: estimatedBefore <= target
     }
@@ -334,7 +390,7 @@ export function createContextBudgetManager(): ContextBudgetManager {
     const cuttableBoundaries = boundaries.filter((index) => index < lastUserIndex)
     if (cuttableBoundaries.length === 0) {
       // 没有历史回合可裁剪：只有当单条消息本身就超预算时才区分原因。
-      const reason = overflowReasonOf(messages, floor, target, preserved, false)
+      const reason = overflowReasonOf(messages, floor, target, effectivePreserved, false)
       return {
         ...base,
         withinBudget: false,
@@ -342,12 +398,11 @@ export function createContextBudgetManager(): ContextBudgetManager {
       }
     }
 
-    const preservedEntry = preservedMessage(preserved)
+    const preservedEntry = preservedMessage(effectivePreserved)
     const tail = messages.slice(lastUserIndex)
 
     // 从最旧的回合开始整体丢弃，直到估算长度进入 floor 以内。
     // 候选长度 = 已保留 + 保留项 + 未丢弃的历史回合 + 当前回合。
-    const keptPrefix: Message[] = []
     let droppedFrom = cuttableBoundaries[0]
     let droppedTo = -1
     const carriedTools: Message[] = []
@@ -357,7 +412,7 @@ export function createContextBudgetManager(): ContextBudgetManager {
       const segment = messages.slice(start, end)
       const remaining = messages.slice(end, lastUserIndex)
       const candidate = [
-        ...keptPrefix,
+        ...carriedTools,
         ...(preservedEntry ? [preservedEntry] : []),
         ...segment,
         ...remaining,
@@ -393,7 +448,7 @@ export function createContextBudgetManager(): ContextBudgetManager {
       // 一个回合都丢不掉：可能是单条消息本身就超预算（不可压缩），
       // 也可能保留项本身就把预算占满。
       const estimated = estimateOf(input)
-      const reason = overflowReasonOf(messages, floor, target, preserved, true)
+      const reason = overflowReasonOf(messages, floor, target, effectivePreserved, true)
       return {
         ...base,
         estimatedTokens: estimated,
@@ -417,12 +472,20 @@ export function createContextBudgetManager(): ContextBudgetManager {
       messages: result,
       replacedCount: droppedTo - droppedFrom + 1,
       replacedRange: { from: droppedFrom, to: droppedTo },
-      preserved,
+      preserved: effectivePreserved,
       estimatedTokens: estimatedAfter,
-      withinBudget: estimatedAfter <= target
+      withinBudget: estimatedAfter <= target,
+      artifacts: {
+        order: result.map((message) => message.id),
+        synthetic: [...carriedTools, ...(preservedEntry ? [preservedEntry] : [])],
+        droppedIds: messages
+          .slice(droppedFrom, droppedTo + 1)
+          .map((message) => message.id)
+      }
     }
     if (!compacted.withinBudget && !compacted.overflowReason) {
-      const reason = overflowReasonOf(messages, floor, target, preserved, true)
+      // 用压缩后的存活消息判因：被丢弃的超大消息不应再算作原因。
+      const reason = overflowReasonOf(result, floor, target, effectivePreserved, true)
       compacted.overflowReason = reason ?? 'no_compactable_range'
     }
     return compacted

@@ -12,7 +12,8 @@ import {
   openSync,
   readFileSync,
   statSync,
-  writeFileSync
+  writeFileSync,
+  writeSync
 } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
@@ -68,6 +69,26 @@ export function appendPrivateLine(file: string, line: string): void {
   } finally {
     closeSync(handle)
   }
+}
+
+/**
+ * Create a file exclusively (O_EXCL) with owner-only permissions.
+ *
+ * Throws an error whose code is EEXIST when the file already exists. This is
+ * the only atomic "check then create" primitive the filesystem offers, so
+ * writer locks must be built on it instead of an existsSync + write pair
+ * (SP005 review H1: the old pair let several processes hold the same lock).
+ */
+export function createPrivateFileExclusive(file: string, content: string): void {
+  ensurePrivateDirectory(dirname(file))
+  const handle = openSync(file, 'wx', PRIVATE_FILE_MODE)
+  try {
+    writeSync(handle, content)
+    fsyncSync(handle)
+  } finally {
+    closeSync(handle)
+  }
+  restrictToOwner(file)
 }
 
 /**

@@ -126,13 +126,42 @@ export function createSessionTranscript(options: SessionTranscriptOptions): Sess
  * Rebuild the message list of a session from transcript records. Tool
  * results are restored as-is, so a recovered conversation shows exactly what
  * the tools returned before the process died.
+ *
+ * `compaction` records are replayed, so a context compaction survives a
+ * restart instead of being silently undone (SP005 review H5).
  */
 export function messagesFromRecords(records: TranscriptRecord[]): Message[] {
-  const messages: Message[] = []
+  const byId = new Map<string, Message>()
+  let order: string[] = []
   for (const record of records) {
-    if (record.type !== 'message') continue
-    if (!Array.isArray(record.blocks)) continue
-    messages.push({ id: record.id, role: record.role, blocks: record.blocks })
+    if (record.type === 'message') {
+      if (!Array.isArray(record.blocks)) continue
+      if (!byId.has(record.id)) order.push(record.id)
+      byId.set(record.id, { id: record.id, role: record.role, blocks: record.blocks })
+      continue
+    }
+    if (record.type === 'compaction') {
+      for (const synthetic of record.synthetic ?? []) {
+        byId.set(synthetic.id, {
+          id: synthetic.id,
+          role: synthetic.role,
+          blocks: synthetic.blocks
+        })
+      }
+      const next: string[] = []
+      const seen = new Set<string>()
+      for (const id of record.order ?? []) {
+        if (seen.has(id) || !byId.has(id)) continue
+        seen.add(id)
+        next.push(id)
+      }
+      order = next
+    }
+  }
+  const messages: Message[] = []
+  for (const id of order) {
+    const message = byId.get(id)
+    if (message) messages.push(message)
   }
   return messages
 }

@@ -14,11 +14,11 @@ import { homedir } from 'node:os'
 import type { PermissionMode } from '../core/permissions.js'
 import { writeJsonAtomic } from './atomic.js'
 import {
+  createPrivateFileExclusive,
   ensurePrivateDirectory,
   isRegularFile,
   readPrivateFile,
-  sessionDirectory,
-  writePrivateFile
+  sessionDirectory
 } from './private-file.js'
 import {
   TRANSCRIPT_VERSION,
@@ -103,6 +103,8 @@ function isPermissionMode(value: unknown): value is PermissionMode {
  */
 export class SessionWriterLock {
   private readonly file: string
+  /** True only while this instance is the process that created the lock. */
+  private owned = false
 
   constructor(
     sessionId: string,
@@ -115,39 +117,79 @@ export class SessionWriterLock {
     return this.file
   }
 
-  /** Try to take the lock. Returns undefined on success, a reason otherwise. */
+  /** True while this instance created the lock and has not released it. */
+  get isOwned(): boolean {
+    return this.owned
+  }
+
+  /**
+   * Try to take the lock.
+   *
+   * The lock is created with an exclusive create (O_EXCL), so two processes
+   * racing for the same session can never both succeed (SP005 review H1).
+   * A live owner is rejected; a stale lock is never removed silently and
+   * requires an explicit force takeover.
+   */
   acquire(options: { force?: boolean } = {}): { acquired: true } | { acquired: false; reason: string } {
     ensurePrivateDirectory(join(this.file, '..'))
-    if (existsSync(this.file)) {
-      const raw = readPrivateFile(this.file)
-      const pid = raw ? Number(raw.split('\n')[0]) : Number.NaN
-      if (Number.isFinite(pid) && pid > 0 && isProcessAlive(pid)) {
-        return { acquired: false, reason: `session is locked by a running process (pid ${pid})` }
-      }
-      if (!options.force) {
-        return {
-          acquired: false,
-          reason: 'session has a stale lock from a crashed process; unlock it explicitly to continue'
-        }
-      }
-      try {
-        rmSync(this.file, { force: true })
-      } catch {
-        // Fall through: the exclusive create below decides the outcome.
+    const first = this.tryCreate()
+    if (first === 'created') return { acquired: true }
+    if (first !== 'exists') return { acquired: false, reason: first }
+
+    const owner = this.readOwner()
+    if (owner !== undefined && isProcessAlive(owner)) {
+      return { acquired: false, reason: `session is locked by a running process (pid ${owner})` }
+    }
+    if (!options.force) {
+      return {
+        acquired: false,
+        reason: 'session has a stale lock from a crashed process; unlock it explicitly to continue'
       }
     }
     try {
-      writePrivateFile(this.file, `${process.pid}\n${defaultNow()}\n`)
-      return { acquired: true }
-    } catch (error) {
-      return {
-        acquired: false,
-        reason: error instanceof Error ? error.message : String(error)
-      }
+      rmSync(this.file, { force: true })
+    } catch {
+      // The exclusive create below still decides the outcome.
+    }
+    const takeover = this.tryCreate()
+    if (takeover === 'created') return { acquired: true }
+    return {
+      acquired: false,
+      reason: takeover === 'exists' ? 'another process took the lock first' : takeover
     }
   }
 
+  /** Create the lock file atomically; 'exists' means somebody got there first. */
+  private tryCreate(): 'created' | 'exists' | string {
+    try {
+      createPrivateFileExclusive(this.file, `${process.pid}\n${defaultNow()}\n`)
+      this.owned = true
+      return 'created'
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException)?.code
+      if (code === 'EEXIST') return 'exists'
+      return error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  private readOwner(): number | undefined {
+    const raw = readPrivateFile(this.file)
+    if (!raw) return undefined
+    const pid = Number(raw.split('\n')[0])
+    return Number.isFinite(pid) && pid > 0 ? pid : undefined
+  }
+
+  /**
+   * Release the lock. Only the process that created it may remove it
+   * (SP005 review H2: an unconditional remove let a non-owner delete another
+   * process's lock, after which a third process could acquire it too).
+   */
   release(): void {
+    const wasOwned = this.owned
+    this.owned = false
+    if (!wasOwned) return
+    const owner = this.readOwner()
+    if (owner !== undefined && owner !== process.pid) return
     try {
       rmSync(this.file, { force: true })
     } catch {
