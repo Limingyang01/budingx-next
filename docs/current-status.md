@@ -1,6 +1,6 @@
 # 当前状态
 
-截至 2026-11-20，**npm `latest` 为 0.5.4**（命令执行可用、联网搜索审批、长会话显示与命令面复刻修复）。SP006 **已在功能分支完成实施与验收，0.6.0 制备为 prepared（未合入 master、未推送、未发布）**，等待用户检查。0.5.3 修复跨工作区会话恢复、追问提交和计划模式工具，加入中文思考强度选择和内置 `WebSearch`（默认 Bing，配置密钥后 Tavily）。0.5.4 修正完全权限下联网搜索仍弹审批、`approved` 口径与审批卡编号问题，见 [0.5.4 发行说明](../release-notes/v0.5.4.md)。
+截至 2026-11-20，**npm `latest` 为 0.5.4**（命令执行可用、联网搜索审批、长会话显示与命令面复刻修复）。SP006 **已在功能分支完成实施与验收，0.6.0 制备为 prepared（未合入 master、未发布；按用户 2026-11-20 授权推送远端功能分支）**，等待用户检查。0.5.3 修复跨工作区会话恢复、追问提交和计划模式工具，加入中文思考强度选择和内置 `WebSearch`（默认 Bing，配置密钥后 Tavily）。0.5.4 修正完全权限下联网搜索仍弹审批、`approved` 口径与审批卡编号问题，见 [0.5.4 发行说明](../release-notes/v0.5.4.md)。
 
 [运行 #24](https://github.com/Limingyang01/budingx-next/actions/runs/44717769718) 以源码 `f67a65a` 完成 Ubuntu、Windows 验证及 OIDC 发布 0.5.4。官方制品 SHA-512、来源证明、签名与独立安装均已核对。见 [0.5.3 发行说明](../release-notes/v0.5.3.md)、[发布台账](../release-ledger.json)及 [SP005 验收报告](../SP/SP005/test-report.md)。可选本机 Langfuse 观测默认关闭。
 
@@ -16,7 +16,7 @@
 - **SP002 新增**：`src/core`（事件契约、会话/回合状态机、工具回合、输入队列、消息规范化）、`src/provider`（OpenAI 兼容流解析、tool_calls 碎片、错误分类、有界重试、取消、连通探测）、`src/storage`（`~/.budingx` 配置与凭据仓库、模型档案 CRUD、三源合并）、`src/tui` 的 Ink 8 对话界面（渲染 reducer、多行编辑器、审批卡、双中断与排队）。
 - **SP003 新增（已合入 master `598fb89`）**：`src/workspace`（路径边界与忽略规则、Read/Write/Edit/Glob/Grep、行级 diff、检查点撤销、三模式策略与规则、`@` 上下文）、`src/core` 的权限端口与策略判定接线、`src/storage/permissions.ts`（`~/.budingx/permissions.json`）、TUI 侧审批三档与拒绝反馈、模式徽标与 Shift+Tab 轮播、diff 两级对话框与多源切换、`@`/`/` 统一补全。
 - **SP005 实施产物（已合入 master `293a337`，随 0.5.0 发布；0.5.1 复审修复见下文专节）**：`src/core/context-budget.ts`（预算核算、确定性压缩与保留项）、`transcript.ts`/`session-persistence.ts`（转录端口与失败语义）、`src/storage/{private-file,session-transcript,session-store,project-memory}.ts`（`~/.budingx/sessions`、`~/.budingx/memory` 原子持久化与写入锁）、两级工具空转熔断，以及 `/sessions`、`/resume`、`/context`、`/memory` 四个命令；42 条 AC 与证据见 [SP005 验收报告](../SP/SP005/test-report.md) 与[逐条细节](../SP/SP005/long-session-reliability/test-report.md)。
-- **SP006 实施产物（功能分支 `feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；未合入、未推送）**：四区骨架/帧缓冲差分/冻结缓存/8 上下文键位/状态栏外部命令；项目指令分层发现、技能两源、stdio MCP、八事件 hooks、WebFetch 安全抓取、无头 stream-json；命令注册表三型与 /init /btw /worktree /tasks /mcp /skills /export；0.6.0 制品 smoke 与 AST 复核 PASS。69 条 AC 全部 PASS，全量单测 906 项 / 905 通过 / 0 失败 / 1 跳过。证据见 [SP006 验收报告](../SP/SP006/test-report.md) 与[迭代汇总](../SP/SP006/requirements-summary.md)。
+- **SP006 实施产物（功能分支 `feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；未合入 master）**：四区骨架/帧缓冲差分/冻结缓存/8 上下文键位/状态栏外部命令；项目指令分层发现、技能两源、stdio MCP、八事件 hooks、WebFetch 安全抓取、无头 stream-json；命令注册表三型与 /init /btw /worktree /tasks /mcp /skills /export；用户检查反馈修复两处（命令卡片完成后不消失且单次调用只占一行、`/resume` 恢复后历史回到消息区可见并切换会话身份）；0.6.0 制品 smoke 与 AST 复核 PASS。69 条 AC 全部 PASS，全量单测 914 项 / 913 通过 / 0 失败 / 1 跳过。证据见 [SP006 验收报告](../SP/SP006/test-report.md) 与[迭代汇总](../SP/SP006/requirements-summary.md)。
 - **SP004 实施产物（随 0.4.0 发布）**：`SP/SP004/` 迭代汇总与四份需求（command-execution / coding-task-loop / git-worktree-safety / task-planning，共 48 条 AC）、[设计 v1.3](../SP/SP004/design/design.zh.md)、[计划 v1.3](../SP/SP004/design/plan.zh.md)（T1–T24 全部完成事实）与[验收报告](../SP/SP004/test-report.md)（48 条 AC 逐条证据、45 PASS + 4 项环境相关 UNVERIFIED）。已新增 `src/exec`（命令执行/后台任务/沙箱声明层）、`src/git`（Git 状态/worktree/受控提交）、`src/plan`（计划、持久化与审批）；`core` 只新增纯端口与状态机。发布范围及后续验证见 [SP004 迭代汇总](../SP/SP004/requirements-summary.md)。
 
 ## 未实现

@@ -210,8 +210,11 @@ function stableStringify(value: unknown): string {
 }
 
 export class Session {
-  /** 会话标识（SP004 §4.4 后台输出与 §6.1 计划文件的隔离键）。 */
-  readonly id: string
+  /**
+   * 会话标识（SP004 §4.4 后台输出与 §6.1 计划文件的隔离键）。
+   * SP006：/resume 之后可以切换到被恢复会话，因此不是只读常量。
+   */
+  private currentId: string
   private state: SessionState = 'idle'
   private readonly messages: Message[] = []
   private readonly reasoningSource = new WeakMap<Message, TurnSnapshot>()
@@ -286,7 +289,7 @@ export class Session {
   }
 
   constructor(private readonly options: SessionOptions) {
-    this.id = options.id ?? randomUUID()
+    this.currentId = options.id ?? randomUUID()
     this.tools = options.tools ?? []
     if (options.contextBudget) {
       this.budget = createContextBudgetManager()
@@ -299,9 +302,29 @@ export class Session {
   /**
    * SP005 §5：把恢复出来的历史装入会话（跨进程恢复入口）。
    * 只装载历史，绝不重放任何工具步骤。
+   *
+   * SP006 回归修复：同时发出 conversation_restored，让宿主把同一段历史
+   * 渲染进可见转录。此前历史只进模型上下文，用户看到的是一片空白。
    */
   restoreHistory(messages: readonly Message[]): void {
     this.messages.splice(0, this.messages.length, ...messages)
+    this.emit({ type: 'conversation_restored', messages: [...messages] })
+  }
+
+  /** 会话标识（可被 /resume 切换，见 adoptIdentity）。 */
+  get id(): string {
+    return this.currentId
+  }
+
+  /**
+   * SP006：/resume 之后切换会话身份，让后续回合继续写入被恢复会话的转录。
+   * 对齐参考实现的 switchSession：会话 id 与转录端口一起换，
+   * 被恢复会话的转录因此保持完整（原历史 + 续写）。
+   * 只换身份，绝不重放任何工具步骤。
+   */
+  adoptIdentity(next: { id: string; transcript?: SessionTranscript }): void {
+    this.currentId = next.id
+    if (next.transcript) this.options.transcript = next.transcript
   }
 
   /** 0.5.4 /rewind：对话检查点（用户消息）列表，供选择面板使用。 */

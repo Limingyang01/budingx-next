@@ -65,6 +65,8 @@ export type CommandContext = {
       messages?: unknown[]
       needsReview?: { name: string; callId: string; detail?: string }[]
       warnings?: string[]
+      /** SP006：恢复后当前生效的会话 id（恢复会切换身份）。 */
+      sessionId?: string
     }
   }
   contextUsage?: {

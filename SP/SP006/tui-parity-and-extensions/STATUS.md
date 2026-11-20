@@ -10,7 +10,7 @@
 | 设计版本 | v1.1（SELF_REVIEWED，design/design.zh.md） |
 | 实施计划版本 | v1.0（APPROVED，design/plan.zh.md） |
 | 生命周期 | ACTIVE |
-| 阶段 | 实施完成：波次 A–D（T-A1…T-D3），等待用户验收合入 |
+| 阶段 | 实施完成：波次 A–D（T-A1…T-D3）+ 用户检查反馈修复（命令卡片、`/resume` 历史可见性），等待用户验收合入 |
 | 功能分支 | feature/SP006/tui-parity-and-extensions |
 | 基线 | master dc94731（登记 0.5.4 发布回执并同步文档至 latest） |
 | 需求文档 | SP/SP006/tui-parity-and-extensions/requirements.md |
@@ -18,7 +18,7 @@
 | 实施计划 | SP/SP006/tui-parity-and-extensions/design/plan.zh.md |
 | 验收报告 | SP/SP006/test-report.md（执行完成） |
 | AC 总数 | 69（TU-15 / PI-05 / SM-09 / HK-08 / WR-05 / HC-07 / NP-05 / CMD-12 / AST-03） |
-| Git 范围 | 本轮只在功能分支提交；**不合入 master、不推送远端**（用户 m00001） |
+| Git 范围 | 本轮只在功能分支提交；**不合入 master**（用户 m00001、m02328）；远端推送按用户 m02328 授权执行 |
 
 ## 授权与来源
 
@@ -62,6 +62,8 @@
 | D-12 | `/tasks` 读后台任务登记表（TaskRegistry），不复用待办列表 | CMD-08 要求状态、退出码与输出路径 |
 | D-13 | `/init` 已存在则拒绝；`/btw` 空参数只提示用法；`/mcp` `/skills` 非交互降级为文本 | CMD-05/06/09/10 的可判定降级 |
 | D-14 | `src/core/exec.ts` 的 `CommandResult` 增加 `command?`/`startedAt?`，后台快照回填 | /tasks 需要稳定的命令标识与启动时间 |
+| D-15 | 用户 m02328 授权「修复后提交并推送远端，先不要合入master分支」：推送放开、合入仍禁止 | 用户 m02328 明确「提交并且推送远端，先不要合入master分支」；覆盖 D-01 中「不推送」部分 |
+| D-16 | `/resume` 历史可见性走会话事件通路（新增 `conversation_restored` 事件 + 渲染层重建转录），并按参考实现的 `switchSession` 语义切换会话身份与转录端口 | 渲染层契约规定不直接读会话；参考实现 `REPL.tsx` 的 resume 回调除写回消息列表外还切换会话 id 与转录文件指针，只做可见性会让续写落回旧会话 |
 
 ## 未验证项与恢复条件
 
@@ -76,14 +78,14 @@
 | 项 | 结果 |
 | --- | --- |
 | AC | 69 / 69 PASS，0 PARTIAL，0 FAIL，0 UNVERIFIED（逐条见 SP/SP006/test-report.md） |
-| 全量单测 | 908 项 / 907 通过 / 0 失败 / 1 跳过（跳过项仅 POSIX 文件权限） |
-| SP006 新增 | 18 个测试文件、105 例 |
+| 全量单测 | 914 项 / 913 通过 / 0 失败 / 1 跳过（跳过项仅 POSIX 文件权限） |
+| SP006 新增 | 20 个测试文件、110 例 |
 | 制品 | sp006-packaging.mjs 6 项 PASS，exit 0，未上传 |
 | AST | 48/48 映射，命中 0，自检 3/3 PASS |
 | 版本 | 0.6.0 prepared（sourceCommit 4b78cdb…，receipt 占位 null） |
 
 ## 下一步
 
-1. 等用户检查功能分支、测试报告与 0.6.0 制品；本轮**不合入 master、不推送远端**。
+1. 等用户检查功能分支、测试报告与 0.6.0 制品；本轮**不合入 master**，远端推送按用户 m02328 授权在提交后执行。
 2. 用户确认后再按 buding-merge 门禁合入、推送并按发布流程上传 0.6.0。
 3. 合入前若继续改代码，需重跑全量单测、制品 smoke 与 AST 复核。

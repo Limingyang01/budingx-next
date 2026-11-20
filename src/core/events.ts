@@ -164,6 +164,15 @@ export type ContextCompactedEvent = {
 export type SessionEvent =
   | { type: 'conversation_cleared' }
   | { type: 'conversation_rewound'; entries: { kind: 'user' | 'assistant'; text: string }[]; removedCount: number }
+  | {
+      /**
+       * SP006 回归修复：/resume 恢复出来的历史。
+       * 历史必须同时进入模型上下文与可见转录，否则用户看不到自己恢复了什么。
+       * 契约与 /rewind 同构：宿主据此重建转录，绝不重放任何工具步骤。
+       */
+      type: 'conversation_restored'
+      messages: Message[]
+    }
   | { type: 'turn_started'; turnId: string; snapshot: TurnSnapshot; userText: string; startedAt: number }
   | { type: 'text_delta'; turnId: string; messageId: string; text: string }
   | { type: 'thinking_delta'; turnId: string; messageId: string; text: string }

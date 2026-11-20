@@ -101,6 +101,8 @@ export type AgentRuntime = {
       messages?: unknown[]
       needsReview?: { name: string; callId: string; detail?: string }[]
       warnings?: string[]
+      /** SP006：恢复后当前生效的会话 id（恢复会切换身份）。 */
+      sessionId?: string
     }
   }
   /** 0.5.2：上下文用量（provider 真实 usage 优先，缺失时本地估算）。 */
@@ -411,18 +413,40 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             return { ok: false, message: restored.message ?? restored.status }
           }
           const restoredMessages = restored.messages as { id: string; role: string; blocks: unknown[] }[]
+          // SP006：恢复出的历史既进入模型上下文，也进入可见转录
+          // （restoreHistory 会发出 conversation_restored 事件）。
           session.restoreHistory(restoredMessages as unknown as Parameters<typeof session.restoreHistory>[0])
           // SR-10：沿用会话记录的权限模式，且绝不因恢复而升权。
           session.restorePermissionMode(restored.summary?.permissionMode)
+          // SP006：切换会话身份与转录端口，让续写继续落在被恢复会话里
+          // （对齐参考实现的 switchSession）。失败时保持原身份，可见性不受影响。
+          const identityWarnings: string[] = []
+          let activeSessionId = session.id
+          try {
+            const started = startSession({
+              sessionId: target,
+              workspaceRoot: workspace.root,
+              ...(options.home ? { home: options.home } : {})
+            })
+            session.adoptIdentity({ id: target, transcript: started.transcript })
+            activeSessionId = target
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error)
+            identityWarnings.push(
+              `resumed session identity could not be switched: ${detail}`
+            )
+            warnings.push(identityWarnings[identityWarnings.length - 1])
+          }
           return {
             ok: true,
             messages: restoredMessages,
+            sessionId: activeSessionId,
             needsReview: restored.needsReview.map((step) => ({
               name: step.name,
               callId: step.callId,
               ...(step.detail ? { detail: step.detail } : {})
             })),
-            warnings: restored.warnings
+            warnings: [...restored.warnings, ...identityWarnings]
           }
         }
       }

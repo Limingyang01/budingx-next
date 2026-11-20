@@ -1,6 +1,6 @@
 # SP006 验收报告
 
-状态：**执行完成（功能分支）**｜日期：2026-11-20｜分支 `feature/SP006/tui-parity-and-extensions`｜基线 master `dc94731`｜版本 0.6.0 prepared（未发布）｜含用户检查反馈的命令卡片修复（`f0b11eb`）
+状态：**执行完成（功能分支）**｜日期：2026-11-20｜分支 `feature/SP006/tui-parity-and-extensions`｜基线 master `dc94731`｜版本 0.6.0 prepared（未发布）｜含用户检查反馈的命令卡片修复（`f0b11eb`）与 `/resume` 历史可见性修复
 
 ## 1. 方法与环境
 
@@ -18,8 +18,8 @@
 | PARTIAL | **0** |
 | FAIL | **0** |
 | UNVERIFIED | **0** |
-| 全量回归 | **908 项 / 907 通过 / 0 失败 / 1 跳过**，EXIT=0（跳过项仅 POSIX 文件权限） |
-| SP006 新增测试 | 18 个文件 / **105 例** |
+| 全量回归 | **914 项 / 913 通过 / 0 失败 / 1 跳过**，EXIT=0（跳过项仅 POSIX 文件权限） |
+| SP006 新增测试 | 20 个文件 / **110 例** |
 | 定向回归 | **135 通过 / 0 失败** |
 | 制品 smoke | **6/6 PASS**，exit 0，未上传 npm |
 | AST | **48/48 映射，命中 0，自检 3/3 PASS** |
@@ -29,6 +29,7 @@
 - 全量首次（加入 TU-03 计数用例前）905 / 902 / 2 fail：screen-e2e S1 找不到「尚未配置 · 运行 /models」（`setupHint` 移入页脚后空页脚不渲染）→ 页脚条件补 `footerHint`；sp0052-e2e 断言 `reasoning_effort=high` 为 null（`--prompt` 改走无头后丢失环境变量）→ headless 解析 `BUDINGX_REASONING_EFFORT` 并传入 runtime。修复后全量 0 失败。
 - sp0054-command-fidelity 的 fixture 只有 frontmatter、正文为空 → 按 SM-03 现为 invalid，测试改为写入正文；sp0054-enter-command 的 `/help` 帧因新增七条命令变长，谓词改为检查「自定义技能命令」；注册表测试由 22 改为 29。
 - 2026-11-20 用户检查发现完成态命令卡片常驻且单次调用占多行（用户报告 m01955）。根因是 `app.tsx` 无条件渲染 `frame.command`，reducer 在完成/失败/取消后只改状态不清除。修复为 `activeCommandCard` 仅保留 running/background，运行中 `compact` 单行，完成态默认隐藏、`Ctrl+E` 按需展开；新增 `sp004-cards.test.mjs` 的 T15-3b 与 `sp006-command-card.test.mjs` 的 T15-3c（真实子进程 + 全屏 Ink 帧）。复测 908 / 907 通过 / 0 失败 / 1 跳过。
+- 2026-11-20 用户检查发现 `/resume` 恢复会话后消息区为空、看不到历史对话（用户报告 m02285）。根因是 `Session.restoreHistory()` 只替换模型上下文里的 `this.messages`、不发事件，而可见转录 `Frame.transcript` 只由 `reduceFrame` 从会话事件累积，于是模型看得见历史、用户看不见。修复走会话事件通路：新增 `conversation_restored` 事件（携带恢复出的消息）、`Session.restoreHistory()` 发出该事件、渲染层按 `conversation_rewound` 同构重建转录（新增 `restored-transcript.ts` 负责消息到转录条目的映射，工具结果按 `callId` 回填，无结果的工具调用标为「已中断」而非继续转圈）；同时按参考实现的 `switchSession` 语义切换会话身份与转录端口（`Session.adoptIdentity`），使续写落回被恢复会话。证据：`sp006-resume-history.test.mjs` 5 例（纯函数、真实 Ink 帧、真实运行时 + 真实会话存储、真实 `/resume` 命令路径）与 `sp006-resume-e2e.test.mjs` 1 例（两个真实 CLI 子进程 + 真实 HTTP provider）。复测 914 / 913 通过 / 0 失败 / 1 跳过。
 
 ## 3. 逐条 AC
 
@@ -150,7 +151,7 @@
 
 ```text
 npm run build                         exit 0
-node --test src/tui/test/*.test.mjs   908 tests / 907 pass / 0 fail / 1 skipped
+node --test src/tui/test/*.test.mjs   914 tests / 913 pass / 0 fail / 1 skipped
 定向 135 例                          135 pass / 0 fail
 
 node scripts/release/sp006-packaging.mjs
@@ -189,6 +190,8 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 | `sp006-web-fetch.test.mjs` | 7 | WR-01…WR-05 |
 | `sp006-release-ledger.test.mjs` | 3 | NP-05 |
 | `sp006-command-card.test.mjs` | 1 | 命令卡片完成态隐藏（用户 m01955 回归） |
+| `sp006-resume-history.test.mjs` | 5 | `/resume` 历史可见性（用户 m02285 回归）：reducer 重建转录、工具结果回填、真实 Ink 帧、真实运行时身份切换、真实 `/resume` 命令 + 真实会话存储 |
+| `sp006-resume-e2e.test.mjs` | 1 | 端到端：两个真实 CLI 进程 + 真实会话目录 + 真实 HTTP provider，恢复后带历史续写并写回同一会话 |
 
 ## 6. 限制与剩余风险
 
@@ -203,6 +206,6 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 
 ## 7. 交付边界
 
-- 分支：`feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；提交 `cedf2a3`（A）、`031b99b`（B）、`4b78cdb`（C+B3）、`06d7b2a`（D）、`f0b11eb`（命令卡片完成态隐藏与单行修复）。
-- **未合入 master、未推送远端**（用户 m00001 明确要求先检查）。
+- 分支：`feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；提交 `cedf2a3`（A）、`031b99b`（B）、`4b78cdb`（C+B3）、`06d7b2a`（D）、`f0b11eb`（命令卡片完成态隐藏与单行修复）、`47c5cb6`（台账源码 SHA 同步）、`resume-fix`（`/resume` 历史可见性与身份切换，待提交后回填 SHA）。
+- **未合入 master**（用户 m02328 明确「先不要合入master分支」）；远端推送按用户 m02328 授权在提交后执行。
 - 版本 0.6.0 仅 `prepared`；未打 tag、未 npm 发布、未改远端设置。

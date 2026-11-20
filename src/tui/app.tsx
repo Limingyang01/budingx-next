@@ -669,6 +669,11 @@ export function App({
           setTopic(undefined)
           setScrollTop(undefined)
         }
+        if (event.type === 'conversation_restored') {
+          // SP006：恢复出的历史重建了转录，滚动位置与话题都要回到新内容。
+          setTopic(undefined)
+          setScrollTop(undefined)
+        }
         if (event.type === 'turn_finalized' || event.type === 'change_set') {
           // Files may have appeared or disappeared; refresh completion.
           fileCache.current = null
