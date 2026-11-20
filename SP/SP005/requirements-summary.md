@@ -8,7 +8,7 @@
 - 出口门槛（路线图 SP005，USER_CONFIRMED）：「压缩保留约束/计划/工具状态；跨进程恢复不盲重放副作用；项目记忆/会话隔离、原子持久化、升级/备份和共享写入约束有 fixture 与真实进程证据；明确长任务失败原因。」
 - 功能目录（沿用路线图命名，本轮合为一个需求目录 [long-session-reliability](long-session-reliability/requirements.md) 的四个支柱）：context-budget、session-recovery、failure-recovery、project-memory。
 - 清单对应：CAP-L2-04（终端及后台任务）、CAP-L2-07（指令与项目记忆）、CAP-L3-12（长上下文与恢复）、CAP-L3-14（会话管理）、CAP-L3-16（多端共享边界）。
-- 不包含：完整斜杠命令面与系统提示词蒸馏（SP006）、子代理与后台任务六件套（SP007）、多端共享契约实现（SP008）、Desktop/VS Code/远程/IM（r8 范围外）。
+- 不包含：完整斜杠命令面与系统提示词蒸馏（SP006）、子代理与后台任务六件套（SP007）、多端共享契约实现（SP008）、Desktop/VS Code/远程/IM（r8 范围外）。命令面按用户 2026-11-20 清单逐项补排见 [TUI 命令路线图](../../docs/tui-command-roadmap.md)：本轮已交付 /clear /resume /context 文本版 /memory /sessions 及 SP002–SP004 既有命令；缺口落 SP006/SP007/SP011。
 - 输入基线：master `17afe34`（SP004 已随 0.4.0 发布）。
 - 依赖与启动条件：
   - USER_CONFIRMED（2026-11-19）：「开始SP005，做完后跑端到端的测试，测试过程你可以使用langfuse去看看测试的效果以及工具的调用是否合适，你在本地搭好langfuse的监测」→ 授权启动本轮 + 端到端测试 + 本地观测。

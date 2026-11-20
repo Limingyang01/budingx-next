@@ -1,5 +1,5 @@
-import { Box, useBoxMetrics, type DOMElement } from 'ink'
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { Box, measureElement, type DOMElement } from 'ink'
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 import { TranscriptMessage } from './transcript.js'
 import type { ToolTranscriptEntry, TranscriptEntry } from './types.js'
@@ -94,10 +94,17 @@ function MeasuredMessage({
   measure(entry: TranscriptEntry, index: number, height: number): void
 }) {
   const box = useRef<DOMElement>(null)
-  const layout = useBoxMetrics(box)
-  useEffect(() => {
-    if (layout.hasMeasured) measure(entry, index, layout.height)
-  }, [layout.hasMeasured, layout.height, entry, index, measure])
+  const reported = useRef(-1)
+  // 0.5.4：只测高度，高度不变就不上报。Ink 的 useBoxMetrics 每帧都会上报
+  // left/top，虚拟列表间距一抖就触发「测量 → setState → 重渲染 → 再测量」的
+  // 链，长会话下抛 React「Maximum update depth exceeded」。
+  useLayoutEffect(() => {
+    if (!box.current) return
+    const rows = measureElement(box.current).height
+    if (rows === reported.current) return
+    reported.current = rows
+    measure(entry, index, rows)
+  })
   return <Box flexShrink={0} flexDirection="column" ref={box}>
     <TranscriptMessage entry={entry} ascii={ascii} expanded={expanded} />
   </Box>
@@ -141,6 +148,8 @@ export function HistoryWindow({
   // Bumped only when a measured height actually changed, so the offsets
   // array is not rebuilt on every frame.
   const [measuredRevision, setMeasuredRevision] = useState(0)
+  // 把一批测量的重排合并为一次，杜绝同一次提交里层层嵌套 setState。
+  const revisionScheduled = useRef(false)
   const estimates = useMemo(() => new WeakMap<TranscriptEntry, number>(), [width])
   // Range of messages that were mounted last time. The mounted range slides
   // towards the wanted range in bounded steps so a single commit never
@@ -158,7 +167,13 @@ export function HistoryWindow({
     // Only a real height change needs a new layout pass. Revising on every
     // measurement made the whole window re-render on each frame
     // (SP005 review, 0.5.2 lag fix).
-    setMeasuredRevision((value) => value + 1)
+    if (!revisionScheduled.current) {
+      revisionScheduled.current = true
+      setTimeout(() => {
+        revisionScheduled.current = false
+        setMeasuredRevision((value) => value + 1)
+      }, 0)
+    }
   }, [measured, estimates])
   const virtual = fullScreen && entries.length >= virtualThreshold
   const offsets = useMemo(() => {

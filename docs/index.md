@@ -15,6 +15,7 @@
 10. [迁移记录](migration/README.md)：本次取舍、来源和检查结果。
 11. [剩余 SP 参考复刻排查](reference-tui-replication-audit.md)：对照参考仓 TUI 的逐轮排查、缺口与独立实现周旋点（r1 draft 待审）。
 12. [TUI 还原度差距基线](tui-fidelity-gap-baseline.md)：对照参考仓的规模差距、分层差距、落地机制与 P0–P3 优先级；还原度判定口径（结构覆盖率 + 行为用例）。
+13. [TUI 命令路线图](tui-command-roadmap.md)：用户清单 18 项 + /models 的逐项现状、参考机制事实、SP 归属与别名/快捷键；2026-11-20 补排。
 13. [集成门禁与自审流程](integration-gate.md)：2026-11-17 委托——Agent 自审、交叉验证门禁 GREEN 才合入 master、自动化命令与报告。
 
 开发约定见 [AGENTS.md](../AGENTS.md)，开发技能入口见 [skills/README.md](../skills/README.md)，第三方许可见 [声明](../THIRD-PARTY-NOTICES.md)。

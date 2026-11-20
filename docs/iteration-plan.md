@@ -1,6 +1,6 @@
 # budingx-next 迭代路线图
 
-状态：r8 当前有效；TUI 单端，SP001–SP016 连续编号。版本：r8；更新：2026-11-18。
+状态：r8 当前有效；TUI 单端，SP001–SP016 连续编号。版本：r8；更新：2026-11-20（命令面补排，见 [TUI 命令路线图](tui-command-roadmap.md)）。
 
 用户已授权制定 SP 数量和编号，尚未授权按此计划启动 SDD 或产品开发。SP001–SP003 的实际交付状态见当前状态与各轮记录；后续表格列的是出口门槛。后续 Agent 必须先读本文件、[迭代管理](../SP/README.md)、[当前状态](current-status.md)和目标迭代记录，核实最新用户授权。
 
@@ -55,6 +55,10 @@ SP010 继续交付宿主契约与共享边界。SP011 只规划 TUI/npm 交付�
 
 身份：范围与三模式为 USER_CONFIRMED；SP010 契约轮拆分、依赖调整与评测补齐安排为 MODEL_PROPOSED。历史 r1–r5 结论保留于下文各节，现行编号与范围以 r8 为准。
 
+## 命令面补排（2026-11-20，用户清单）
+
+用户 2026-11-20 列出 18 项必备命令并要求全部排入 SP。逐项现状、参考机制事实、目标迭代与别名/快捷键见 [TUI 命令路线图](tui-command-roadmap.md)：已实现命令归还原迭代（SP002–SP005），缺口主要落 SP006（命令注册表三型 + 模态槽为前置），/agents 落 SP007，worktree 团队隔离 SP011 复用。/plan 与 Shift+Tab、/usage 别名语义、/worktree 命令面、/rewind 回滚边界四项为提议决策（D1–D4），实施前需确认，不静默改动 r6 已确认的三权限模式。
+
 ## 迭代总表
 
 下列路径是未来启动时的建议目录，不表示这些目录或功能已存在；每轮的需求/设计只在实际启动时细化。
@@ -66,8 +70,8 @@ SP010 继续交付宿主契约与共享边界。SP011 只规划 TUI/npm 交付�
 | SP003 | 工作区与安全修改：workspace-tools、change-preview、permission-controls、file-context | SP002 | 跨目录搜索、编码/CRLF/大文件/忽略规则、补丁冲突、目录穿越/junction 越界有回归；拒绝写入磁盘不变，diff 与实际修改一致，用户无关改动保留。**交互终端支持允许编辑与全自动，非交互默认只读，普通写入与敏感目标分开判定**。补充验收覆盖会话 Markdown 排版、用户提问高亮、辅助信息层级、固定输入区、鼠标历史滚动、忙碌提示与工具调用状态。（已发布至 0.3.6，界面精修见 [SP003 验证报告](../SP/SP003/test-report.md#会话排版与状态栏精修)） |
 | SP004 | 真实编码任务：command-execution、coding-task-loop、git-worktree-safety、task-planning | SP003 | 隔离项目完成定位→修改→运行测试→修复；用户追问/转向、Git 脏工作区、Windows quoting、后台状态/取消/输出上限和自身修改撤销有实测；没有提交或推送授权不执行 Git 发布。 |
 | SP005 | 长会话与数据可靠性：context-budget、session-recovery、failure-recovery、project-memory | SP004 | 压缩保留约束/计划/工具状态；跨进程恢复不盲重放副作用；项目记忆/会话隔离、原子持久化、升级/备份和共享写入约束有 fixture 与真实进程证据；明确长任务失败原因。（2026-11-19：四支柱实现与 42 条 AC 代码层验收完成，`npm run merge:gate` GREEN；2026-11-20 真实模型端到端两场景在 Langfuse 4.78.0 回查 PASS，`npm test` 838 通过 / 0 失败，见 [SP005 验收报告](../SP/SP005/test-report.md) 与[逐条细节](../SP/SP005/long-session-reliability/test-report.md)；监测平台双轨：WSL2 内 Docker 起的真实 Langfuse 4.78.0 栈与兼容接收端（端点与边界见 `ops/langfuse/README.md` 第 8/9 节）；**已合入 master `293a337` 并推送远端**，[0.5.0 已通过 OIDC 发布](../release-notes/v0.5.0.md)，npm `latest` 已核对；真实模型长会话压缩与 TUI 观感仍 UNVERIFIED，恢复条件沿用报告 §4） |
-| SP006 | 日常开发与 TUI 候选：project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging | SP005 | 项目指令、技能/MCP、受控 hooks、联网来源、追问/计划可用；TUI 中文/多行/快捷键/终端 resize 和无头事件/退出码可验证；实际 tarball 在仓库外隔离安装并完成核心任务，形成 npm dry-run 骨架而不上传。**TUI 还原度 P0 达标**：按[还原度基线](tui-fidelity-gap-baseline.md)§3.6 修订后的剩余项判定——四区骨架收口（首屏/输入区/页脚）、消息区冻结缓存、帧缓冲差分、上下文键位系统（含 chord 与保留键校验）、状态栏可执行契约；**折叠汇总、长转录虚拟列表、Ctrl+O 转录、Markdown 渲染、diff 着色与鼠标滚轮已由 master 交付，不计入本轮缺口**；P0 未过不得进入 P1 批次。 |
-| SP007 | Agent 质量与扩展：evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | SP006 | 至少两类目标公开协议/实际模型通过能力矩阵；子代理权限/预算/取消/冲突有真实链路；图片和复杂工具参数按能力处理；联网/hooks/MCP 失败不越权；产物符合性、诊断/性能/隐私回归及稳定宿主契约通过。团队/Computer Use 的权限、预算与工具事件边界供 SP011–SP013 复用，不在本轮假称已交付。 |
+| SP006 | 日常开发与 TUI 候选：project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging；**命令面补排**（[命令路线图](tui-command-roadmap.md)）：/new /continue /rewind /plan /context 网格 /compact /init /btw /cost /help 技能清单 /worktree 命令面 /tasks /mcp /skills /permissions /export 与命令注册表三型+模态槽 | SP005 | 项目指令、技能/MCP、受控 hooks、联网来源、追问/计划可用；TUI 中文/多行/快捷键/终端 resize 和无头事件/退出码可验证；实际 tarball 在仓库外隔离安装并完成核心任务，形成 npm dry-run 骨架而不上传。**TUI 还原度 P0 达标**：按[还原度基线](tui-fidelity-gap-baseline.md)§3.6 修订后的剩余项判定——四区骨架收口（首屏/输入区/页脚）、消息区冻结缓存、帧缓冲差分、上下文键位系统（含 chord 与保留键校验）、状态栏可执行契约；**折叠汇总、长转录虚拟列表、Ctrl+O 转录、Markdown 渲染、diff 着色与鼠标滚轮已由 master 交付，不计入本轮缺口**；P0 未过不得进入 P1 批次。 |
+| SP007 | Agent 质量与扩展：evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context；/agents 命令（.budingx/agents/*.md 子智能体加载与调用） | SP006 | 至少两类目标公开协议/实际模型通过能力矩阵；子代理权限/预算/取消/冲突有真实链路；图片和复杂工具参数按能力处理；联网/hooks/MCP 失败不越权；产物符合性、诊断/性能/隐私回归及稳定宿主契约通过。团队/Computer Use 的权限、预算与工具事件边界供 SP011–SP013 复用，不在本轮假称已交付。 |
 | SP008 | 多端架构入口与共享边界：shared-models-and-history、session-ownership、transport-boundaries | SP005、SP007 | 宿主契约（进程内/stdio/WS）与传输边界以**轻量测试客户端**验证：并发共享配置/历史、活动会话归属、凭据作用域和崩溃恢复实测；同机共享不冒充跨设备同步；固定通用身份、事件与权限接口，供 TUI/headless 和调度使用。 |
 | SP009 | TUI 独立交付和 npm 发布工程：tui-distribution、upgrade-compatibility、npm-publish-pipeline | SP008；SP006–007 的 npm 制品/校验基础 | TUI 干净 Windows 安装/升级/卸载；通过一条 npm run publish 完成门禁、同一 tarball 的安装测试、上传与回执；dry-run、next/latest、同版本/权限失败/不确定上传恢复有测试；来源许可及包名权限满足才可实际上传，当前无发布授权。 |
 | SP010 | 中期编码效果检查：coding-parity-checkpoint、core-reliability | SP009 | 固定/盲测核对基本编码能力、长任务与 TUI npm 制品；修复影响高级能力接入的 Core 缺陷，交接稳定基线。此轮只报告中期结果，不能称完整替代。 |

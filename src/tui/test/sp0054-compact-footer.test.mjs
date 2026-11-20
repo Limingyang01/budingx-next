@@ -29,11 +29,11 @@ test('0.5.4 底部元信息合并：模式/上下文/推理强度同区，不再
     }
   })
   await ui.send('hi\r')
-  await ui.waitFor((frame) => !ui.session.isBusy && frame.includes('tokens') && frame.includes('全自动'), 5000)
+  await ui.waitFor((frame) => !ui.session.isBusy && frame.includes('1.5%') && frame.includes('全自动'), 5000)
   const frame = ui.last()
   assert.match(frame, /全自动/)
   assert.match(frame, /⊙ 中 · \/effort/)
-  assert.match(frame, /2\.9k|2900/)
+  assert.match(frame, /○ 1\.5%/)
   // 不再有单独的「可获准的写入免审批」行。
   assert.doesNotMatch(frame, /可获准的写入免审批/)
 })

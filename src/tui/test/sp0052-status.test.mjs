@@ -39,7 +39,7 @@ test('0.5.2 状态栏显示上下文用量与推理强度', async (t) => {
   await ui.send('\r')
   await ui.waitFor((frame) => frame.includes('ok') && !ui.session.isBusy)
   const frame = ui.last()
-  assert.match(frame, /⊙ 中 · \/effort · 84k\/256k tokens \(32\.8%\)/)
+  assert.match(frame, /⊙ 中 · \/effort · ◔ 32\.8%/)
 })
 
 test('/effort opens the selector, can cancel, and sends the chosen level to the model', async (t) => {
@@ -89,7 +89,7 @@ test('/effort opens the selector, can cancel, and sends the chosen level to the 
   await ui.send('\r')
   await ui.waitFor((frame) => frame.includes('⊙ 高 · /effort'))
   await submit('hello')
-  await ui.waitFor((frame) => !ui.session.isBusy && frame.includes('84k/256k tokens (32.8%)'))
+  await ui.waitFor((frame) => !ui.session.isBusy && frame.includes('◔ 32.8%'))
   assert.deepEqual(requests.map((body) => body.reasoning_effort), ['high'])
   await submit('/effort low')
   await ui.waitFor((frame) => frame.includes('⊙ 低 · /effort'))
