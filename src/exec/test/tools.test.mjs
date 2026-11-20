@@ -137,20 +137,26 @@ test('T5-4 能力分类：已校验只读命令归为 read，其余归为 execut
   runner.dispose()
 })
 
-test('T5-5 Git 写命令经通用入口被引导到受控入口，零 spawn', async () => {
-  const { runner, spawned } = withSpawnCounter()
+test('T5-5 Git 写命令不再被只读白名单硬拦，按权限档位进入执行器（0.5.4）', async () => {
+  // 用一个记录型 runner，避免真实执行 git push/commit 产生副作用。
+  const run = []
+  const runner = {
+    async run(spec) {
+      run.push(spec.command)
+      return { outcome: 'completed', exitCode: 0, stdout: 'ok', stderr: '', output: 'ok', truncated: false, bytes: 2, durationMs: 1 }
+    }
+  }
   const { bash } = makeTools(runner)
   const { context } = ctx()
-  await assert.rejects(
-    () => bash.execute({ command: 'git push origin main' }, context),
-    (error) => {
-      assert.match(error.message, /受控入口|Git/)
-      return true
-    }
-  )
-  await assert.rejects(() => bash.execute({ command: 'git commit -m "x"' }, context), /受控入口|Git/)
-  assert.equal(spawned.length, 0)
-  runner.dispose()
+  // 写命令归为执行能力，交由权限审批，而不再在工具层被白名单拒绝。
+  assert.equal(bash.capability({ command: 'git push origin main' }), 'execute')
+  assert.equal(bash.capability({ command: 'git commit -m "x"' }), 'execute')
+  assert.equal(bash.capability({ command: 'git status' }), 'read')
+  const prepared = bash.prepareApproval({ command: 'git commit -m "x"' })
+  assert.ok(Array.isArray(prepared.preview))
+  await bash.execute({ command: 'git push origin main' }, context)
+  await bash.execute({ command: 'git commit -m "x"' }, context)
+  assert.deepEqual(run, ['git push origin main', 'git commit -m "x"'])
 })
 
 test('T5-6 审批预览：命令/解释器/工作目录/超时/后台/隔离 + 破坏性警告', () => {

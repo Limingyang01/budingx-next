@@ -121,8 +121,8 @@ const MODE_ALIASES: Record<string, PermissionMode> = {
 
 export function interactiveModeLabel(mode: PermissionMode, lang: 'zh' | 'en'): string {
   return (lang === 'zh'
-    ? { read_only: '写入锁定', workspace_edit: '允许编辑', full_access: '全自动' }
-    : { read_only: 'Writes locked', workspace_edit: 'Allow edits', full_access: 'Full auto' }
+    ? { read_only: '仅可查看', workspace_edit: '允许编辑', full_access: '全自动' }
+    : { read_only: 'Read-only', workspace_edit: 'Allow edits', full_access: 'Full auto' }
   )[mode]
 }
 

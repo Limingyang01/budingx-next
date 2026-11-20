@@ -1387,19 +1387,6 @@ export function App({
             <Text dimColor>{pick('↑↓ 选择 · Enter 确认 · Esc 取消', 'Up/Down to choose · Enter to confirm · Esc to cancel')}</Text>
           </Box>
         )}
-        {(contextLabel !== undefined || effortLabel !== undefined) && (
-          <Box justifyContent="flex-end">
-            <Text wrap="truncate-end">
-              <Text dimColor>{effortLabel}{effortLabel && contextLabel ? ' · ' : ''}</Text>
-              {contextLabel !== undefined && (
-                <Text color={contextTone} dimColor={contextTone === undefined}>
-                  {contextLabel}
-                  {contextInfo?.source === 'estimate' && pick('（估算）', ' (estimated)')}
-                </Text>
-              )}
-            </Text>
-          </Box>
-        )}
         {transcriptMode && (
           <Text dimColor>{pick('转录视图 · / 搜索 · Ctrl+O 或 Esc 返回', 'Transcript · / search · Ctrl+O or Esc to return')}</Text>
         )}
@@ -1455,24 +1442,35 @@ export function App({
         {commandCount > 0 && (
           <Text dimColor>{pick('排队命令：', 'Queued commands: ')}{commandCount}</Text>
         )}
-        {(permissionHandles || (!fullScreen && hint)) && (
-          <Text wrap={fullScreen ? 'truncate-end' : 'wrap'}>
-            {permissionHandles && (
-              <>
-                <Text color={modeColor}>{modeLabel}</Text>
-                <Text dimColor>{' · Shift+Tab '}{pick('切换模式', 'cycle mode')}</Text>
-              </>
+        {(permissionHandles || contextLabel !== undefined || effortLabel !== undefined || (!fullScreen && hint)) && (
+          // 0.5.4：底部元信息合并为一行（模式 · 上下文 · 推理强度 · 快捷键），
+          // 不再让上下文/免审批各自占一行（用户反馈占据行数过多）。
+          <Box justifyContent="space-between">
+            <Text wrap={fullScreen ? 'truncate-end' : 'wrap'}>
+              {permissionHandles && (
+                <>
+                  <Text color={modeColor}>{modeLabel}</Text>
+                  <Text dimColor>{' · Shift+Tab '}{pick('切换', 'cycle')}</Text>
+                  {frame.permissionMode === 'full_access' && <Text dimColor>{pick(' · 免审批', ' · no prompt')}</Text>}
+                </>
+              )}
+              {working && !frame.approval && (
+                <Text dimColor>{permissionHandles ? ' · ' : ''}{pick('Esc 打断', 'Esc interrupt')}</Text>
+              )}
+              {!fullScreen && hint ? ` — ${hint}` : ''}
+            </Text>
+            {(effortLabel !== undefined || contextLabel !== undefined) && (
+              <Text wrap="truncate-end">
+                <Text dimColor>{effortLabel}{effortLabel && contextLabel ? ' · ' : ''}</Text>
+                {contextLabel !== undefined && (
+                  <Text color={contextTone} dimColor={contextTone === undefined}>
+                    {contextLabel}
+                    {contextInfo?.source === 'estimate' && pick('（估算）', ' (estimated)')}
+                  </Text>
+                )}
+              </Text>
             )}
-            {working && !frame.approval && (
-              <Text dimColor>{permissionHandles ? ' · ' : ''}{pick('Esc 打断', 'Esc interrupt')}</Text>
-            )}
-            {!fullScreen && hint ? ` — ${hint}` : ''}
-          </Text>
-        )}
-        {permissionHandles && frame.permissionMode === 'full_access' && (
-          <Text color={modeColor}>
-            {pick('! 可获准的写入免审批', '! Eligible writes skip approval')}
-          </Text>
+          </Box>
         )}
         {setupHint(config, strategy) && (
           <Text color="yellow" wrap={fullScreen ? 'truncate-end' : 'wrap'}>{setupHint(config, strategy)}</Text>
