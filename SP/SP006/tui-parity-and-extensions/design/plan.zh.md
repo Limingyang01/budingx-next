@@ -8,7 +8,7 @@
 | 功能分支 | `feature/SP006/tui-parity-and-extensions` |
 | 文档起点 SHA | `dc94731`（master：「登记 0.5.4 发布回执并同步文档至 latest」） |
 | 核对 master SHA | `dc94731`（建分支时工作区干净） |
-| 版本 | v1.3（补记波次 E/F/G/H：用户检查反馈修复与真实模型端到端修复） |
+| 版本 | v1.4（补记波次 E/F/G/H/I：用户检查反馈修复、真实模型端到端修复与全命令面端到端扩展） |
 | 状态 | APPROVED（计划为 Agent 自审对象；RED 证据随实施记录） |
 
 > 执行方式：每任务严格遵守「先写失败用例（RED，必须真实失败、不得靠 skip 制造）→ 最小实现转 GREEN → 跑本任务验证命令 → 跑相邻回归 → 回填完成事实」。完成事实栏不预填，只在真实执行后写入命令与结果。
@@ -591,6 +591,79 @@
   3. 目标成功：门禁全 PASS，文档数字与实测一致。
 - **检查**：AST 仍 53/53（本轮不新增源文件）
 - **状态记录**：DONE 2026-11-20；全量 925 项 / 924 通过 / 0 失败 / 1 跳过；AST 53/53，本仓单元 257、参考 14411、函数对 48379，结论 PASS；真实模型交互 e2e 18 项 PASS
+
+
+### 波次 I：全命令面与智能体流程真实模型端到端扩展（2026-11-21）
+
+> 触发：用户要求「整体 TUI 全部功能再端到端测试一下，发现问题及时修复」（m03678）并「继续」（m04444）。波次 H 的真实模型端到端只覆盖首屏、流式、建议、help、sessions、resume、clear、审批、打断、跨进程恢复；本波次把覆盖扩到**全部命令面**（25 项）与**智能体关键流程**（14 项），共 39 项。
+
+#### T-I1 全命令面真实模型端到端
+
+- **AC**：CMD-01…CMD-12 与 TU 各项在真实运行时下可观察
+- **文件**：无产品改动；脚本 `artifacts/e2e/full-surface-e2e.mjs`（`artifacts/` 已 gitignore，不入库）
+- **Consumes**：`createAgentRuntime`、`mountTty`、`commandContext` 装配
+- **Produces**：命令面 25 项检查（S-01…S-24 含 S-16b）全部 PASS 的真实执行记录
+- **依赖**：波次 H
+- **责任/复用**：脚本侧按真实交互调整，不改产品语义
+- **工作目录**：仓库根
+- **验证命令**：`node --env-file-if-exists=.env.e2e.local artifacts/e2e/full-surface-e2e.mjs`
+- **预期行为**：
+  1. RED：首轮在 S-04 崩溃 `ERROR Cannot read properties of undefined (reading 'budget')`（脚本无条件注入 `context` surface，而 runtime 未创建该 surface）。
+  2. 最小实现：脚本把 sessions/contextUsage/context/effort 改为条件展开；`wf` 谓词检查最近 8 帧而非最后一帧（Ink 分块输出常以空白 chunk 结尾）；JSX 面板 Esc 后等待 700ms 避开双击 Esc 的 `/rewind`。
+  3. 目标成功：25/25 PASS。
+- **检查**：真实 Provider（MiniMax-M3.1-Flash）；临时 home 与工作区；本地 HTTP 页与 hooks.json
+- **状态记录**：DONE 2026-11-21；25/25 PASS
+
+#### T-I2 智能体关键流程真实模型端到端
+
+- **AC**：TU-14/TU-15（审批、打断）与 CMD 面在真实回合下闭环
+- **文件**：无产品改动；脚本 `artifacts/e2e/agent-flows-e2e.mjs`（不入库）
+- **Consumes**：`Session.submit`、审批链路、建议端口、`/resume`、回滚面板
+- **Produces**：智能体流程 14 项检查（A-01…A-09b）全部 PASS 的真实执行记录
+- **依赖**：T-I1
+- **责任/复用**：`/init` 走真实回合与审批，不做本地脚手架
+- **工作目录**：仓库根
+- **验证命令**：`node --env-file-if-exists=.env.e2e.local artifacts/e2e/agent-flows-e2e.mjs`
+- **预期行为**：
+  1. RED：首轮 A-09 失败——`/init` 在只读档位下模型无写权限，AGENTS.md 未生成；另 `/init` 的真实回合需等待审批与回合结束。
+  2. 最小实现：脚本先 Shift+Tab 切到允许编辑档位，等「正在生成项目指令…」后再等回合结束；拒绝反馈对话框补发 Esc 落定。
+  3. 目标成功：14/14 PASS。
+- **检查**：跨进程 `/resume` 会话身份切换；Esc+Esc 回滚；`/models` 面板；`/denials` 真实记录
+- **状态记录**：DONE 2026-11-21；14/14 PASS
+
+#### T-I3 命令层文案本地化修复（真实端到端暴露）
+
+- **AC**：CMD-12（命令面中英文一致）——用户可见文案不得泄漏语言无关领域文案
+- **文件**：Modify `src/tui/commands.ts`；Modify `src/tui/test/sp0054-command-fidelity.test.mjs`
+- **Consumes**：`undoCommand`、`outcome.reason`
+- **Produces**：模块级 `localizeUndoReason(reason, pick)`；zh/en 两型原因转换；未知原因原样透出
+- **依赖**：T-I1（由命令面 e2e 的 `/undo` 用例暴露）
+- **责任/复用**：领域层 `src/workspace/checkpoint.ts` 保持语言无关，界面本地化只在 TUI 命令层
+- **工作目录**：仓库根
+- **验证命令**：`npm run build && node --test src/tui/test/sp0054-command-fidelity.test.mjs`
+- **预期行为**：
+  1. RED：中文界面 `/undo` 无检查点时显示英文 `no session changes to undo`。
+  2. 最小实现：命令层按界面语言转换两型已知原因，未知原因不吞。
+  3. 目标成功：`sp0054-command-fidelity.test.mjs` 10/10 PASS（新增 1 例）。
+- **检查**：英文界面显示 `Nothing to undo`；未知原因仍原样透出
+- **状态记录**：DONE 2026-11-21；提交 `a869cd1`；用例 10 例 PASS
+
+#### T-I4 端到端证据与文档收口
+
+- **AC**：交付证据完整性（不属于 69 条产品 AC，属交付要求）
+- **文件**：Modify `SP/SP006/test-report.md`、`STATUS.md`、`SP/SP006/requirements-summary.md`、`PRODUCT.md`、`release-notes/v0.6.0.md`、`docs/current-status.md`、`release-ledger.json`、`design/design.zh.md`（D-20、§16.7）、`design/plan.zh.md`（本波次）
+- **Consumes**：`artifacts/e2e/` 下的真实模型脚本与日志（未入库，`artifacts/` 已 gitignore）
+- **Produces**：test-report §9 全命令面与智能体流程真实端到端记录；文档数字与设计偏离表同步
+- **依赖**：T-I1/T-I2/T-I3
+- **责任/复用**：证据只记录真实执行结果；未执行项标 UNVERIFIED
+- **工作目录**：仓库根
+- **验证命令**：`npm run build`、`npm run test:unit`、`npm run test:checks`、`npm run spec:check`、`npm run skills:check`、`node scripts/release/sp006-packaging.mjs`、AST 脚本
+- **预期行为**：
+  1. RED：文档仍写 925 项与波次 H 的 18 项真实端到端计数 → 与实测不符。
+  2. 最小实现：按实测更新数字与条目。
+  3. 目标成功：门禁全 PASS，文档数字与实测一致。
+- **检查**：AST 仍 53/53（本波次不新增源文件，仅修改既有 `commands.ts`）
+- **状态记录**：DONE 2026-11-21；全量 926 项 / 925 通过 / 0 失败 / 1 跳过；AST 53/53，本仓单元 258、参考 14411、函数对 48743，命中「无」，结论 PASS；真实模型端到端累计 57 项（18 + 25 + 14）
 
 ## 全计划 AC 覆盖检查
 

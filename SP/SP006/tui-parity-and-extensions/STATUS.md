@@ -10,7 +10,7 @@
 | 设计版本 | v1.1（SELF_REVIEWED，design/design.zh.md） |
 | 实施计划版本 | v1.0（APPROVED，design/plan.zh.md） |
 | 生命周期 | ACTIVE |
-| 阶段 | 实施完成：波次 A–D（T-A1…T-D3）+ 用户检查反馈修复（命令卡片、`/resume` 历史可见性），等待用户验收合入 |
+| 阶段 | 实施完成：波次 A–D（T-A1…T-D3）+ 用户检查反馈修复（命令卡片、`/resume` 历史可见性）+ 真实模型端到端修复与全命令面端到端扩展（波次 E–I），等待用户验收合入 |
 | 功能分支 | feature/SP006/tui-parity-and-extensions |
 | 基线 | master dc94731（登记 0.5.4 发布回执并同步文档至 latest） |
 | 需求文档 | SP/SP006/tui-parity-and-extensions/requirements.md |
@@ -79,10 +79,10 @@
 | 项 | 结果 |
 | --- | --- |
 | AC | 69 / 69 PASS，0 PARTIAL，0 FAIL，0 UNVERIFIED（逐条见 SP/SP006/test-report.md） |
-| 全量单测 | 925 项 / 924 通过 / 0 失败 / 1 跳过（跳过项仅 POSIX 文件权限） |
-| SP006 新增 | 21 个测试文件、120 例；另在既有 SP005.4 用例补 1 例非全屏 `/help` 回归 |
+| 全量单测 | 926 项 / 925 通过 / 0 失败 / 1 跳过（跳过项仅 POSIX 文件权限） |
+| SP006 新增 | 21 个测试文件、120 例；另在既有 SP005.4 用例补 2 例（非全屏 `/help` 回归、`/undo` 文案本地化） |
 | 制品 | sp006-packaging.mjs 6 项 PASS，exit 0，未上传 |
-| AST | 53/53 映射，命中 0，自检 3/3 PASS |
+| AST | 53/53 映射，命中 0，自检 3/3 PASS（本仓单元 258、参考 14411、函数对 48743） |
 | 版本 | 0.6.0 prepared（sourceCommit 见 release-ledger.json，receipt 占位 null） |
 
 ## 下一步

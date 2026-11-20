@@ -1,10 +1,10 @@
 # SP006 验收报告
 
-状态：**执行完成（功能分支）**｜日期：2026-11-20｜分支 `feature/SP006/tui-parity-and-extensions`｜基线 master `dc94731`｜版本 0.6.0 prepared（未发布）｜含用户检查反馈的命令卡片修复（`f0b11eb`）、`/resume` 历史可见性修复与真实模型端到端暴露的建议/退化终端修复
+状态：**执行完成（功能分支）**｜日期：2026-11-21｜分支 `feature/SP006/tui-parity-and-extensions`｜基线 master `dc94731`｜版本 0.6.0 prepared（未发布）｜含用户检查反馈的命令卡片修复（`f0b11eb`）、`/resume` 历史可见性修复、真实模型端到端暴露的建议/退化终端修复与全命令面端到端暴露的 `/undo` 文案本地化修复（`a869cd1`）
 
 ## 1. 方法与环境
 
-- 设计/计划：[design.zh.md](tui-parity-and-extensions/design/design.zh.md) v1.4、[plan.zh.md](tui-parity-and-extensions/design/plan.zh.md) v1.3。
+- 设计/计划：[design.zh.md](tui-parity-and-extensions/design/design.zh.md) v1.5、[plan.zh.md](tui-parity-and-extensions/design/plan.zh.md) v1.4。
 - 验证代码：Node.js 22.18、TypeScript 构建产物（`npm run build`）、Node test runner、Ink 8 伪终端（`mountTty`）、本地 HTTP/SSE fixture、真实子进程（headless、MCP 假服务器、hooks 脚本、git worktree、后台任务）。
 - 计数命令：`npm run test:unit`；定向 `node --test src/tui/test/sp006-*.test.mjs ...`；制品 `node scripts/release/sp006-packaging.mjs`；AST `node scripts/review/sp004-ast.mjs --reference <参考仓> --reference-revision b5c9be8 --base dc94731`。
 - 参考仓只用于行为对照；SP006 全部实现独立编写，AST 复核见 §4。
@@ -18,11 +18,11 @@
 | PARTIAL | **0** |
 | FAIL | **0** |
 | UNVERIFIED | **0** |
-| 全量回归 | **925 项 / 924 通过 / 0 失败 / 1 跳过**，EXIT=0（跳过项仅 POSIX 文件权限） |
-| SP006 新增测试 | 21 个文件 / **120 例**；另在既有 SP005.4 用例文件补 1 例非全屏 `/help` 回归 |
-| 定向回归 | **157 通过 / 0 失败** |
+| 全量回归 | **926 项 / 925 通过 / 0 失败 / 1 跳过**，EXIT=0（跳过项仅 POSIX 文件权限） |
+| SP006 新增测试 | 21 个文件 / **120 例**；另在既有 SP005.4 用例文件补 2 例（非全屏 `/help` 回归、`/undo` 文案本地化） |
+| 定向回归 | **158 通过 / 0 失败**（SP006 新增 120 + 既有相关 38） |
 | 制品 smoke | **6/6 PASS**，exit 0，未上传 npm |
-| AST | **53/53 映射，命中 0，自检 3/3 PASS** |
+| AST | **53/53 映射，命中 0，自检 3/3 PASS**（本仓单元 258、参考 14411、函数对 48743） |
 
 历史失败与修复（保留为回归证据，不掩盖）：
 
@@ -34,6 +34,8 @@
 - 2026-11-20 用户检查发现输入框占位建议语境与当前对话无关（用户报告 m03632：固定话术「结合项目给我一个具体示例」）。根因是建议由写死的 `followUp()` 按关键词三选一，与模型无关。修复为模型生成：新增 `src/tui/suggestion.ts`（对话节选、语言判定、请求构建、清洗、生成），宿主端口 `AgentRuntime.suggestions.generate` 在回合结束（completed）后异步生成，App 用 `AbortSignal` 在提交/新回合/清空/恢复/unmount 时取消，Tab 填入；失败、超时、NONE 或清洗被拒时完全不显示；`BUDINGX_PROMPT_SUGGESTIONS=0` 关闭额外请求。证据：`sp006-suggestion.test.mjs` 8 例（含帧级 G-06/G-07/G-08）与 `screen-e2e.test.mjs` 改为注入假生成器。复测 924 / 923 通过 / 0 失败 / 1 跳过。
 - 2026-11-20 真实模型端到端测试发现：输入框建议的清洗规则把「以问号结尾」当作不合格丢弃，而真实模型（MiniMax-M3.1-Flash）几乎只产出自然追问（如「那 local 类型的命令定义在哪里？」），导致建议在真实场景 100% 消失——单测注入假生成器只返回陈述句，掩盖了该缺陷。修复：取消问号拒绝，只拒针对建议本身的元问题与助手口吻前缀；输出预算 `maxTokens` 64→256（思考型模型会把小预算耗在思考 token 上）；SYSTEM 提示词允许问句形态。用例改为接受真实形态（`sp006-suggestion.test.mjs` 8 例仍 PASS），真实交互 TUI 的建议显示与 Tab 填入通过。
 - 2026-11-20 真实模型端到端测试发现：`fullScreen=false`（退化终端）下执行 `/help`，30+ 行命令列表被塞进单行状态提示并折行裁切，用户只能看到「尚未配置 · 运行 /models 显示本帮助」。修复：页脚内联仅限单行 hint，多行 hint 改在页脚上方以正文块逐行渲染（最多 40 行，超出提示截断）；全屏行为不变。回归：`sp0054-command-menu.test.mjs` 新增「非全屏退化终端 /help 以正文块列出命令」1 例。复测 925 / 924 通过 / 0 失败 / 1 跳过。
+
+- 2026-11-21 全命令面真实模型端到端测试发现：`/undo` 在没有检查点时把领域层英文原因 `no session changes to undo` 直接拼进错误文案，中文界面出现英文（`src/workspace/checkpoint.ts:171` 返回语言无关 `reason`，`src/tui/commands.ts` 的 `undoCommand` 直接拼进错误文案）。修复：命令层新增 `localizeUndoReason(reason, pick)`，把 `no session changes to undo` 与 `no session change to undo for <path>` 两型按界面语言转换，未知原因原样透出（不吞真实错误）。回归：`src/tui/test/sp0054-command-fidelity.test.mjs` 新增 1 例（zh/en 两型 + 未知原因透出），该文件 10 例全 PASS。复测全量 926 / 925 通过 / 0 失败 / 1 跳过。
 
 ## 3. 逐条 AC
 
@@ -237,6 +239,70 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 
 本轮真实测试暴露并修复的产品缺陷见 §2 历史失败列表最后两条（建议清洗过严、退化终端多行输出被压成一行）；对应设计偏离为 D-18 修正与 D-19（design v1.4 §15.1/§16.6）。
 
+## 9. 全命令面与智能体流程真实模型端到端（2026-11-21）
+
+用户再次要求「整体 TUI 全部功能再端到端测试一下，发现问题及时修复」（m03678）并「继续」（m04444）。波次 H 的真实端到端只覆盖首屏与少数命令；本轮把真实 Provider（MiniMax-M3.1-Flash）的覆盖扩到**全部命令面**与**智能体关键流程**两个脚本，共 **39 项**（命令面 25 + 智能体流程 14），加上波次 H 的 18 项，真实模型端到端累计 **57 项**。脚本位于 `artifacts/e2e/`（已 gitignore，不入库）。
+
+### 9.1 命令面（`full-surface-e2e.mjs`，25/25 PASS）
+
+真实 `App` + `createAgentRuntime`（真实 provider / 工具 / 持久化 / 命令面 / hooks / 状态栏外部命令），临时 home 与工作区，本地 HTTP 页作为 WebFetch 目标，`hooks.json` 记录 `UserPromptSubmit` 触发。
+
+| 编号 | 场景 | 结果 |
+| --- | --- | --- |
+| S-01 | 首屏渲染（Logo、模型、cwd、输入区） | PASS |
+| S-02 | 外部状态栏命令输出附加到页脚（`STATUSLINE-X`） | PASS |
+| S-03 | `/help` 列出命令面 | PASS |
+| S-04 | `/context` 上下文面板 | PASS |
+| S-05 | `/cost` 用量统计 | PASS |
+| S-06 | `/memory` 记忆列表 | PASS |
+| S-07 | `/tasks` 后台任务列表 | PASS |
+| S-08 | `/mcp` 服务器列表面板 | PASS |
+| S-09 | `/skills` 技能列表面板 | PASS |
+| S-10 | `/worktree` worktree 列表 | PASS |
+| S-11 | `/diff` 工作区改动 | PASS |
+| S-12 | `/undo` 无检查点时的错误提示 | PASS（暴露英文文案泄漏，见 §2 末条） |
+| S-13 | `/compact` 压缩会话 | PASS |
+| S-14 | `/denials` 拒绝记录 | PASS |
+| S-15 | `/permission` 权限档位面板 | PASS |
+| S-16 | `/plan` 进入规划模式 | PASS |
+| S-16b | `/plan` 退出规划模式 | PASS |
+| S-17 | `/export` 导出文件真实写盘 | PASS |
+| S-18 | Shift+Tab 切到允许编辑档位 | PASS |
+| S-19 | `/btw` 旁路提问不写入主历史 | PASS |
+| S-20 | WebFetch 抓取本地页得到标记 `WEBFETCH-MARKER-42` | PASS |
+| S-21 | `UserPromptSubmit` hook 被真实触发 | PASS |
+| S-22 | 终端 resize 到 72x30 后布局不塌 | PASS |
+| S-23 | `/clear` 清空会话 | PASS |
+| S-24 | 退化终端（`fullScreen=false`）下 `/help` 以正文块列出命令 | PASS |
+
+### 9.2 智能体关键流程（`agent-flows-e2e.mjs`，14/14 PASS）
+
+| 编号 | 场景 | 结果 |
+| --- | --- | --- |
+| A-01 | 真实回合中 `Read` 工具执行并把文件内容回传给模型 | PASS |
+| A-02 | 允许编辑档位下 `Write` 经审批真实写盘 | PASS |
+| A-02b | 审批通过后回合正常完成 | PASS |
+| A-03 | 审批拒绝后不写盘 | PASS |
+| A-03b | `/denials` 列出真实拒绝记录 | PASS |
+| A-04 | Esc 打断进行中的回答后回到空闲 | PASS |
+| A-04b | 打断给出反馈 | PASS |
+| A-05 | 回合结束后出现模型生成的建议，且 Tab 可填入 | PASS |
+| A-06 | Esc+Esc 回滚面板把对话回滚到检查点（历史条数减少） | PASS |
+| A-07 | `/models` 面板可打开并可关闭 | PASS |
+| A-08 | 跨进程 `/resume` 恢复会话后历史消息可见 | PASS |
+| A-08b | `/resume` 后会话身份切换为被恢复会话 | PASS |
+| A-09a | `/init` 启动「生成项目指令」的真实回合 | PASS |
+| A-09 | `/init` 在空目录真实生成 `AGENTS.md` | PASS |
+
+### 9.3 本轮发现与处理
+
+- **S6-01（真实缺陷，已修复）**：`/undo` 无检查点时显示英文 `no session changes to undo`，中文界面出现英文。修复见 §2 末条与设计 D-20。
+- **S6-02…S6-05（脚本接线或既有设计行为，未改产品）**：`runtime` 无 `context` surface 时脚本无条件注入导致面板崩溃；JSX 面板需 Esc 关闭且双击 Esc 会打开 `/rewind`（脚本改为 Esc 后等 700ms）；`/init` 需先 Shift+Tab 到允许编辑档位才会真实写盘（既有 CE-08 权限设计）；拒绝后弹「拒绝反馈」对话框需再发 Esc 落定。
+
+### 9.4 UNVERIFIED
+
+- **S6-06**：打断（Esc）之后在同一会话内继续发提示词，本轮观察不到新回合（换新会话实例即正常）。未能稳定复现，未据此改动实现，留待后续专门排查。
+
 ## 7. 限制与剩余风险
 
 **PARTIAL：0。** 早期 TU-03（缺 UI 级缓存命中计数）已在收口时补齐：`history-window.tsx` 增加仅测试可读的 `freezeCacheStats()/resetFreezeCacheStats()`，帧级用例断言仅输入区变化时命中 ≥1 且未命中为 0。TU-09 按设计 §4.4 规则 8 判定：可选字段缺失即省略、必填字段占位，属设计已解决的口径，无偏离。
@@ -250,6 +316,6 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 
 ## 8. 交付边界
 
-- 分支：`feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；提交 `cedf2a3`（A）、`031b99b`（B）、`4b78cdb`（C+B3）、`06d7b2a`（D）、`f0b11eb`（命令卡片完成态隐藏与单行修复）、`47c5cb6`（台账源码 SHA 同步）、`1ef588a`（`/resume` 历史可见性与身份切换）、`55ea677`（`/resume` 历史碎片合并与输入框建议改模型生成）、`9e3e88f`（建议清洗按真实模型输出校正、退化终端多行命令输出）、`<docs>`（本节证据与文档数字收口）。
-- **未合入 master**（用户 m02328、m03678 明确「先不要合入master分支」）；已按用户 m02328 授权推送远端分支 `origin/feature/SP006/tui-parity-and-extensions`（代码提交至 `9e3e88f`，文档与台账同步提交随后推送），master 未改动。
+- 分支：`feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；提交 `cedf2a3`（A）、`031b99b`（B）、`4b78cdb`（C+B3）、`06d7b2a`（D）、`f0b11eb`（命令卡片完成态隐藏与单行修复）、`47c5cb6`（台账源码 SHA 同步）、`1ef588a`（`/resume` 历史可见性与身份切换）、`55ea677`（`/resume` 历史碎片合并与输入框建议改模型生成）、`9e3e88f`（建议清洗按真实模型输出校正、退化终端多行命令输出）、`1877af6`（波次 H 文档收口）、`a869cd1`（`/undo` 文案本地化）、`<docs>`（波次 I 证据与文档数字收口）。
+- **未合入 master**（用户 m02328、m03678 明确「先不要合入master分支」）；已按用户 m02328 授权推送远端分支 `origin/feature/SP006/tui-parity-and-extensions`（代码提交至 `a869cd1`，文档与台账同步提交随后推送），master 未改动。
 - 版本 0.6.0 仅 `prepared`；未打 tag、未 npm 发布、未改远端设置。
