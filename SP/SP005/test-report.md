@@ -139,7 +139,7 @@ AC 区间：CB-01…07（7）、SR-01…11（11）、FR-01…09（9）、PM-01�
 | M4 | 熔断计数跨回合累积；换键序可绕过 | 每回合重置；签名按稳定 JSON 序列化 | `sp005-review-breaker.test.mjs` 两条 |
 | M5 | 恢复权限不升权：降档函数生产路径从未调用 | `/resume` 应用记录模式，绝不升权 | `sp005-review-compaction.test.mjs` SR-10 |
 | M6 | `/memory` 缺分隔符把整串当标题 | 显式检查冒号缺失并给出用法 | `sp005-review-commands.test.mjs` |
-| M7 | 原子写改名后才收紧权限；`writeJsonAtomic` 从不收紧 | 临时文件先 0600 + ACL 再改名 | `sp005-review-storage.test.mjs`（POSIX 断言 0600） |
+| M7 | 原子写改名后才收紧权限；`writeJsonAtomic` 从不收紧 | 临时文件先 0600 + ACL 再改名 | `sp005-review-storage.test.mjs`（POSIX 断言 0600）；本机 Windows 实测 `writeJsonAtomic` 产物 DACL 仅当前用户（`…\Leo.Li:(F)`），无继承的 SYSTEM/Administrators/Users |
 
 ### 9.2 未修复的限制
 
