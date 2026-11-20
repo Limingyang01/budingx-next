@@ -9,6 +9,7 @@ import { agentFixture, scriptProvider, toolTurn, SNAPSHOT } from './helpers/agen
 import { initialFrame } from '../dist/tui/render/types.js'
 import { reduceFrame } from '../dist/tui/render/reducer.js'
 import {
+  activeCommandCard,
   commandCardLines,
   planCardLines,
   questionCardLines,
@@ -136,6 +137,51 @@ test('T15-3 VIS-01 命令卡片：取消态使用 ⊘ 且不计为失败', () =>
   assert.equal(frame.command.state, 'cancelled')
   const lines = commandCardLines(frame.command, options.width, { zh: true })
   assert.match(lines[0], /⊘ 命令 · Bash · 已取消/)
+})
+
+test('T15-3b 命令卡片：只有运行/后台态占实时区域，且压成单行', () => {
+  let frame = initialFrame('full_access')
+  frame = reduce(frame, {
+    type: 'command_started',
+    turnId: 't1',
+    callId: 'call-live',
+    command: 'ls -R artifacts\n# second line',
+    interpreter: 'Bash',
+    cwd: '/repo',
+    startedAt: 0
+  })
+  assert.notEqual(activeCommandCard(frame.command), undefined)
+  let compact = commandCardLines(activeCommandCard(frame.command), options.width, { zh: true, compact: true })
+  assert.equal(compact.length, 1)
+  assert.match(compact[0], /◐ 命令 · Bash · 运行中 · \$ ls -R artifacts/)
+  assert.ok(!compact[0].includes('cwd:'), '单行卡片不显示 cwd')
+
+  frame = reduce(frame, {
+    type: 'command_finished',
+    taskId: '',
+    callId: 'call-live',
+    outcome: 'completed',
+    exitCode: 0,
+    finishedAt: 100
+  })
+  assert.equal(activeCommandCard(frame.command), undefined, '完成态不再占实时区域')
+  const full = commandCardLines(frame.command, options.width, { zh: true, expanded: true })
+  assert.ok(full.length > 1, '显式展开时仍显示完整输出')
+
+  const background = reduce(initialFrame('full_access'), {
+    type: 'command_started',
+    turnId: 't1',
+    callId: 'call-bg',
+    command: 'npm run build',
+    interpreter: 'Bash',
+    cwd: '/repo',
+    taskId: 'task-1',
+    startedAt: 0
+  })
+  assert.notEqual(activeCommandCard(background.command), undefined)
+  compact = commandCardLines(background.command, options.width, { zh: true, compact: true })
+  assert.equal(compact.length, 1)
+  assert.match(compact[0], /▷ 命令 · Bash · 后台运行 · \$ npm run build · 任务 task-1/)
 })
 
 test('T15-4 VIS-02 计划卡片：调研→待审批模式、步骤符号与阻塞位置、焦点移动', () => {

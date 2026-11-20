@@ -34,6 +34,7 @@ import { ACCENT, renderHeader, sessionTopic, setupHint, terminalStrategy, termin
 import { initialFrame, type TranscriptEntry } from './render/types.js'
 import { diffStats, diffViewLines } from './render/diff-view.js'
 import {
+  activeCommandCard,
   commandCardLines,
   planCardLines,
   questionCardLines,
@@ -1049,7 +1050,10 @@ export function App({
       return
     }
     if (key.ctrl && text === 'e') {
-      setCommandExpanded((value) => !value)
+      // 运行中的命令只显示单行，不接受展开，避免展开状态延续到完成态。
+      if (activeCommandCard(frame.command) === undefined) {
+        setCommandExpanded((value) => !value)
+      }
       setTodosExpanded((value) => !value)
       return
     }
@@ -1432,11 +1436,19 @@ export function App({
       lines: todoCardLines(frame.todos, width, { expanded: todosExpanded, now, zh })
     })
   }
-  if (frame.command !== undefined) {
+  const liveCommand = working ? activeCommandCard(frame.command) : undefined
+  if (liveCommand !== undefined) {
     cardLines.push({
       key: 'command',
       dim: true,
-      lines: commandCardLines(frame.command, width, { expanded: commandExpanded, zh })
+      lines: commandCardLines(liveCommand, width, { compact: true, zh })
+    })
+  } else if (commandExpanded && frame.command !== undefined) {
+    // 完成态默认不占位；只有用户按 Ctrl+E 才展开完整输出。
+    cardLines.push({
+      key: 'command',
+      dim: true,
+      lines: commandCardLines(frame.command, width, { expanded: true, zh })
     })
   }
   const menuRows = 9

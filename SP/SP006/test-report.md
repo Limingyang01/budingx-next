@@ -18,8 +18,8 @@
 | PARTIAL | **0** |
 | FAIL | **0** |
 | UNVERIFIED | **0** |
-| 全量回归 | **906 项 / 905 通过 / 0 失败 / 1 跳过**，EXIT=0，65.4s（跳过项仅 POSIX 文件权限） |
-| SP006 新增测试 | 17 个文件 / **103 例** |
+| 全量回归 | **908 项 / 907 通过 / 0 失败 / 1 跳过**，EXIT=0（跳过项仅 POSIX 文件权限） |
+| SP006 新增测试 | 18 个文件 / **105 例** |
 | 定向回归 | **135 通过 / 0 失败** |
 | 制品 smoke | **6/6 PASS**，exit 0，未上传 npm |
 | AST | **48/48 映射，命中 0，自检 3/3 PASS** |
@@ -28,6 +28,7 @@
 
 - 全量首次（加入 TU-03 计数用例前）905 / 902 / 2 fail：screen-e2e S1 找不到「尚未配置 · 运行 /models」（`setupHint` 移入页脚后空页脚不渲染）→ 页脚条件补 `footerHint`；sp0052-e2e 断言 `reasoning_effort=high` 为 null（`--prompt` 改走无头后丢失环境变量）→ headless 解析 `BUDINGX_REASONING_EFFORT` 并传入 runtime。修复后全量 0 失败。
 - sp0054-command-fidelity 的 fixture 只有 frontmatter、正文为空 → 按 SM-03 现为 invalid，测试改为写入正文；sp0054-enter-command 的 `/help` 帧因新增七条命令变长，谓词改为检查「自定义技能命令」；注册表测试由 22 改为 29。
+- 2026-11-20 用户检查发现完成态命令卡片常驻且单次调用占多行（用户报告 m01955）。根因是 `app.tsx` 无条件渲染 `frame.command`，reducer 在完成/失败/取消后只改状态不清除。修复为 `activeCommandCard` 仅保留 running/background，运行中 `compact` 单行，完成态默认隐藏、`Ctrl+E` 按需展开；新增 `sp004-cards.test.mjs` 的 T15-3b 与 `sp006-command-card.test.mjs` 的 T15-3c（真实子进程 + 全屏 Ink 帧）。复测 908 / 907 通过 / 0 失败 / 1 跳过。
 
 ## 3. 逐条 AC
 
@@ -149,7 +150,7 @@
 
 ```text
 npm run build                         exit 0
-node --test src/tui/test/*.test.mjs   906 tests / 905 pass / 0 fail / 1 skipped / 65.4s
+node --test src/tui/test/*.test.mjs   908 tests / 907 pass / 0 fail / 1 skipped
 定向 135 例                          135 pass / 0 fail
 
 node scripts/release/sp006-packaging.mjs
@@ -161,7 +162,7 @@ headless stream-json: PASS 7 events; no user data written
 publish --dry-run: PASS (no upload)
 
 node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8 --base dc94731
-参考仓 @ b5c9be8；基线 dc94731；改动文件 47，映射 47
+参考仓 @ b5c9be8；基线 dc94731；改动文件 48，映射 48
 自检：PASS 相似片段命中 / PASS 无关实现不命中 / PASS 样板排除
 本仓单元 238，参考单元 14250，函数对 44941；命中：无；结论：PASS
 ```
@@ -187,6 +188,7 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 | `sp006-hooks.test.mjs` | 8 | HK-01…HK-08 |
 | `sp006-web-fetch.test.mjs` | 7 | WR-01…WR-05 |
 | `sp006-release-ledger.test.mjs` | 3 | NP-05 |
+| `sp006-command-card.test.mjs` | 1 | 命令卡片完成态隐藏（用户 m01955 回归） |
 
 ## 6. 限制与剩余风险
 
