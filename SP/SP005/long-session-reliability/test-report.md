@@ -1,6 +1,6 @@
 # SP005 · 验收报告（long-session-reliability）
 
-状态：**代码层验收全绿**；真实模型 tool-success / tool-error 两场景已在真实 Langfuse 4.78.0 上回查 PASS（2026-11-20）；已合入 master `293a337` 并推送，0.5.0 已完成发布准备（尚未上传 npm）；真实模型长会话压缩与 TUI 观感 UNVERIFIED（恢复条件见 §5）。
+状态：**代码层验收全绿**；真实模型 tool-success / tool-error 两场景已在真实 Langfuse 4.78.0 上回查 PASS（2026-11-20）；已合入 master `293a337` 并推送，0.5.0 已通过 OIDC 发布，见[发行说明与发布回执](../../../release-notes/v0.5.0.md)；真实模型长会话压缩与 TUI 观感 UNVERIFIED（恢复条件见 §5）。
 
 ## 1. 环境与基线
 

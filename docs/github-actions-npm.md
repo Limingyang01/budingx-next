@@ -4,9 +4,9 @@
 
 ## 当前发布状态（2026-11-20）
 
-**0.5.0（SP005）已合入 master 并完成发布准备，尚未上传 npm。** 版本号、发布台账 `prepared` 记录与[0.5.0 发行说明](../release-notes/v0.5.0.md)已就绪；上传需维护者在下方「配置后：一键发布」手动触发，取消 dry_run 后新建运行。本机未执行真实上传，npm `latest` 仍为 0.4.0。
+**0.5.0（SP005）已发布，npm `latest` 指向 0.5.0。** [GitHub Actions #20](https://github.com/Limingyang01/budingx-next/actions/runs/44654008000) 使用源码 `751ba3b`，Windows、Ubuntu 和 OIDC 发布均通过。已核验官方源独立安装、本地 HTTP 流式冒烟、签名和 provenance，详见 [0.5.0 发行说明](../release-notes/v0.5.0.md)。
 
-**0.4.0 已发布**，npm `latest` 指向 0.4.0。[GitHub Actions #18](https://github.com/Limingyang01/budingx-next/actions/runs/44504716724) 使用源码 `82af4ab`，Windows、Linux 和 OIDC 发布均通过。官方源独立安装、本地 HTTP 流式测试、签名与来源证明均已核对。详见 [0.4.0 发行说明](../release-notes/v0.4.0.md)。
+**0.4.0 已发布**，当时 npm `latest` 指向 0.4.0。[GitHub Actions #18](https://github.com/Limingyang01/budingx-next/actions/runs/44504716724) 使用源码 `82af4ab`，Windows、Linux 和 OIDC 发布均通过。官方源独立安装、本地 HTTP 流式测试、签名与来源证明均已核对。详见 [0.4.0 发行说明](../release-notes/v0.4.0.md)。
 
 **0.3.6 已发布**，当时为 npm `latest`。[GitHub Actions #15](https://github.com/Limingyang01/budingx-next/actions/runs/44304795619) 的 Windows、Linux 与 OIDC 发布均成功，官方源隔离安装及签名核验通过。详见 [v0.3.6 发行说明](../release-notes/v0.3.6.md)。
 
@@ -39,7 +39,7 @@ SP002 的 **0.2.0 已发布**，当时 npm latest=0.2.0，台账为 published。
 
 ## 从构建到发布：每轮操作清单
 
-本节适用于新版本交付，不需要重复配置已建立的账号信任。Agent 使用 [buding-npm-release](../skills/buding-npm-release/SKILL.md)，版本规则见 [版本规范](versioning.md)。执行目录是本仓根目录；通用准备命令以已确认迭代为准；0.4.0（SP004）发布回执已登记，0.5.0（SP005）已准备待维护者触发，后续按实际修复或新 SP 准备下一版。
+本节适用于新版本交付，不需要重复配置已建立的账号信任。Agent 使用 [buding-npm-release](../skills/buding-npm-release/SKILL.md)，版本规则见 [版本规范](versioning.md)。执行目录是本仓根目录；通用准备命令以已确认迭代为准；0.5.0（SP005）发布回执已登记，后续按实际修复或新 SP 准备下一版。
 
 ### 1. 准备版本与发行说明
 
@@ -169,7 +169,7 @@ npx --yes npm@11.21.2 trust github budingx --repo Limingyang01/budingx-next --fi
 npm run release:sync -- --receipt C:/path/to/downloaded/report.json
 ```
 
-该命令核对当前包版本、成功状态和 GitHub run 地址格式，并向固定公共 npm registry 查询 immutable version/integrity 后，更新 release-ledger.json，保留原有未知字段。它信任维护者从正确 Actions artifact 下载的 JSON，不独立验签 artifact 或验证 GitHub run 结论；不要导入来源不明的报告。随后审阅并提交回执，才能准备下一轮：同一 SP 修复使用 patch，已确认的新 SP 首次产品交付使用 minor。0.4.0 回执已登记；0.5.0 发布后同样按此流程登记回执。旧版回执保留为历史证据。
+该命令核对当前包版本、成功状态和 GitHub run 地址格式，并向固定公共 npm registry 查询 immutable version/integrity 后，更新 release-ledger.json，保留原有未知字段。它信任维护者从正确 Actions artifact 下载的 JSON，不独立验签 artifact 或验证 GitHub run 结论；不要导入来源不明的报告。随后审阅并提交回执，才能准备下一轮：同一 SP 修复使用 patch，已确认的新 SP 首次产品交付使用 minor。0.5.0 的登记依据与来源见 [0.5.0 发行说明](../release-notes/v0.5.0.md)。旧版回执保留为历史证据。
 
 本机核对公开 npm 元数据和导入回执不需要发布 token。首次手工首发的 session 回执由当时的脚本直接更新台账，本命令专用于 CI/OIDC 报告。
 

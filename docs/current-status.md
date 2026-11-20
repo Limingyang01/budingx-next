@@ -1,6 +1,6 @@
 # 当前状态
 
-日期：2026-11-20。**npm `latest` 仍为 0.4.0（SP004）**；SP005「长会话与数据可靠性」已合入 master（`293a337`），0.5.0 已完成版本准备、发行说明与发布预演，**尚未上传 npm**，待维护者在 GitHub Actions 手动触发。0.4.0 的发布事实见 [运行 #18](https://github.com/Limingyang01/budingx-next/actions/runs/44504716724)（基于 `82af4ab`，Windows 和 Linux 验证、OIDC 发布、官方源独立安装、签名及本地 HTTP 流式冒烟均通过）与[0.4.0 发行说明](../release-notes/v0.4.0.md)、[发布台账](../release-ledger.json)。SP005 的验证与未验证项见 [SP005 验收报告](../SP/SP005/test-report.md)。可选本机 Langfuse 观测默认关闭。
+日期：2026-11-20。**npm `latest` 为 0.5.0（SP005 长会话与数据可靠性）**。[运行 #20](https://github.com/Limingyang01/budingx-next/actions/runs/44654008000) 基于源码 `751ba3b`，Windows、Ubuntu 和 OIDC 发布任务均通过。官方源独立安装、签名与 provenance 核验及本地 HTTP 流式冒烟均通过。见 [0.5.0 发行说明](../release-notes/v0.5.0.md)和[发布台账](../release-ledger.json)。SP005 的验证与未验证项见 [SP005 验收报告](../SP/SP005/test-report.md)。可选本机 Langfuse 观测默认关闭。
 
 ## 已有
 
@@ -13,18 +13,18 @@
 - 实际 Node/TypeScript 构建、测试、版本准备与发布编排，实际 tarball 隔离安装 smoke 已通过。
 - **SP002 新增**：`src/core`（事件契约、会话/回合状态机、工具回合、输入队列、消息规范化）、`src/provider`（OpenAI 兼容流解析、tool_calls 碎片、错误分类、有界重试、取消、连通探测）、`src/storage`（`~/.budingx` 配置与凭据仓库、模型档案 CRUD、三源合并）、`src/tui` 的 Ink 8 对话界面（渲染 reducer、多行编辑器、审批卡、双中断与排队）。
 - **SP003 新增（已合入 master `598fb89`）**：`src/workspace`（路径边界与忽略规则、Read/Write/Edit/Glob/Grep、行级 diff、检查点撤销、三模式策略与规则、`@` 上下文）、`src/core` 的权限端口与策略判定接线、`src/storage/permissions.ts`（`~/.budingx/permissions.json`）、TUI 侧审批三档与拒绝反馈、模式徽标与 Shift+Tab 轮播、diff 两级对话框与多源切换、`@`/`/` 统一补全。
-- **SP005 实施产物（已合入 master `293a337`，随 0.5.0 准备发布）**：`src/core/context-budget.ts`（预算核算、确定性压缩与保留项）、`transcript.ts`/`session-persistence.ts`（转录端口与失败语义）、`src/storage/{private-file,session-transcript,session-store,project-memory}.ts`（`~/.budingx/sessions`、`~/.budingx/memory` 原子持久化与写入锁）、两级工具空转熔断，以及 `/sessions`、`/resume`、`/context`、`/memory` 四个命令；42 条 AC 与证据见 [SP005 验收报告](../SP/SP005/test-report.md) 与[逐条细节](../SP/SP005/long-session-reliability/test-report.md)。
+- **SP005 实施产物（已合入 master `293a337`，随 0.5.0 发布）**：`src/core/context-budget.ts`（预算核算、确定性压缩与保留项）、`transcript.ts`/`session-persistence.ts`（转录端口与失败语义）、`src/storage/{private-file,session-transcript,session-store,project-memory}.ts`（`~/.budingx/sessions`、`~/.budingx/memory` 原子持久化与写入锁）、两级工具空转熔断，以及 `/sessions`、`/resume`、`/context`、`/memory` 四个命令；42 条 AC 与证据见 [SP005 验收报告](../SP/SP005/test-report.md) 与[逐条细节](../SP/SP005/long-session-reliability/test-report.md)。
 - **SP004 实施产物（随 0.4.0 发布）**：`SP/SP004/` 迭代汇总与四份需求（command-execution / coding-task-loop / git-worktree-safety / task-planning，共 48 条 AC）、[设计 v1.3](../SP/SP004/design/design.zh.md)、[计划 v1.3](../SP/SP004/design/plan.zh.md)（T1–T24 全部完成事实）与[验收报告](../SP/SP004/test-report.md)（48 条 AC 逐条证据、45 PASS + 4 项环境相关 UNVERIFIED）。已新增 `src/exec`（命令执行/后台任务/沙箱声明层）、`src/git`（Git 状态/worktree/受控提交）、`src/plan`（计划、持久化与审批）；`core` 只新增纯端口与状态机。发布范围及后续验证见 [SP004 迭代汇总](../SP/SP004/requirements-summary.md)。
 
 ## 未实现
 
-**SP004 已发布**。普通命令仍需要已验证的执行隔离后端，默认在启动前被拒绝。完成证据闸门和 worktree 工具面尚未接入生产 runtime。仍全部未实现的有：Computer Use、团队、浏览器和调度；Desktop、VS Code、远程/H5 和 IM 已移出当前 SP。SP005 的转录持久化与恢复已完成实施、代码层验收与门禁 GREEN，并已合入 master（`293a337`）与推送；真实模型端到端两场景经本地 Langfuse 4.78.0 回查 PASS（tool-success / tool-error + 熔断停机）。0.5.0 已准备，**尚未上传 npm**；真实模型的长会话压缩场景仍为 UNVERIFIED。
+**SP004 已发布**。普通命令仍需要已验证的执行隔离后端，默认在启动前被拒绝。完成证据闸门和 worktree 工具面尚未接入生产 runtime。仍全部未实现的有：Computer Use、团队、浏览器和调度；Desktop、VS Code、远程/H5 和 IM 已移出当前 SP。SP005 的转录持久化与恢复已完成实施、代码层验收与门禁 GREEN，并已合入 master（`293a337`）与推送；真实模型端到端两场景经本地 Langfuse 4.78.0 回查 PASS（tool-success / tool-error + 熔断停机）。0.5.0 已发布；真实模型的长会话压缩场景仍为 UNVERIFIED。
 
 首发使用 Node.js >=22.18、TypeScript 和 Node test runner，当前真实命令见 package.json 与 [开发指南](development.md)。禁止引入 Bun；不能把旧项目版本 0.5.0、旧测试成绩或 Git 发布状态当作本仓事实。
 
 用户 2026-11-16 确认参考实现定位：本仓设计与主要核心逻辑必须严格参考本地 `budingWorkerSpace` 参考项目（文档不写死绝对路径，位置以用户环境为准），重点参考其 TUI 命令设计、Agent 主循环与核心工具；设计文档、计划文档和真实开发全程对照该参考，不允许脱离参考开发，允许优化但核心逻辑不得背离、使用体验不得下降；按「读机制、不抄代码」独立编写实现并对齐效果。该参考仓无 LICENSE 声明，本仓制品保持自有 MIT 独立可发布、不嵌入参考代码；细则见 [独立实现与复用边界](independent-development.md)。
 
-用户已授权简易 TUI 验证后发布 npm，并确认 MIT；0.1.0、0.1.1 是历史已发布版本；0.2.0、0.3.0、0.3.1、0.3.2、0.3.4、0.3.5 和 0.3.6 为历史已发布版本，0.4.0 为当前 `latest`，0.5.0（SP005）为 **prepared**（已合入 master，尚未上传）。发布状态及 integrity 见[发布台账](../release-ledger.json)。没有读取旧用户配置或凭据。用户数据统一通过当前用户 home 解析为 ~/.budingx，禁止使用 ~/.claude。
+用户已授权简易 TUI 验证后发布 npm，并确认 MIT；0.1.0、0.1.1 是历史已发布版本；0.2.0、0.3.0、0.3.1、0.3.2、0.3.4、0.3.5、0.3.6 和 0.4.0 为历史已发布版本，0.5.0（SP005）为当前 `latest`。发布状态及 integrity 见[发布台账](../release-ledger.json)。没有读取旧用户配置或凭据。用户数据统一通过当前用户 home 解析为 ~/.budingx，禁止使用 ~/.claude。
 
 ## SP002 交付现状（等待验收）
 

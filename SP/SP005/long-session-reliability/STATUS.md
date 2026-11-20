@@ -10,7 +10,7 @@
 | 设计版本 | v1.1（新增 §4.8 配对要求、§8 工具空转熔断） |
 | 实施计划版本 | v1.1（T0–T14 完成事实回填、映射表改为真实路径） |
 | 生命周期 | **DELIVERED**（测试全绿、真实模型端到端两场景 PASS、交付记录就绪；已合入 master `293a337` 并推送） |
-| 阶段 | 需求 ✅ → 设计 ✅ → 计划 ✅ → 文档自审 ✅ → 实施 ✅ → 测试 ✅ → 交付记录 ✅ → 合入 ✅（master `293a337`）→ 发布准备 ✅（0.5.0 prepared，未上传 npm） |
+| 阶段 | 需求 ✅ → 设计 ✅ → 计划 ✅ → 文档自审 ✅ → 实施 ✅ → 测试 ✅ → 交付记录 ✅ → 合入 ✅（master `293a337`）→ 发布 ✅（0.5.0，npm `latest`） |
 | 功能分支 | `feature/SP005/long-session-reliability`（从 master `17afe34` 建） |
 | 设计文档 | [design/design.zh.md](./design/design.zh.md) |
 | 实施计划 | [design/plan.zh.md](./design/plan.zh.md) |
@@ -77,6 +77,6 @@
 
 ## 下一步
 
-1. 已在 master 落地（`293a337`）并推送远端；0.5.0 已完成发布准备（版本号、台账 prepared 记录、[0.5.0 发行说明](../../../release-notes/v0.5.0.md)），等待维护者在 GitHub Actions 手动触发发布。
+1. 已在 master 落地（`293a337`）并推送远端；0.5.0 已通过 [GitHub Actions #20](https://github.com/Limingyang01/budingx-next/actions/runs/44654008000) 的 OIDC 发布，npm `latest` 已核对。见 [0.5.0 发行说明与发布回执](../../../release-notes/v0.5.0.md)。
 2. 真实模型长会话压缩场景补跑后，把结果回填本文件与 `test-report.md` §5。
 3. 重启机器后：先 `wsl -d <发行版> -u root -- systemctl is-active docker`，再按 `ops/langfuse/README.md` 第 9 节保活与起栈，最后 `npm run langfuse:smoke` 复核接入链路。

@@ -1,6 +1,6 @@
 # SP005 · 长会话与数据可靠性
 
-状态：**DELIVERED（实施与测试完成，真实模型端到端两场景 PASS、监测平台就绪，已合入 master `293a337` 并推送；0.5.0 已完成发布准备，尚未上传 npm）**｜功能分支 `feature/SP005/long-session-reliability`（已推送远端）｜实施基线 `17afe34`（master）｜轮次验收报告 [SP005/test-report.md](test-report.md)
+状态：**DELIVERED（实施与测试完成，真实模型端到端两场景 PASS、监测平台就绪，已合入 master `293a337` 并推送；0.5.0 已通过 OIDC 发布，npm `latest` 已核对）**｜功能分支 `feature/SP005/long-session-reliability`（已推送远端）｜实施基线 `17afe34`（master）｜轮次验收报告 [SP005/test-report.md](test-report.md)
 
 ## 本轮目标与边界
 
@@ -44,7 +44,7 @@
   - 转录写入失败 ⇒ 回合结果保留在内存并随 `turn_finalized.persistenceError` 报出（`BUDINGX_STORAGE_005`）。
   - 并发写同一会话 ⇒ 明确拒绝（`BUDINGX_STORAGE_006`），陈旧锁需显式解锁，不静默删除。
   - 工具空转 ⇒ 两级熔断终止回合（`BUDINGX_CORE_010`），避免把迭代预算耗在无进展重试。
-- 本轮**已合入 master**（用户 2026-11-20「合入master，并且停止容器」授权，合并提交 `293a337`）并推送远端；**0.5.0 已完成发布准备但尚未上传 npm**，实际上传由维护者在 Actions 手动触发。
+- 本轮**已合入 master**（用户 2026-11-20「合入master，并且停止容器」授权，合并提交 `293a337`）并推送远端；**0.5.0 已通过 OIDC 发布**，源码为 `751ba3b`，Windows 与 Ubuntu 验证均通过，npm `latest` 指向 0.5.0。见[发行说明](../../release-notes/v0.5.0.md)。
 
 ## 变更记录
 
@@ -57,6 +57,7 @@
 | 2026-11-20 | 真实模型端到端两场景在 Langfuse 4.78.0 回查 PASS，修复模型用量/工具观测载荷与熔断判定 | 用户说明额度恢复，要求用 Langfuse 监测并即时修复 |
 | 2026-11-20 | 合入 master（`293a337`）并推送远端；停止本地 Langfuse 容器 | 用户指令「合入master，并且停止容器」 |
 | 2026-11-20 | 0.5.0 版本准备、发行说明与版本文档同步完成，状态 **prepared** | 用户指令「完成发布前的准备工作，到时我直接点发布即可」 |
+| 2026-11-20 | 0.5.0 正式发布，npm `latest` 与官方包独立安装已核对 | [运行 #20](https://github.com/Limingyang01/budingx-next/actions/runs/44654008000) ／ [发布台账](../../release-ledger.json) ／ [验收报告 §8](test-report.md#8-050-正式发布回执2026-11-20) |
 | 2026-11-19 | 真实栈登录取 `.env.e2e.local`：`langfuse:init` 复用该文件四个凭据、新增 `langfuse:login` 自检，重建数据卷后 UI 登录与项目 Key 双检通过 | 用户「用 .env.e2e.local 文件无法进入langfuse里面」→「按照这个账号密码去改，不要改账号密码」 |
 | 2026-11-19 | 真实档补强：接收端加只读查看页；WSL2 内 Docker 起真实 Langfuse 4.78.0 栈 + `langfuse:smoke` 接入链路验收（需求 v0.3）；顺手修后台任务句柄泄漏与子进程测试超时；全量 825 通过 | 用户「环境限制你帮我安装好就行了」→「不要桌面端 docker，装在 WSL 里」→「部署完成后检查 SP005 查漏补缺」；真实模型额度仍 402 |
 | 2026-11-20 | 真实模型端到端复跑（tool-success/tool-error）在 Langfuse 4.78.0 回查 PASS；修复 provider 流式 usage 与工具 input/output 观测；判读上限改读 `MAX_TOOL_FAILURE_STREAK`；全量 838 通过 | 用户「有token了，可以跑真实的测试了…发现问题直接修复，完成后提交并推送远端」 |

@@ -1,6 +1,6 @@
 # SP005 验收与验证报告 · 长会话与数据可靠性
 
-状态：**代码层验收全绿，交叉验证门禁 GREEN；已合入 master `293a337` 并推送远端；0.5.0 已完成发布准备（尚未上传 npm）**。分支 `feature/SP005/long-session-reliability`，文档起点 master `17afe34`，实施提交 `a76199e`，补强提交 `62f3e9e`（真实 Langfuse 栈接入、子进程超时预算与文档同步）、`ef90f11`（登录凭据对齐 `.env.e2e.local` 与登录自检）、`90f1e9a`（判定工具调用是否合适）、`ebfb882`（真实模型端到端：模型用量与工具观测载荷、判读允许熔断停机）。本报告是轮次级结论；逐条细节见 [long-session-reliability 验收报告](long-session-reliability/test-report.md)，配套 [需求](long-session-reliability/requirements.md)、[设计](long-session-reliability/design/design.zh.md)、[实施计划](long-session-reliability/design/plan.zh.md)与 [STATUS](long-session-reliability/STATUS.md)。
+状态：**代码层验收全绿，交叉验证门禁 GREEN；已合入 master `293a337` 并推送远端；0.5.0 已通过 OIDC 发布**。分支 `feature/SP005/long-session-reliability`，文档起点 master `17afe34`，实施提交 `a76199e`，补强提交 `62f3e9e`（真实 Langfuse 栈接入、子进程超时预算与文档同步）、`ef90f11`（登录凭据对齐 `.env.e2e.local` 与登录自检）、`90f1e9a`（判定工具调用是否合适）、`ebfb882`（真实模型端到端：模型用量与工具观测载荷、判读允许熔断停机）。本报告是轮次级结论；逐条细节见 [long-session-reliability 验收报告](long-session-reliability/test-report.md)，配套 [需求](long-session-reliability/requirements.md)、[设计](long-session-reliability/design/design.zh.md)、[实施计划](long-session-reliability/design/plan.zh.md)与 [STATUS](long-session-reliability/STATUS.md)。
 
 ## 0. 本轮执行证据
 
@@ -97,8 +97,8 @@ AC 区间：CB-01…07（7）、SR-01…11（11）、FR-01…09（9）、PM-01�
 
 - 启动与端到端测试授权：用户 2026-11-19「开始SP005，做完后跑端到端的测试……你在本地搭好langfuse的监测」。
 - 合入约束：用户 2026-11-19「测试完成后待我决定后再合入master分支」→ 该约束在测试通过后生效，用户于 2026-11-20「合入master，并且停止容器」授权合入，合并提交 `293a337`；随后「合完推送远端，完成发布前的准备工作，到时我直接点发布即可」授权推送与发布准备。master 与功能分支均已推送远端。
-- 发布准备：0.5.0 版本号、发布台账 `prepared` 记录与[0.5.0 发行说明](../../release-notes/v0.5.0.md)已就绪，**尚未上传 npm**；实际 npm 上传由维护者在 GitHub Actions 手动触发。
-- 发布预演：本地 `npm run publish -- --dry-run --expected-version 0.5.0 --tag latest` 全绿（打包、隔离安装、命令入口版本、安装态 smoke 全通过，`state=verified-local`），证明制品本身可发布；registry 上仍无 0.5.0（`npm view budingx@0.5.0` 返回 404，`latest` 仍为 0.4.0），符合“尚未上传”的状态。
+- 发布准备：0.5.0 版本号、发布台账 `prepared` 记录和发行说明已在触发前就绪。维护者随后手动触发 GitHub Actions，正式发布证据见 §8。
+- 发布预演：本地 `npm run publish -- --dry-run --expected-version 0.5.0 --tag latest` 通过打包、隔离安装、命令入口版本与安装态 smoke，报告为 `state=verified-local`。
 - 交付记录：本报告、[细节报告](long-session-reliability/test-report.md)、[STATUS](long-session-reliability/STATUS.md) 与 [requirements-summary](requirements-summary.md) 同步维护。
 
 ## 7. 0.5.0 发布预检修复自审（2026-11-20）
@@ -110,6 +110,12 @@ AC 区间：CB-01…07（7）、SR-01…11（11）、FR-01…09（9）、PM-01�
 | 读取 `LA` 对应的内置管理员 SID | PASS | Windows 临时文件真实 DACL，含空格、括号及引号的文件名 |
 | 拒绝显式授予 `AU` 访问 | PASS | Windows 临时文件授予 `S-1-5-11` 后，初始化权限校验拒绝该授权 |
 | 保持现有初始化行为 | PASS | `node --test scripts/langfuse/init-local.test.mjs` 在仓库根执行，Windows 12 项通过，包括目录和文件权限、重复初始化与不完整配置保护 |
-| 托管发布验证 | UNVERIFIED | 恢复条件为新的 GitHub Actions 运行完成 Windows 与 Ubuntu 验证 |
+| 托管发布验证 | PASS | 运行 #20 的 Windows 与 Ubuntu 验证通过，见 §8 |
 
 两条新增断言在旧代码上均失败，修复后均通过。自审覆盖初始化脚本、回归测试、本报告及 [产品说明书](../../PRODUCT.md) 的 Langfuse 权限描述。变更范围限于开发初始化工具，无依赖、配置迁移、凭据或制品变动。Windows 测试使用临时文件的真实 ACL，产品发布预检另行验证制品。
+
+## 8. 0.5.0 正式发布回执（2026-11-20）
+
+- [GitHub Actions #20](https://github.com/Limingyang01/budingx-next/actions/runs/44654008000) 基于 `751ba3b`，Windows、Ubuntu、OIDC 发布和发布后的安装验证均通过。npm 官方源确认版本 0.5.0 已公开且 `latest` 指向 0.5.0。
+- 官方包独立安装后的 CLI 版本为 0.5.0，本地 HTTP 流式冒烟通过（1 次 fixture 请求）。已核验 53 个包的 registry 签名和 7 个包的 attestations。公开制品的 SHA-512 与 npm 元数据、独立安装锁和 provenance 一致，provenance 指向同一源码 SHA、工作流及运行。
+- Actions 原始回执需要登录才能下载。证据来源已登记于[发布台账](../../release-ledger.json)和[发行说明](../../release-notes/v0.5.0.md)。真实模型长会话压缩和 TUI 观感的恢复条件见 §4。
