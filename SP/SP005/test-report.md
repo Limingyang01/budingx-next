@@ -149,3 +149,9 @@ AC 区间：CB-01…07（7）、SR-01…11（11）、FR-01…09（9）、PM-01�
 ### 9.3 证据口径修正
 
 本报告 §2 与 `long-session-reliability/test-report.md` 中 PM-06、SR-10 两条此前的 PASS 依据不足：PM-06 的「损坏文件」其实是可正常解析的条目，且从未断言 `.bak`；SR-10 只测了生产路径不会调用的函数。两条现已由 0.5.1 的真实用例覆盖（见 9.1），原表格保留但以本节为准。
+
+## 10. 0.5.1 正式发布回执（2026-11-20）
+
+- [GitHub Actions #21](https://github.com/Limingyang01/budingx-next/actions/runs/44658158215) 基于源码 `9903776`，Ubuntu、Windows、OIDC 发布和发布后的安装验证均通过。npm 官方源确认版本 0.5.1 已公开且 `latest` 指向 0.5.1。
+- 官方包独立安装后的 CLI 版本为 0.5.1，本地 HTTP 流式冒烟通过（1 次 fixture 请求，退出码 0）。已核验 53 个包的 registry 签名和 7 个包的 attestations。公开 tarball 含 98 个文件，实测 SHA-512 与 npm 元数据、安装锁和 provenance subject 摘要一致，provenance 指向同一源码 SHA、`master` 分支、工作流 `.github/workflows/publish-tui.yml` 与运行 #21。
+- Actions 原始回执需要登录才能下载，未取得；台账按公开运行结果、已验签的 npm provenance 和官方包独立安装结果登记（`ciArtifactDownloaded: false`）。证据来源已登记于[发布台账](../../release-ledger.json)和[发行说明](../../release-notes/v0.5.1.md)。真实模型长会话压缩和 TUI 观感的恢复条件见 §4。
