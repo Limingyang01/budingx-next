@@ -58,6 +58,9 @@ export type ApiMessage =
   | { role: 'assistant'; content: string | null; tool_calls?: ApiToolCall[]; reasoning_content?: string }
   | { role: 'tool'; tool_call_id: string; content: string }
 
+/** Reasoning effort exposed to the user (0.5.2 · /effort). */
+export type ReasoningEffort = 'low' | 'medium' | 'high'
+
 export type ChatRequest = {
   model: string
   messages: ApiMessage[]
@@ -65,6 +68,8 @@ export type ChatRequest = {
   stream?: boolean
   maxTokens?: number
   signal?: AbortSignal
+  /** Requested reasoning effort; providers that do not support it ignore it. */
+  reasoningEffort?: ReasoningEffort
 }
 
 export type ProviderEvent =

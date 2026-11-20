@@ -209,6 +209,12 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
     if (wantUsage) body.stream_options = { include_usage: true }
     const miniMax = miniMaxModel(options.baseUrl, request.model)
     if (miniMax) body.reasoning_split = true
+    // 0.5.2：effort 由调用方决定；未显式设置时保留 MiniMax 的历史默认值。
+    const effort = request.reasoningEffort ??
+      (/^minimax-m3\.1-flash/i.test(request.model) ? 'low' : undefined)
+    if (effort !== undefined) {
+      ;(body as Record<string, unknown>).reasoning_effort = effort
+    }
     if (request.maxTokens !== undefined) {
       body[miniMax ? 'max_completion_tokens' : 'max_tokens'] = request.maxTokens
     }
@@ -240,6 +246,12 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
       if (wantUsage && response.status === 400) {
         await response.body?.cancel().catch(() => {})
         delete body.stream_options
+        response = await send()
+      }
+      // 0.5.2：少数端点不认 reasoning_effort，同样退让一次而不是让整轮失败。
+      if (response.status === 400 && (body as Record<string, unknown>).reasoning_effort !== undefined) {
+        await response.body?.cancel().catch(() => {})
+        delete (body as Record<string, unknown>).reasoning_effort
         response = await send()
       }
     } catch (error) {

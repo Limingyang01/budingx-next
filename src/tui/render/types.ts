@@ -112,13 +112,9 @@ export type Frame = {
   lastQuestion?: string
   lastAnswer?: string
   suggestFollowUp?: boolean
-  /** Finished transcript lines, already written to the terminal scrollback. */
-  staticLines: string[]
   /** Raw text of the running assistant message (never re-wrapped in place). */
   liveText: string
   thinking: boolean
-  /** The live area of the running turn. */
-  liveLines: string[]
   status: { state: SessionState; note?: string }
   queue: QueueItem[]
   approval?: ApprovalCard
@@ -140,10 +136,8 @@ export type Frame = {
 export function initialFrame(mode: PermissionMode = 'read_only'): Frame {
   return {
     transcript: [],
-    staticLines: [],
     liveText: '',
     thinking: false,
-    liveLines: [],
     status: { state: 'idle' },
     queue: [],
     notices: [],

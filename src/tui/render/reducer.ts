@@ -11,6 +11,13 @@ export type RenderOptions = {
   toolElapsedMs?: number
 }
 
+/**
+ * Shared grapheme segmenter. Building one per call is wasteful: the render
+ * path wraps text on every stream delta, so the constructor cost is paid
+ * hundreds of times per second (SP005 review, 0.5.2 lag fix).
+ */
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+
 /** Split text into width aware lines without cutting wide characters. */
 export function renderTextLines(text: string, width: number): string[] {
   const limit = Math.max(1, width)
@@ -22,9 +29,7 @@ export function renderTextLines(text: string, width: number): string[] {
     }
     let current = ''
     let currentWidth = 0
-    for (const { segment: character } of new Intl.Segmenter(undefined, {
-      granularity: 'grapheme'
-    }).segment(paragraph)) {
+    for (const { segment: character } of graphemeSegmenter.segment(paragraph)) {
       const charWidth = stringWidth(character)
       if (currentWidth + charWidth > limit && current !== '') {
         lines.push(current)
@@ -37,10 +42,6 @@ export function renderTextLines(text: string, width: number): string[] {
     lines.push(current)
   }
   return lines
-}
-
-function liveLinesOf(frame: Frame, width: number): string[] {
-  return frame.liveText ? renderTextLines(frame.liveText, width) : []
 }
 
 export function reduceFrame(
@@ -84,14 +85,15 @@ export function reduceFrame(
       }
       next.liveText = ''
       next.thinking = false
-      next.liveLines = []
       next.error = undefined
       return next
     }
     case 'text_delta': {
       next.thinking = false
+      // Only the raw text is accumulated. Wrapping it into lines on every
+      // delta was quadratic in the answer length and was the main cause of
+      // the long-session lag (SP005 review, 0.5.2 lag fix).
       next.liveText += event.text
-      next.liveLines = liveLinesOf(next, options.width)
       return next
     }
     case 'thinking_delta': {
@@ -101,12 +103,9 @@ export function reduceFrame(
     case 'message_completed': {
       next.lastAnswer = next.liveText
       next.thinking = false
-      next.liveLines = liveLinesOf(next, options.width)
-      if (next.liveLines.length > 0) {
+      if (next.liveText.length > 0) {
         next.transcript = [...next.transcript, { kind: 'assistant', text: next.liveText }]
-        next.staticLines = [...next.staticLines, ...next.liveLines, '']
         next.liveText = ''
-        next.liveLines = []
       }
       return next
     }
@@ -120,14 +119,6 @@ export function reduceFrame(
           callId: event.callId,
           status: 'pending'
         }
-      ]
-      next.staticLines = [
-        ...next.staticLines,
-        `⚙ ${event.name}(${summarizeInput(event.input)})`
-      ]
-      next.liveLines = [
-        ...next.liveLines,
-        `⚙ ${event.name}(${summarizeInput(event.input)})`
       ]
       return next
     }
@@ -164,12 +155,6 @@ export function reduceFrame(
           kind: 'tool', text: 'Tool', turnId: event.turnId, callId: event.callId, status, result
         }]
       }
-      const lines = renderTextLines(
-        `${event.isError ? '✗' : '✓'} ${event.callId}: ${event.content}`,
-        options.width
-      )
-      next.staticLines = [...next.staticLines, ...lines]
-      next.liveLines = [...next.liveLines, ...lines]
       return next
     }
     case 'input_queued': {
@@ -330,12 +315,9 @@ export function reduceFrame(
           ? { ...entry, status: 'interrupted' }
           : entry
       )
-      next.liveLines = liveLinesOf(next, options.width)
-      if (next.liveLines.length > 0) {
+      if (next.liveText.length > 0) {
         next.transcript = [...next.transcript, { kind: 'assistant', text: next.liveText }]
-        next.staticLines = [...next.staticLines, ...next.liveLines, '']
         next.liveText = ''
-        next.liveLines = []
       }
       next.thinking = false
       if (next.startedAt !== undefined && event.finishedAt !== undefined) {
@@ -367,7 +349,6 @@ export function reduceFrame(
       }
       if (event.outcome === 'cancelled') {
         next.transcript = [...next.transcript, { kind: 'meta', text: '[cancelled]' }]
-        next.staticLines = [...next.staticLines, '[cancelled]']
       }
       return next
     }

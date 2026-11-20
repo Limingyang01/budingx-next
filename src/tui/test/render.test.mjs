@@ -22,16 +22,20 @@ test('增量文本按帧合并而不是逐字符重排', () => {
     },
     { width: 40 }
   )
+  let accumulated = ''
   for (const character of '你好世界') {
+    accumulated += character
     frame = reduceFrame(
       frame,
       { type: 'text_delta', turnId, messageId: 'm1', text: character },
       { width: 40 }
     )
-    assert.equal(frame.liveLines.length, 1)
+    // The live text accumulates; it is not re-wrapped into lines per delta
+    // (that quadratic re-wrap was the long-session lag cause).
+    assert.equal(frame.liveText, accumulated)
+    assert.equal(frame.transcript.length, 0)
   }
   assert.equal(frame.liveText, '你好世界')
-  assert.deepEqual(frame.liveLines, ['你好世界'])
 })
 
 test('CJK 与 emoji 按显示宽度折行且不切字', () => {
@@ -69,14 +73,18 @@ test('终态切换原子：live 段只进入 static 一次且不丢段', () => {
     { type: 'message_completed', turnId, messageId: 'm1' },
     { width: 40 }
   )
-  assert.equal(frame.liveLines.length, 0)
-  assert.deepEqual(frame.staticLines, ['答案', ''])
+  assert.equal(frame.liveText, '')
+  assert.equal(frame.transcript.length, 1)
+  assert.equal(frame.transcript[0].kind, 'assistant')
+  assert.equal(frame.transcript[0].text, '答案')
   frame = reduceFrame(
     frame,
     { type: 'turn_finalized', turnId, outcome: 'completed' },
     { width: 40 }
   )
-  assert.deepEqual(frame.staticLines, ['答案', ''])
+  // The finished answer stays in the transcript exactly once.
+  assert.equal(frame.transcript.filter((entry) => entry.kind === 'assistant').length, 1)
+  assert.equal(frame.transcript[0].text, '答案')
 })
 
 test('事件流回放得到排队指示、审批卡与状态', () => {
@@ -153,13 +161,19 @@ test('工具调用与结果进入 live 区', () => {
     },
     options
   )
-  assert.match(frame.liveLines[0], /read_file/)
+  const toolEntry = frame.transcript.at(-1)
+  assert.equal(toolEntry.kind, 'tool')
+  assert.match(toolEntry.text, /read_file/)
+  assert.equal(toolEntry.status, 'pending')
   frame = reduceFrame(
     frame,
     { type: 'tool_result', turnId, callId: 'c1', content: 'body', isError: false },
     options
   )
-  assert.match(frame.liveLines.at(-1), /c1/)
+  const settled = frame.transcript.at(-1)
+  assert.equal(settled.kind, 'tool')
+  assert.equal(settled.status, 'success')
+  assert.equal(settled.result, 'body')
 })
 
 test('宽度变化后重排不错位也不丢字', () => {
@@ -200,8 +214,11 @@ test('G10/G11 回收指示清除且工具内容在终态保留', () => {
   })
   f = reduceFrame(f, { type: 'text_delta', turnId, messageId: 'm', text: 'answer' })
   f = reduceFrame(f, { type: 'turn_finalized', turnId, outcome: 'completed' })
-  assert.match(f.staticLines.join(' '), /echo/)
-  assert.match(f.staticLines.join(' '), /result body/)
+  const tool = f.transcript.find((entry) => entry.kind === 'tool')
+  assert.ok(tool, 'the tool call must stay in the transcript')
+  assert.match(tool.text, /echo/)
+  assert.match(tool.result, /result body/)
+  assert.equal(tool.status, 'success')
 })
 
 

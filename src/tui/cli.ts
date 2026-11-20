@@ -17,6 +17,19 @@ import { terminalStrategy } from './render/header.js'
 
 const MODE_ORDER: PermissionMode[] = ['read_only', 'workspace_edit', 'full_access']
 
+/** 0.5.2：解析推理强度环境变量；非法值忽略。 */
+function effortFromEnv(raw: string | undefined): 'low' | 'medium' | 'high' | undefined {
+  const value = raw?.trim().toLowerCase()
+  return value === 'low' || value === 'medium' || value === 'high' ? value : undefined
+}
+
+/** 0.5.2：解析正整数环境变量；非法值忽略而不是崩溃。 */
+function positiveInteger(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined
+  const value = Number.parseInt(raw.trim(), 10)
+  return Number.isFinite(value) && value > 0 ? value : undefined
+}
+
 function permissionContext(
   runtime: AgentRuntime
 ): NonNullable<CommandContext['permission']> {
@@ -124,6 +137,7 @@ async function runPipe(config: ResolvedConfig, stores: Stores): Promise<number> 
   let current = config
   // Non-interactive runs keep the conservative default: read_only mode
   // answers reads and refuses writes before any approval could be asked.
+  const promptEffort = effortFromEnv(process.env.BUDINGX_REASONING_EFFORT)
   const runtime = createAgentRuntime({
     cwd: process.cwd(),
     getConfig: () => current,
@@ -133,7 +147,8 @@ async function runPipe(config: ResolvedConfig, stores: Stores): Promise<number> 
       }
     },
     configStore: stores.configStore,
-    mode: 'read_only'
+    mode: 'read_only',
+    ...(promptEffort === undefined ? {} : { reasoningEffort: promptEffort })
   })
   const session = runtime.session
   const input = await readStdin()
@@ -179,12 +194,21 @@ async function runPipe(config: ResolvedConfig, stores: Stores): Promise<number> 
 async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<void> {
   const gateway = new InkApprovalGateway()
   let current = config
+  // 0.5.2：交互式 TUI 打开会话持久化与上下文预算，/sessions /resume
+  // /context /memory 与上下文用量显示才有数据源。窗口默认不猜：
+  // 只有显式配置 BUDINGX_CONTEXT_WINDOW 才显示百分比。
+  const contextWindow = positiveInteger(process.env.BUDINGX_CONTEXT_WINDOW)
   const runtime = createAgentRuntime({
     cwd: process.cwd(),
     getConfig: () => current,
     approval: gateway,
     configStore: stores.configStore,
-    persistPermissionMode: true
+    persistPermissionMode: true,
+    persistence: true,
+    ...(contextWindow === undefined ? {} : { contextBudget: { maxTokens: contextWindow } }),
+    ...(effortFromEnv(process.env.BUDINGX_REASONING_EFFORT) === undefined
+      ? {}
+      : { reasoningEffort: effortFromEnv(process.env.BUDINGX_REASONING_EFFORT)! })
   })
   for (const warning of runtime.warnings) {
     process.stderr.write(`Warning: ${warning}\n`)
@@ -207,7 +231,12 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
         exit: () => {
           instance.unmount()
         },
-        permission: permissionContext(runtime)
+        permission: permissionContext(runtime),
+        ...(runtime.contextUsage ? { contextUsage: runtime.contextUsage } : {}),
+        ...(runtime.sessions ? { sessions: runtime.sessions } : {}),
+        ...(runtime.context ? { context: runtime.context } : {}),
+        ...(runtime.memory ? { memory: runtime.memory } : {}),
+        ...(runtime.effort ? { effort: runtime.effort } : {})
       },
       version,
       cwd: process.cwd(),
@@ -264,6 +293,7 @@ async function main(): Promise<void> {
       process.exitCode = 1
       return
     }
+    const promptEffort = effortFromEnv(process.env.BUDINGX_REASONING_EFFORT)
     const runtime = createAgentRuntime({
       cwd: process.cwd(),
       getConfig: () => config,
@@ -273,7 +303,8 @@ async function main(): Promise<void> {
         }
       },
       configStore: stores.configStore,
-      mode: 'read_only'
+      mode: 'read_only',
+      ...(promptEffort === undefined ? {} : { reasoningEffort: promptEffort })
     })
     const code = await runTurn(runtime, config.prompt)
     process.stdout.write('\n')
