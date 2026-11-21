@@ -148,8 +148,12 @@ export async function generatePromptSuggestion(options: {
   if (!messages) return undefined
   if (options.signal?.aborted) return undefined
   const controller = new AbortController()
+  // Keep the timeout timer referenced: an unref'd timer lets the event loop
+  // drain before it fires, so a provider that only resolves on abort never
+  // settles (Node 22 surfaces it as "the event loop has already resolved").
+  // The timer is always cleared in the finally block below, so a referenced
+  // timer never keeps the process alive after the suggestion resolves.
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? DEFAULT_TIMEOUT_MS)
-  timer.unref?.()
   const relay = (): void => controller.abort()
   options.signal?.addEventListener('abort', relay, { once: true })
   try {

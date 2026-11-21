@@ -405,3 +405,47 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 - 分支：`feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；提交 `cedf2a3`（A）、`031b99b`（B）、`4b78cdb`（C+B3）、`06d7b2a`（D）、`f0b11eb`（命令卡片完成态隐藏与单行修复）、`47c5cb6`（台账源码 SHA 同步）、`1ef588a`（`/resume` 历史可见性与身份切换）、`55ea677`（`/resume` 历史碎片合并与输入框建议改模型生成）、`9e3e88f`（建议清洗按真实模型输出校正、退化终端多行命令输出）、`1877af6`（波次 H 文档收口）、`a869cd1`（`/undo` 文案本地化）、`9dbb6d7`（波次 I 证据与文档数字收口）、`e1393ca`（最终 SHA 回填）、`8f673d2`（合入自审记录与门禁审计加固）、`3e10321`（自审记录相对链接修正）。
 - **已合入 master**：2026-11-21 按用户 m04845 授权「合入master分支并且推送远端，做好发布前的准备工作」，在交叉验证门禁 GREEN 后以 `--no-ff` 合并，合并提交 `601ac7e`；功能分支保留不删。
 - 版本 0.6.0 仅 `prepared`；未打 tag、未 npm 发布、未改远端设置；npm 发布由用户在 GitHub 手动触发。
+
+## 11. 发布工作流失败与修复（2026-11-21）
+
+### 11.1 失败事实
+
+| 项 | 值 |
+| --- | --- |
+| 运行 | [GitHub Actions #25](https://github.com/Limingyang01/budingx-next/actions/runs/44846422075)，workflow `publish-tui.yml`，源码 `a9c71d2` |
+| 结果 | **run 结论 failure**；`Verify (windows-latest)` 失败、`Verify (ubuntu-24.04)` 成功、`Publish verified TUI using npm OIDC` **skipped** |
+| npm 上传 | **未发生**：`npm view budingx@0.6.0` 返回 404，registry 查询 `https://registry.npmjs.org/budingx/0.6.0` 返回 `version not found: 0.6.0`；未产生部分上传，无需回滚 |
+| 失败步骤 | `Check, pack and install the actual tarball`（内部执行 `npm run publish -- --dry-run --expected-version 0.6.0 --tag latest`），exit 1 |
+| 注解 | check-run `136667157232` 注解：`Process completed with exit code 1.`（日志与 artifact 下载需仓库管理员权限，本机 API 返回 403/401，改由本地复现定位） |
+
+### 11.2 根因
+
+工作流在 Windows 使用 Node `22.22.0`，在 Linux 使用 Node `24`。本地以 nvm 切到 `22.22.0`（npm `11.21.2`，与 CI 一致）复现：
+
+- `npm run test:unit` → `926 tests / 921 pass / 0 fail / 4 cancelled / 1 skipped`，退出码 1。
+- 被取消的 4 例全部位于 `src/tui/test/sp006-suggestion.test.mjs`：`G-05` 及其后 `G-06`/`G-07`/`G-08`；报错 `failureType: cancelledByParent`，`error: Promise resolution is still pending but the event loop has already resolved`，触发点 `src/tui/test/sp006-suggestion.test.mjs:134`。
+
+机制：`src/tui/suggestion.ts` 的 `generatePromptSuggestion` 用 `setTimeout` 实现超时中止，并对该计时器调用 `timer.unref?.()`。被 unref 的计时器不保持事件循环存活：当模型提供方只承诺在中止信号后 resolve 时，Node 22 会在计时器触发前排空事件循环，顶层 await 永不结算（独立最小复现退出码 13 = unsettled top-level await），Node 24 则恰好不暴露该竞态。这与本仓既有结论一致——`src/core/session.ts:2303` 已就同类问题写明「Keep the timer referenced: an unref'd timer lets the event loop drain, so queued input would silently never start its own turn」。
+
+### 11.3 修复
+
+- `src/tui/suggestion.ts`：去掉 `timer.unref?.()`，超时计时器保持引用；计时器始终在 `finally` 中 `clearTimeout`，因此建议返回后不会吊住进程。
+- `src/tui/test/sp006-suggestion.test.mjs`：新增 `G-05b` 回归用例，断言超时**真正触发中止**（`aborted === true`），并覆盖「挂起的提供方必须被中止并结算」。
+- 顺带核查其它 `unref` 调用点：`src/tui/app.tsx:689`（16 ms 合帧计时器）、`src/exec/background.ts:110`（终止重试）、`src/core/session.ts:897`。三者要么由别的句柄保持循环存活、要么有兜底路径，未出现同类失败，本次不改。
+
+### 11.4 复验（修复后）
+
+| 环境 | 命令 | 结果 |
+| --- | --- | --- |
+| Node 22.22.0 + npm 11.21.2（本机复刻 CI Windows） | `npm test` | exit 0；10 + 11 + **927（926 pass / 0 fail / 0 cancelled / 1 skipped）** + 81 + 17 + 9 |
+| Node 22.22.0 + npm 11.21.2 | `npm run publish -- --dry-run --expected-version 0.6.0 --tag latest` | exit 0，`Dry run passed; no publication.`，报告 `artifacts/release/0.6.0-1795223585938/report.json` |
+| Node 24.15.0 | `node --test src/tui/test/sp006-suggestion.test.mjs` | 9/9 PASS（含新增 G-05b） |
+| Node 24.15.0 | `npm run test:checks` / `npm run spec:check` / `npm run skills:check` | 全部 exit 0 |
+
+单测总数由 926 增至 927（新增 G-05b 一例），其余分组计数不变。
+
+### 11.5 结论与后续
+
+- 失败原因是产品代码缺陷（超时计时器生命周期），不是 CI 配置、账号授信或 OIDC 问题；发布作业因前置验证失败而跳过，**未触达 npm 上传路径**。
+- 修复已随本节提交推送 master；**需要维护者重新触发 `publish-tui.yml`**（version `0.6.0`、tag `latest`、dry_run 取消勾选），源提交以本节记录的提交号为准。
+- 0.6.0 版本台账仍为 `prepared`；本节不改变 69 条 AC 结论，也不改变 `src/tui/package.json` 的版本号。

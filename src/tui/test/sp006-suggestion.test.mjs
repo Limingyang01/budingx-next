@@ -155,6 +155,27 @@ test('G-05 生成建议：超时与外部取消都能及时退出', async () => 
   assert.equal(await generatePromptSuggestion({ provider: hanging, model: 'fixture', history, signal: controller.signal }), undefined)
 })
 
+test('G-05b 超时计时器必须保持引用：事件循环不得在中止前排空', async () => {
+  // 回归：计时器若被 unref，事件循环会在中止前排空，挂起的 provider 永不
+  // 结算，Node 22 下表现为 "Promise resolution is still pending but the event
+  // loop has already resolved"，并连带取消同文件后续用例。
+  let aborted = false
+  const hanging = {
+    async *stream(request) {
+      await new Promise((resolve) => {
+        request.signal?.addEventListener('abort', () => {
+          aborted = true
+          resolve()
+        }, { once: true })
+      })
+      throw new Error('aborted')
+    }
+  }
+  const history = [message('user', '改完了吗')]
+  assert.equal(await generatePromptSuggestion({ provider: hanging, model: 'fixture', history, timeoutMs: 20 }), undefined)
+  assert.equal(aborted, true, '超时必须真正触发中止')
+})
+
 test('G-06 回合结束后输入框显示模型生成的建议，Tab 可填入', async (t) => {
   const calls = []
   const provider = {
