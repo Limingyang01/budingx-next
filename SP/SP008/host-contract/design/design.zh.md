@@ -6,7 +6,7 @@
 - 需求：`../requirements.md`（SH-01…SH-05、SO-01…SO-04、TB-01…TB-08，共 17 条）
 - 参考实现：`D:\my_project\budingWorkerSpace` @ `b5c9be8`（只读；读机制、不抄代码；AST 复核在交付前执行）
 - 现行用户约束（m00133）：**不合入 master**；交付前多轮端到端复跑；TUI 功能复刻但独立实现；AST 检测
-- 状态：设计已自审（见 §8），待计划
+- 状态：设计已自审（见 §8）；v1.1 含实施期修订（令牌策略与传输 API 命名已回写）
 
 ## 1. 背景与目标
 
@@ -153,7 +153,7 @@ export interface HostEngine {
 2. transcript 尾行容错：`read()` 先判断 `raw.endsWith('\n')`；若同一会话目录存在**活** `writer.lock`
    （pid 存活），则丢弃最后一个换行后的片段（视为正在追加的半行，不解析、不计 `corruptLines`、不回写文件）。
    没有活写者时保持 SP005 SR-07：残缺尾行仍计 `corruptLines`，避免把真实截断静默当成并发。完整行损坏仍计 `corruptLines`。
-3. 凭据：不改变存储格式；宿主只暴露 `hasCredential(id)` 或模型能力描述，不返回 key 明文；
+3. 凭据：不改变存储格式；宿主不提供凭据读取接口，配置/描述只含 `apiKeyRef` 引用，不返回 key 明文；
    测试对三种传输的全部字节做断言（SH-04/TB-06）。
 4. 并发新增会话：沿用目录扫描；测试只断言两个进程各自 `startSession` 后 `list()` 都能看到两条。
 
@@ -161,44 +161,47 @@ export interface HostEngine {
 
 | 传输 | 实现 | 关键点 |
 | --- | --- | --- |
-| 进程内 | `src/host/transport/in-process.ts`：`connectInProcess(server)` 直接挂接 sink，帧仍走 `encodeFrame`/`decodeFrame` | 证明契约与网络传输同构；TUI 内嵌/测试用 |
-| stdio | `src/host/transport/stdio.ts`：`serveStdio({server, input, output})`，`readline` 逐行读 | stdout 只写协议帧；日志走 stderr；EOF → 优雅关闭、退出码 0 |
-| WebSocket | `src/host/transport/ws.ts`：`startWebSocketHost({server, host, port, token, path})` | 仅回环默认；RFC6455 手写握手/帧（无新依赖）；Bearer 令牌；1 MiB 上限；ping/pong |
+| 进程内 | `src/host/transport/in-process.ts`：`connectInProcess(server): HostTransport` 直接挂接连接 | 证明契约与网络传输同构；TUI 内嵌/测试用 |
+| stdio | `src/host/transport/stdio.ts`：`connectStdio(server, {input, output}): StdioHandle`，`readline` 逐行读 | stdout 只写协议帧；日志走 stderr；EOF → 优雅关闭、退出码 0 |
+| WebSocket | `src/host/transport/ws.ts`：`startWsHost({host, port, token, onConnection})` | 仅回环默认；RFC6455 手写握手/帧（无新依赖）；Bearer 令牌；1 MiB 上限；ping/pong |
 
 WS 细节（自实现，避免新增第三方依赖）：
 - 握手：校验 `Upgrade: websocket`、`Sec-WebSocket-Key`，返回 101 与 `Sec-WebSocket-Accept`
   （SHA-1 + 固定 GUID）；`Authorization: Bearer <token>` 用 `timingSafeEqual` 比较。
 - 帧：支持文本帧（客户端必须掩码）、分片合并、ping→pong、close 回显；未掩码/保留位/超限 → 以
   1002/1009 关闭并（超限时）先发 `fatal HOST_PROTOCOL_005`。
-- 绑定：默认 `127.0.0.1`；`--host` 非回环（`localhost/127.0.0.1/::1` 之外）→ 启动前拒绝并退出码 2。
-- 令牌：`--token` 或 `BUDINGX_HOST_TOKEN`；未提供时生成随机 32 字节 hex 并**仅一次**写到 stderr，
-  不写入配置、不进入事件/错误消息。
+- 绑定：默认 `127.0.0.1`；`--host` 非回环（`localhost/127.0.0.1/::1` 之外）→ 启动前拒绝并退出码 2，stderr 标记 `HOST_AUTH_004`（监听尚未建立，无法回协议帧）。
+- 令牌：`--token` 或 `BUDINGX_HOST_TOKEN`，**必需**；未提供时拒绝启动（stderr 明确提示，退出码 2），
+  不隐式生成、不打印到任何通道，不写入配置、不进入事件/错误消息。实施修订理由：隐式生成会把
+  凭据写进终端日志/测试抓包，且 TB-05 要求“显式认证”，故改为显式提供。
 
 轻量客户端（`src/host/client.ts`）：
 ```ts
-export type HostClient = {
+class HostClient {
+  constructor(options: { transport: HostTransport; protocolVersion?: number; clientId?: string; requestTimeoutMs?: number })
   readonly role: HostRole
-  hello(options?: { clientId?: string }): Promise<HelloOk>
-  request(frame: HostRequest): Promise<HostResponse>
-  onEvent(listener: (frame: HostFrame) => void): () => void
-  onFatal(listener: (code: string, message: string) => void): () => void
-  close(): Promise<void>
+  connect(): Promise<HelloResult>
+  request(type: HostRequestType, payload?: Record<string, unknown>): Promise<HostResult>
+  onEvent(listener: (event: SessionEvent, seq: number) => void): () => void
+  onRoleChanged(listener: (role: HostRole) => void): () => void
+  onClose(listener: () => void): () => void
+  close(): void
 }
-connectInProcess(server): Promise<HostClient>
-connectStdio({ command, args, env, cwd }): Promise<HostClient>   // spawn 子进程
-connectWebSocket({ url, token }): Promise<HostClient>
+connectInProcess(server): HostTransport
+connectStdio(server, { input?, output? }): StdioHandle   // 服务端侧，stdio 管道由调用方提供
+connectWebSocket({ url, token, timeoutMs? }): Promise<HostTransport>
 ```
 
 ### 3.7 CLI 入口（`budingx serve`）
 
-- 在 `parseCliArgs` 之前识别 `args[0] === 'serve'`，交给 `runServe(args.slice(1))`；
+- 在 `parseCliArgs` 之前识别 `args[0] === 'serve'`，交给 `runServeCommand(args.slice(1))`；
   其他参数仍走原路径，未知位置参数行为不变。
 - 选项：`--transport stdio|ws`（默认 stdio）、`--host 127.0.0.1`、`--port 0`（0=随机端口，启动后把
   实际端口写到 stderr 的 `listening ws://127.0.0.1:<port>` 行）、`--session <id>`（缺省新建）、
   `--takeover`（陈旧锁显式接管）、`--home <dir>`（测试隔离，沿既有模式）。
 - 认证：WS 必须令牌；stdio 不额外认证（管道继承进程权限）。
-- 生命周期：SIGINT/SIGTERM → 停止接受连接、`engine.dispose()`、释放锁、退出 0；
-  `shutdown` 请求同样处理；stdio EOF 同 SIGTERM。
+- 生命周期：POSIX 下 SIGINT/SIGTERM → 停止接受连接、`engine.dispose()`、释放锁、退出 0；
+  `shutdown` 请求同样处理；stdio EOF 同 SIGTERM。Windows 无法投递可捕获的 SIGTERM，强制终止留下陈旧锁，由 `--takeover` 恢复（README/PRODUCT 如实声明）。
 - 不许把宿主协议帧写到 stdout 以外的通道；stdout 仅协议。
 
 ### 3.8 错误、取消、恢复与兼容
@@ -307,6 +310,13 @@ connectWebSocket({ url, token }): Promise<HostClient>
 但这与已验收的 SP005 SR-07（半写入损坏行被跳过**并计数**）直接冲突。实施改为按证据区分：仅当同目录存在
 活 `writer.lock`（pid 存活）时按在途追加跳过且不计数；没有活写者时仍计 `corruptLines`，保留 SR-07 的
 真实截断告警。选择依据：两个 AC 都保留，且不把崩溃截断静默吞掉；代价是读取方需多一次锁文件读取。
+
+设计修订（实施期，2026-11-22）：WS 令牌由初稿的“未提供时随机生成并打印到 stderr”改为“必须由
+`--token` 或 `BUDINGX_HOST_TOKEN` 显式提供，缺失即退出码 2”。理由：打印到 stderr 会把凭据留在
+终端日志、CI 抓包与测试日志中，违背 SH-04/TB-06 的“传输面不外泄”；TB-05 的认证语义也要求
+调用方显式持有令牌。代价是本地试用需先设置环境变量或参数，已在 PRODUCT.md 写明。同步把
+§3.6/§3.7 的传输与客户端签名回写为实际导出（`connectStdio`、`startWsHost`、`HostClient` 类），
+避免设计与实现名义漂移；其余行为不变。
 
 开放项（不阻塞本轮）：事件重放/幂等（范围外）、会话删除/导出策略（SP005 遗留）、
 WS 鉴权扩展（令牌轮换/多用户，未来 Gateway）、跨设备同步（未来路线图）。

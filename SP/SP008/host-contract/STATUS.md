@@ -3,24 +3,27 @@
 ## 1. 当前有效范围
 
 - 需求：`SP/SP008/host-contract/requirements.md`（R1/R2/R3，SH-01…SH-05、SO-01…SO-04、TB-01…TB-08）
-- 设计：`design/design.zh.md`（待建立，Agent 自审对象）
-- 计划：`design/plan.zh.md`（设计自审通过后建立）
-- 基线：master `a8628b5`；功能分支 `feature/SP008/host-contract`
+- 设计：`design/design.zh.md`（v1.1，已自审；含令牌策略与传输 API 实施修订）
+- 计划：`design/plan.zh.md`（T1…T14，含 RED/GREEN 与命令）
+- 验收：`../test-report.md`（16 个新增测试文件 + 共享 helper；AC 逐条证据）
+- 基线：master `a8628b5`；功能分支 `feature/SP008/host-contract`；产品版本 0.7.0（不 bump）
 - 授权范围：设计、计划、实施、测试、交付记录、功能分支本地提交（中文说明）；
   **不含**合入 master / 推送 master（用户 m00133），不含打标签、npm 发布、远端设置、分支删除。
 
 ## 2. 阶段清单
 
-- [x] 需求：SP008 汇总、需求正文、STATUS 骨架（无提交）
+- [x] 需求：SP008 汇总、需求正文、STATUS 骨架
 - [x] 设计：design/design.zh.md + 自审记录（§6/§8）
-- [x] 计划：design/plan.zh.md（T1…T14，含 RED/GREEN 与命令）
-- [ ] 实施：R1 共享数据、R2 会话归属、R3 宿主契约与传输
-- [ ] 测试收口：AC→单元+功能用例 RED→GREEN
-- [ ] 多轮端到端复跑（用户 m00133）
-- [ ] AST 复核（新增文件全映射、命中全处置）
-- [ ] 交付记录：test-report、PRODUCT.md 同步、门禁证据
+- [x] 计划：design/plan.zh.md（T1…T14）
+- [x] 实施：T1–T10（共享数据、会话归属、协议/服务端、进程内/stdio/WS、引擎适配）
+- [x] 测试收口：T11 定向 55/55 PASS；全量 1177 项 / 1176 通过 / 1 跳过 / 0 失败
+- [x] 多轮端到端：3 轮 × 20 例，全部 20/20 PASS（日志 `artifacts/quality-runs/SP008/host-contract/`）
+- [x] AST 复核：17/17 文件映射，命中 0，PASS
+- [x] 交叉验证门禁：`npm run merge:gate` → **GATE GREEN**（2026-11-22，`npm test`/`spec:check`/`skills:check`/`pack-smoke` 全通过）
+- [x] 交付记录：test-report、PRODUCT.md §5.9、docs/development.md、汇总索引
+- [ ] 合入 master：**用户 m00133 明确不做**，保持功能分支完成态
 
-当前停点：需求、设计、计划完成，进入实施 T1。
+当前停点：SP008 功能分支交付完成，等待用户验收；未合入、未发布。
 
 ## 3. 批准与来源
 
@@ -31,15 +34,39 @@
 | 多轮端到端 + AST 检测 | 用户 m00133（2026-11-21） | 交付前必须完成 |
 | 参考实现对照 | AGENTS.md 工作边界；用户 m00133 | `D:\my_project\budingWorkerSpace` @ b5c9be8，只读，不抄代码 |
 
-## 4. AC 与验证（占位，随实施更新）
+## 4. AC 与验证
 
 | AC | 结果 | 证据 |
 | --- | --- | --- |
-| SH-01…SH-05 | UNVERIFIED | 待实施 |
-| SO-01…SO-04 | UNVERIFIED | 待实施 |
-| TB-01…TB-08 | UNVERIFIED | 待实施 |
+| SH-01 | PASS | `config-store-lock` 单元 + `sp008-config-concurrency` 两进程并发 |
+| SH-02 | PASS | 活锁超时 `BUDINGX_STORAGE_006`、陈旧锁清理、SIGKILL 后继续 |
+| SH-03 | PASS | `session-transcript-tail` 单元 + `sp008-shared-history` 并发只读 |
+| SH-04 | PASS | `credentials` 主机作用域 + 三传输字节扫描不含密钥 |
+| SH-05 | PASS | `sp008-crash-recovery`：历史完整、needs_review、不重放、哈希不变 |
+| SO-01 | PASS | `ownership` 单元 + `sp008-ownership` 两进程 owner/observer |
+| SO-02 | PASS | `server` 单元 + 双 WS 事件与 observer 断开隔离 |
+| SO-03 | PASS | 活 owner 拒绝 takeover；SIGKILL 后 `--takeover` 成功；旧连接降级 |
+| SO-04 | PASS | observer 写/管理请求全拒；owner 同类请求成功 |
+| TB-01 | PASS | 三传输 hello 字段一致；版本不匹配 001 后断开 |
+| TB-02 | PASS | 事件 JSON 往返 deepEqual；双 WS 同序事件；回合 completed |
+| TB-03 | PASS | WS 审批 allow 往返；单元覆盖 20ms 超时 deny |
+| TB-04 | PASS | 畸形/未知/重复/超限帧后连接仍可用；WS 超限先 fatal 再断开 |
+| TB-05 | PASS | 401/401/成功；非回环启动前拒绝（`HOST_AUTH_004`，退出码 2） |
+| TB-06 | PASS | 三传输入站帧与 stderr 不含 key/令牌/凭据路径 |
+| TB-07 | PARTIAL | EOF/shutdown/客户端断开均 PASS；**SIGTERM 在 Windows 无法优雅投递，UNVERIFIED**（恢复条件见 test-report §9） |
+| TB-08 | PASS | 边界脚本禁 host→tui/UI；PRODUCT §5.9 写明 scope=local、仅回环、同机≠跨设备 |
 
 ## 5. 提交与集成
 
-- 本地提交：待实施（功能分支）
-- 合并/推送：**未执行**；用户 m00133 要求先不合入 master
+- 设计/需求/计划：`1c5102e`
+- T1–T3：`9e64cd0`（配置锁、transcript 尾行、写锁检视）
+- T4–T6：`83d0135`（协议、归属、宿主服务端）
+- T7：`eb039b0`（进程内传输）
+- T8：`c31237d`（stdio 与 `serve`）
+- T9：`157a554`（引擎适配/审批桥）
+- T10：`1216475`（WebSocket/客户端）
+- T11：`ee9cbc2`（归属/崩溃恢复/三传输端到端）
+- T12/T13：`943591f`（host 边界、AST 映射）
+- T14：文档与验收报告提交
+- 合并/推送 master：**未执行**；用户 m00133 要求不合入 master
+- 发布：**未执行**，不 bump 版本

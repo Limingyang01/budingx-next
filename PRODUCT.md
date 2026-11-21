@@ -3,7 +3,7 @@
 > **npm 已发布版本**：0.6.0（`latest`）。详见 [0.6.0 发行说明](release-notes/v0.6.0.md)。
 >
 > **下一版本**：0.7.0（SP007 交付完成、发布准备就绪，随本轮合入 master；等待维护者触发 GitHub Actions 发布，npm `latest` 仍为 0.6.0）。详见 [0.7.0 发行说明](release-notes/v0.7.0.md)。
-> **说明书版本**：v1.24
+> **说明书版本**：v1.25（2026-11-22 增补 SP008 宿主契约，功能分支未发布）
 > **更新日期**：2026-11-21
 > **产品形态**：独立 MIT 许可的终端 Coding Agent（Node.js ≥ 22.18 + TypeScript，不依赖 Bun）
 
@@ -50,7 +50,7 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | SP005（0.5.0–0.5.4） | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         | 已合入 master。真实模型端到端两场景 PASS，0.5.4 已发布 |
 | SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 本轮实现完成并合入 master，0.6.0 已发布为 npm `latest` |
 | SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | **功能分支完成**（feature/SP007/agent-quality-and-extensions），待合入 master |
-| SP008 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | 规划中（契约轮，轻量测试客户端验证） |
+| SP008 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | **功能分支实现完成**（`feature/SP008/host-contract`），门禁通过；按用户 m00133 要求暂不合入 master、不发布 |
 | SP009 | TUI 独立交付与 npm 发布工程 | tui-distribution、upgrade-compatibility、npm-publish-pipeline                                              | 规划中 |
 | SP010 | 中期编码效果检查        | coding-parity-checkpoint、core-reliability                                                                 | 规划中 |
 | SP011 | 多代理团队              | team-lifecycle、task-coordination、team-messaging、worktree-isolation                                      | 规划中 |
@@ -389,6 +389,38 @@ SP007 在 0.6.0 的命令面之上补齐子代理执行、多模态上下文、�
 - headless stream-json 形状/终态/退出码/agent_* 不输出
 - 无新增运行时依赖
 
+### 5.9 SP008 · 通用宿主契约与 `serve`（功能分支，未合入 master）
+
+SP008 固定 TUI、headless 与未来各端共用的本地宿主契约，并用进程内、stdio、WebSocket 三种传输验证。实现位于功能分支 `feature/SP008/host-contract`，已完成 3 轮真实进程端到端验证（每轮 20/20）；按用户 m00133 要求，**保持功能分支、尚未合入 master、未进入 npm 制品**。以下命令在合入并发布后才对安装包可用。
+
+#### 5.9.1 `budingx serve`
+
+```powershell
+# stdio：stdout 只写 NDJSON 协议帧，诊断写 stderr；stdin EOF 正常退出
+budingx serve --transport stdio --session my-session
+
+# WebSocket：仅本机回环，必须显式提供令牌
+$env:BUDINGX_HOST_TOKEN = "<随机长令牌>"
+budingx serve --transport ws --session my-session --port 0
+# stderr 输出 listening ws://127.0.0.1:<端口>，供客户端连接
+```
+
+- 选项：`--transport stdio|ws`（默认 stdio）、`--host`（WS 默认 `127.0.0.1`，只接受回环地址）、`--port`（默认 0，随机端口）、`--session <id>`（缺省生成）、`--takeover`（显式接管陈旧锁）、`--token` 或 `BUDINGX_HOST_TOKEN`（WS 必需）、`--home <dir>`（测试隔离）。
+- 协议：每行一个 JSON 帧。请求 `{id,type,...}`，响应 `{id,ok,result|error}`；服务端主动帧为 `hello_ok`、`event`（带递增 `seq`）、`role_changed`、`fatal`、`pong`。请求类型：`hello`、`describe`、`history`、`submit`、`interrupt`、`approval`、`set_permission_mode`、`takeover`、`shutdown`、`ping`。
+- 身份：`hello_ok` 返回 `protocolVersion=1`、`sessionId`、`workspaceId`、`clientId`、`role`、`scope`（固定 `local`）。
+- 归属：同一会话只有一个 writer（`~/.budingx/sessions/<id>/writer.lock`）。首个连接是 `owner`；同进程第二个连接、或另一进程在活 owner 存在时启动，都是 `observer`。observer 可读描述/历史、可收本进程实时事件，但 submit/interrupt/改权限/审批/接管均以 `HOST_SESSION_003` 拒绝；shutdown 仍可用。
+- 崩溃恢复：owner 被杀死后锁变陈旧，新进程需显式 `--takeover` 才成为 owner；活 owner 存在时 takeover 被拒绝且原锁不变。恢复只装载历史，不重放工具；结果未知的步骤列在 `needsReview`，并附 `warnings`。
+- 关闭：stdin EOF、`shutdown` 请求都会停止监听、释放锁并以 0 退出；POSIX 下 SIGINT/SIGTERM 走同一清理路径。Windows 无法向 Node 投递可捕获的 SIGTERM，强制终止会留下陈旧锁，需用 `--takeover` 恢复（属预期恢复路径）。WS 客户端断开不会中断正在进行的回合（默认策略，事件不缓存）。
+- 退出码：0 正常关闭；1 归属/运行时启动失败；2 参数、认证或绑定违规。
+
+#### 5.9.2 安全与限制
+
+- **同机共享不等于跨设备同步**：`scope=local`；数据来自本机 `~/.budingx`，没有账号、云端中继或跨设备复制。WS 默认且只允许回环绑定，明文 HTTP 升级仅限本机回环。
+- **令牌必须显式提供**：缺失或错误时 WS 拒绝启动/返回 401；令牌不会隐式生成、打印到 stderr 或进入帧与日志。
+- **凭据不外泄**：宿主不提供凭据读取接口；配置/描述只含 `apiKeyRef` 引用，三种传输的全部字节在测试中断言不含 key 或 `credentials.json` 内容。
+- **无事件重放/断线续传**：观察者断开再连只能重新 `describe`/`history`；跨进程 observer 只读持久化历史，看不到别进程的实时事件。
+- `serve` 当前未接 MCP 与 hooks（交互 TUI 不受影响）；宿主不改三档权限模式、provider 协议或既有 headless 输出。
+
 ## 6. 数据与隐私
 
 - 产品数据统一落在 `~/.budingx`；不读取、不回退、不写入 `~/.claude`。
@@ -411,7 +443,7 @@ SP007 在 0.6.0 的命令面之上补齐子代理执行、多模态上下文、�
 | 权限规则与沙箱                 | 三档权限模式、规则匹配、拒绝记录与撤销已实现（SP003）；命令按权限审批执行（0.5.4）；**默认无操作系统级沙箱**，可选隔离后端接口已就绪但未内置已验收后端 | OS 级隔离后端待后续轮次 |
 | 撤销粒度                       | 仅本会话内可撤销（SP003）；跨会话快照与 rewind 未实现                          | 后续轮次             |
 | 图片与多模态                   | SP007 已实现图片粘贴/路径附件/PNG 缩放/能力前置拒绝/错误驱动降级；Anthropic 协议真实端点待凭据验证 | SP007 功能分支已完成 |
-| Desktop / VS Code / 移动端 / 远程/H5 / IM | 当前 SP 范围外，保留通用宿主接口 | 后续如需纳入，另行决定范围和排期 |
+| Desktop / VS Code / 移动端 / 远程/H5 / IM | 当前 SP 范围外，保留通用宿主接口；SP008 已固定进程内/stdio/WS 契约与 `serve` 入口（功能分支，未合入 master） | 后续如需纳入，另行决定范围和排期 |
 | 真实服务 live 证据             | 已验证一个用户提供的服务：流式、工具审批回合、取消、鉴权错误；见 SP002 报告 §16 | 其他型号/服务仍未测   |
 | SP006 扩展能力 | 项目指令、技能、MCP、hooks、WebFetch、无头 CLI 与七条新命令已实现并通过本地回归；状态栏配置需重启生效；无头模式不加载 MCP 与交互面板；MCP 与 hooks 的真实第三方服务器/脚本兼容性未逐一验证；hooks 的 http/agent 处理器未实现 | 已随 0.6.0 发布；真实第三方兼容性后续补证 |
 | 真终端 CJK/IME 与 resize 体验  | 未验证（需 Windows Terminal + ConHost 人工 smoke）                              | 验收时补              |
@@ -441,6 +473,7 @@ SP007 在 0.6.0 的命令面之上补齐子代理执行、多模态上下文、�
 | 0.5.4 | 2026-11-20 | 命令按权限档位宿主信任执行（Bash 可用，对齐参考实现）；Git 命令不再被只读白名单硬拦；Shift+Tab 恢复三档轮播；联网搜索完全权限免审、可按会话记住；审批卡编号一致；追问卡回答后收起、过程性提示不堆叠、时长格式化、状态显示正在思考、底部元信息合并为一行；上下文占用改为真实用量的百分比；`/rules` 改为交互管理面板；移除 `/config` 与 `/model`；修复长会话 `Maximum update depth exceeded` 崩溃；Langfuse 仅开发环境；既有命令复刻改造（/new /continue /rewind /plan /context 网格 /compact /cost /permissions /help 技能清单）。见 [发行说明](release-notes/v0.5.4.md) | 已发布 |
 | 0.5.2 | 2026-11-20 | 长会话渲染优化（流式增量不再每帧全文重排、虚拟列表渐进挂载与高度缓存、状态栏常驻）、上下文用量与推理强度显示、`/effort` 命令、交互式 TUI 默认开启会话持久化；见 [发行说明](release-notes/v0.5.2.md) | 已发布 |
 | 0.5.1 | 2026-11-20 | SP005 复审修复：写入锁排他互斥与释放归属、记忆正文往返与真实损坏备份、凭据误判收敛、压缩保留项裁剪与压缩转录重放、预算阈值统一、工具熔断按回合重置、恢复权限不升权、`/memory` 用法提示；见 [发行说明](release-notes/v0.5.1.md) | 已发布 |
+| —（SP008 功能分支，未发布） | 2026-11-22 | SP008 通用宿主契约：`budingx serve`（stdio/WS）、版本化 NDJSON 身份/事件/权限协议、owner/observer/takeover 与崩溃恢复、配置并发锁、转录尾行容错、凭据作用域与传输不泄密；见 [验收报告](SP/SP008/test-report.md)。**用户 m00133 要求暂不合入 master、不发布。** | 未合入、未发布 |
 | —（规划调整，无产品行为变化） | 2026-11-17 | 路线图 r6：TUI 单端优先；SP008/SP009/SP016–SP018 暂缓、多端架构入口保留；TUI 三权限模式固定；能力清单分母 53→47；说明书 v1.3 | 规划文档调整 |
 | —（规划调整） | 2026-11-18 | 路线图 r7：移出五个原暂缓 SP，保留通用宿主契约，必交能力仍为 47 | 规划文档调整 |
 | —（规划调整） | 2026-11-18 | 路线图 r8：现行 SP001–SP016 连续编号，能力与产品版本不变 | 规划文档调整 |
