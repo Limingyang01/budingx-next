@@ -91,4 +91,4 @@
 - 新增 src/tui/test/sp007-image-command.test.mjs（6 项）：/image 路径附件、剪贴板空、路径不存在、headless、连按粘贴去重（真实 Ink）、同一文件两种写法只传一张；命令注册表断言补 image（13 条）。
 - 文档修正：PRODUCT.md 的 5.8 SP007 小节此前被插到第 7 章「已知限制」表格中间（导致第 5 章命令说明缺失、限制表被截断）→ 移回第 5 章；help 文本补 agents/agent/status/stats/doctor/image 六行；发行说明补 /image 与去重两条缺陷修复。
 - 验证：tsc 干净；`npm run test:unit` **1128 项 / 1127 通过 / 0 失败 / 1 跳过**；模块边界 PASS。
-- 合入：分支 feature/SP007/image-command（4efb9f6）→ 门禁 GREEN 后 --no-ff 合入 master 并推送；0.7.0 发布准备保持 prepared，等待维护者触发。
+- 合入：分支 feature/SP007/image-command（4efb9f6 + d95a4e8）→ 门禁 **GATE GREEN**（artifacts/merge-gate/feature-SP007-image-command-2026-11-21T15-13-13-617Z.md）→ --no-ff 合入 master **ee9118e** 并推送 origin（master + 功能分支）；合入后定向回归 27/27，发布 dry-run 通过（artifacts/release/0.7.0-1795274196731/report.json）。0.7.0 保持 prepared，等待维护者触发。
