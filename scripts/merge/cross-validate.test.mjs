@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import path from 'node:path'
 import { test } from 'node:test'
-import { auditReport, reportFileForBranch, ROOT, scanOutgoingPaths } from './cross-validate.mjs'
+import { existsSync } from 'node:fs'
+import { auditReport, reportFileForBranch, reportFileForMaster, spDirectories, ROOT, scanOutgoingPaths } from './cross-validate.mjs'
 
 test('报告路径约定：SP 分支读当轮报告，feature 规划分支读 docs/requirements 记录', () => {
   assert.equal(reportFileForBranch('feature/SP002/foo'), path.join(ROOT, 'SP', 'SP002', 'test-report.md'))
@@ -11,6 +12,15 @@ test('报告路径约定：SP 分支读当轮报告，feature 规划分支读 do
   )
   assert.equal(reportFileForBranch('master'), null)
   assert.equal(reportFileForBranch('feature/bad slug'), null)
+})
+
+test('master 自身复核：审计仓内最新一轮 SP 报告，不因缺 SP slug 判缺失', () => {
+  const dirs = spDirectories()
+  assert.ok(dirs.length > 0, '仓内应存在 SP 轮次目录')
+  const file = reportFileForMaster(dirs)
+  assert.ok(file && file.endsWith(path.join('SP', dirs[dirs.length - 1], 'test-report.md')))
+  assert.ok(existsSync(file), 'master 审计目标报告应真实存在')
+  assert.equal(reportFileForMaster([]), null)
 })
 
 test('outgoing 路径扫描拦截依赖/产物/凭据/异源 lockfile', () => {

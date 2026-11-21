@@ -4,7 +4,7 @@
 // Pure helpers are unit-tested; the CLI orchestrates real checks and writes an
 // auditable report under artifacts/merge-gate/ (gitignored).
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
+import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -103,6 +103,31 @@ export function reportFileForBranch(branch) {
   return null
 }
 
+/**
+ * Post-merge re-check on master: the target branch itself has no SP slug, but
+ * the round that was just merged still owns an auditable report. Audit the
+ * newest SP report that master contains, so a merged round cannot regress
+ * silently after the feature branch is deleted.
+ */
+/** SP round directories present in the repository, sorted by name. */
+export function spDirectories() {
+  const spRoot = path.join(ROOT, 'SP')
+  if (!existsSync(spRoot)) return []
+  return readdirSync(spRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && /^SP\d{3}$/.test(entry.name))
+    .map((entry) => entry.name)
+    .sort()
+}
+
+export function reportFileForMaster(spDirs) {
+  const candidates = spDirs
+    .map((dir) => path.join(ROOT, 'SP', dir, 'test-report.md'))
+    .filter((file) => existsSync(file))
+  if (candidates.length === 0) return null
+  candidates.sort()
+  return candidates[candidates.length - 1]
+}
+
 function run(command, args) {
   const result = spawnSync(command, args, {
     cwd: ROOT,
@@ -136,7 +161,9 @@ export function crossValidate(options = {}) {
   const base = git(['merge-base', target, 'HEAD'])
   const outgoing = git(['diff', '--name-only', `${base}..HEAD`]).split('\n').filter(Boolean)
   const violations = scanOutgoingPaths(outgoing)
-  const reportFile = reportFileForBranch(branch)
+  const reportFile =
+    reportFileForBranch(branch) ??
+    (branch === 'master' ? reportFileForMaster(spDirectories()) : null)
   const audit =
     reportFile && existsSync(reportFile)
       ? auditReport(readFileSync(reportFile, 'utf8'))
