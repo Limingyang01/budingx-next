@@ -323,7 +323,7 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 
 ## 10. 合入自审记录（2026-11-21）
 
-依据 [集成门禁](../docs/integration-gate.md) §3 与 [buding-merge](../skills/buding-merge/SKILL.md) §3.5，在合入 master 前完成自审。
+依据 [集成门禁](../../docs/integration-gate.md) §3 与 [buding-merge](../../skills/buding-merge/SKILL.md) §3.5，在合入 master 前完成自审。
 
 ### 10.1 交叉验证门禁
 
