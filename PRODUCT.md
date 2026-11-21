@@ -1,9 +1,9 @@
 # budingx 产品说明书
 
-> **npm 已发布版本**：0.6.0（`latest`）。详见 [0.6.0 发行说明](release-notes/v0.6.0.md)。
+> **npm 已发布版本**：0.7.0（`latest`）。详见 [0.7.0 发行说明](release-notes/v0.7.0.md)。
 >
-> **下一版本**：0.7.0（SP007 交付完成、发布准备就绪，随本轮合入 master；等待维护者触发 GitHub Actions 发布，npm `latest` 仍为 0.6.0）。详见 [0.7.0 发行说明](release-notes/v0.7.0.md)。
-> **说明书版本**：v1.24
+> **上一版本**：0.6.0（SP006）。详见 [0.6.0 发行说明](release-notes/v0.6.0.md)。
+> **说明书版本**：v1.25
 > **更新日期**：2026-11-21
 > **产品形态**：独立 MIT 许可的终端 Coding Agent（Node.js ≥ 22.18 + TypeScript，不依赖 Bun）
 
@@ -48,8 +48,8 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | ----- | ----------------------- | ---------------------------------------------------------------------------------------------------------- | ---- |
 | SP004（0.4.0） | 计划、待办、命令与追问；普通命令要求已验证的执行隔离，提交限专用 worktree | 命令执行、后台任务、受控 Git 提交、计划模式与追问、四类会话卡片 | 已发布 |
 | SP005（0.5.0–0.5.4） | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         | 已合入 master。真实模型端到端两场景 PASS，0.5.4 已发布 |
-| SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 本轮实现完成并合入 master，0.6.0 已发布为 npm `latest` |
-| SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | **功能分支完成**（feature/SP007/agent-quality-and-extensions），待合入 master |
+| SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 本轮实现完成并合入 master，0.6.0 已发布 |
+| SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | **已实现、通过回归并合入 master（`5dbfe3a` / `ee9118e`），并已发布 npm 0.7.0（运行 #27，源码 `a8628b5`）** |
 | SP008 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | 规划中（契约轮，轻量测试客户端验证） |
 | SP009 | TUI 独立交付与 npm 发布工程 | tui-distribution、upgrade-compatibility、npm-publish-pipeline                                              | 规划中 |
 | SP010 | 中期编码效果检查        | coding-parity-checkpoint、core-reliability                                                                 | 规划中 |
@@ -340,7 +340,7 @@ Get-Content prompts.jsonl | budingx --input-format stream-json --output-format j
 
 ### 5.8 SP007 · Agent 质量与扩展
 
-SP007 在 0.6.0 的命令面之上补齐子代理执行、多模态上下文、供应商兼容、运行时诊断与评估回归。
+SP007 在 0.6.0 的命令面之上补齐子代理执行、多模态上下文、供应商兼容、运行时诊断与评估回归。本节内容随 **0.7.0**（2026-11-21 发布，npm `latest`）交付。
 
 #### 子代理执行（SA-01…16）
 - `.budingx/agents/*.md` 子代理定义加载（frontmatter 解析、built-in→user→project 覆盖序、内置禁表）
@@ -436,7 +436,7 @@ SP007 在 0.6.0 的命令面之上补齐子代理执行、多模态上下文、�
 | 0.4.0 | 2026-11-19 | SP004 真实编码任务：命令执行与后台任务、受控 Git 提交、计划与待办、四类会话卡片；追加可选本机 Langfuse 观测（默认关闭），见 [发行说明](release-notes/v0.4.0.md) | 已发布 |
 | 0.5.0 | 2026-11-20 | SP005 长会话与数据可靠性：会话转录落盘与跨进程恢复（不盲重放副作用）、上下文预算压缩（保留约束/计划/工具状态）、项目与会话记忆、原子写入与损坏隔离、稳定失败错误码与工具空转熔断、`/sessions` `/resume` `/context` `/memory` 四个命令；见 [发行说明](release-notes/v0.5.0.md) | 已发布 |
 | 0.5.3 | 2026-11-20 | 工作区会话隔离、追问与内置工具修复、中文思考强度选择、Bing 和 Tavily 联网搜索。见 [发行说明](release-notes/v0.5.3.md) | 已发布 |
-| 0.7.0（准备中） | 2026-11-21 | SP007：子代理执行（Agent/TaskOutput/TaskStop 工具、/agents 面板、代理卡片与并行树、ctrl+b 后台化）、多模态上下文（图片粘贴/PNG 缩放/路径附件/image-cache/能力前置拒绝/错误驱动降级、`/image` 终端无关附件入口、同图按内容哈希去重）、Anthropic 适配器、ToolSearch 延迟加载、运行时诊断（/status /stats /doctor）、评估回归 runner（17 任务/4 盲测）、失败边界测试；修复 VS Code 等终端吞掉 alt+v、连按粘贴重复上传同一张图；PowerShell 兼容性修复（-NonInteractive + windowsHide） |
+| 0.7.0 | 2026-11-21 | SP007：子代理执行（Agent/TaskOutput/TaskStop 工具、/agents 面板、代理卡片与并行树、ctrl+b 后台化）、多模态上下文（图片粘贴/PNG 缩放/路径附件/image-cache/能力前置拒绝/错误驱动降级、`/image` 终端无关附件入口、同图按内容哈希去重）、Anthropic 适配器、ToolSearch 延迟加载、运行时诊断（/status /stats /doctor）、评估回归 runner（17 任务/4 盲测）、失败边界测试；修复 VS Code 等终端吞掉 alt+v、连按粘贴重复上传同一张图；PowerShell 兼容性修复（-NonInteractive + windowsHide）；已合入 master 并发布，见 [发行说明](release-notes/v0.7.0.md) | 已发布 |
 | 0.6.0 | 2026-11-21 | SP006：四区骨架与布局计划、转录冻结缓存、键位系统、内置/外部状态栏、项目指令、技能发现、MCP 客户端、hooks 八事件、WebFetch、无头 CLI（text/json/stream-json）、命令注册表三型与 `/init` `/btw` `/worktree` `/tasks` `/mcp` `/skills` `/export`；含命令卡片常驻、`/resume` 历史不可见与恢复排版碎片、输入框续问建议改由模型生成等修复；已合入 master 并发布；见 [发行说明](release-notes/v0.6.0.md) | 已发布 |
 | 0.5.4 | 2026-11-20 | 命令按权限档位宿主信任执行（Bash 可用，对齐参考实现）；Git 命令不再被只读白名单硬拦；Shift+Tab 恢复三档轮播；联网搜索完全权限免审、可按会话记住；审批卡编号一致；追问卡回答后收起、过程性提示不堆叠、时长格式化、状态显示正在思考、底部元信息合并为一行；上下文占用改为真实用量的百分比；`/rules` 改为交互管理面板；移除 `/config` 与 `/model`；修复长会话 `Maximum update depth exceeded` 崩溃；Langfuse 仅开发环境；既有命令复刻改造（/new /continue /rewind /plan /context 网格 /compact /cost /permissions /help 技能清单）。见 [发行说明](release-notes/v0.5.4.md) | 已发布 |
 | 0.5.2 | 2026-11-20 | 长会话渲染优化（流式增量不再每帧全文重排、虚拟列表渐进挂载与高度缓存、状态栏常驻）、上下文用量与推理强度显示、`/effort` 命令、交互式 TUI 默认开启会话持久化；见 [发行说明](release-notes/v0.5.2.md) | 已发布 |

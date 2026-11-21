@@ -1,7 +1,7 @@
 # STATUS — SP007 agent-quality-and-extensions
 
-- 生命周期：**已合入 master**（合并提交 5dbfe3a，T1–T17 全部完成；0.7.0 发布准备完成，等待维护者触发 GitHub Actions 发布）
-- 更新：2026-11-21（T13–T16 完成）
+- 生命周期：**已发布**（0.7.0 已于 2026-11-21 经 [GitHub Actions 运行 #27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352) 发布至 npm `latest`；master 合并提交 ee9118e；T1–T19 全部完成）
+- 更新：2026-11-21（T20 发布回执登记完成）
 - 分支：feature/SP007/agent-quality-and-extensions（基线 master 4705232）
 - 提交链：a6466a4 开轮文档 → edf3835 计划 → e7cabeb T1 → 8d02514 T2 → 07104b8 T3 → a813b5f T4 → 7129d6f T5 → c13820e T6 → b14db5d T7 → 68f80db T8 → 1a027d2 T9 → 996aacf T10 → 0a45cb8 T11+T12 → a8da8e0 STATUS → （T13–T16 本轮提交待 push）
 - 需求：requirements.md（60 AC：SA×16 / RD×16 / PC×8 / MM×10 / ER×6 / FB×4）
@@ -92,3 +92,13 @@
 - 文档修正：PRODUCT.md 的 5.8 SP007 小节此前被插到第 7 章「已知限制」表格中间（导致第 5 章命令说明缺失、限制表被截断）→ 移回第 5 章；help 文本补 agents/agent/status/stats/doctor/image 六行；发行说明补 /image 与去重两条缺陷修复。
 - 验证：tsc 干净；`npm run test:unit` **1128 项 / 1127 通过 / 0 失败 / 1 跳过**；模块边界 PASS。
 - 合入：分支 feature/SP007/image-command（4efb9f6 + d95a4e8）→ 门禁 **GATE GREEN**（artifacts/merge-gate/feature-SP007-image-command-2026-11-21T15-13-13-617Z.md）→ --no-ff 合入 master **ee9118e** 并推送 origin（master + 功能分支）；合入后定向回归 27/27，发布 dry-run 通过（artifacts/release/0.7.0-1795274196731/report.json）。0.7.0 保持 prepared，等待维护者触发。
+
+## T20 0.7.0 发布完成与回执登记（2026-11-21，用户 m02914/m02944）
+
+- 发布触发：维护者手动 workflow_dispatch 运行 #27（id 44921288352），源码 `a8628b5f0ffb545073d2387da6b17d1e9ca38687`，三个作业（Verify ubuntu-24.04 / Verify windows-latest / Publish verified TUI using npm OIDC）全部 success。
+- 官方制品：npm `budingx@0.7.0`，`latest` dist-tag 已指向 0.7.0，publishedAt=2026-11-21T15:58:10.709Z，integrity `sha512-LfvAmRL2gZel3FkN/Ct7pLZbaLzoT1FPvAwseMGditpPbBzlzX5Aet5YmWDwd9kTmKFJvOAfyOFCS+ZJ6F+UqQ==`，167 files，shasum `e4961b6eba8e1b253cc3bd7f3c7ae8221b2c9071`；本机下载 tarball 重算 SHA-512 与 registry 完全一致。
+- 来源证明：2 条 attestation（npm publish + SLSA provenance），provenance 的 resolvedDependencies 指向 master@`a8628b5`，invocationId 指向本次运行；GitHub Trusted Publisher 发布，maintainer `lmy741023350`。
+- 独立安装复验：隔离目录 `npm install budingx@0.7.0` 成功，`budingx --version` → 0.7.0，`npm audit signatures` 53 包签名 + 7 条 attestation 通过；本地 HTTP 流式 smoke 返回 `installed-stream-ok`（externalProvider UNVERIFIED）。
+- 证据缺口：CI `tui-publication-receipt` artifact 下载需登录，本机未取得原始 report.json → 台账 `verificationSource: public-registry-provenance-and-independent-install`、`ciArtifactDownloaded: false`、`receipt: null`；0.7.0 不可重复上传。
+- 文档同步：release-ledger.json 0.7.0 由 prepared 改为 published（sourceCommit/receipt/publishedAt/verifiedAt/registry/integrity/authMode/workflowRun/attestations）；release-notes/v0.7.0.md 状态改「已发布」并新增「## 发布回执（2026-11-21）」段；docs/current-status.md 顶部改 npm latest = 0.7.0、SP007 小节改「已发布」、新增「## 0.7.0 正式发布完成（2026-11-21）」段；PRODUCT.md 版本历史 0.7.0 行改「已发布」、说明书版本 v1.25。
+- 验证：src/tui/test/sp006-release-ledger.test.mjs 4/4 通过。

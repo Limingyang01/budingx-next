@@ -1,6 +1,6 @@
 # SP007 验收报告
 
-状态：**已合入 master `5dbfe3a`**｜日期：2026-11-21｜分支 `feature/SP007/agent-quality-and-extensions`｜基线 master `4705232`｜版本 0.7.0（prepared，待维护者触发发布）
+状态：**已合入 master `5dbfe3a`（图片补丁合并提交 `ee9118e`）并发布**｜日期：2026-11-21｜分支 `feature/SP007/agent-quality-and-extensions`（补丁分支 `feature/SP007/image-command`）｜基线 master `4705232`｜版本 0.7.0（**已发布**，npm `latest`，运行 #27）
 
 ## 1. 方法与环境
 
@@ -143,3 +143,12 @@
 ### 结论与仍存限制
 - TUI 输入区附件（alt+v / ctrl+v / 路径）到真实模型识图已端到端跑通，四种图片形态（真彩 PNG / 调色板 PNG / JPEG / 超尺寸 PNG）均被模型正确识别。
 - 仍存限制（设计已固化，本轮不改）：Read 工具与 @image.png 上下文引用对图片只返回文本占位；headless --prompt 不处理图片路径；Anthropic 真实端点缺凭据 UNVERIFIED。
+
+## 10. 0.7.0 发布收尾（2026-11-21，用户 m02914/m02944）
+
+- 触发：维护者手动 workflow_dispatch 运行 #27（id 44921288352），源码 `a8628b5f0ffb545073d2387da6b17d1e9ca38687`；`Verify (ubuntu-24.04)`、`Verify (windows-latest)`、`Publish verified TUI using npm OIDC` 三个作业全部 success。
+- 官方制品：npm `budingx@0.7.0`，`latest` dist-tag 已指向 0.7.0，publishedAt=2026-11-21T15:58:10.709Z，integrity `sha512-LfvAmRL2gZel3FkN/Ct7pLZbaLzoT1FPvAwseMGditpPbBzlzX5Aet5YmWDwd9kTmKFJvOAfyOFCS+ZJ6F+UqQ==`，167 files，shasum `e4961b6eba8e1b253cc3bd7f3c7ae8221b2c9071`；本机下载 tarball 重算 SHA-512 与 registry 完全一致。
+- 来源证明：2 条 attestation（npm publish + SLSA provenance）；provenance 的 resolvedDependencies 指向 `git+https://github.com/Limingyang01/budingx-next@refs/heads/master@a8628b5`，invocationId 指向本次运行，builder 为 github-hosted runner；GitHub Trusted Publisher 发布，maintainer `lmy741023350`。
+- 独立安装复验：隔离目录 `npm install budingx@0.7.0` 成功，`budingx --version` → 0.7.0，`npm audit signatures` 53 包签名 + 7 条 attestation 通过；本地 HTTP 流式 smoke 返回 `installed-stream-ok`（externalProvider UNVERIFIED）。
+- 证据缺口：CI `tui-publication-receipt` artifact 下载需登录，本机未取得原始 report.json → 台账 `verificationSource: public-registry-provenance-and-independent-install`、`ciArtifactDownloaded: false`、`receipt: null`；0.7.0 不可重复上传。
+- 文档同步：release-ledger.json 0.7.0 → published；release-notes/v0.7.0.md 新增「## 发布回执（2026-11-21）」；docs/current-status.md 顶部与 SP007 小节改已发布并新增「## 0.7.0 正式发布完成（2026-11-21）」；PRODUCT.md 版本历史 0.7.0 改「已发布」、说明书版本 v1.25；README.md、docs/index.md、docs/versioning.md、docs/npm-release-plan.md、docs/github-actions-npm.md、src/tui/README.md 同步。

@@ -1,11 +1,11 @@
 # 当前状态
 
-截至 2026-11-21，**npm `latest` 为 0.6.0**（TUI 对齐与扩展，SP006）。SP006 **已完成实施与验收，于 2026-11-21 经交叉验证门禁 GREEN 后合入 master（合并提交 `601ac7e`），并由 [GitHub Actions 运行 #26](https://github.com/Limingyang01/budingx-next/actions/runs/44870468295)（源码 `4a63ead`）完成 Windows、Linux 验证与 OIDC 发布**。0.5.3 修复跨工作区会话恢复、追问提交和计划模式工具，加入中文思考强度选择和内置 `WebSearch`（默认 Bing，配置密钥后 Tavily）。0.5.4 修正完全权限下联网搜索仍弹审批、`approved` 口径与审批卡编号问题，见 [0.5.4 发行说明](../release-notes/v0.5.4.md)。
+截至 2026-11-21，**npm `latest` 为 0.7.0**（Agent 质量与扩展，SP007）。SP007 **已完成实施与验收，于 2026-11-21 经交叉验证门禁 GREEN 后合入 master（合并提交 `ee9118e`），并由 [GitHub Actions 运行 #27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352)（源码 `a8628b5`）完成 Windows、Linux 验证与 OIDC 发布**。本版补齐子代理执行、多模态上下文（图片附件）、第二供应商协议、运行时诊断面板与评估回归，并修复图片粘贴相关用户可见缺陷。0.6.0（TUI 对齐与扩展，SP006）此前已完成实施与验收并发布，见 [0.6.0 发行说明](../release-notes/v0.6.0.md)。
 
-[运行 #26](https://github.com/Limingyang01/budingx-next/actions/runs/44870468295) 以源码 `4a63ead` 完成 Ubuntu、Windows 验证及 OIDC 发布 0.6.0。官方制品 SHA-512、来源证明（attestation）、签名与独立安装均已核对；CI 回执 artifact 需登录未取得，台账据此登记并标注证据缺口。见 [0.6.0 发行说明](../release-notes/v0.6.0.md)、[发布台账](../release-ledger.json)及 [SP006 验收报告](../SP/SP006/test-report.md)。可选本机 Langfuse 观测默认关闭。
-## SP007 · Agent 质量与扩展（交付完成，0.7.0 发布准备就绪）
+[运行 #25–#27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352) 以源码 `a8628b5` 完成 Ubuntu、Windows 验证及 OIDC 发布 0.7.0。官方制品 SHA-512、来源证明（attestation）、签名与独立安装均已核对；CI 回执 artifact 需登录未取得，台账据此登记并标注证据缺口。见 [0.7.0 发行说明](../release-notes/v0.7.0.md)、[发布台账](../release-ledger.json)及 [SP007 验收报告](../SP/SP007/agent-quality-and-extensions/test-report.md)。可选本机 Langfuse 观测默认关闭。
+## SP007 · Agent 质量与扩展（交付完成，0.7.0 已发布）
 
-SP007 功能分支 `feature/SP007/agent-quality-and-extensions` 已完成 17 个任务（含用户反馈后的图片端到端补测）并通过交叉验证门禁 GREEN；经用户 2026-11-21 授权（m02028）随本轮合入 master 并推送，源码版本已准备为 **0.7.0**，等待维护者在 GitHub Actions 触发发布（`branch=master`、`version=0.7.0`、`tag=latest`）。
+SP007 功能分支 `feature/SP007/agent-quality-and-extensions`（及用户反馈后的补丁分支 `feature/SP007/image-command`）已完成 19 个任务（含图片端到端补测与 `/image` 终端无关附件入口）并通过交叉验证门禁 GREEN；经用户 2026-11-21 授权（m02028）合入 master 并推送，源码 `a8628b5` 已由 [GitHub Actions 运行 #27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352) 完成 Windows、Linux 验证与 OIDC 发布，npm `latest` = 0.7.0。
 
 ### 已完成
 
@@ -35,8 +35,8 @@ SP007 功能分支 `feature/SP007/agent-quality-and-extensions` 已完成 17 个
 
 ### 待办
 
-- 维护者在 GitHub Actions 触发 0.7.0 发布（Agent 不代为触发）；发布后按 `buding-npm-release` 登记回执
 - Anthropic 真实端点凭据验证（需用户提供密钥）——当前 UNVERIFIED
+- 团队协作、浏览器自动化、Computer Use、定时调度、多端宿主不在 SP007 范围（后续 SP 承接）
 
 
 
@@ -216,3 +216,7 @@ SP002 的制品布局已变更（bin 由 `dist/cli.js` 改为 `dist/tui/cli.js`�
 ## 0.6.0 正式发布完成（2026-11-21）
 
 维护者触发运行 #26（源码 `4a63ead`），`Verify (windows-latest)`、`Verify (ubuntu-24.04)` 与 `Publish verified TUI using npm OIDC` 三个作业全部 success；publishedAt=2026-11-21T05:28:07.658Z，latest=0.6.0。官方 registry integrity `sha512-0l2764oBC/Go3E0DqIxHM6Lx06Z8kD7daa8Lxk6fTXrBrLFl7vSyhgfocKhYJ7MGKVSvhYFhRR1ML2rt8aHSDg==`，attestation 与 provenance（`pkg:npm/budingx@0.6.0`，digest `sha256:d25dbeb8…d20e`）核验通过，身份为 GitHub Trusted Publisher。本机从官方 registry 隔离安装 0.6.0 成功，`--version` 与 `--prompt --output-format json` 复验通过，制品内无用户数据。原始 CI artifact 下载要求认证，未取得，使用公开 provenance 与独立安装证据；ledger 已 published，`ciArtifactDownloaded: false`。首次运行 #25（源码 `a9c71d2`）曾在 Windows 验证作业失败并被跳过，未发生部分上传，根因为 Node 22 事件循环排空导致的建议超时用例被取消（已修复于 `d97ffc3`）与 Windows 高并发下的既有 flaky（已加 `--test-concurrency=4` 上限于 `52a4b62`）。
+
+## 0.7.0 正式发布完成（2026-11-21）
+
+维护者触发运行 #27（源码 `a8628b5`），`Verify (windows-latest)`、`Verify (ubuntu-24.04)` 与 `Publish verified TUI using npm OIDC` 三个作业全部 success；publishedAt=2026-11-21T15:58:10.709Z，latest=0.7.0。官方 registry integrity `sha512-LfvAmRL2gZel3FkN/Ct7pLZbaLzoT1FPvAwseMGditpPbBzlzX5Aet5YmWDwd9kTmKFJvOAfyOFCS+ZJ6F+UqQ==`，167 files，shasum `e4961b6eba8e1b253cc3bd7f3c7ae8221b2c9071`；2 条 attestation（npm publish + SLSA provenance）核验通过，provenance 指向 master@`a8628b5` 与本次 invocationId，身份为 GitHub Trusted Publisher。本机从官方 registry 隔离安装 0.7.0 成功，`--version` 输出 0.7.0，`npm audit signatures` 53 包签名、7 条 attestation 核验通过，制品内无用户数据。原始 CI artifact 下载要求认证，未取得，使用公开 provenance 与独立安装证据；ledger 已 published，`ciArtifactDownloaded: false`。SP007 功能分支 `feature/SP007/agent-quality-and-extensions` 与 `feature/SP007/image-command` 已合入 master（`ee9118e`），0.7.0 不可重复上传。

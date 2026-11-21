@@ -1,6 +1,6 @@
 # SP007 需求汇总 — Agent 质量与扩展
 
-状态：功能分支完成（2026-11-21 开轮；用户 m00001 后经 m02028 授权合入 master 并推送；0.7.0 发布准备完成，等待维护者触发发布）
+状态：**已交付并发布**（2026-11-21 开轮；经 m02028 授权合入 master 并推送；0.7.0 已由维护者触发的 GitHub Actions 运行 #27 发布至 npm `latest`）
 
 ## 本轮目标与边界
 
@@ -49,3 +49,4 @@ evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-
 | 2026-11-21 | 用户授权合入 master + 推送 + 发布前准备（不触发实际 npm 发布） | 用户 m02028 |
 | 2026-11-21 | 0.7.0 版本准备（prepared）与 dry-run 通过；修发布准备暴露的台账测试缺陷；门禁 GREEN 后合入 master（5dbfe3a）并推送 | m02028；STATUS T18 |
 | 2026-11-21 | T19：VS Code 吞 alt+v → 新增 `/image`；连按粘贴同图重复上传 → 按内容哈希去重；修正 PRODUCT.md 5.8 被插入第 7 章的文档结构缺陷 | 用户 m02658/m02718/m02731/m02760；STATUS T19 |
+| 2026-11-21 | T20：维护者触发发布，运行 #27 三作业全 success；npm `latest` = 0.7.0，provenance/attestation 与独立安装核验通过；台账改 published，发行说明与状态文档补发布回执 | 用户 m02914/m02944；STATUS T20 |
