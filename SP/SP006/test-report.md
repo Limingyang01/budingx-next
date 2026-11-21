@@ -321,6 +321,77 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 - `/worktree` 删除依赖宿主确认回调；非交互环境明确取消，不静默删除。
 - 参考仓为本地只读材料且无 LICENSE；本仓保持 MIT 独立可发布，未嵌入参考源码。AST 为相似度复核，不等同法律洁净室认证。
 
+## 10. 合入自审记录（2026-11-21）
+
+依据 [集成门禁](../docs/integration-gate.md) §3 与 [buding-merge](../skills/buding-merge/SKILL.md) §3.5，在合入 master 前完成自审。
+
+### 10.1 交叉验证门禁
+
+| 项 | 值 |
+| --- | --- |
+| 报告路径 | `artifacts/merge-gate/feature-SP006-tui-parity-and-extensions-2026-11-21T00-14-15-043Z.md`（json 同名，gitignored） |
+| 结论 | **GREEN（允许合入）** |
+| merge-base | `dc94731ac5f3bda0b5633204d3b8815d42f3d849` |
+| 被合入 HEAD | `9fd2b44067d4a6424965d90c825bfa0f315bfc11` |
+| outgoing | 17 commits / 97 files |
+| `npm test` | exit 0 |
+| `npm run spec:check` | exit 0 |
+| `npm run skills:check` | exit 0 |
+| `node scripts/release/pack-smoke.mjs` | exit 0 |
+| 禁带路径违规 | 无 |
+| 报告审计 | 失败行 0；未验证行 3（§9.4，已具恢复条件节） |
+
+门禁首轮为 RED，处置过程如实记录：
+
+1. 首轮 RED —— 报告审计把汇总表数据行 `| FAIL | **0** |` 判为失败行（`scripts/merge/cross-validate.mjs` 的 `auditReport` 原只豁免含「AC 数」的表头与分隔行）。这是**门禁脚本自身的误判**，不是产品缺陷：SP001 报告使用同样的 `| FAIL | 0 |` 汇总写法却从未被判失败。修复：新增 `isFailureRow`，FAIL 单元格为零计数时不算失败行，无计数或非零计数仍然阻断；补 2 条回归用例（`scripts/merge/cross-validate.test.mjs`，共 7 例全通过）。提交 `fdcf531`。未降阈值、未删断言。
+2. 次轮 RED —— 报告审计报「UNVERIFIED 3 行但无恢复条件节」。这是**报告确有缺口**：§9.4 记录了打断后同会话新提示词观察不到新回合这一项，却没写恢复条件。补齐 §9.4 的最小复现链路、两种结论分支的处理动作与回归要求，并说明未验证期间不阻断的依据。提交 `9fd2b44`。
+3. 第三轮 GREEN —— 报告 `feature-SP006-tui-parity-and-extensions-2026-11-21T00-14-15-043Z.md`。
+
+### 10.2 AC 逐条结论
+
+69 条 AC 全部 PASS，逐条证据见 §3（每条给出依据文件、用例名与执行命令）。PARTIAL 0、FAIL 0、UNVERIFIED 1 项（S6-06，见 §9.4 与恢复条件）。
+
+### 10.3 scoped diff 复核
+
+| 检查 | 结论 |
+| --- | --- |
+| 引入差异范围 | `master..HEAD` 共 97 个文件，全部为本仓源码、测试与文档（`src/tui/**`、`src/core/**`、`src/storage/**`、`src/provider/**`、`src/exec/**`、`scripts/**`、`SP/**`、`docs/**`、`PRODUCT.md`、`release-ledger.json`、`release-notes/**`）；门禁「禁带路径扫描」无违规 |
+| 旧仓代码/提示词/内部类型迁入 | 无。SP006 全部实现独立编写；AST 复核 53/53 映射、自检 3/3、命中「无」，结论 PASS（§4） |
+| 凭据与产物 | 无真实密钥（diff 内仅 `fixture-key`、`sk-plain-secret-value` 等测试占位）；无 `dist/`、`artifacts/`、`.env`、`node_modules/`、异源 lockfile 进入提交 |
+| 依赖与许可台账 | 本轮未新增运行时依赖；`THIRD-PARTY-NOTICES.md` 与 `docs/independent-development.md` 的参考仓只读边界未变 |
+| 契约两端核对 | 命令注册表三型（`src/tui/commands/{types,registry,index}.ts`）与 22 条既有命令迁移一一对应；无头事件协议（`src/tui/headless.ts`）与渲染层（`src/tui/render/reducer.ts`）经 `src/core/events.ts` 单一事件通路衔接，两端一致 |
+| 存储与迁移 | 新增 `~/.budingx` 下 skills/hooks/sessions 子目录写入均走原子写与失败隔离；不迁移旧仓数据 |
+
+### 10.4 分层证据
+
+| 层级 | 内容 | 状态 |
+| --- | --- | --- |
+| L0 纯函数 | 帧差分、冻结缓存、键位解析、命令注册表、建议清洗、转录恢复等单元用例 | PASS |
+| L1 伪 TTY e2e | `src/tui/test/helpers/mount-tty.mjs` 驱动的全屏/退化终端帧级用例（sp006-* 共 120 例） | PASS |
+| L2 真实进程与制品 | 真实子进程工具执行、隔离安装 pack-smoke、headless stream-json、制品 tarball（142 文件） | PASS |
+| L3 真终端人工 | 未做（本次为无头 CI 环境，无真实 TTY 人工走查） | **UNVERIFIED**，见 §9.4 恢复条件第 1 条 |
+
+### 10.5 bug 闭环
+
+本轮发现并修复的缺陷均为 RED → 修复 → 复绿闭环，逐条记录见 §2 末条与 §6、§9.3：
+
+- 命令卡片完成后不消失、单次调用占多行 → `src/tui/render/cards.ts` 新增 `activeCommandCard` 与 compact 渲染 + 帧级回归（`sp006-command-card.test.mjs`）。
+- `/resume` 恢复后历史不可见 → 走 `conversation_restored` 事件通路 + `Session.adoptIdentity` 身份切换（`sp006-resume-e2e.test.mjs`、`sp006-resume-history.test.mjs`）。
+- `/resume` 恢复后窄列碎片 → 源头层 `appendStreamBlock` 合并流式增量 + 恢复层 `restoredTranscriptEntries` 合并连续 text 块。
+- 输入框占位建议与上下文不符 → 新增 `src/tui/suggestion.ts` 与宿主端口 `AgentRuntime.suggestions.generate`，改为模型结合上下文生成（`sp006-suggestion.test.mjs`）。
+- 真实模型建议被清洗阈值全部丢弃 → 取消问号拒绝、放宽助手口吻前缀、`maxTokens` 提到 256。
+- 退化终端多行命令输出被压成一行 → 正文块渲染（≤40 行）。
+- `/undo` 无检查点时英文原因直出 → `localizeUndoReason` 按界面语言转换（`sp0054-command-fidelity.test.mjs`）。
+
+### 10.6 风险与回退
+
+| 风险 | 处置 |
+| --- | --- |
+| S6-06 打断后同会话新提示词观察不到新回合 | 未稳定复现，标记 UNVERIFIED 并写明恢复条件；不阻断合入，下一轮 SP 开工前排查 |
+| 参考仓 AST 相似度复核仅覆盖函数对阈值命中 | 已自检 3/3 通过且命中「无」；不等于法律洁净室认证，边界见 `docs/independent-development.md` |
+| 0.6.0 尚未发布到 npm | 台账保持 `prepared`；npm 发布由用户在 GitHub 手动触发 |
+| 回退方式 | 功能分支 `feature/SP006/tui-parity-and-extensions` 保留不删；master 合入为快进/普通 merge，可 `git revert` 该 merge 提交回到 `dc94731` |
+
 ## 8. 交付边界
 
 - 分支：`feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；提交 `cedf2a3`（A）、`031b99b`（B）、`4b78cdb`（C+B3）、`06d7b2a`（D）、`f0b11eb`（命令卡片完成态隐藏与单行修复）、`47c5cb6`（台账源码 SHA 同步）、`1ef588a`（`/resume` 历史可见性与身份切换）、`55ea677`（`/resume` 历史碎片合并与输入框建议改模型生成）、`9e3e88f`（建议清洗按真实模型输出校正、退化终端多行命令输出）、`1877af6`（波次 H 文档收口）、`a869cd1`（`/undo` 文案本地化）、`9dbb6d7`（波次 I 证据与文档数字收口）。

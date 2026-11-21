@@ -82,3 +82,10 @@ test('报告审计仍拦截无计数与带说明的失败行', () => {
   assert.equal(auditReport('| FAIL | **2** |').fails.length, 1)
   assert.equal(auditReport('| FAIL | 0（无失败） |').fails.length, 0)
 })
+
+test('报告审计按「FAIL 行 N」式计数判定（0 不阻断，非 0 阻断）', () => {
+  assert.equal(auditReport('| 报告审计 | FAIL 行 0；UNVERIFIED 行 3 |').fails.length, 0)
+  assert.equal(auditReport('| 报告审计 | FAIL 行 2；UNVERIFIED 行 0 |').fails.length, 1)
+  assert.equal(auditReport('| 结论 | FAIL 0 条 |').fails.length, 0)
+  assert.equal(auditReport('| 结论 | FAIL 3 条 |').fails.length, 1)
+})
