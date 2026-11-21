@@ -256,8 +256,19 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
         ...(runtime.sessions ? { sessions: runtime.sessions } : {}),
         ...(runtime.context ? { context: runtime.context } : {}),
         ...(runtime.memory ? { memory: runtime.memory } : {}),
-        ...(runtime.effort ? { effort: runtime.effort } : {})
+        ...(runtime.effort ? { effort: runtime.effort } : {}),
+        // SP007 T9：子代理登记表（/tasks Agents 分组、ctrl+b 后台化、停止）。
+        ...(runtime.agents
+          ? {
+              agents: {
+                list: () => runtime.agents!.list(),
+                stop: (agentId: string) => runtime.agents!.stop(agentId),
+                background: (callId: string) => runtime.agents!.background(callId)
+              }
+            }
+          : {})
       },
+      ...(runtime.imageCache ? { imageCache: runtime.imageCache } : {}),
       version,
       cwd: process.cwd(),
       fullScreen,

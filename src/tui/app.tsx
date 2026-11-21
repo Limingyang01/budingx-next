@@ -54,6 +54,11 @@ import { workspacePromptOptions } from './runtime.js'
 import { ModelManager } from './model-manager.js'
 import { RulesManager } from './rules-manager.js'
 import { ResumePicker, RewindPicker, ContextGrid } from './panels.js'
+import { AgentsMenu } from './agents-menu.js'
+import { homedir } from 'node:os'
+import { agentCardLines, agentTreeLines, type AgentCardInput } from './render/agent-card.js'
+import { readClipboardImage, readImageFile, extractImagePaths } from './image-paste.js'
+import { prepareImage } from './image-resize.js'
 import { readClipboard } from './editor/clipboard.js'
 import { nextMode } from '../workspace/policy.js'
 import { walkWorkspaceFiles } from '../workspace/search.js'
@@ -77,6 +82,8 @@ export type AppProps = {
    * 交互式宿主注入真实模型调用；未注入时输入框不显示建议。
    */
   suggestNextPrompt?: (signal: AbortSignal) => Promise<string | undefined>
+  /** SP007 MM-06：图片缓存（粘贴/路径附件落盘供重显链接）。 */
+  imageCache?: import('../storage/image-cache.js').ImageCache
   onExit: () => void
 }
 
@@ -87,7 +94,7 @@ type DiffDialog = {
   source: string
 }
 
-const COMMAND_NAMES = [
+export const COMMAND_NAMES = [
   'help',
   'models',
   'permissions',
@@ -103,7 +110,20 @@ const COMMAND_NAMES = [
   'plan',
   'memory',
   'effort',
-  'exit'
+  'exit',
+  // SP006 扩展命令（补全注册表全名）＋SP007 新命令。
+  'init',
+  'btw',
+  'worktree',
+  'tasks',
+  'mcp',
+  'skills',
+  'export',
+  'agents',
+  'agent',
+  'status',
+  'stats',
+  'doctor'
 ]
 // 0.5.4：请求/流式阶段统一显示「正在思考」，不再暴露「流式输出」这类实现措辞。
 const STATUS_ZH: Record<string, string> = {
@@ -128,6 +148,7 @@ export function App({
   cwd,
   fullScreen = false,
   suggestNextPrompt,
+  imageCache,
   onExit
 }: AppProps) {
   const { exit } = useApp()
@@ -428,6 +449,11 @@ export function App({
   const [resumeOpen, setResumeOpen] = useState(false)
   const [rewindOpen, setRewindOpen] = useState(false)
   const [contextOpen, setContextOpen] = useState(false)
+  const [agentsOpen, setAgentsOpen] = useState(false)
+  // SP007 T9：子代理卡片状态（agent_* 事件驱动）与图片附件（MM-05）。
+  const [agentCards, setAgentCards] = useState<Map<string, AgentCardInput>>(() => new Map())
+  const [pastedImages, setPastedImages] = useState<Map<number, { mediaType: string; data: string; width?: number; height?: number }>>(() => new Map())
+  const nextImageId = useRef(1)
   const lastEscRef = useRef(0)
   const [typing, setTyping] = useState(false)
   const typingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -533,6 +559,10 @@ export function App({
         setPosition(undefined)
         setContextOpen(true)
         await new Promise<void>((resolve) => { managerDone.current = resolve })
+      } else if (result.openAgents) {
+        setPosition(undefined)
+        setAgentsOpen(true)
+        await new Promise<void>((resolve) => { managerDone.current = resolve })
       } else if (result.skillPrompt) {
         setHint(pick(`技能 /${result.skillPrompt.name} 已展开为提示`, `Skill /${result.skillPrompt.name} expanded to prompt`))
         // SM-02：调用记录保留技能名，正文随下一轮提示注入。
@@ -593,7 +623,7 @@ export function App({
   // 0.5.4：/ 补全包含内置命令 + 已加载技能命令（对齐参考）。
   const commandList = useMemo(() => [...COMMAND_NAMES, ...discoverSkillCommands().map((s) => s.name)], [context])
   const completion = useMemo(() => {
-    if (dialog || frame.approval || overlayDismissed || modelManagerOpen || rulesManagerOpen || resumeOpen || rewindOpen || contextOpen) return null
+    if (dialog || frame.approval || overlayDismissed || modelManagerOpen || rulesManagerOpen || resumeOpen || rewindOpen || contextOpen || agentsOpen) return null
     const lineText = editor.lines[editor.cursor.line] ?? ''
     const token = activeToken(lineText, editor.cursor.col, commandList)
     if (!token) return null
@@ -662,9 +692,51 @@ export function App({
     clearSuggestion()
     const permission = commandContext.permission
     setTopic((previous) => previous ?? sessionTopic(text, context.getConfig().apiKey))
-    session.submit(text, permission
-      ? workspacePromptOptions(text, permission.workspace, permission.policy)
-      : undefined)
+    // SP007 MM-03/MM-05：路径附件转占位＋收集已粘贴图片，随 SubmitOptions.images 发送。
+    let outgoing = text
+    const images: { id: number; mediaType: string; data: string; width?: number; height?: number }[] = []
+    const consumed = new Set<number>()
+    const pushImage = (id: number, prepared: { mediaType: string; data: string; width?: number; height?: number }) => {
+      images.push({
+        id,
+        mediaType: prepared.mediaType,
+        data: prepared.data,
+        ...(prepared.width !== undefined ? { width: prepared.width } : {}),
+        ...(prepared.height !== undefined ? { height: prepared.height } : {})
+      })
+      consumed.add(id)
+    }
+    for (const match of extractImagePaths(outgoing)) {
+      try {
+        const file = readImageFile(match.path)
+        const prepared = prepareImage(file.data, file.mediaType)
+        const id = nextImageId.current++
+        setPastedImages((previous) => new Map(previous).set(id, prepared))
+        imageCache?.put(id, prepared.mediaType, Buffer.from(prepared.data, 'base64'))
+        outgoing = outgoing.replace(match.token, `[Image #${id}]`)
+        pushImage(id, prepared)
+      } catch (error) {
+        setHint(String((error as Error).message))
+        return
+      }
+    }
+    for (const match of outgoing.matchAll(/\[Image #(\d+)\]/g)) {
+      const id = Number(match[1])
+      if (consumed.has(id)) continue
+      const existing = pastedImages.get(id)
+      if (existing) pushImage(id, existing)
+    }
+    const base = permission
+      ? workspacePromptOptions(outgoing, permission.workspace, permission.policy)
+      : undefined
+    session.submit(outgoing, { ...(base ?? {}), ...(images.length ? { images } : {}) })
+    if (consumed.size > 0) {
+      setPastedImages((previous) => {
+        const next = new Map(previous)
+        for (const id of consumed) next.delete(id)
+        return next
+      })
+    }
   }
   // Pending stream deltas, flushed once per frame. Anything that is not a
   // delta flushes first so text is never reordered against completion/tool
@@ -703,6 +775,7 @@ export function App({
         if (event.type === 'conversation_cleared') {
           setTopic(undefined)
           setScrollTop(undefined)
+          setAgentCards(new Map())
           clearSuggestion()
         }
         if (event.type === 'conversation_restored') {
@@ -712,6 +785,60 @@ export function App({
           clearSuggestion()
         }
         if (event.type === 'turn_started') clearSuggestion()
+        // SP007 T9：子代理卡片由 agent_* 事件驱动（与后台 shell 六件套分离）。
+        if (event.type === 'agent_started') {
+          const started = event
+          setAgentCards((previous) => {
+            const next = new Map(previous)
+            next.set(started.agentId, {
+              agentId: started.agentId,
+              agentType: started.agentType,
+              description: started.description,
+              ...(started.color ? { color: started.color } : {}),
+              state: 'running',
+              background: started.background,
+              toolUses: 0,
+              tokens: 0,
+              lastTools: [],
+              startedAt: Date.now()
+            })
+            return next
+          })
+        }
+        if (event.type === 'agent_progress') {
+          const progress = event
+          setAgentCards((previous) => {
+            const existing = previous.get(progress.agentId)
+            if (!existing) return previous
+            const next = new Map(previous)
+            next.set(progress.agentId, {
+              ...existing,
+              toolUses: progress.toolUses,
+              tokens: progress.tokens,
+              lastTools: progress.lastTools,
+              state: progress.state,
+              background: progress.state === 'backgrounded' ? true : existing.background
+            })
+            return next
+          })
+        }
+        if (event.type === 'agent_finished') {
+          const finished = event
+          setAgentCards((previous) => {
+            const existing = previous.get(finished.agentId)
+            if (!existing) return previous
+            const next = new Map(previous)
+            next.set(finished.agentId, {
+              ...existing,
+              state: finished.outcome === 'completed' ? 'completed' : finished.outcome === 'cancelled' ? 'cancelled' : 'failed',
+              toolUses: finished.toolUses,
+              tokens: finished.tokens,
+              finishedAt: Date.now(),
+              background: finished.background
+            })
+            return next
+          })
+        }
         if (event.type === 'turn_finalized' || event.type === 'change_set') {
           // Files may have appeared or disappeared; refresh completion.
           fileCache.current = null
@@ -778,7 +905,7 @@ export function App({
     }
     // 0.5.4 /rewind 快捷键 Esc+Esc：空闲且无覆盖层时双击 Esc 打开回滚面板。
     if (key.escape && !session.isBusy && editor.isEmpty && !dialog && !frame.approval &&
-      !modelManagerOpen && !rulesManagerOpen && !resumeOpen && !rewindOpen && !contextOpen && !transcriptMode && !search) {
+      !modelManagerOpen && !rulesManagerOpen && !resumeOpen && !rewindOpen && !contextOpen && !agentsOpen && !transcriptMode && !search) {
       const now = Date.now()
       if (now - lastEscRef.current < 500) {
         lastEscRef.current = 0
@@ -914,6 +1041,45 @@ export function App({
           ))
         }
         setEffortIndex(undefined)
+      }
+      return
+    }
+    // SP007 MM-01/MM-02：图片粘贴键（Windows alt+v，其他平台 ctrl+v）。
+    const imagePastePressed = (process.platform === 'win32' ? key.meta : key.ctrl) && text === 'v'
+    if (imagePastePressed && !rejectEntry && !dialog && !search && !transcriptMode && pendingQuestion === undefined) {
+      const clip = readClipboardImage()
+      if (clip) {
+        try {
+          const prepared = prepareImage(clip.data, clip.mediaType)
+          const id = nextImageId.current++
+          setPastedImages((previous) => new Map(previous).set(id, prepared))
+          imageCache?.put(id, prepared.mediaType, Buffer.from(prepared.data, 'base64'))
+          editor.insert(`[Image #${id}]`)
+          setInput(editor.text)
+          bumpEditor()
+          markTyping()
+          setHint(prepared.resized ? pick('图片已压缩并附件', 'Image resized and attached') : pick('图片已附件', 'Image attached'))
+        } catch (error) {
+          setHint(String((error as Error).message))
+        }
+        return
+      }
+      if (process.platform === 'win32') {
+        setHint(pick('剪贴板没有图片', 'No image in clipboard'))
+        return
+      }
+      // 非 Windows ctrl+v 无图 → 落到下方文本粘贴 fallback。
+    }
+    // SP007 SA-09：ctrl+b 将运行中代理转后台（解除父信号，终态通知注入主循环）。
+    if (key.ctrl && text === 'b' && !rejectEntry && !dialog && !search && !transcriptMode) {
+      const agents = commandContext.agents
+      if (agents) {
+        const running = agents.list().filter((record) => record.state === 'running')
+        let backgrounded = 0
+        for (const record of running) if (agents.background(record.callId)) backgrounded++
+        setHint(backgrounded > 0
+          ? pick(`已后台化 ${backgrounded} 个代理（↓ 管理）`, `Backgrounded ${backgrounded} agent(s) (↓ manage)`)
+          : pick('没有运行中的代理', 'No running agents'))
       }
       return
     }
@@ -1320,7 +1486,7 @@ export function App({
     if (text || key.backspace || key.delete) markTyping()
   })
   useWheel(fullScreen, (lines) => {
-    if (!modelManagerOpen && !rulesManagerOpen && !resumeOpen && !rewindOpen && !contextOpen && !dialog) scrollHistory(lines)
+    if (!modelManagerOpen && !rulesManagerOpen && !resumeOpen && !rewindOpen && !contextOpen && !agentsOpen && !dialog) scrollHistory(lines)
   })
   const config = commandContext.getConfig()
   const footerHint = setupHint(config, strategy)
@@ -1347,6 +1513,13 @@ export function App({
     return <ContextGrid context={{ ...context, session }} input={managerInput} close={(notice) => {
       const done = managerDone.current; setContextOpen(false); setHint(notice ?? ''); managerDone.current = undefined; done?.()
     }} />
+  }
+  if (agentsOpen) {
+    return <AgentsMenu context={{ ...context, session }} input={managerInput}
+      cwd={commandContext.cwd ?? process.cwd()} home={commandContext.home ?? homedir()}
+      close={(notice) => {
+        const done = managerDone.current; setAgentsOpen(false); setHint(notice ?? ''); managerDone.current = undefined; done?.()
+      }} />
   }
   if (rulesManagerOpen) {
     return <RulesManager context={{ ...context, session }} input={managerInput} close={(notice) => {
@@ -1593,6 +1766,27 @@ export function App({
               {pick('编辑计划正文后 Enter 批准 · Esc 取消编辑', 'Enter approves the edited plan · Esc cancels editing')}
             </Text>
           )}
+        </Box>
+      )}
+      {agentCards.size > 0 && (
+        <Box flexDirection="column" flexShrink={0}>
+          {agentTreeLines([...agentCards.values()]).map((line, index) => (
+            <Text key={'agent-tree-' + index} color={ACCENT} wrap="truncate-end">{line}</Text>
+          ))}
+          {[...agentCards.values()]
+            .sort((a, b) => Number(b.state === 'running' || b.state === 'backgrounded') - Number(a.state === 'running' || a.state === 'backgrounded'))
+            .map((record) => {
+              const card = agentCardLines(record)
+              return (
+                <Box key={record.agentId} flexDirection="column">
+                  <Text color={card.color} bold wrap="truncate-end">{card.title}</Text>
+                  {card.lines.map((line, index) => (
+                    <Text key={index} color={card.color} wrap="truncate-end">{line}</Text>
+                  ))}
+                  {card.footer ? <Text dimColor wrap="truncate-end">{card.footer}</Text> : null}
+                </Box>
+              )
+            })}
         </Box>
       )}
       {rejectEntry && (

@@ -67,9 +67,20 @@ const worktreeCommand: CommandDefinition = {
 const tasksCommand: CommandDefinition = {
   name: 'tasks',
   kind: 'local',
-  summary: '列出后台或未完成任务（状态、退出码、输出路径）',
+  summary: '列出后台或未完成任务（状态、退出码、输出路径）与子代理',
   async run(_args, context) {
-    return text(formatTaskList(context.tasks?.list() ?? [], lang(context)))
+    const language = lang(context)
+    const en = language === 'en'
+    const shells = formatTaskList(context.tasks?.list() ?? [], language)
+    // SP007 SA-14：子代理分组与后台 shell 六件套分离展示。
+    const agents = context.agents?.list() ?? []
+    if (agents.length === 0) return text(shells)
+    const lines = agents.map((agent) =>
+      `[${agent.agentId.slice(0, 8)}] ${agent.description} · ${agent.state} · ${agent.toolUses} tools · ${agent.tokens} tokens`
+    )
+    const header = en ? `Agents (${agents.length}):` : `子代理（${agents.length}）：`
+    const footer = en ? 'TaskStop stops · ctrl+b backgrounds' : 'TaskStop 停止 · ctrl+b 后台化'
+    return text(shells + '\n\n' + header + '\n' + lines.join('\n') + '\n' + footer)
   }
 }
 

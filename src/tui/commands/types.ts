@@ -32,6 +32,12 @@ export type CommandOutcome = {
   sideQuestion?: string
   /** local-jsx 命令：宿主用模态槽展示只读列表（CMD-03/CMD-09/CMD-10）。 */
   openList?: { title: string; lines: string[] }
+  /** SP007 T9：/agents 管理面板（local-jsx，宿主挂 AgentsMenu）。 */
+  openAgents?: boolean
+  /** SP007 T10：/status /stats /doctor 诊断面板（local-jsx）。 */
+  openStatus?: boolean
+  openStats?: boolean
+  openDoctor?: boolean
 }
 
 export type CommandContext = {
@@ -102,6 +108,12 @@ export type CommandContext = {
   /** SP006 CMD-08：后台/未完成任务登记表；缺省视为没有任务。 */
   tasks?: {
     list: () => import('../tasks.js').TaskRecord[]
+  }
+  /** SP007 T9：子代理登记表（/tasks Agents 分组、停止/后台化）。 */
+  agents?: {
+    list: () => import('../../core/agent-runtime.js').AgentRecord[]
+    stop: (agentId: string) => { ok: boolean; state?: string }
+    background: (callId: string) => boolean
   }
   /** SP006 CMD-09：MCP 连接状态（由宿主在启动时注入）。 */
   mcp?: {

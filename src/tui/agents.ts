@@ -104,6 +104,44 @@ export function loadAgentDefinitions(options: LoadAgentsOptions): LoadAgentsResu
   return { agents: result.agents, warnings: result.warnings }
 }
 
+export type AgentEntry = AgentDefinition & { overridden: boolean }
+
+/**
+ * SP007 T9：/agents 面板用原始条目（含被覆盖标记）。不走合并缓存，
+ * 每次刷新读取；同名按 built-in<user<project(root→cwd) 优先级，先出现者被覆盖。
+ */
+export function listAgentEntries(options: LoadAgentsOptions): { entries: AgentEntry[]; warnings: string[] } {
+  const raw: AgentDefinition[] = BUILT_IN_AGENTS.map((agent) => ({ ...agent }))
+  const warnings: string[] = []
+  const collect = (dir: string, source: 'user' | 'project') => {
+    let names: string[]
+    try {
+      names = readdirSync(dir).filter((name) => name.endsWith('.md')).sort()
+    } catch {
+      return
+    }
+    for (const name of names) {
+      const filePath = join(dir, name)
+      try {
+        if (!statSync(filePath).isFile()) continue
+        const { definition, warnings: fileWarnings } = parseAgentFile(readFileSync(filePath, 'utf8'), { source, filePath })
+        warnings.push(...fileWarnings)
+        if (definition) raw.push(definition)
+      } catch {
+        warnings.push(`${filePath}: 读取失败`)
+      }
+    }
+  }
+  collect(userAgentsDir(options.home), 'user')
+  for (const dir of projectAgentsDirs(options.cwd)) collect(dir, 'project')
+  const winner = new Map<string, number>()
+  raw.forEach((agent, index) => winner.set(agent.name, index))
+  const entries: AgentEntry[] = raw
+    .map((agent, index) => ({ ...agent, overridden: winner.get(agent.name) !== index }))
+    .sort((a, b) => a.name.localeCompare(b.name) || Number(a.overridden) - Number(b.overridden))
+  return { entries, warnings }
+}
+
 export interface SaveAgentOptions {
   location: 'project' | 'user'
   cwd: string

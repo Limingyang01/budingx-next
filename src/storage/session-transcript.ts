@@ -62,12 +62,7 @@ function isToolStepStatus(value: unknown): value is ToolStepStatus {
  * Create the transcript store for one session. Nothing is written until the
  * first append, so creating a session never creates a file on disk.
  */
-export function createSessionTranscript(options: SessionTranscriptOptions): SessionTranscript {
-  const sessionId = options.sessionId
-  const directory = sessionDirectory(sessionId, options.home)
-  const file = `${directory}/${TRANSCRIPT_FILE}`
-  const now = options.now ?? defaultNow
-
+function makeTranscript(directory: string, file: string, now: () => string): SessionTranscript {
   return {
     directory: () => directory,
 
@@ -120,6 +115,27 @@ export function createSessionTranscript(options: SessionTranscriptOptions): Sess
       return { records, corruptLines, unsupported, schemaVersion }
     }
   }
+}
+
+export function createSessionTranscript(options: SessionTranscriptOptions): SessionTranscript {
+  const directory = sessionDirectory(options.sessionId, options.home)
+  return makeTranscript(directory, `${directory}/${TRANSCRIPT_FILE}`, options.now ?? defaultNow)
+}
+
+/**
+ * SP007 T9：子代理 sidechain 转录（design §4.1）。落在父会话目录下的
+ * subagents/agent-<agentId>.jsonl，供 /stats 聚合与 ctrl+o 展开重显；
+ * outputFile 即异步代理结果文件路径。父会话不存在时按需创建私有目录。
+ */
+export function createSubagentTranscript(options: {
+  parentSessionId: string
+  agentId: string
+  home?: string
+  now?: () => string
+}): SessionTranscript & { outputFile: string } {
+  const directory = `${sessionDirectory(options.parentSessionId, options.home)}/subagents`
+  const file = `${directory}/agent-${options.agentId}.jsonl`
+  return Object.assign(makeTranscript(directory, file, options.now ?? defaultNow), { outputFile: file })
 }
 
 /**
