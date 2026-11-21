@@ -82,3 +82,13 @@
 - 合并：`git merge --no-ff` → master **5dbfe3a**（父 db6784d + 4705232），合并后工作树与 db6784d 一致。
 - 验证：`npm run test:unit` 1122 项 **1121 pass / 0 fail / 1 skip**（POSIX 专属 skip）。
 - 实际 npm 发布**未触发**，由维护者在 GitHub Actions 以 branch=master、version=0.7.0、tag=latest、dry_run 关闭触发。
+
+## T19 图片按键可用性补丁与二次合入（2026-11-21，用户 m02658/m02718/m02731/m02760）
+
+- 问题：①VS Code 集成终端把 `alt+v` 当键位 chord 前缀拦截（截图状态栏「(Alt+V)已按下，正在等待按下的第二个键…」），按键根本进不到程序；②用户换终端后连按粘贴，同一张图被挂成 `[Image #1][Image #2]` 并上传两次。
+- 排查证据：`.runtime/probe-clip.mjs`（mountTty + 捕获型假 provider）单次 alt+v 正常（1 请求 / 1 image_url / 650x243 PNG）；`.runtime/probe-dup.mjs` 连按两次得 2 个占位、提交 2 张同内容图 → 判定为真实代码缺陷。
+- 修复：新增 `/image [路径]`（src/tui/commands/builtin-image.ts，local/immediate，headless 明确拒绝）；粘贴与命令共用 `attachPreparedImage`，按 sha256 内容哈希复用占位（第二次提示「该图片已在附件中」）；提交阶段 `keptByHash` 让同内容图只上传一次；`context.imageSource` 端口允许宿主/测试注入剪贴板读取。
+- 新增 src/tui/test/sp007-image-command.test.mjs（6 项）：/image 路径附件、剪贴板空、路径不存在、headless、连按粘贴去重（真实 Ink）、同一文件两种写法只传一张；命令注册表断言补 image（13 条）。
+- 文档修正：PRODUCT.md 的 5.8 SP007 小节此前被插到第 7 章「已知限制」表格中间（导致第 5 章命令说明缺失、限制表被截断）→ 移回第 5 章；help 文本补 agents/agent/status/stats/doctor/image 六行；发行说明补 /image 与去重两条缺陷修复。
+- 验证：tsc 干净；`npm run test:unit` **1128 项 / 1127 通过 / 0 失败 / 1 跳过**；模块边界 PASS。
+- 合入：分支 feature/SP007/image-command（4efb9f6）→ 门禁 GREEN 后 --no-ff 合入 master 并推送；0.7.0 发布准备保持 prepared，等待维护者触发。

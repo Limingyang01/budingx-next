@@ -48,3 +48,4 @@ evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-
 | 2026-11-21 | 用户反馈图片链路有缺陷 → T17 补测：修复 4 个真实缺陷（中文紧贴路径切分、合法小 PNG 被拒、ctrl+v 无回退、失败吞正文），真实模型 6 形态 PASS | 用户 m02085；test-report §9 |
 | 2026-11-21 | 用户授权合入 master + 推送 + 发布前准备（不触发实际 npm 发布） | 用户 m02028 |
 | 2026-11-21 | 0.7.0 版本准备（prepared）与 dry-run 通过；修发布准备暴露的台账测试缺陷；门禁 GREEN 后合入 master（5dbfe3a）并推送 | m02028；STATUS T18 |
+| 2026-11-21 | T19：VS Code 吞 alt+v → 新增 `/image`；连按粘贴同图重复上传 → 按内容哈希去重；修正 PRODUCT.md 5.8 被插入第 7 章的文档结构缺陷 | 用户 m02658/m02718/m02731/m02760；STATUS T19 |

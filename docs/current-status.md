@@ -24,7 +24,7 @@ SP007 功能分支 `feature/SP007/agent-quality-and-extensions` 已完成 17 个
 
 | 指标 | 结果 |
 | --- | --- |
-| 全量单元测试 | 1122 项 / 1121 通过 / 0 失败 / 1 跳过（POSIX 专属） |
+| 全量单元测试 | 1128 项 / 1127 通过 / 0 失败 / 1 跳过（POSIX 专属） |
 | 模块边界检查 | PASS |
 | 交叉验证门禁 | **GATE GREEN**（npm test + spec:check + skills:check + pack-smoke 全过） |
 | 离线评估 | 17/17 通过 |
