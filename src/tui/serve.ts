@@ -1,6 +1,5 @@
 // SP008 T8：宿主进程入口（stdio / WebSocket）。stdout 只写协议帧。
 import { randomBytes } from 'node:crypto'
-import { hostname as osHostname } from 'node:os'
 import { resolve } from 'node:path'
 import { ConfigStore } from '../storage/config-store.js'
 import { CredentialStore } from '../storage/credentials.js'
@@ -14,6 +13,7 @@ import { startupProfile, mergeSources, profileCredentialRef, profileCredentialBi
 import { HostServer } from '../host/server.js'
 import { claimSessionOwnership, SessionOwnershipRole } from '../host/ownership.js'
 import { connectStdio } from '../host/transport/stdio.js'
+import { isLoopbackHost, startWsHost } from '../host/transport/ws.js'
 import { createHostEngine, HostApprovalGateway } from './host-engine.js'
 import { createAgentRuntime } from './runtime.js'
 
@@ -213,18 +213,40 @@ export async function runServeCommand(args: string[]): Promise<number> {
       process.stderr.write('budingx host ready on stdio\n')
       return await stopped
     }
-    if (!options.token && !process.env.BUDINGX_HOST_TOKEN) {
+    const token = options.token ?? process.env.BUDINGX_HOST_TOKEN ?? ''
+    if (token.length === 0) {
       process.stderr.write(
         'Error: --transport ws requires --token or BUDINGX_HOST_TOKEN\n'
       )
       await server.shutdown()
       return 2
     }
-    process.stderr.write(
-      `Error: WebSocket transport is not available in this build (${osHostname()})\n`
-    )
-    await server.shutdown()
-    return 2
+    if (!isLoopbackHost(options.host)) {
+      process.stderr.write(
+        'Error: --transport ws must bind a loopback host (127.0.0.1, localhost or ::1)\n'
+      )
+      await server.shutdown()
+      return 2
+    }
+    let wsHost
+    try {
+      wsHost = await startWsHost({
+        host: options.host,
+        port: options.port,
+        token,
+        onConnection: (connection) => server.attach(connection)
+      })
+    } catch (error) {
+      process.stderr.write('Error: ' + (error as Error).message + '\n')
+      await server.shutdown()
+      return 2
+    }
+    process.stderr.write('budingx host listening on ' + wsHost.url + '\n')
+    try {
+      return await stopped
+    } finally {
+      await wsHost.close()
+    }
   } finally {
     for (const signal of signals) process.removeListener(signal, onSignal)
   }
