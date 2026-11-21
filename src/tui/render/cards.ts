@@ -8,6 +8,8 @@ export type CardRenderOptions = {
   zh?: boolean
   /** 命令/待办卡片展开（Ctrl+E）。 */
   expanded?: boolean
+  /** 运行中命令压成单行（完成态不应再渲染卡片）。 */
+  compact?: boolean
   /** 计划卡片当前焦点步骤索引。 */
   focusIndex?: number
   /** 待办完成项 TTL（毫秒）与当前时间。 */
@@ -58,6 +60,15 @@ function pick(zh: boolean, cn: string, en: string): string {
   return zh ? cn : en
 }
 
+/**
+ * 只有尚未结束的命令需要占用实时区域；完成/失败/取消后结果已在转录中，
+ * 再保留卡片会让同一次调用重复显示并长期占据多行（0.6.0 修复）。
+ */
+export function activeCommandCard(card: CommandCard | undefined): CommandCard | undefined {
+  if (card === undefined) return undefined
+  return card.state === 'running' || card.state === 'background' ? card : undefined
+}
+
 /** VIS-01：命令卡片（命令、状态、cwd、tail 输出、退出码、展开提示）。 */
 export function commandCardLines(
   card: CommandCard,
@@ -79,6 +90,11 @@ export function commandCardLines(
     card.state
   )
   const header = `${symbol} ${pick(zh, '命令', 'Command')} · ${card.interpreter} · ${stateLabel}`
+  if (options.compact === true) {
+    const [firstLine = ''] = card.command.split(/\r?\n/)
+    const task = card.taskId !== undefined ? ` · ${pick(zh, '任务', 'task')} ${card.taskId}` : ''
+    return [truncateByWidth(`${header} · $ ${firstLine.trim()}${task}`, width)]
+  }
   const lines = [truncateByWidth(header, width)]
   lines.push(truncateByWidth(`  $ ${card.command}`, width))
   if (card.description !== undefined) {

@@ -58,7 +58,8 @@ test('help 与 version 不依赖配置，未知选项与缺模型明确报错', 
     ).version
   )
   const bad = await run(['--unknown'])
-  assert.equal(bad.code, 1)
+  // SP006 HC-05：用法错误统一退出码 2（此前为 1）。
+  assert.equal(bad.code, 2)
   assert.match(bad.err, /Unknown/)
   const noModel = await run(['--prompt', 'hello'])
   assert.equal(noModel.code, 1)

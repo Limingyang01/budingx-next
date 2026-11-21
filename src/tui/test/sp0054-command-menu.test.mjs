@@ -44,3 +44,13 @@ test('0.5.4 Shift+Tab 三档完整轮播回到仅可查看', async (t) => {
   await ui.send('\x1b[Z')
   await ui.waitFor((f) => f.includes('仅可查看'), 2000)
 })
+
+test('非全屏退化终端 /help 以正文块列出命令而非压成一行状态提示', async (t) => {
+  const ui = await mountTty(t, { fullScreen: false, columns: 100, rows: 40, config: { model: 'fixture' }, provider: { async *stream() { yield { type: 'message_completed', finishReason: 'stop' } } } })
+  await ui.send('/help\r')
+  await ui.waitFor((f) => f.includes('/resume') && f.includes('/tasks'), 5000)
+  const frame = ui.last()
+  assert.match(frame, /命令：/)
+  assert.match(frame, /\/resume/)
+  assert.doesNotMatch(frame, /— 命令：/)
+})

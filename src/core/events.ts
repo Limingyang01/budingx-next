@@ -46,6 +46,10 @@ export type NoticeCode =
   | 'storage_write_failed'
   /** 恢复提示：存在结果未知的工具步骤，需人工核对而非自动重放（SP005 §5）。 */
   | 'recovery_needs_review'
+  /** SP006 §9：hook 的普通输出、执行告警与阻断结果。 */
+  | 'hook_output'
+  | 'hook_warning'
+  | 'hook_blocked'
 
 export type ErrorClass =
   | 'auth'
@@ -160,6 +164,15 @@ export type ContextCompactedEvent = {
 export type SessionEvent =
   | { type: 'conversation_cleared' }
   | { type: 'conversation_rewound'; entries: { kind: 'user' | 'assistant'; text: string }[]; removedCount: number }
+  | {
+      /**
+       * SP006 回归修复：/resume 恢复出来的历史。
+       * 历史必须同时进入模型上下文与可见转录，否则用户看不到自己恢复了什么。
+       * 契约与 /rewind 同构：宿主据此重建转录，绝不重放任何工具步骤。
+       */
+      type: 'conversation_restored'
+      messages: Message[]
+    }
   | { type: 'turn_started'; turnId: string; snapshot: TurnSnapshot; userText: string; startedAt: number }
   | { type: 'text_delta'; turnId: string; messageId: string; text: string }
   | { type: 'thinking_delta'; turnId: string; messageId: string; text: string }

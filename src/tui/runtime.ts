@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
+import { homedir } from 'node:os'
 import { createAskUserQuestionTool } from '../core/questions.js'
 import { createWebSearchTool } from '../provider/web-search.js'
+import { createWebFetchTool } from '../provider/web-fetch.js'
 import { Session, type SubmitOptions } from '../core/session.js'
 import type { ApprovalGateway, ToolHandler } from '../core/tools.js'
 import type { DenialRecord } from '../core/events.js'
@@ -11,6 +13,8 @@ import { createExecTools } from '../exec/tools.js'
 import { createPlanModeHost } from '../plan/host.js'
 import { createPlanModeTools, routePlanDraftTools } from '../plan/tools.js'
 import { createOpenAiProvider } from '../provider/openai.js'
+import { loadProjectInstructionsSync } from './project-instructions.js'
+import { generatePromptSuggestion } from './suggestion.js'
 import { ConfigStore } from '../storage/config-store.js'
 import { dataRoot, permissionsPath } from '../storage/paths.js'
 import { PermissionsStore, readPermissionMode, savePermissionMode } from '../storage/permissions.js'
@@ -26,6 +30,8 @@ import {
   type MemoryScope
 } from '../storage/project-memory.js'
 import { estimateTokens, normalizeBudget, triggerTokens } from '../core/context-budget.js'
+import type { McpServerStatus } from './mcp/types.js'
+import type { SessionHooks } from '../core/hooks.js'
 import type { ReasoningEffort } from '../core/provider.js'
 import type { ResolvedConfig } from '../storage/profiles.js'
 import {
@@ -81,6 +87,12 @@ export type AgentRuntime = {
   warnings: string[]
   /** SP004 agent-observability：正常退出时的限时追踪 flush；未启用时为 undefined。 */
   shutdownTracing?: () => Promise<void>
+  /** SP006 §11：无头 system init 事件声明的工具名（注册顺序）。 */
+  toolNames: string[]
+  /** SP006 CMD-08：后台任务快照（来自 exec runner 的后台任务表）。 */
+  tasks?: { list: () => import('./tasks.js').TaskRecord[] }
+  /** SP006 §8.2：MCP 服务器连接状态（/mcp 与诊断用）。 */
+  mcp?: { statuses: McpServerStatus[] }
   /** SP005：会话列表与恢复能力；未开启持久化时为 undefined。 */
   sessions?: {
     list: () => { sessionId: string; title: string; updatedAt: string; turns: number }[]
@@ -90,6 +102,8 @@ export type AgentRuntime = {
       messages?: unknown[]
       needsReview?: { name: string; callId: string; detail?: string }[]
       warnings?: string[]
+      /** SP006：恢复后当前生效的会话 id（恢复会切换身份）。 */
+      sessionId?: string
     }
   }
   /** 0.5.2：上下文用量（provider 真实 usage 优先，缺失时本地估算）。 */
@@ -119,6 +133,13 @@ export type AgentRuntime = {
     current: () => ReasoningEffort
     set: (next: ReasoningEffort) => void
     choices: readonly ReasoningEffort[]
+  }
+  /**
+   * SP006 波次 G：输入框「下一句」建议，依据当前对话由模型生成。
+   * 关闭 BUDINGX_PROMPT_SUGGESTIONS=0 时不提供该端口（不产生额外请求）。
+   */
+  suggestions?: {
+    generate: (signal: AbortSignal) => Promise<string | undefined>
   }
   /** SP005：项目与会话记忆。 */
   memory?: {
@@ -206,6 +227,10 @@ export type AgentRuntimeOptions = {
   persistence?: boolean
   /** 0.5.2: initial reasoning effort; /effort changes it at runtime. */
   reasoningEffort?: ReasoningEffort
+  /** SP006 §8.2：已连接的 MCP 服务器提供的工具与状态。 */
+  mcp?: { tools: ToolHandler[]; statuses: McpServerStatus[] }
+  /** SP006 §9：hooks 运行器；未提供时不触发任何 hook。 */
+  hooks?: SessionHooks
 }
 
 /**
@@ -278,7 +303,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   const tools: ToolHandler[] = [
     ...workspaceTools,
     ...execTools,
-    createWebSearchTool(process.env.BUDINGX_TAVILY_API_KEY)
+    createWebSearchTool(process.env.BUDINGX_TAVILY_API_KEY),
+    createWebFetchTool(
+      process.env.BUDINGX_WEB_FETCH_ALLOW_PRIVATE === '1' ? { allowPrivateHosts: true } : {}
+    ),
+    ...(options.mcp?.tools ?? [])
   ]
   const denials: DenialRecord[] = []
   // SP005 §5：会话转录与索引。持久化是可选的，未开启时行为与 SP004 一致。
@@ -310,14 +339,27 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       )
     }
   }
+  // SP006 §7：每个请求前重读项目指令，文件改动下一回合生效；读取失败只告警不中断。
+  const instructionHome = options.home ?? homedir()
+  let instructionWarningsSeen = 0
   const session = new Session({
     id: sessionId,
     resolveReasoningEffort: () => reasoningEffort,
+    resolveSystemContext: () => {
+      const instructions = loadProjectInstructionsSync({
+        workspaceDir: workspace.root,
+        homeDir: instructionHome
+      })
+      for (const line of instructions.warnings.slice(instructionWarningsSeen)) warnings.push(line)
+      instructionWarningsSeen = instructions.warnings.length
+      return instructions.content || undefined
+    },
     provider: provider(),
     resolveProvider: provider,
     approval: options.approval,
     tools,
     planMode,
+    ...(options.hooks ? { hooks: options.hooks } : {}),
     disposers: [() => runner.dispose?.()],
     permissionPolicy: policy,
     ...(tracing.tracer ? { tracer: tracing.tracer } : {}),
@@ -379,18 +421,40 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             return { ok: false, message: restored.message ?? restored.status }
           }
           const restoredMessages = restored.messages as { id: string; role: string; blocks: unknown[] }[]
+          // SP006：恢复出的历史既进入模型上下文，也进入可见转录
+          // （restoreHistory 会发出 conversation_restored 事件）。
           session.restoreHistory(restoredMessages as unknown as Parameters<typeof session.restoreHistory>[0])
           // SR-10：沿用会话记录的权限模式，且绝不因恢复而升权。
           session.restorePermissionMode(restored.summary?.permissionMode)
+          // SP006：切换会话身份与转录端口，让续写继续落在被恢复会话里
+          // （对齐参考实现的 switchSession）。失败时保持原身份，可见性不受影响。
+          const identityWarnings: string[] = []
+          let activeSessionId = session.id
+          try {
+            const started = startSession({
+              sessionId: target,
+              workspaceRoot: workspace.root,
+              ...(options.home ? { home: options.home } : {})
+            })
+            session.adoptIdentity({ id: target, transcript: started.transcript })
+            activeSessionId = target
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error)
+            identityWarnings.push(
+              `resumed session identity could not be switched: ${detail}`
+            )
+            warnings.push(identityWarnings[identityWarnings.length - 1])
+          }
           return {
             ok: true,
             messages: restoredMessages,
+            sessionId: activeSessionId,
             needsReview: restored.needsReview.map((step) => ({
               name: step.name,
               callId: step.callId,
               ...(step.detail ? { detail: step.detail } : {})
             })),
-            warnings: restored.warnings
+            warnings: [...restored.warnings, ...identityWarnings]
           }
         }
       }
@@ -490,8 +554,44 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
   }
 
+  // SP006 波次 G：输入框下一句建议。只在用户空闲时按需生成，失败静默。
+  const suggestionsSurface = process.env.BUDINGX_PROMPT_SUGGESTIONS === '0'
+    ? undefined
+    : {
+        generate: async (signal: AbortSignal): Promise<string | undefined> => {
+          if (session.isBusy) return undefined
+          const config = options.getConfig()
+          return generatePromptSuggestion({
+            provider: provider(),
+            model: config.model,
+            history: session.history,
+            signal
+          })
+        }
+      }
+
   return {
     session, workspace, policy, setPermissionMode, permissionStore, checkpoint, denials, warnings,
+    toolNames: tools.map((tool) => tool.name),
+    tasks: {
+      list: () =>
+        runner.list().map((result) => ({
+          id: result.taskId ?? 'task',
+          title: result.command ?? result.taskId ?? 'task',
+          status:
+            result.outcome === 'completed'
+              ? 'completed'
+              : result.outcome === 'running'
+                ? 'running'
+                : result.outcome === 'cancelled'
+                  ? 'cancelled'
+                  : 'failed',
+          ...(result.exitCode === undefined ? {} : { exitCode: result.exitCode }),
+          ...(result.persistedOutputPath ? { outputPath: result.persistedOutputPath } : {}),
+          startedAt: result.startedAt ?? Date.now(),
+          ...(result.outcome === 'running' ? {} : { endedAt: (result.startedAt ?? Date.now()) + result.durationMs })
+        }))
+    },
     contextUsage: contextUsageSurface,
     effort: {
       current: () => reasoningEffort ?? DEFAULT_EFFORT,
@@ -503,7 +603,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     ...(tracing.shutdown ? { shutdownTracing: tracing.shutdown } : {}),
     ...(sessionsSurface ? { sessions: sessionsSurface } : {}),
     ...(contextSurface ? { context: contextSurface } : {}),
-    ...(memorySurface ? { memory: memorySurface } : {})
+    ...(memorySurface ? { memory: memorySurface } : {}),
+    ...(suggestionsSurface ? { suggestions: suggestionsSurface } : {}),
+    ...(options.mcp ? { mcp: { statuses: options.mcp.statuses } } : {})
   }
 }
 

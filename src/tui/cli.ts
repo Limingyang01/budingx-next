@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // budingx entry point (SP002 design §3.1/§3.6).
 import { readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { createElement } from 'react'
 import { render } from 'ink'
 import { ConfigStore } from '../storage/config-store.js'
@@ -10,9 +11,12 @@ import { MODES_EN, MODES_ZH } from '../workspace/policy.js'
 import type { PermissionMode } from '../core/permissions.js'
 import { App } from './app.js'
 import { createAgentRuntime, workspacePromptOptions, type AgentRuntime } from './runtime.js'
+import { startMcp } from './mcp/index.js'
+import { startHooks } from './hooks/index.js'
 import type { CommandContext } from './commands.js'
 import { InkApprovalGateway } from './approval.js'
 import { runCommand } from './commands.js'
+import { parseCliArgs, runHeadless, UsageError } from './headless.js'
 import { terminalStrategy } from './render/header.js'
 
 const MODE_ORDER: PermissionMode[] = ['read_only', 'workspace_edit', 'full_access']
@@ -68,6 +72,8 @@ function readProductVersion(): string {
 const version = readProductVersion()
 const help = `budingx ${version} — independent terminal coding agent
 Usage: budingx [--model NAME] [--base-url URL] [--timeout MS] [--prompt TEXT]
+  budingx --prompt TEXT [--output-format text|json|stream-json]
+          [--input-format text|stream-json] [--input-file PATH] [--session ID] [--verbose]
 Environment: BUDINGX_API_KEY, BUDINGX_MODEL, BUDINGX_BASE_URL
 Commands: /help /config /models /model NAME
   /permission [read|workspace|full] /rules [add|rm] /diff [path] /undo [path] /denials /clear /exit
@@ -198,6 +204,14 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
   // /context /memory 与上下文用量显示才有数据源。窗口默认不猜：
   // 只有显式配置 BUDINGX_CONTEXT_WINDOW 才显示百分比。
   const contextWindow = positiveInteger(process.env.BUDINGX_CONTEXT_WINDOW)
+  const mcp = await startMcp()
+  for (const warning of mcp.warnings) {
+    process.stderr.write(`Warning: ${warning}\n`)
+  }
+  const hooks = startHooks()
+  for (const warning of hooks.loaded.warnings) {
+    process.stderr.write(`Warning: ${warning}\n`)
+  }
   const runtime = createAgentRuntime({
     cwd: process.cwd(),
     getConfig: () => current,
@@ -205,6 +219,8 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
     configStore: stores.configStore,
     persistPermissionMode: true,
     persistence: true,
+    mcp: { tools: mcp.tools, statuses: mcp.statuses },
+    hooks: hooks.runner,
     ...(contextWindow === undefined ? {} : { contextBudget: { maxTokens: contextWindow } }),
     ...(effortFromEnv(process.env.BUDINGX_REASONING_EFFORT) === undefined
       ? {}
@@ -232,6 +248,10 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
           instance.unmount()
         },
         permission: permissionContext(runtime),
+        cwd: process.cwd(),
+        home: homedir(),
+        ...(runtime.tasks ? { tasks: runtime.tasks } : {}),
+        ...(runtime.mcp ? { mcp: runtime.mcp } : {}),
         ...(runtime.contextUsage ? { contextUsage: runtime.contextUsage } : {}),
         ...(runtime.sessions ? { sessions: runtime.sessions } : {}),
         ...(runtime.context ? { context: runtime.context } : {}),
@@ -241,6 +261,8 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
       version,
       cwd: process.cwd(),
       fullScreen,
+      // SP006 波次 G：输入框下一句建议复用同一 provider；未启用时不注入。
+      ...(runtime.suggestions ? { suggestNextPrompt: runtime.suggestions.generate } : {}),
       onExit: () => {
         instance.unmount()
       }
@@ -250,6 +272,7 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
   await instance.waitUntilExit()
   session.dispose()
   await runtime.shutdownTracing?.()
+  await mcp.close()
 }
 
 async function main(): Promise<void> {
@@ -261,6 +284,18 @@ async function main(): Promise<void> {
   if (args.length === 1 && ['--help', '-h'].includes(args[0])) {
     process.stdout.write(`${help}\n`)
     return
+  }
+
+  let parsed: ReturnType<typeof parseCliArgs>
+  try {
+    parsed = parseCliArgs(args)
+  } catch (error) {
+    if (error instanceof UsageError) {
+      process.stderr.write('Error: ' + error.message + '\n')
+      process.exitCode = 2
+      return
+    }
+    throw error
   }
 
   let stores: Stores
@@ -276,7 +311,7 @@ async function main(): Promise<void> {
 
   let config: ResolvedConfig
   try {
-    config = mergeSources({ args, env: process.env, file: stores.file })
+    config = mergeSources({ args: parsed.passthrough, env: process.env, file: stores.file })
   } catch (error) {
     process.stderr.write(
       `Error: ${error instanceof Error ? error.message : 'invalid configuration'}\n`
@@ -285,32 +320,13 @@ async function main(): Promise<void> {
     return
   }
 
-  if (config.prompt !== undefined) {
-    if (!config.model.trim()) {
-      process.stderr.write(
-        'Error: Set BUDINGX_MODEL or use /model <name> before sending a prompt\n'
-      )
-      process.exitCode = 1
-      return
-    }
-    const promptEffort = effortFromEnv(process.env.BUDINGX_REASONING_EFFORT)
-    const runtime = createAgentRuntime({
-      cwd: process.cwd(),
-      getConfig: () => config,
-      approval: {
-        async request() {
-          return { outcome: 'deny', via: 'policy' }
-        }
-      },
-      configStore: stores.configStore,
-      mode: 'read_only',
-      ...(promptEffort === undefined ? {} : { reasoningEffort: promptEffort })
-    })
-    const code = await runTurn(runtime, config.prompt)
-    process.stdout.write('\n')
-    runtime.session.dispose()
-    await runtime.shutdownTracing?.()
-    process.exitCode = code
+  if (config.prompt !== undefined || parsed.explicit) {
+    process.exitCode = await runHeadless(
+      config,
+      { configStore: stores.configStore, credentialStore: stores.credentialStore },
+      { stdout: process.stdout, stderr: process.stderr, env: process.env },
+      parsed.options
+    )
     return
   }
 

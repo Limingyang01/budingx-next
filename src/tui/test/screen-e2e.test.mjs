@@ -341,14 +341,20 @@ test('session tab title describes the first substantive prompt and signals activ
   assert.equal(ui.raw().match(/\x1b\]0;[^\x07]*\x07/g).at(-1), '\x1b]0;budingx\x07')
 })
 
-test('conversation shows question, elapsed time, completion and editable follow-up', async (t) => {
+test('conversation shows question, elapsed time, completion and generated follow-up', async (t) => {
   const { release, provider } = gatedStream([
     { type: 'thinking_delta', text: 'hidden-fixture' },
     '@gate',
     { type: 'text_delta', text: '我是 budingx' },
     done
   ])
-  const ui = await mountTty(t, { fullScreen: true, provider, config: { model: 'fixture' } })
+  const ui = await mountTty(t, {
+    fullScreen: true,
+    provider,
+    config: { model: 'fixture' },
+    // SP006 波次 G：输入框建议由模型生成，这里注入假生成器。
+    suggestNextPrompt: async () => '再看看测试覆盖'
+  })
   await ui.send('你是谁\r')
   await ui.waitFor((frame) => frame.includes('› 你是谁') && /正在思考/.test(frame) && /[1-9]\d* 秒/.test(frame))
   assert.doesNotMatch(ui.raw(), /hidden-fixture/)
@@ -359,7 +365,7 @@ test('conversation shows question, elapsed time, completion and editable follow-
   assert.match(ui.last(), /› 你是谁[\s\S]*我是 budingx/)
   await ui.send('\t')
   assert.doesNotMatch(ui.raw(), /hidden-fixture/)
-  assert.match(ui.last(), /> 介绍这个项目的主要功能/)
+  assert.match(ui.last(), /> 再看看测试覆盖/)
   assert.doesNotMatch(ui.last(), /Tab 填入/)
   assert.equal(ui.session.history.filter(m => m.role === 'user').length, 1)
 })

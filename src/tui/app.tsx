@@ -34,6 +34,7 @@ import { ACCENT, renderHeader, sessionTopic, setupHint, terminalStrategy, termin
 import { initialFrame, type TranscriptEntry } from './render/types.js'
 import { diffStats, diffViewLines } from './render/diff-view.js'
 import {
+  activeCommandCard,
   commandCardLines,
   planCardLines,
   questionCardLines,
@@ -58,6 +59,11 @@ import { nextMode } from '../workspace/policy.js'
 import { walkWorkspaceFiles } from '../workspace/search.js'
 import { changeDiffs } from '../workspace/checkpoint.js'
 import { gitWorkspaceChanges, hasGitWorkspace } from '../workspace/git-diff.js'
+import { join } from 'node:path'
+import { sessionDirectory } from '../storage/private-file.js'
+import { TRANSCRIPT_FILE } from '../storage/session-transcript.js'
+import { planLayout, regionsFor } from './render/layout.js'
+import { useStatusLine } from './use-statusline.js'
 
 export type AppProps = {
   session: Session
@@ -66,6 +72,11 @@ export type AppProps = {
   version: string
   cwd?: string
   fullScreen?: boolean
+  /**
+   * SP006 波次 G：输入框「下一句」建议的生成端口。
+   * 交互式宿主注入真实模型调用；未注入时输入框不显示建议。
+   */
+  suggestNextPrompt?: (signal: AbortSignal) => Promise<string | undefined>
   onExit: () => void
 }
 
@@ -116,6 +127,7 @@ export function App({
   version,
   cwd,
   fullScreen = false,
+  suggestNextPrompt,
   onExit
 }: AppProps) {
   const { exit } = useApp()
@@ -141,6 +153,9 @@ export function App({
     (mode) => initialFrame(mode ?? 'read_only')
   )
   const [input, setInput] = useState('')
+  // SP006 波次 G：输入框「下一句」建议。文本由模型生成，这里只保存结果与取消句柄。
+  const [suggestionText, setSuggestionText] = useState('')
+  const suggestionAbort = useRef<AbortController | undefined>(undefined)
   const [previewTools, setPreviewTools] = useState<readonly string[]>([])
   useEffect(() => session.onToolPreview(setPreviewTools), [session])
   const [topic, setTopic] = useState<string>()
@@ -225,6 +240,47 @@ export function App({
       source: read.source
     } : undefined)
   }, [commandContext.contextUsage, frame.status.state, frame.transcript.length])
+  // SP006 §4.4：外部状态栏命令（可选）。触发源只有「最后一条消息 / 权限模式 /
+  // 模型」变化，300ms 去抖；失败静默回落到内置状态栏。
+  const [statusConfig] = useState(() => {
+    try {
+      return commandContext.configStore.load().statusLine
+    } catch {
+      // A corrupt config already has a backup; the footer just stays built-in.
+      return undefined
+    }
+  })
+  const statusTrigger = useMemo(() => {
+    const last = frame.transcript.at(-1)
+    const lastKey = last === undefined
+      ? 'empty'
+      : last.kind === 'tool'
+        ? 'tool:' + last.callId + ':' + last.status
+        : last.kind + ':' + last.text.length
+    return [lastKey, frame.permissionMode, frame.transcript.length].join('|')
+  }, [frame.transcript, frame.permissionMode])
+  const statusView = useStatusLine({
+    spec: statusConfig === undefined
+      ? undefined
+      : { command: statusConfig.command, args: statusConfig.args, timeoutMs: statusConfig.timeoutMs },
+    trigger: statusTrigger,
+    state: {
+      sessionId: session.id,
+      transcriptPath: join(sessionDirectory(session.id), TRANSCRIPT_FILE),
+      cwd: cwd ?? process.cwd(),
+      permissionMode: frame.permissionMode,
+      model: { id: commandContext.getConfig().model, displayName: commandContext.getConfig().model },
+      workspace: { currentDir: cwd ?? process.cwd(), projectDir: cwd ?? process.cwd() },
+      version,
+      contextWindow: {
+        ...(contextInfo?.usedTokens === undefined ? {} : { usedTokens: contextInfo.usedTokens }),
+        ...(contextInfo?.maxTokens === undefined ? {} : { windowSize: contextInfo.maxTokens })
+      }
+    }
+  })
+  const showStatusLine = statusConfig !== undefined && statusView.text !== undefined && statusView.text !== ''
+  const footerHeight = (planLayout({ columns: width, rows, regions: regionsFor({ headerVisible: false }) })
+    .regions.find((region) => region.id === 'footer')?.height ?? 1) + (showStatusLine ? 1 : 0)
   // 0.5.2：推理强度指示。每次渲染直接读取（开销可忽略），
   // 这样 /effort 改完立刻反映到状态栏。
   const [now, setNow] = useState(Date.now)
@@ -240,6 +296,12 @@ export function App({
   const diffDetailPageSize = Math.max(1, Math.min(24, rows - 5))
   const [approvalScroll, setApprovalScroll] = useState(0)
   useEffect(() => setApprovalScroll(0), [frame.approval?.requestId])
+  // SP006 §6.3：命令确认（/worktree remove 等）与 local-jsx 只读列表、/btw 回答回显。
+  const [commandConfirm, setCommandConfirm] = useState<
+    { summary: string; preview: string[]; resolve: (approved: boolean) => void } | undefined
+  >()
+  const [commandOverlay, setCommandOverlay] = useState<{ title: string; lines: string[] } | undefined>()
+  const [sideAnswer, setSideAnswer] = useState<string | undefined>()
   const [overlayDismissed, setOverlayDismissed] = useState(false)
   const [completionIndex, setCompletionIndex] = useState(0)
   const fileCache = useRef<string[] | null>(null)
@@ -344,9 +406,9 @@ export function App({
   const effortLabel = effort === undefined
     ? undefined
     : `${pick('⊙', '*')} ${effortDisplayLabel(effort.current(), zh)} · /effort`
-  const suggestion = !working && !input && frame.suggestFollowUp
-    ? followUp(frame.lastQuestion ?? '', frame.lastAnswer ?? '', zh)
-    : ''
+  // SP006 波次 G：建议文本由模型按当前对话生成，不再用固定话术；
+  // 生成未完成、被清空或用户已开始输入时不显示。
+  const suggestion = !working && !input && frame.suggestFollowUp ? suggestionText : ''
   const inputBox = useRef<DOMElement>(null)
   const { setCursorPosition } = useCursor()
   const [cursorPosition, setPosition] = useState<{ x: number; y: number } | undefined>(
@@ -381,6 +443,7 @@ export function App({
       clearTimeout(typingTimer.current)
       clearTimeout(deltaTimer.current)
       managerDone.current?.()
+      suggestionAbort.current?.abort()
       gateway.cancelAll()
     },
     [gateway]
@@ -388,6 +451,7 @@ export function App({
   const [, bumpConfig] = useReducer((n: number) => n + 1, 0)
   const context = {
     ...commandContext,
+    ...(commandContext.cwd || !cwd ? {} : { cwd }),
     lang: (zh ? 'zh' : 'en') as 'zh' | 'en',
     setConfig: (next: Parameters<CommandContext['setConfig']>[0]) => {
       commandContext.setConfig(next)
@@ -426,7 +490,16 @@ export function App({
         })
       }
       if (!mounted.current) return
-      const result = await runCommand(text, { ...context, session, interactive: true })
+      const result = await runCommand(text, {
+        ...context,
+        session,
+        interactive: true,
+        // 命令级确认：复用页脚 y/n 交互，不经过模型工具审批通道。
+        confirm: (request) =>
+          new Promise<boolean>((resolve) => {
+            setCommandConfirm({ ...request, resolve })
+          })
+      })
       if (result.exit) {
         leave()
         return
@@ -462,7 +535,23 @@ export function App({
         await new Promise<void>((resolve) => { managerDone.current = resolve })
       } else if (result.skillPrompt) {
         setHint(pick(`技能 /${result.skillPrompt.name} 已展开为提示`, `Skill /${result.skillPrompt.name} expanded to prompt`))
-        session.submit(result.skillPrompt.body)
+        // SM-02：调用记录保留技能名，正文随下一轮提示注入。
+        session.submit(`# Skill /${result.skillPrompt.name}\n\n${result.skillPrompt.body}`)
+      } else if (result.prompt) {
+        setSideAnswer(undefined)
+        if (result.prompt.progress) setHint(result.prompt.progress)
+        session.submit(result.prompt.text)
+      } else if (result.sideQuestion) {
+        setSideAnswer(pick('正在旁路提问…', 'Asking on the side…'))
+        const answer = await session.submitSideQuestion(result.sideQuestion)
+        setSideAnswer(
+          answer.ok
+            ? pick('旁路回答（未写入会话）：', 'Side answer (not stored):') + '\n' + answer.text
+            : pick('旁路提问失败：', 'Side question failed: ') + (answer.error ?? '')
+        )
+      } else if (result.openList) {
+        setPosition(undefined)
+        setCommandOverlay(result.openList)
       } else setHint(result.error ?? result.message ?? '')
     })
   }
@@ -541,11 +630,36 @@ export function App({
     setCompletionIndex(0)
   }, [completion?.token.token, completion?.token.kind])
   const approvalPageSize = Math.max(1, Math.min(10, rows - 13))
+  /**
+   * SP006 波次 G：回合完成后异步生成「用户下一句可能输入什么」的建议。
+   * 生成失败、超时、被新回合打断都静默丢弃，绝不阻塞主流程，也不影响模型上下文。
+   */
+  const requestSuggestion = useCallback(() => {
+    suggestionAbort.current?.abort()
+    suggestionAbort.current = undefined
+    setSuggestionText('')
+    if (!suggestNextPrompt) return
+    const controller = new AbortController()
+    suggestionAbort.current = controller
+    void suggestNextPrompt(controller.signal)
+      .then((text) => {
+        if (controller.signal.aborted || !mounted.current) return
+        if (session.isBusy || !editor.isEmpty) return
+        setSuggestionText(text ?? '')
+      })
+      .catch(() => {})
+  }, [suggestNextPrompt, session, editor])
+  const clearSuggestion = useCallback(() => {
+    suggestionAbort.current?.abort()
+    suggestionAbort.current = undefined
+    setSuggestionText('')
+  }, [])
   const submitPrompt = (text: string) => {
     if (!context.getConfig().model.trim()) {
       setHint(pick('请先配置并选择模型', 'Configure and select a model first'))
       return
     }
+    clearSuggestion()
     const permission = commandContext.permission
     setTopic((previous) => previous ?? sessionTopic(text, context.getConfig().apiKey))
     session.submit(text, permission
@@ -589,7 +703,15 @@ export function App({
         if (event.type === 'conversation_cleared') {
           setTopic(undefined)
           setScrollTop(undefined)
+          clearSuggestion()
         }
+        if (event.type === 'conversation_restored') {
+          // SP006：恢复出的历史重建了转录，滚动位置与话题都要回到新内容。
+          setTopic(undefined)
+          setScrollTop(undefined)
+          clearSuggestion()
+        }
+        if (event.type === 'turn_started') clearSuggestion()
         if (event.type === 'turn_finalized' || event.type === 'change_set') {
           // Files may have appeared or disappeared; refresh completion.
           fileCache.current = null
@@ -603,9 +725,11 @@ export function App({
             editor.setText(event.restoreText)
             setInput(editor.text)
           }
+          if (event.outcome === 'completed') requestSuggestion()
+          else clearSuggestion()
         }
       }),
-    [session, gateway, editor, deliverEvent]
+    [session, gateway, editor, deliverEvent, requestSuggestion, clearSuggestion]
   )
   usePaste((text) => {
     if (managerDone.current) {
@@ -944,6 +1068,23 @@ export function App({
         return
       }
     }
+    if (commandConfirm) {
+      if (key.escape || (text && text.toLowerCase() === 'n')) {
+        commandConfirm.resolve(false)
+        setCommandConfirm(undefined)
+        return
+      }
+      if (text && text.toLowerCase() === 'y') {
+        commandConfirm.resolve(true)
+        setCommandConfirm(undefined)
+        return
+      }
+      return
+    }
+    if (commandOverlay) {
+      if (key.escape) setCommandOverlay(undefined)
+      return
+    }
     const approval = frame.approval
     const previewLength = approval?.preview?.length ?? 0
     if (previewLength > 0 && !typing && (key.upArrow || key.downArrow)) {
@@ -954,7 +1095,10 @@ export function App({
       return
     }
     if (key.ctrl && text === 'e') {
-      setCommandExpanded((value) => !value)
+      // 运行中的命令只显示单行，不接受展开，避免展开状态延续到完成态。
+      if (activeCommandCard(frame.command) === undefined) {
+        setCommandExpanded((value) => !value)
+      }
       setTodosExpanded((value) => !value)
       return
     }
@@ -1179,6 +1323,7 @@ export function App({
     if (!modelManagerOpen && !rulesManagerOpen && !resumeOpen && !rewindOpen && !contextOpen && !dialog) scrollHistory(lines)
   })
   const config = commandContext.getConfig()
+  const footerHint = setupHint(config, strategy)
   if (resumeOpen) {
     return <ResumePicker context={{ ...context, session }} input={managerInput} onPick={(id) => {
       const done = managerDone.current; setResumeOpen(false); managerDone.current = undefined; done?.()
@@ -1336,11 +1481,19 @@ export function App({
       lines: todoCardLines(frame.todos, width, { expanded: todosExpanded, now, zh })
     })
   }
-  if (frame.command !== undefined) {
+  const liveCommand = working ? activeCommandCard(frame.command) : undefined
+  if (liveCommand !== undefined) {
     cardLines.push({
       key: 'command',
       dim: true,
-      lines: commandCardLines(frame.command, width, { expanded: commandExpanded, zh })
+      lines: commandCardLines(liveCommand, width, { compact: true, zh })
+    })
+  } else if (commandExpanded && frame.command !== undefined) {
+    // 完成态默认不占位；只有用户按 Ctrl+E 才展开完整输出。
+    cardLines.push({
+      key: 'command',
+      dim: true,
+      lines: commandCardLines(frame.command, width, { expanded: true, zh })
     })
   }
   const menuRows = 9
@@ -1496,6 +1649,32 @@ export function App({
           </Text>
         </Box>
       )}
+      {commandConfirm && (
+        <Box flexDirection="column" borderStyle="round" borderColor="yellow">
+          <Text color="yellow">{commandConfirm.summary}</Text>
+          {commandConfirm.preview.map((line, index) => (
+            <Text key={index} wrap="truncate-end">{line}</Text>
+          ))}
+          <Text>{pick('y 确认 · n 或 Esc 取消', 'y confirm · n or Esc cancel')}</Text>
+        </Box>
+      )}
+      {commandOverlay && (
+        <Box flexDirection="column" borderStyle="round" borderColor={ACCENT}>
+          <Text color={ACCENT}>{commandOverlay.title}</Text>
+          {commandOverlay.lines.map((line, index) => (
+            <Text key={index} wrap="truncate-end">{line}</Text>
+          ))}
+          <Text dimColor>{pick('Esc 关闭', 'Esc to close')}</Text>
+        </Box>
+      )}
+      {sideAnswer && (
+        <Box flexDirection="column" borderStyle="single" borderColor="gray">
+          <Text dimColor>{sideAnswer.split('\n')[0]}</Text>
+          {sideAnswer.split('\n').slice(1).map((line, index) => (
+            <Text key={index} wrap="truncate-end">{line}</Text>
+          ))}
+        </Box>
+      )}
       {!fullScreen && frame.error && <Text color="red">{frame.error}</Text>}
       <Box flexDirection="column" flexShrink={0}>
         {working && (
@@ -1543,7 +1722,7 @@ export function App({
           />
         )}
         <Box ref={inputBox}>
-          {search ? (
+          {commandOverlay || commandConfirm ? null : search ? (
             <Box flexDirection="column">
               <Text color={ACCENT} wrap="truncate-end">
                 {transcriptMode ? pick('搜索会话', 'Search transcript') : pick('搜索输入历史', 'Search input history')}
@@ -1575,10 +1754,29 @@ export function App({
         {commandCount > 0 && (
           <Text dimColor>{pick('排队命令：', 'Queued commands: ')}{commandCount}</Text>
         )}
-        {(permissionHandles || contextLabel !== undefined || effortLabel !== undefined || (!fullScreen && hint)) && (
-          // 0.5.4：底部元信息合并为一行（模式 · 上下文 · 推理强度 · 快捷键），
-          // 不再让上下文/免审批各自占一行（用户反馈占据行数过多）。
-          <Box justifyContent="space-between">
+        {!fullScreen && hint && hint.includes('\n') && (
+          // 多行命令输出（如 /help）：退化终端里不再压成一行状态提示，
+          // 而是作为分块正文打印，最多 40 行，超出提示截断。
+          <Box flexDirection="column" flexShrink={0}>
+            {hint.split('\n').slice(0, 40).map((line, index) => (
+              <Text key={'hint-' + index} dimColor wrap="wrap">{line}</Text>
+            ))}
+            {hint.split('\n').length > 40 && (
+              <Text dimColor>{pick('…（输出过长，已截断）', '… (output truncated)')}</Text>
+            )}
+          </Box>
+        )}
+        {(showStatusLine || permissionHandles || contextLabel !== undefined || effortLabel !== undefined || footerHint || (!fullScreen && hint && !hint.includes('\n'))) && (
+          // SP006 §4.1：页脚是独立区域（固定行数 = 元信息行 + 可选状态栏行），
+          // 与输入区、消息区分离；外部状态栏输出不挤占输入框。
+          <Box flexDirection="column" flexShrink={0} height={footerHeight + (footerHint ? 1 : 0)}>
+            {showStatusLine && (
+              <Text dimColor wrap="truncate-end">{statusView.text}</Text>
+            )}
+            {(permissionHandles || contextLabel !== undefined || effortLabel !== undefined || (!fullScreen && hint && !hint.includes('\n'))) && (
+              // 0.5.4：底部元信息合并为一行（模式 · 上下文 · 推理强度 · 快捷键），
+              // 不再让上下文/免审批各自占一行（用户反馈占据行数过多）。
+              <Box justifyContent="space-between">
             <Text wrap={fullScreen ? 'truncate-end' : 'wrap'}>
               {permissionHandles && (
                 <>
@@ -1590,7 +1788,7 @@ export function App({
               {working && !frame.approval && (
                 <Text dimColor>{permissionHandles ? ' · ' : ''}{pick('Esc 打断', 'Esc interrupt')}</Text>
               )}
-              {!fullScreen && hint ? ` — ${hint}` : ''}
+              {!fullScreen && hint && !hint.includes('\n') ? ` — ${hint}` : ''}
             </Text>
             {(effortLabel !== undefined || contextLabel !== undefined) && (
               <Text wrap="truncate-end">
@@ -1602,22 +1800,15 @@ export function App({
                 )}
               </Text>
             )}
+              </Box>
+            )}
+            {footerHint && (
+              <Text color="yellow" wrap={fullScreen ? 'truncate-end' : 'wrap'}>{footerHint}</Text>
+            )}
           </Box>
-        )}
-        {setupHint(config, strategy) && (
-          <Text color="yellow" wrap={fullScreen ? 'truncate-end' : 'wrap'}>{setupHint(config, strategy)}</Text>
         )}
       </Box>
     </Box>
   )
 }
 
-function followUp(question: string, answer: string, zh: boolean): string {
-  if (/你好|你是谁|who are you|^hello/i.test(question)) {
-    return zh ? '介绍这个项目的主要功能' : 'Describe the main features of this project'
-  }
-  if (/修复|错误|报错|error|fix|bug/i.test(question + answer)) {
-    return zh ? '如何验证这个修复？' : 'How can I verify this fix?'
-  }
-  return zh ? '结合项目给我一个具体示例' : 'Show me a concrete example from this project'
-}

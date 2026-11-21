@@ -8,6 +8,6 @@ test('0.5.4 选中 /help 回车直接执行而非报未知命令', async (t) => 
   await ui.send('/')
   await ui.waitFor((f) => f.includes('/help'), 3000)
   await ui.send('\r')
-  await ui.waitFor((f) => f.includes('/models') && !f.includes('未知命令'), 4000)
+  await ui.waitFor((f) => f.includes('自定义技能命令') && !f.includes('未知命令'), 4000)
   assert.doesNotMatch(ui.last(), /未知命令/)
 })

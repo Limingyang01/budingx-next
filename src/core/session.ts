@@ -13,6 +13,7 @@ import {
 import type {
   ErrorInfo,
   Message,
+  MessageBlock,
   SessionEvent,
   SessionState,
   TurnOutcome,
@@ -31,6 +32,7 @@ import {
   type ContextBudgetManager,
   type PreservedItem
 } from './context-budget.js'
+import type { HookRunResult, SessionHookEvent, SessionHooks } from './hooks.js'
 import type { SessionTranscript, TranscriptRecord } from './transcript.js'
 import { appendTranscript } from './session-persistence.js'
 import type {
@@ -124,6 +126,13 @@ export type SessionOptions = {
    * 0.5.2：当前推理强度。每次请求读取一次，`/effort` 修改后立即生效。
    */
   resolveReasoningEffort?: () => ReasoningEffort | undefined
+  /**
+   * SP006 §7.2：每个模型请求前读取的附加系统上下文（项目指令等）。
+   * 每次请求重新读取，因此文件改动在下一回合生效。
+   */
+  resolveSystemContext?: () => string | undefined
+  /** SP006 §9：hooks 宿主端口；未注入时所有 hook 事件为空操作。 */
+  hooks?: SessionHooks
   onEvent?: (event: SessionEvent) => void
 }
 
@@ -159,6 +168,35 @@ const ALLOWED_TRANSITIONS: Record<SessionState, SessionState[]> = {
   tool_running: ['requesting', 'awaiting_approval', 'cancelling', 'idle'],
   awaiting_approval: ['tool_running', 'requesting', 'cancelling', 'idle'],
   cancelling: ['idle']
+}
+
+/**
+ * SP006 波次 F：把流式增量并进同一个内容块。
+ *
+ * 一条助手消息只保留一个 text 块（thinking 同理）。协议按片段推送增量，
+ * 若每个增量各建一个块，落盘转录会碎成上百段短块：恢复会话时每段各自
+ * 成行、塌成一列窄字，模型上下文也要拼接上百次。参考实现一条助手消息
+ * 只有一个文本块，本仓对齐该数据模型。
+ */
+function appendStreamBlock(
+  blocks: MessageBlock[],
+  kind: 'text' | 'thinking',
+  text: string
+): void {
+  const last = blocks.at(-1)
+  if (kind === 'text') {
+    if (last && last.type === 'text') {
+      last.text += text
+      return
+    }
+    blocks.push({ type: 'text', text })
+    return
+  }
+  if (last && last.type === 'thinking') {
+    last.text += text
+    return
+  }
+  blocks.push({ type: 'thinking', text })
 }
 
 function previewOf(text: string): string {
@@ -202,8 +240,11 @@ function stableStringify(value: unknown): string {
 }
 
 export class Session {
-  /** 会话标识（SP004 §4.4 后台输出与 §6.1 计划文件的隔离键）。 */
-  readonly id: string
+  /**
+   * 会话标识（SP004 §4.4 后台输出与 §6.1 计划文件的隔离键）。
+   * SP006：/resume 之后可以切换到被恢复会话，因此不是只读常量。
+   */
+  private currentId: string
   private state: SessionState = 'idle'
   private readonly messages: Message[] = []
   private readonly reasoningSource = new WeakMap<Message, TurnSnapshot>()
@@ -263,6 +304,9 @@ export class Session {
   private readonly repeatedToolFailures = new Map<string, number>()
   /** SP005 FR-05：同一工具 + 同一错误码的连续失败计数（捕捉换参数瞎试）。 */
   private readonly toolFailureStreaks = new Map<string, number>()
+  /** SP006 §9：hook 注入的附加上下文，只作用于下一次请求。 */
+  private readonly hookContext: string[] = []
+  private sessionStartHooked = false
 
   /** Hosts pause auto-start while boundary commands or credential entry run. */
   setQueuePaused(paused: boolean): void {
@@ -275,7 +319,7 @@ export class Session {
   }
 
   constructor(private readonly options: SessionOptions) {
-    this.id = options.id ?? randomUUID()
+    this.currentId = options.id ?? randomUUID()
     this.tools = options.tools ?? []
     if (options.contextBudget) {
       this.budget = createContextBudgetManager()
@@ -288,9 +332,29 @@ export class Session {
   /**
    * SP005 §5：把恢复出来的历史装入会话（跨进程恢复入口）。
    * 只装载历史，绝不重放任何工具步骤。
+   *
+   * SP006 回归修复：同时发出 conversation_restored，让宿主把同一段历史
+   * 渲染进可见转录。此前历史只进模型上下文，用户看到的是一片空白。
    */
   restoreHistory(messages: readonly Message[]): void {
     this.messages.splice(0, this.messages.length, ...messages)
+    this.emit({ type: 'conversation_restored', messages: [...messages] })
+  }
+
+  /** 会话标识（可被 /resume 切换，见 adoptIdentity）。 */
+  get id(): string {
+    return this.currentId
+  }
+
+  /**
+   * SP006：/resume 之后切换会话身份，让后续回合继续写入被恢复会话的转录。
+   * 对齐参考实现的 switchSession：会话 id 与转录端口一起换，
+   * 被恢复会话的转录因此保持完整（原历史 + 续写）。
+   * 只换身份，绝不重放任何工具步骤。
+   */
+  adoptIdentity(next: { id: string; transcript?: SessionTranscript }): void {
+    this.currentId = next.id
+    if (next.transcript) this.options.transcript = next.transcript
   }
 
   /** 0.5.4 /rewind：对话检查点（用户消息）列表，供选择面板使用。 */
@@ -893,6 +957,53 @@ export class Session {
     for (const listener of this.listeners) listener(event)
   }
 
+  /**
+   * SP006 §9：运行一个 hook 事件。hooks 是旁路能力：任何异常都降级为提示，
+   * 绝不能让 hook 的故障改变回合或工具的结局（HK-07）。
+   */
+  private async runHook(
+    event: SessionHookEvent,
+    input: Record<string, unknown>
+  ): Promise<HookRunResult | undefined> {
+    const hooks = this.options.hooks
+    if (!hooks) return undefined
+    let result: HookRunResult
+    try {
+      result = await hooks.run(event, {
+        session_id: this.id,
+        cwd: process.cwd(),
+        ...input
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.emit({
+        type: 'notice',
+        level: 'warning',
+        code: 'hook_warning',
+        text: `hook 执行失败，已跳过（${event}）：${message}`
+      })
+      return undefined
+    }
+    for (const text of result.systemMessages ?? []) {
+      this.emit({ type: 'notice', level: 'info', code: 'hook_output', text })
+    }
+    for (const text of result.warnings ?? []) {
+      this.emit({ type: 'notice', level: 'warning', code: 'hook_warning', text })
+    }
+    if (result.additionalContext?.length) {
+      this.hookContext.push(...result.additionalContext)
+    }
+    if (result.blocked) {
+      this.emit({
+        type: 'notice',
+        level: 'warning',
+        code: 'hook_blocked',
+        text: `${event} hook 阻断了本回合：${result.reason ?? '未给出原因'}`
+      })
+    }
+    return result
+  }
+
   private traceBegin(
     name: string,
     attributes: Record<string, string | number | boolean>,
@@ -1012,6 +1123,42 @@ export class Session {
     this.messages.push(userMessage)
     this.recordMessage(userMessage)
     await this.runTurn(turn, snapshot)
+  }
+
+  /**
+   * SP006 §6.3 /btw：旁路问答。复制当前上下文向模型单独提问，回答不写回
+   * 会话历史、不触发工具与审批，因此不会污染主回合语义（CMD-06）。
+   */
+  async submitSideQuestion(question: string): Promise<{ ok: boolean; text?: string; error?: string }> {
+    const trimmed = question.trim()
+    if (!trimmed) return { ok: false, error: '旁路问题不能为空' }
+    const provider = this.options.resolveProvider?.() ?? this.options.provider
+    const snapshot = this.options.resolveSnapshot()
+    const messages = normalizeForApi(this.messages as Message[])
+    messages.unshift({
+      role: 'system',
+      content:
+        '你是 budingx，一款在终端运行的编程助手。这是一次不影响主会话的旁路问答：' +
+        '回答简短、不要调用工具、不要修改文件，也不要假装已经执行任何操作。'
+    })
+    messages.push({ role: 'user', content: trimmed })
+    const controller = new AbortController()
+    try {
+      let text = ''
+      for await (const event of provider.stream({
+        model: snapshot.model,
+        messages,
+        signal: controller.signal
+      })) {
+        if (event.type === 'text_delta') text += event.text
+        else if (event.type === 'failed') return { ok: false, error: event.error.message }
+        else if (event.type === 'message_completed') break
+      }
+      const answer = text.trim()
+      return answer ? { ok: true, text: answer } : { ok: false, error: '模型没有返回内容' }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : '旁路请求失败' }
+    }
   }
 
   /**
@@ -1202,11 +1349,16 @@ export class Session {
         : undefined),
       signal: turn.controller.signal
     }
+    const systemContext = this.options.resolveSystemContext?.()
+    // hook 上下文只注入一次（本次请求），避免同一回合后续迭代重复堆叠。
+    const hookContext = this.hookContext.splice(0, this.hookContext.length).join('\n\n')
+    const extraContext = [systemContext, hookContext].filter(Boolean).join('\n\n')
     request.messages.unshift({
       role: 'system',
       content: '你是 budingx，一款在终端运行的编程助手。用户询问你的身份时，介绍 budingx。' +
         '用户询问底层模型时，按本次请求配置的模型 ID 回答：' + snapshot.model +
-        '。根据本轮实际提供的工具说明能力，使用用户的语言回答。'
+        '。根据本轮实际提供的工具说明能力，使用用户的语言回答。' +
+        (extraContext ? '\n\n' + extraContext : '')
     })
     if (this.tools.length > 0 && snapshot.capabilities.tools) {
       request.tools = this.tools.map((tool) => ({
@@ -1229,6 +1381,23 @@ export class Session {
     // 熔断计数只在一个回合内有效：跨回合累积会让不相关的失败把后续回合误判成空转。
     this.repeatedToolFailures.clear()
     this.toolFailureStreaks.clear()
+
+    // SP006 §9：会话首回合触发一次 SessionStart；UserPromptSubmit 每回合都要跑，
+    // 并被允许在进入模型请求前阻断（HK-02/HK-03）。
+    if (!this.sessionStartHooked) {
+      this.sessionStartHooked = true
+      await this.runHook('SessionStart', { source: 'startup' })
+    }
+    const submitted = await this.runHook('UserPromptSubmit', { prompt: turn.userText })
+    if (submitted?.blocked) {
+      this.finalize(turn, 'error', {
+        class: 'unknown',
+        code: 'BUDINGX_HOOK_BLOCKED',
+        message: submitted.reason ?? 'UserPromptSubmit hook 阻断了本回合',
+        retryable: false
+      })
+      return
+    }
 
     while (iteration < maxIterations) {
       iteration++
@@ -1268,7 +1437,7 @@ export class Session {
           if (turn.finalized) break
           switch (event.type) {
             case 'text_delta':
-              assistant.blocks.push({ type: 'text', text: event.text })
+              appendStreamBlock(assistant.blocks, 'text', event.text)
               this.emit({
                 type: 'text_delta',
                 turnId: turn.id,
@@ -1278,7 +1447,7 @@ export class Session {
               this.setState('streaming')
               break
             case 'thinking_delta':
-              assistant.blocks.push({ type: 'thinking', text: event.text })
+              appendStreamBlock(assistant.blocks, 'thinking', event.text)
               this.emit({
                 type: 'thinking_delta',
                 turnId: turn.id,
@@ -1483,7 +1652,7 @@ export class Session {
         )
         continue
       }
-      const input = parseToolArguments(call)
+      let input = parseToolArguments(call)
       const handler = this.tools.find((tool) => tool.name === call.name)
       // 观测要能回答「工具被用什么参数调用」，否则无法判断调用是否合适。
       const toolTrace = this.traceBegin(
@@ -1514,6 +1683,29 @@ export class Session {
           ERROR_CODES.coreToolUnknown
         )
         continue
+      }
+      // SP006 §9：PreToolUse 在权限判定之前运行，可阻断、改写入参或给出审批意见。
+      const preTool = await this.runHook('PreToolUse', {
+        tool_name: call.name,
+        tool_input: input,
+        tool_use_id: call.id
+      })
+      if (preTool?.blocked || preTool?.permissionDecision === 'deny') {
+        const reason = preTool.reason ?? preTool.permissionDecisionReason ?? 'hook 拒绝了该工具调用'
+        this.traceEnd(toolTrace, 'blocked')
+        this.pushToolResult(turn, call.id, `Denied by hook: ${reason}`, true, ERROR_CODES.permissionDenied)
+        this.emit({
+          type: 'denial_recorded',
+          denial: {
+            tool: call.name,
+            reason: `Denied by hook: ${reason}`,
+            at: new Date().toISOString()
+          }
+        })
+        continue
+      }
+      if (preTool?.updatedInput !== undefined) {
+        input = preTool.updatedInput as Record<string, unknown>
       }
       // SP003: with a policy the verdict decides; without one the SP002
       // requiresApproval hook keeps its exact behaviour.
@@ -1614,6 +1806,9 @@ export class Session {
         }
         needsApproval = verdict.action === 'ask'
       }
+      // hook 的意见只在硬性审批之外生效：不得绕过 mandatoryApproval（T25）。
+      if (preTool?.permissionDecision === 'allow') needsApproval = false
+      else if (preTool?.permissionDecision === 'ask') needsApproval = true
       // 不可逆操作的硬性审批：即使档位允许也必须由宿主确认（T25）。
       if (!needsApproval && (handler.mandatoryApproval?.(input) ?? false)) {
         needsApproval = true
@@ -1659,6 +1854,11 @@ export class Session {
           ...(request.preview ? { preview: request.preview } : {}),
           ...(request.planId !== undefined ? { planId: request.planId } : {}),
           ...(request.planVersion !== undefined ? { planVersion: request.planVersion } : {})
+        })
+        // SP006 §9：审批等待属于可通知事件，hook 只能旁听、不能改变结局。
+        void this.runHook('Notification', {
+          notification_type: 'approval_requested',
+          message: request.summary
         })
         const decision = await this.requestApproval(turn, request)
         remember =
@@ -1745,6 +1945,13 @@ export class Session {
         // SP005 FR-06：工具失败必须带稳定错误码，失败位置才能被定位到具体步骤。
         errorCode = errorCode ?? ERROR_CODES.coreToolFailed
       }
+      // SP006 §9：PostToolUse 只旁听执行结果，失败走 PostToolUseFailure。
+      await this.runHook(isError ? 'PostToolUseFailure' : 'PostToolUse', {
+        tool_name: call.name,
+        tool_input: input,
+        tool_use_id: call.id,
+        tool_response: { content, is_error: isError }
+      })
       if (content.length > TOOL_OUTPUT_CAP) {
         // SP005 FR-03：截断必须带显式标记，模型与人都能看出结果不完整，
         // 不能把一段被砍掉的内容当成完整结果。
@@ -2041,6 +2248,11 @@ export class Session {
       ...(this.persistenceError ? { persistenceError: this.persistenceError } : {})
     })
     this.persistenceError = undefined
+    // SP006 §9：Stop/StopFailure 只旁听回合结局，不改变已交付的结果。
+    void this.runHook(outcome === 'completed' ? 'Stop' : 'StopFailure', {
+      stop_hook_active: false,
+      outcome
+    })
     this.scheduleQueueDrain()
   }
 

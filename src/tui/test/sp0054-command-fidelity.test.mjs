@@ -41,6 +41,27 @@ test('0.5.4 /rewind 与 /undo 无参数交互打开面板', async () => {
   assert.equal((await runCommand('/rewind', baseCtx())).openRewind, true)
 })
 
+test('0.5.4 /undo 把检查点返回的语言无关原因转成界面语言', async () => {
+  const permission = (reason, paths = []) => ({ undo: () => ({ undone: false, paths, reason }) })
+  const zh = await runCommand('/undo', baseCtx({ permission: permission('no session changes to undo') }))
+  assert.match(zh.error, /没有可撤销的会话改动/)
+  assert.doesNotMatch(zh.error, /no session changes/)
+  const en = await runCommand(
+    '/undo',
+    baseCtx({ lang: 'en', permission: permission('no session changes to undo') })
+  )
+  assert.match(en.error, /Nothing to undo/)
+  const single = await runCommand(
+    '/undo note.txt',
+    baseCtx({ permission: permission('no session change to undo for note.txt') })
+  )
+  assert.match(single.error, /该文件本会话没有可撤销的改动：note\.txt/)
+  assert.doesNotMatch(single.error, /^no session change/)
+  // 未知原因原样透出，不吞真实错误。
+  const unknown = await runCommand('/undo', baseCtx({ permission: permission('disk read failed') }))
+  assert.equal(unknown.error, 'disk read failed')
+})
+
 test('0.5.4 /resume 无参数交互打开面板；/continue 无会话报错', async () => {
   assert.equal((await runCommand('/resume', baseCtx())).openResume, true)
   const out = await runCommand('/continue', baseCtx({ sessions: { list: () => [] } }))
@@ -86,7 +107,10 @@ test('0.5.4 /help 列出已加载自定义技能命令', async () => {
   const prev = process.cwd()
   try {
     mkdirSync(join(dir, '.budingx', 'skills', 'demo'), { recursive: true })
-    writeFileSync(join(dir, '.budingx', 'skills', 'demo', 'SKILL.md'), 'name: demo\ndescription: 演示技能\n')
+    writeFileSync(
+      join(dir, '.budingx', 'skills', 'demo', 'SKILL.md'),
+      'name: demo\ndescription: 演示技能\n\n演示技能正文。\n'
+    )
     process.chdir(dir)
     const out = await runCommand('/help', baseCtx())
     assert.match(out.message, /\/demo/)

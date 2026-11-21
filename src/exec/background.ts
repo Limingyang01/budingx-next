@@ -73,6 +73,8 @@ export function createBackgroundTable(options: BackgroundTableOptions): Backgrou
     const endedAt = record.finishedAt ?? Date.now()
     return {
       outcome: record.task.state,
+      command: record.task.command,
+      startedAt: record.task.startedAt,
       exitCode: record.task.exitCode,
       stdout: formatStream(stdoutSnap),
       stderr: formatStream(stderrSnap),

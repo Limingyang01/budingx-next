@@ -4,6 +4,8 @@ import stringWidth from 'string-width'
 import type { SessionEvent } from '../../core/events.js'
 import type { Frame, PlanCard, TodoCard } from './types.js'
 import { initialFrame } from './types.js'
+import { restoredTranscriptEntries } from './restored-transcript.js'
+import { toolArgument } from './tool-summary.js'
 
 export type RenderOptions = {
   width: number
@@ -96,6 +98,17 @@ export function reduceFrame(
         denials: frame.denials,
         transcript: event.entries.map((entry) => ({ kind: entry.kind, text: entry.text }))
       }
+    case 'conversation_restored': {
+      // SP006：/resume 恢复出的历史重建转录（与 /rewind 同构）。
+      // 历史此前只进入模型上下文，界面上一片空白，用户看不到恢复了什么。
+      return {
+        ...initialFrame(frame.permissionMode),
+        queue: frame.queue,
+        changes: frame.changes,
+        denials: frame.denials,
+        transcript: restoredTranscriptEntries(event.messages)
+      }
+    }
     case 'conversation_cleared':
       // Mode, change set and denials survive a conversation clear; the
       // checkpoint store keeps offering /undo for files we already wrote.
@@ -431,22 +444,4 @@ function todosFromPlan(plan: PlanCard, previous: TodoCard | undefined): TodoCard
     updatedAt: plan.updatedAt,
     completedAt
   }
-}
-
-function toolArgument(input: unknown): string {
-  if (input && typeof input === 'object') {
-    const values = input as Record<string, unknown>
-    const target = [values.path, values.pattern, values.query, values.url].find(
-      (value): value is string => typeof value === 'string' && value.length > 0
-    )
-    return summarizeInput(target ?? (Object.keys(values).length ? input : undefined))
-  }
-  return summarizeInput(input)
-}
-
-function summarizeInput(input: unknown): string {
-  if (input === undefined || input === null) return ''
-  const text = typeof input === 'string' ? input : JSON.stringify(input)
-  if (!text) return ''
-  return text.length > 60 ? text.slice(0, 59) + '…' : text
 }

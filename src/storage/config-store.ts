@@ -19,11 +19,23 @@ export type ModelProfile = {
   [key: string]: unknown
 }
 
+/** External status line command (SP006 design §4.4/§4.5). */
+export type StatusLineConfig = {
+  type: 'command'
+  command: string
+  args?: string[]
+  padding?: number
+  /** Milliseconds before the command is killed; defaults to 5000. */
+  timeoutMs?: number
+}
+
 export type ConfigFile = {
   version: number
   /** null opts out of startup selection. Older files can omit this field. */
   defaultModelId?: string | null
   models: ModelProfile[]
+  /** Optional external status line command; absent means built-in footer only. */
+  statusLine?: StatusLineConfig
   [key: string]: unknown
 }
 

@@ -26,6 +26,31 @@ export function permissionModePath(home?: string): string {
   return join(dataRoot(home), 'permission-mode.json')
 }
 
+/** Keybinding overrides (SP006 design §4.5). */
+export function keybindingsPath(home?: string): string {
+  return join(dataRoot(home), 'keybindings.json')
+}
+
+/** Hook configuration (SP006 design §4.5). */
+export function hooksPath(home?: string): string {
+  return join(dataRoot(home), 'hooks.json')
+}
+
+/** MCP server configuration (SP006 design §4.5). */
+export function mcpPath(home?: string): string {
+  return join(dataRoot(home), 'mcp.json')
+}
+
+/** 会话导出目录（SP006 CMD-11）。 */
+export function exportsDir(home?: string): string {
+  return join(dataRoot(home), 'exports')
+}
+
+/** 后台任务日志目录（SP006 CMD-08）。 */
+export function tasksDir(home?: string): string {
+  return join(dataRoot(home), 'tasks')
+}
+
 export function backupPath(file: string): string {
   return `${file}.bak`
 }

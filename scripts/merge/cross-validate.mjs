@@ -37,14 +37,47 @@ export function scanOutgoingPaths(files) {
  * Audit an iteration test report: no FAIL rows may survive; UNVERIFIED rows
  * are allowed only while a recovery-conditions section exists.
  */
+/**
+ * A summary row such as `| FAIL | **0** |` states the failure count, not a failure.
+ * Only rows whose FAIL cell carries a non-zero count (or no count at all, e.g.
+ * `| AC-01 | x | FAIL |`) denote an actual failure and must block the gate.
+ */
+function isFailureRow(line) {
+  const cells = line
+    .split('|')
+    .map((part) => part.trim())
+  const failIndex = cells.findIndex((part) => /^FAIL\b/i.test(part))
+  if (failIndex === -1) {
+    if (!/^FAIL\b/i.test(line.trim())) return false
+    const bare = line.trim().replace(/^FAIL\b\s*[:：]?\s*/i, '')
+    const bareNumber = /^(\d+)/.exec(bare)
+    if (bareNumber) return Number(bareNumber[1]) !== 0
+    return true
+  }
+  // `| FAIL | 0 |`: the FAIL cell is a label and the next cell carries the count.
+  let raw = cells[failIndex].replace(/^FAIL\b\s*[:：]?\s*/i, '')
+  if (raw === '' && failIndex + 1 < cells.length) raw = cells[failIndex + 1]
+  const normalized = raw.replace(/[*`]/g, '').trim()
+  if (normalized === '' || normalized === '-') return true
+  // `0` / `**0**` / `0（说明）` are zero-count statements, not failures.
+  if (/^0+$/.test(normalized)) return false
+  if (/^0+(\s*[（(].*)?$/.test(normalized)) return false
+  // `行 0` / `0 条` style prose counts: the first number decides.
+  const counted = /^(?:行|条|项|个)?\s*(\d+)/.exec(normalized)
+  if (counted) return Number(counted[1]) !== 0
+  // A cell that merely mentions FAIL next to an explicit zero count
+  // (e.g. `FAIL 行 0；UNVERIFIED 行 3`) states no failure.
+  const anywhereZero = /(?:^|[；;，,、\s])(?:行|条|项|个)?\s*0\s*(?:行|条|项|个)?/.exec(normalized)
+  if (anywhereZero) return false
+  return true
+}
+
 export function auditReport(text) {
   const lines = text.split('\n')
   const isHeaderOrRule = (line) =>
     /AC 数/.test(line) || /^\s*\|[\s:|-]+\|\s*$/.test(line)
   const fails = lines.filter(
-    (line) =>
-      !isHeaderOrRule(line) &&
-      (/\|\s*FAIL\b/.test(line) || /^FAIL\b/.test(line))
+    (line) => !isHeaderOrRule(line) && isFailureRow(line)
   )
   const unverified = lines.filter((line) => /UNVERIFIED/.test(line)).length
   const hasRecovery = /恢复条件/.test(text)
