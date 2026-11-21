@@ -329,23 +329,25 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 
 | 项 | 值 |
 | --- | --- |
-| 报告路径 | `artifacts/merge-gate/feature-SP006-tui-parity-and-extensions-2026-11-21T00-14-15-043Z.md`（json 同名，gitignored） |
+| 报告路径 | `artifacts/merge-gate/feature-SP006-tui-parity-and-extensions-2026-11-21T00-23-20-601Z.md`（json 同名，gitignored） |
 | 结论 | **GREEN（允许合入）** |
 | merge-base | `dc94731ac5f3bda0b5633204d3b8815d42f3d849` |
-| 被合入 HEAD | `9fd2b44067d4a6424965d90c825bfa0f315bfc11` |
-| outgoing | 17 commits / 97 files |
+| 被合入 HEAD | `3e1032157977a6f6d8750b6010e590abdb8c46a8` |
+| outgoing | 19 commits / 97 files |
 | `npm test` | exit 0 |
 | `npm run spec:check` | exit 0 |
 | `npm run skills:check` | exit 0 |
 | `node scripts/release/pack-smoke.mjs` | exit 0 |
 | 禁带路径违规 | 无 |
-| 报告审计 | 失败行 0；未验证行 3（§9.4，已具恢复条件节） |
+| 报告审计 | 失败行 0；未验证行 7（§9.4，已具恢复条件节） |
 
 门禁首轮为 RED，处置过程如实记录：
 
 1. 首轮 RED —— 报告审计把汇总表数据行 `| FAIL | **0** |` 判为失败行（`scripts/merge/cross-validate.mjs` 的 `auditReport` 原只豁免含「AC 数」的表头与分隔行）。这是**门禁脚本自身的误判**，不是产品缺陷：SP001 报告使用同样的 `| FAIL | 0 |` 汇总写法却从未被判失败。修复：新增 `isFailureRow`，FAIL 单元格为零计数时不算失败行，无计数或非零计数仍然阻断；补 2 条回归用例（`scripts/merge/cross-validate.test.mjs`，共 7 例全通过）。提交 `fdcf531`。未降阈值、未删断言。
 2. 次轮 RED —— 报告审计报「UNVERIFIED 3 行但无恢复条件节」。这是**报告确有缺口**：§9.4 记录了打断后同会话新提示词观察不到新回合这一项，却没写恢复条件。补齐 §9.4 的最小复现链路、两种结论分支的处理动作与回归要求，并说明未验证期间不阻断的依据。提交 `9fd2b44`。
-3. 第三轮 GREEN —— 报告 `feature-SP006-tui-parity-and-extensions-2026-11-21T00-14-15-043Z.md`。
+3. 第三轮 RED —— 报告审计把自审记录新增的行 `| 报告审计 | FAIL 行 0；UNVERIFIED 行 3 |` 判为失败行（同一「FAIL 标签 + 计数」形态）。审计实现改为按**单元格**判定：`const failIndex = cells.findIndex((part) => /^FAIL\b/i.test(part))`；FAIL 单元格为纯标签时取下一格作计数；零计数形态（`0`/`**0**`/`0（说明）`/`行 0`/`0 条`）一律不算失败，无计数或非零计数仍阻断；补 3 条回归用例（`scripts/merge/cross-validate.test.mjs`，共 8 例全通过），并把报告中的表述改为「失败行 0；未验证行 3」避免标签撞词。提交 `8f673d2`。
+4. 第四轮 RED —— `npm test` 的 skills 完整性用例失败：自审记录 §10.1 引用的 `../docs/integration-gate.md` 与 `../skills/buding-merge/SKILL.md` 从 `SP/SP006/` 出发层级错误，解析不到目标文件。修正为 `../../docs/integration-gate.md` 与 `../../skills/buding-merge/SKILL.md`，并对 `docs/` 与 `SP/` 全量 Markdown 复扫，相对链接失效数为 0。提交 `3e10321`。
+5. 第五轮 GREEN —— 报告 `feature-SP006-tui-parity-and-extensions-2026-11-21T00-23-20-601Z.md`（19 commits / 97 files，四项检查退出码均 0，禁带路径违规 0，报告审计失败行 0）。
 
 ### 10.2 AC 逐条结论
 
@@ -394,6 +396,6 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 
 ## 8. 交付边界
 
-- 分支：`feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；提交 `cedf2a3`（A）、`031b99b`（B）、`4b78cdb`（C+B3）、`06d7b2a`（D）、`f0b11eb`（命令卡片完成态隐藏与单行修复）、`47c5cb6`（台账源码 SHA 同步）、`1ef588a`（`/resume` 历史可见性与身份切换）、`55ea677`（`/resume` 历史碎片合并与输入框建议改模型生成）、`9e3e88f`（建议清洗按真实模型输出校正、退化终端多行命令输出）、`1877af6`（波次 H 文档收口）、`a869cd1`（`/undo` 文案本地化）、`9dbb6d7`（波次 I 证据与文档数字收口）。
-- **未合入 master**（用户 m02328、m03678 明确「先不要合入master分支」）；已按用户 m02328 授权推送远端分支 `origin/feature/SP006/tui-parity-and-extensions`（代码提交至 `a869cd1`，文档与台账同步提交随后推送），master 未改动。
-- 版本 0.6.0 仅 `prepared`；未打 tag、未 npm 发布、未改远端设置。
+- 分支：`feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；提交 `cedf2a3`（A）、`031b99b`（B）、`4b78cdb`（C+B3）、`06d7b2a`（D）、`f0b11eb`（命令卡片完成态隐藏与单行修复）、`47c5cb6`（台账源码 SHA 同步）、`1ef588a`（`/resume` 历史可见性与身份切换）、`55ea677`（`/resume` 历史碎片合并与输入框建议改模型生成）、`9e3e88f`（建议清洗按真实模型输出校正、退化终端多行命令输出）、`1877af6`（波次 H 文档收口）、`a869cd1`（`/undo` 文案本地化）、`9dbb6d7`（波次 I 证据与文档数字收口）、`e1393ca`（最终 SHA 回填）、`8f673d2`（合入自审记录与门禁审计加固）、`3e10321`（自审记录相对链接修正）。
+- **已合入 master**：2026-11-21 按用户 m04845 授权「合入master分支并且推送远端，做好发布前的准备工作」，在交叉验证门禁 GREEN 后以 `--no-ff` 合并，合并提交 `601ac7e`；功能分支保留不删。
+- 版本 0.6.0 仅 `prepared`；未打 tag、未 npm 发布、未改远端设置；npm 发布由用户在 GitHub 手动触发。

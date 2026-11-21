@@ -10,7 +10,7 @@
 | 设计版本 | v1.1（SELF_REVIEWED，design/design.zh.md） |
 | 实施计划版本 | v1.0（APPROVED，design/plan.zh.md） |
 | 生命周期 | ACTIVE |
-| 阶段 | 实施完成：波次 A–D（T-A1…T-D3）+ 用户检查反馈修复（命令卡片、`/resume` 历史可见性）+ 真实模型端到端修复与全命令面端到端扩展（波次 E–I），等待用户验收合入 |
+| 阶段 | 已交付并合入 master：波次 A–D（T-A1…T-D3）+ 用户检查反馈修复（命令卡片、`/resume` 历史可见性）+ 真实模型端到端修复与全命令面端到端扩展（波次 E–I）+ 合入自审与门禁审计加固（波次 J），合并提交 `601ac7e` |
 | 功能分支 | feature/SP006/tui-parity-and-extensions |
 | 基线 | master dc94731（登记 0.5.4 发布回执并同步文档至 latest） |
 | 需求文档 | SP/SP006/tui-parity-and-extensions/requirements.md |
@@ -18,7 +18,7 @@
 | 实施计划 | SP/SP006/tui-parity-and-extensions/design/plan.zh.md |
 | 验收报告 | SP/SP006/test-report.md（执行完成） |
 | AC 总数 | 69（TU-15 / PI-05 / SM-09 / HK-08 / WR-05 / HC-07 / NP-05 / CMD-12 / AST-03） |
-| Git 范围 | 本轮只在功能分支提交；**不合入 master**（用户 m00001、m02328）；远端推送按用户 m02328 授权执行 |
+| Git 范围 | 功能分支 `feature/SP006/tui-parity-and-extensions`（基线 `dc94731`）→ master，2026-11-21 以 `--no-ff` 合入（合并提交 `601ac7e`）；合入授权来自用户 m04845「合入master分支并且推送远端」 |
 
 ## 授权与来源
 
@@ -48,7 +48,7 @@
 
 | 编号 | 决定 | because |
 | --- | --- | --- |
-| D-01 | 本轮**不合入 master、不推送远端** | 用户 m00001 明确「先不要直接合入master分支，我检查后再合入」；该条优先于 2026-11-17 的自动合入委托 |
+| D-01 | 本轮**不合入 master、不推送远端** | 用户 m00001 明确「先不要直接合入master分支，我检查后再合入」；该条优先于 2026-11-17 的自动合入委托（后由 m04845 放开，见 D-21） |
 | D-02 | 复刻按 SP001 决定 3「读机制、不抄代码」执行，全部改动文件纳入 AST 复核映射 | 用户 m00001「不要直接复制代码，注意 AST 检测机制」；scripts/review/sp004-ast.mjs 已有可复用的检测口径与阈值 |
 | D-03 | 权限仍为三档，参考仓七档只作安全底线语义来源 | USER_CONFIRMED（r6） |
 | D-04 | 渲染改造先做**可断言的差分与冻结缓存单元**，再接入 Ink 渲染层 | 风险 R-S2：帧缓冲差分与 Ink 重绘模型冲突，全屏重写超出本轮预算 |
@@ -63,6 +63,7 @@
 | D-13 | `/init` 已存在则拒绝；`/btw` 空参数只提示用法；`/mcp` `/skills` 非交互降级为文本 | CMD-05/06/09/10 的可判定降级 |
 | D-14 | `src/core/exec.ts` 的 `CommandResult` 增加 `command?`/`startedAt?`，后台快照回填 | /tasks 需要稳定的命令标识与启动时间 |
 | D-15 | 用户 m02328 授权「修复后提交并推送远端，先不要合入master分支」：推送放开、合入仍禁止 | 用户 m02328 明确「提交并且推送远端，先不要合入master分支」；覆盖 D-01 中「不推送」部分 |
+| D-21 | 用户 m04845 授权「合入master分支并且推送远端，做好发布前的准备工作」：合入与推送放开，npm 实际上传仍由用户在 GitHub 手动触发 | 用户 m04845 明确授权；发布前准备（版本/文档/台账/dry-run）在委托内，实际 npm 发布与打 tag 不在 |
 | D-16 | `/resume` 历史可见性走会话事件通路（新增 `conversation_restored` 事件 + 渲染层重建转录），并按参考实现的 `switchSession` 语义切换会话身份与转录端口 | 渲染层契约规定不直接读会话；参考实现 `REPL.tsx` 的 resume 回调除写回消息列表外还切换会话 id 与转录文件指针，只做可见性会让续写落回旧会话 |
 
 ## 未验证项与恢复条件
@@ -87,6 +88,6 @@
 
 ## 下一步
 
-1. 功能分支已按用户 m02328、m03678 授权推送远端（`origin/feature/SP006/tui-parity-and-extensions`，代码提交至 `9e3e88f`，文档与台账同步提交随后推送）；等用户检查功能分支、测试报告与 0.6.0 制品，本轮**不合入 master**。
-2. 用户确认后再按 buding-merge 门禁合入、推送并按发布流程上传 0.6.0。
+1. 功能分支已按用户 m02328、m03678 授权推送远端（`origin/feature/SP006/tui-parity-and-extensions`）；2026-11-21 按用户 m04845 授权，经交叉验证门禁 GREEN（报告 `artifacts/merge-gate/feature-SP006-tui-parity-and-extensions-2026-11-21T00-23-20-601Z.md`）后以 `--no-ff` 合入 master（合并提交 `601ac7e`）。
+2. 推送 `origin/master` 后，npm 0.6.0 由维护者在 GitHub 手动触发发布工作流，回执按 buding-npm-release 收尾。
 3. 合入前若继续改代码，需重跑全量单测、制品 smoke 与 AST 复核。

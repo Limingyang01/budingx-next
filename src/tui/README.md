@@ -1,6 +1,6 @@
 # budingx
 
-An independent **MIT** terminal agent for OpenAI-compatible APIs. Source version 0.5.3 updates the workspace tools, question and plan approvals, and adds an optional Tavily web search tool. It includes session transcripts and recovery, context compaction, project and session memory, approval previews, and session undo.
+An independent **MIT** terminal agent for OpenAI-compatible APIs. Source version 0.6.0 (SP006) adds the four-zone terminal layout with frame-diff rendering, a keybinding system, a configurable status line, project instructions, skill discovery, MCP tools, controlled hooks, web fetch, and a headless CLI (text/json/stream-json), plus a command registry with `/init`, `/btw`, `/worktree`, `/tasks`, `/mcp`, `/skills` and `/export`. It keeps session transcripts and recovery, context compaction, project and session memory, approval previews, and session undo.
 
 ## Install
 

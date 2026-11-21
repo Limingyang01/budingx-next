@@ -4,7 +4,7 @@
 
 ## 当前发布状态（2026-11-20）
 
-**0.5.3 已发布，npm `latest` 指向 0.5.3；候选 0.5.4（联网搜索审批修复）已准备，待维护者触发发布。** [GitHub Actions #23](https://github.com/Limingyang01/budingx-next/actions/runs/44682798887) 使用源码 `16f5e0c`，Ubuntu、Windows 和 OIDC 发布均通过。官方制品完整性、独立安装、本地 HTTP 流式冒烟、签名和 provenance 已核验。详见 [0.5.3 发行说明](../release-notes/v0.5.3.md)。
+**0.5.4 已发布，npm `latest` 指向 0.5.4；候选 0.6.0（SP006 TUI 对齐与扩展）已合入 master 并处于 prepared，待维护者触发发布。** [GitHub Actions #23](https://github.com/Limingyang01/budingx-next/actions/runs/44682798887) 使用源码 `16f5e0c`，Ubuntu、Windows 和 OIDC 发布均通过。官方制品完整性、独立安装、本地 HTTP 流式冒烟、签名和 provenance 已核验。详见 [0.5.3 发行说明](../release-notes/v0.5.3.md)。
 
 **0.4.0 已发布**，当时 npm `latest` 指向 0.4.0。[GitHub Actions #18](https://github.com/Limingyang01/budingx-next/actions/runs/44504716724) 使用源码 `82af4ab`，Windows、Linux 和 OIDC 发布均通过。官方源独立安装、本地 HTTP 流式测试、签名与来源证明均已核对。详见 [0.4.0 发行说明](../release-notes/v0.4.0.md)。
 
@@ -39,7 +39,7 @@ SP002 的 **0.2.0 已发布**，当时 npm latest=0.2.0，台账为 published。
 
 ## 从构建到发布：每轮操作清单
 
-本节适用于新版本交付，不需要重复配置已建立的账号信任。Agent 使用 [buding-npm-release](../skills/buding-npm-release/SKILL.md)，版本规则见 [版本规范](versioning.md)。执行目录是本仓根目录。0.5.3 的发布回执已登记，后续按实际修复或新 SP 准备下一版。
+本节适用于新版本交付，不需要重复配置已建立的账号信任。Agent 使用 [buding-npm-release](../skills/buding-npm-release/SKILL.md)，版本规则见 [版本规范](versioning.md)。执行目录是本仓根目录。0.5.4 的发布回执已登记，0.6.0（SP006）已合入 master 且处于 prepared，后续按实际修复或新 SP 准备下一版。
 
 ### 1. 准备版本与发行说明
 
