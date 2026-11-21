@@ -1,6 +1,6 @@
 # SP006 · TUI 还原度与扩展能力
 
-状态：**DELIVERED AND MERGED（实施、测试与文档完成；2026-11-21 经交叉验证门禁 GREEN 后合入 master）**｜功能分支 `feature/SP006/tui-parity-and-extensions`｜基线 master `dc94731`｜合并提交 `601ac7e`｜版本 0.6.0 已制备（`prepared`，未发布，等待维护者触发 npm 发布）｜验收报告 [SP006/test-report.md](test-report.md)
+状态：**DELIVERED AND MERGED（实施、测试与文档完成；2026-11-21 经交叉验证门禁 GREEN 后合入 master）**｜功能分支 `feature/SP006/tui-parity-and-extensions`｜基线 master `dc94731`｜合并提交 `601ac7e`｜版本 0.6.0 已发布（npm `latest`，2026-11-21，发布运行 #26，源码 `4a63ead`）｜验收报告 [SP006/test-report.md](test-report.md)
 
 ## 本轮目标与边界
 
@@ -15,15 +15,15 @@
 
 | 功能/优化目录 | 来源 / 身份 | 验收目标 | 责任范围 | 阶段 | 需求 / 设计 / 计划 / STATUS | 验证 | 集成状态 | 下一步 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `tui-usability` · TU-01…TU-15 | 路线图 P0；AC MODEL_PROPOSED | 四区、resize、冻结、帧差分、键位上下文/chord/保留键/用户覆盖、状态栏字段与外部命令、CJK、多行、快捷键、无头事件与退出码 | `src/tui/render/{layout,frame-buffer,freeze-cache,statusline}.ts`、`src/tui/keybindings/*`、`strategy`、`app.tsx`、`headless.ts` | 需求/设计/计划 v1.1 · 实施 T-A1…T-A7 完成 | [需求](tui-parity-and-extensions/requirements.md) ／ [设计 v1.4](tui-parity-and-extensions/design/design.zh.md) ／ [计划 v1.3](tui-parity-and-extensions/design/plan.zh.md) ／ [STATUS](tui-parity-and-extensions/STATUS.md) | TU-01…TU-15 全部 PASS（含 UI 帧级缓存命中计数） | 已合入 master（`601ac7e`） | 0.6.0 发布由维护者触发 |
-| 同上 · PI-01…PI-05 | 路线图；AC MODEL_PROPOSED | 用户级/祖先/工作区/子目录分层发现、64/128 KiB 截断标注、工作区隔离、不读 `~/.claude` | 新增 `src/tui/project-instructions.ts`；`src/core/session.ts` 系统上下文端口 | 实施 T-C1 完成 | 同上 | 9 例 PASS（含真实请求体） | 已合入 master（`601ac7e`） | 0.6.0 发布由维护者触发 |
-| 同上 · SM-01…SM-09 | 路线图；AC MODEL_PROPOSED | 技能两源发现/项目覆盖/正文注入/无效跳过；stdio MCP 握手、工具注册、调用、审批、崩溃降级、密钥引用 | 新增 `src/tui/skills.ts`、`src/tui/mcp/{types,client,index}.ts` | 实施 T-C2/T-C3 完成 | 同上 | 7 + 8 例 PASS（含假 MCP 子进程与真实审批） | 已合入 master（`601ac7e`） | 0.6.0 发布由维护者触发 |
-| 同上 · HK-01…HK-08 | 路线图；AC MODEL_PROPOSED | 八事件、command/prompt、continue/block/suppress/systemMessage、PreToolUse allow/deny/ask、退出码 2、超时降级、禁用、损坏备份 | 新增 `src/core/hooks.ts`、`src/tui/hooks/{types,config,runner,index}.ts`；Session 接线 | 实施 T-C4 完成 | 同上 | 8 例 PASS（含真实回合事件顺序） | 已合入 master（`601ac7e`） | 0.6.0 发布由维护者触发 |
-| 同上 · WR-01…WR-05 | 路线图；AC MODEL_PROPOSED | HTML 正文提取、内网默认拒绝、审批、512 KiB 截断、超时/非 2xx/无效 URL 错误码、重定向上限 | 新增 `src/provider/web-fetch.ts`；runtime 工具表 | 实施 T-C5 完成 | 同上 | 7 例 PASS（含真实 HTTP 子进程） | 已合入 master（`601ac7e`） | 0.6.0 发布由维护者触发 |
-| 同上 · HC-01…HC-07 | 路线图；AC MODEL_PROPOSED | text/json/stream-json、事件顺序与字段、失败退出码 1、用法错误 2、非 TTY、不写用户数据 | `src/tui/headless.ts`、`cli.ts` | 实施 T-A7 完成 | 同上 | 5 例 PASS（真实子进程） | 已合入 master（`601ac7e`） | 0.6.0 发布由维护者触发 |
-| 同上 · NP-01…NP-05 | 路线图；AC MODEL_PROPOSED | tarball 白名单、仓库外隔离安装、真实流式任务、publish dry-run、台账字段 | `scripts/release/sp006-packaging.mjs`、`release-ledger.json`、`sp006-release-ledger.test.mjs` | 实施 T-D1 完成 | 同上 | 脚本 exit 0，6 项 PASS；台账 3 例 PASS | 仅功能分支 | 用户检查后发布 |
-| 同上 · CMD-01…CMD-12 | `docs/tui-command-roadmap.md`；AC MODEL_PROPOSED | 三型注册表、模态槽、prompt 进度、七条新命令、22 条既有命令回归 | `src/tui/commands/{types,registry,util,builtin-*,index}.ts`、`commands.ts`、`app.tsx` | 实施 T-B1…T-B3 完成 | 同上 | 注册表 7 例 + 命令 10 例 + UI 2 例 PASS | 已合入 master（`601ac7e`） | 0.6.0 发布由维护者触发 |
-| 同上 · AST-01…AST-03 | 用户指令 m00001；AC MODEL_PROPOSED | 改动文件全映射、命中全处置、自检全 PASS | `scripts/review/sp004-ast.mjs` | 实施 T-D2 完成 | 同上 | 53/53 映射，命中 0，自检 3/3 PASS | 已合入 master（`601ac7e`） | 0.6.0 发布由维护者触发 |
+| `tui-usability` · TU-01…TU-15 | 路线图 P0；AC MODEL_PROPOSED | 四区、resize、冻结、帧差分、键位上下文/chord/保留键/用户覆盖、状态栏字段与外部命令、CJK、多行、快捷键、无头事件与退出码 | `src/tui/render/{layout,frame-buffer,freeze-cache,statusline}.ts`、`src/tui/keybindings/*`、`strategy`、`app.tsx`、`headless.ts` | 需求/设计/计划 v1.1 · 实施 T-A1…T-A7 完成 | [需求](tui-parity-and-extensions/requirements.md) ／ [设计 v1.4](tui-parity-and-extensions/design/design.zh.md) ／ [计划 v1.3](tui-parity-and-extensions/design/plan.zh.md) ／ [STATUS](tui-parity-and-extensions/STATUS.md) | TU-01…TU-15 全部 PASS（含 UI 帧级缓存命中计数） | 已合入 master（`601ac7e`） | 0.6.0 已发布（运行 #26） |
+| 同上 · PI-01…PI-05 | 路线图；AC MODEL_PROPOSED | 用户级/祖先/工作区/子目录分层发现、64/128 KiB 截断标注、工作区隔离、不读 `~/.claude` | 新增 `src/tui/project-instructions.ts`；`src/core/session.ts` 系统上下文端口 | 实施 T-C1 完成 | 同上 | 9 例 PASS（含真实请求体） | 已合入 master（`601ac7e`） | 0.6.0 已发布（运行 #26） |
+| 同上 · SM-01…SM-09 | 路线图；AC MODEL_PROPOSED | 技能两源发现/项目覆盖/正文注入/无效跳过；stdio MCP 握手、工具注册、调用、审批、崩溃降级、密钥引用 | 新增 `src/tui/skills.ts`、`src/tui/mcp/{types,client,index}.ts` | 实施 T-C2/T-C3 完成 | 同上 | 7 + 8 例 PASS（含假 MCP 子进程与真实审批） | 已合入 master（`601ac7e`） | 0.6.0 已发布（运行 #26） |
+| 同上 · HK-01…HK-08 | 路线图；AC MODEL_PROPOSED | 八事件、command/prompt、continue/block/suppress/systemMessage、PreToolUse allow/deny/ask、退出码 2、超时降级、禁用、损坏备份 | 新增 `src/core/hooks.ts`、`src/tui/hooks/{types,config,runner,index}.ts`；Session 接线 | 实施 T-C4 完成 | 同上 | 8 例 PASS（含真实回合事件顺序） | 已合入 master（`601ac7e`） | 0.6.0 已发布（运行 #26） |
+| 同上 · WR-01…WR-05 | 路线图；AC MODEL_PROPOSED | HTML 正文提取、内网默认拒绝、审批、512 KiB 截断、超时/非 2xx/无效 URL 错误码、重定向上限 | 新增 `src/provider/web-fetch.ts`；runtime 工具表 | 实施 T-C5 完成 | 同上 | 7 例 PASS（含真实 HTTP 子进程） | 已合入 master（`601ac7e`） | 0.6.0 已发布（运行 #26） |
+| 同上 · HC-01…HC-07 | 路线图；AC MODEL_PROPOSED | text/json/stream-json、事件顺序与字段、失败退出码 1、用法错误 2、非 TTY、不写用户数据 | `src/tui/headless.ts`、`cli.ts` | 实施 T-A7 完成 | 同上 | 5 例 PASS（真实子进程） | 已合入 master（`601ac7e`） | 0.6.0 已发布（运行 #26） |
+| 同上 · NP-01…NP-05 | 路线图；AC MODEL_PROPOSED | tarball 白名单、仓库外隔离安装、真实流式任务、publish dry-run、台账字段 | `scripts/release/sp006-packaging.mjs`、`release-ledger.json`、`sp006-release-ledger.test.mjs` | 实施 T-D1 完成 | 同上 | 脚本 exit 0，6 项 PASS；台账 3 例 PASS | 已合入 master 并随 0.6.0 发布 | 已发布 |
+| 同上 · CMD-01…CMD-12 | `docs/tui-command-roadmap.md`；AC MODEL_PROPOSED | 三型注册表、模态槽、prompt 进度、七条新命令、22 条既有命令回归 | `src/tui/commands/{types,registry,util,builtin-*,index}.ts`、`commands.ts`、`app.tsx` | 实施 T-B1…T-B3 完成 | 同上 | 注册表 7 例 + 命令 10 例 + UI 2 例 PASS | 已合入 master（`601ac7e`） | 0.6.0 已发布（运行 #26） |
+| 同上 · AST-01…AST-03 | 用户指令 m00001；AC MODEL_PROPOSED | 改动文件全映射、命中全处置、自检全 PASS | `scripts/review/sp004-ast.mjs` | 实施 T-D2 完成 | 同上 | 53/53 映射，命中 0，自检 3/3 PASS | 已合入 master（`601ac7e`） | 0.6.0 已发布（运行 #26） |
 
 ## 验收与交接
 

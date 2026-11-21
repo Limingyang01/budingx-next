@@ -1,5 +1,5 @@
 // SP006 §12：制品验收（NP-01…NP-05）。
-// 打包 → 白名单 → 仓库外隔离安装 → --version → 无头 stream-json 真跑 → 台账 prepared 校验。
+// 打包 → 白名单 → 仓库外隔离安装 → --version → 无头 stream-json 真跑 → 台账状态校验。
 // 不发布、不写 registry、不触碰用户数据。
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
@@ -53,11 +53,18 @@ function runNode(args, options = {}) {
 }
 
 async function main() {
-  const prepared = ledger.releases.filter((entry) => entry.version === packageJson.version)
-  assert.equal(prepared.length, 1, '当前版本必须恰好一条台账记录')
-  assert.equal(prepared[0].status, 'prepared')
-  assert.equal(prepared[0].iteration, 'SP006')
-  console.log('ledger: PASS', packageJson.version, prepared[0].iteration, prepared[0].status)
+  const entries = ledger.releases.filter((entry) => entry.version === packageJson.version)
+  assert.equal(entries.length, 1, '当前版本必须恰好一条台账记录')
+  assert.ok(
+    ['prepared', 'published'].includes(entries[0].status),
+    '当前版本台账状态必须是 prepared 或 published'
+  )
+  assert.equal(entries[0].iteration, 'SP006')
+  if (entries[0].status === 'published') {
+    assert.match(entries[0].integrity, /^sha512-/, '已发布记录必须有 registry integrity')
+    assert.match(entries[0].sourceCommit, /^[0-9a-f]{40}$/, '已发布记录必须有源码 SHA')
+  }
+  console.log('ledger: PASS', packageJson.version, entries[0].iteration, entries[0].status)
 
   const notes = readFileSync(join(root, 'release-notes', 'v' + packageJson.version + '.md'), 'utf8')
   assert.doesNotMatch(notes, /replace this draft/, '发布说明仍是模板草稿')

@@ -1,8 +1,8 @@
 # budingx 产品说明书
 
-> **npm 已发布版本**：0.5.4（`latest`）。详见 [0.5.4 发行说明](release-notes/v0.5.4.md)。
+> **npm 已发布版本**：0.6.0（`latest`）。详见 [0.6.0 发行说明](release-notes/v0.6.0.md)。
 >
-> **仓库已制备版本**：0.6.0（SP006，已合入 master，等待维护者触发 npm 发布）。详见 [0.6.0 发行说明](release-notes/v0.6.0.md)。
+> **下一版本**：暂无已制备版本。
 > **说明书版本**：v1.22
 > **更新日期**：2026-11-21
 > **产品形态**：独立 MIT 许可的终端 Coding Agent（Node.js ≥ 22.18 + TypeScript，不依赖 Bun）
@@ -39,7 +39,7 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | SP003       | 0.3.2 | model-manager | 供应商配置一次、多模型共用；MiniMax 中国站与百炼 Token Plan 模板；全屏会话与终端标签状态 | 已发布 |
 | SP003       | 0.3.1 | model-manager | 模型档案面板、供应商模板、自动拉取模型 ID、连接验证 | 已发布 |
 | SP003       | 0.3.0         | workspace-tools、change-preview、permission-controls、file-context         | 工作区文件工具（读取/写入/精确编辑/文件匹配/内容检索，含越界防护与读后编辑门）、结构化 diff 预览与本会话改动撤销、三档权限模式与审批三档、权限规则与拒绝记录、`@` 引用与统一补全 | **已发布** |
-| SP006       | 0.6.0（制备） | tui-parity-and-extensions | 四区骨架与布局计划、转录冻结缓存、键位系统（chord/保留键/用户覆盖）、状态栏内置与外部命令、项目指令加载、技能发现、MCP 客户端、hooks 八事件、WebFetch 工具、无头 CLI（text/json/stream-json）、命令注册表三型与 7 条新命令 | **已实现、通过回归并合入 master（`601ac7e`），等待维护者触发 npm 发布 0.6.0** |
+| SP006       | 0.6.0（已发布） | tui-parity-and-extensions | 四区骨架与布局计划、转录冻结缓存、键位系统（chord/保留键/用户覆盖）、状态栏内置与外部命令、项目指令加载、技能发现、MCP 客户端、hooks 八事件、WebFetch 工具、无头 CLI（text/json/stream-json）、命令注册表三型与 7 条新命令 | **已实现、通过回归并合入 master（`601ac7e`），并已发布 npm 0.6.0（运行 #26，源码 `4a63ead`）** |
 | SP005       | 0.5.0–0.5.3 | context-budget、session-recovery、failure-recovery、project-memory        | 会话转录原子落盘与损坏隔离、跨进程恢复（只装载历史、不重放副作用）、上下文预算与确定性压缩（保留约束/计划/工具状态）、项目与会话记忆隔离、工具空转熔断与稳定失败错误码、`/sessions` `/resume` `/context` `/memory` 四个命令 | 功能随 0.5.0 发布，0.5.1 为同轮复审修复、0.5.2 为同轮长会话优化、0.5.3 为工作区会话与工具修复，均已发布；42 条 AC 见 [SP005 验收报告](SP/SP005/test-report.md) |
 
 ### 2.2 后续交付规划（[路线图 r8](docs/iteration-plan.md)）
@@ -47,8 +47,8 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | 迭代  | 目标                    | 主要功能目录                                                                                               | 状态 |
 | ----- | ----------------------- | ---------------------------------------------------------------------------------------------------------- | ---- |
 | SP004（0.4.0） | 计划、待办、命令与追问；普通命令要求已验证的执行隔离，提交限专用 worktree | 命令执行、后台任务、受控 Git 提交、计划模式与追问、四类会话卡片 | 已发布 |
-| SP005（0.5.0–0.5.3） | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         | 已合入 master。真实模型端到端两场景 PASS，0.5.4 已发布为 npm `latest` |
-| SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 本轮实现完成并合入 master，0.6.0 已制备待发布 |
+| SP005（0.5.0–0.5.4） | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         | 已合入 master。真实模型端到端两场景 PASS，0.5.4 已发布 |
+| SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 本轮实现完成并合入 master，0.6.0 已发布为 npm `latest` |
 | SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | 规划中 |
 | SP008 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | 规划中（契约轮，轻量测试客户端验证） |
 | SP009 | TUI 独立交付与 npm 发布工程 | tui-distribution、upgrade-compatibility、npm-publish-pipeline                                              | 规划中 |
@@ -361,7 +361,7 @@ Get-Content prompts.jsonl | budingx --input-format stream-json --output-format j
 | 图片与多模态                   | 读取图片只返回尺寸摘要，不发送图像内容                                          | SP007                 |
 | Desktop / VS Code / 移动端 / 远程/H5 / IM | 当前 SP 范围外，保留通用宿主接口 | 后续如需纳入，另行决定范围和排期 |
 | 真实服务 live 证据             | 已验证一个用户提供的服务：流式、工具审批回合、取消、鉴权错误；见 SP002 报告 §16 | 其他型号/服务仍未测   |
-| SP006 扩展能力 | 项目指令、技能、MCP、hooks、WebFetch、无头 CLI 与七条新命令已实现并通过本地回归；状态栏配置需重启生效；无头模式不加载 MCP 与交互面板；MCP 与 hooks 的真实第三方服务器/脚本兼容性未逐一验证；hooks 的 http/agent 处理器未实现 | 验收后随 0.6.0 发布；真实第三方兼容性后续补证 |
+| SP006 扩展能力 | 项目指令、技能、MCP、hooks、WebFetch、无头 CLI 与七条新命令已实现并通过本地回归；状态栏配置需重启生效；无头模式不加载 MCP 与交互面板；MCP 与 hooks 的真实第三方服务器/脚本兼容性未逐一验证；hooks 的 http/agent 处理器未实现 | 已随 0.6.0 发布；真实第三方兼容性后续补证 |
 | 真终端 CJK/IME 与 resize 体验  | 未验证（需 Windows Terminal + ConHost 人工 smoke）                              | 验收时补              |
 | macOS / Linux                  | 仅声明 Windows 已验证                                                           | SP009 后逐个平台验证  |
 
@@ -384,7 +384,7 @@ Get-Content prompts.jsonl | budingx --input-format stream-json --output-format j
 | 0.4.0 | 2026-11-19 | SP004 真实编码任务：命令执行与后台任务、受控 Git 提交、计划与待办、四类会话卡片；追加可选本机 Langfuse 观测（默认关闭），见 [发行说明](release-notes/v0.4.0.md) | 已发布 |
 | 0.5.0 | 2026-11-20 | SP005 长会话与数据可靠性：会话转录落盘与跨进程恢复（不盲重放副作用）、上下文预算压缩（保留约束/计划/工具状态）、项目与会话记忆、原子写入与损坏隔离、稳定失败错误码与工具空转熔断、`/sessions` `/resume` `/context` `/memory` 四个命令；见 [发行说明](release-notes/v0.5.0.md) | 已发布 |
 | 0.5.3 | 2026-11-20 | 工作区会话隔离、追问与内置工具修复、中文思考强度选择、Bing 和 Tavily 联网搜索。见 [发行说明](release-notes/v0.5.3.md) | 已发布 |
-| 0.6.0 | 2026-11-21 | SP006：四区骨架与布局计划、转录冻结缓存、键位系统、内置/外部状态栏、项目指令、技能发现、MCP 客户端、hooks 八事件、WebFetch、无头 CLI（text/json/stream-json）、命令注册表三型与 `/init` `/btw` `/worktree` `/tasks` `/mcp` `/skills` `/export`；含命令卡片常驻、`/resume` 历史不可见与恢复排版碎片、输入框续问建议改由模型生成等修复；已合入 master；见 [发行说明](release-notes/v0.6.0.md) | 已制备，等待维护者触发发布 |
+| 0.6.0 | 2026-11-21 | SP006：四区骨架与布局计划、转录冻结缓存、键位系统、内置/外部状态栏、项目指令、技能发现、MCP 客户端、hooks 八事件、WebFetch、无头 CLI（text/json/stream-json）、命令注册表三型与 `/init` `/btw` `/worktree` `/tasks` `/mcp` `/skills` `/export`；含命令卡片常驻、`/resume` 历史不可见与恢复排版碎片、输入框续问建议改由模型生成等修复；已合入 master 并发布；见 [发行说明](release-notes/v0.6.0.md) | 已发布 |
 | 0.5.4 | 2026-11-20 | 命令按权限档位宿主信任执行（Bash 可用，对齐参考实现）；Git 命令不再被只读白名单硬拦；Shift+Tab 恢复三档轮播；联网搜索完全权限免审、可按会话记住；审批卡编号一致；追问卡回答后收起、过程性提示不堆叠、时长格式化、状态显示正在思考、底部元信息合并为一行；上下文占用改为真实用量的百分比；`/rules` 改为交互管理面板；移除 `/config` 与 `/model`；修复长会话 `Maximum update depth exceeded` 崩溃；Langfuse 仅开发环境；既有命令复刻改造（/new /continue /rewind /plan /context 网格 /compact /cost /permissions /help 技能清单）。见 [发行说明](release-notes/v0.5.4.md) | 已发布 |
 | 0.5.2 | 2026-11-20 | 长会话渲染优化（流式增量不再每帧全文重排、虚拟列表渐进挂载与高度缓存、状态栏常驻）、上下文用量与推理强度显示、`/effort` 命令、交互式 TUI 默认开启会话持久化；见 [发行说明](release-notes/v0.5.2.md) | 已发布 |
 | 0.5.1 | 2026-11-20 | SP005 复审修复：写入锁排他互斥与释放归属、记忆正文往返与真实损坏备份、凭据误判收敛、压缩保留项裁剪与压缩转录重放、预算阈值统一、工具熔断按回合重置、恢复权限不升权、`/memory` 用法提示；见 [发行说明](release-notes/v0.5.1.md) | 已发布 |

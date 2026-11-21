@@ -85,10 +85,10 @@
 | SP006 新增 | 21 个测试文件、120 例；另在既有 SP005.4 用例补 2 例（非全屏 `/help` 回归、`/undo` 文案本地化） |
 | 制品 | sp006-packaging.mjs 6 项 PASS，exit 0，未上传 |
 | AST | 53/53 映射，命中 0，自检 3/3 PASS（本仓单元 258、参考 14411、函数对 48743） |
-| 版本 | 0.6.0 prepared（sourceCommit 见 release-ledger.json，receipt 占位 null） |
+| 版本 | 0.6.0 published（npm `latest`；发布运行 #26，源码 `4a63ead`，integrity `sha512-0l2764oBC/Go3E0DqIxHM6Lx06Z8kD7daa8Lxk6fTXrBrLFl7vSyhgfocKhYJ7MGKVSvhYFhRR1ML2rt8aHSDg==`；台账 sourceCommit `4a63ead…`，CI 回执 artifact 未取得，`ciArtifactDownloaded: false`） |
 
 ## 下一步
 
 1. 功能分支已按用户 m02328、m03678 授权推送远端（`origin/feature/SP006/tui-parity-and-extensions`）；2026-11-21 按用户 m04845 授权，经交叉验证门禁 GREEN（报告 `artifacts/merge-gate/feature-SP006-tui-parity-and-extensions-2026-11-21T00-23-20-601Z.md`）后以 `--no-ff` 合入 master（合并提交 `601ac7e`）。
-2. `origin/master` 已推送（`a232140` 文档同步，随后 `bb4df76` 门禁口径修复）；master 自身复核门禁 GREEN（报告 `artifacts/merge-gate/master-2026-11-21T00-34-27-308Z.md`）。0.6.0 发布 dry-run 已通过（142 files，未上传），npm 实际上传由维护者在 GitHub 手动触发发布工作流，回执按 buding-npm-release 收尾。
+2. `origin/master` 已推送（`a232140` 文档同步，随后 `bb4df76` 门禁口径修复）；master 自身复核门禁 GREEN（报告 `artifacts/merge-gate/master-2026-11-21T00-34-27-308Z.md`）。0.6.0 发布 dry-run 已通过（142 files，未上传）；随后维护者触发发布工作流，运行 #26（源码 `4a63ead`）的 Windows、Linux 验证与 OIDC 发布作业全部成功，npm `latest` 指向 0.6.0。官方 registry integrity、attestation/provenance 与本机隔离安装均已核对；CI 回执 artifact 下载需登录未取得，台账按 buding-npm-release 的证据缺口规则登记。
 3. 合入前若继续改代码，需重跑全量单测、制品 smoke 与 AST 复核。

@@ -1,6 +1,6 @@
 # SP006 验收报告
 
-状态：**执行完成（功能分支）**｜日期：2026-11-21｜分支 `feature/SP006/tui-parity-and-extensions`｜基线 master `dc94731`｜版本 0.6.0 prepared（未发布）｜含用户检查反馈的命令卡片修复（`f0b11eb`）、`/resume` 历史可见性修复、真实模型端到端暴露的建议/退化终端修复与全命令面端到端暴露的 `/undo` 文案本地化修复（`a869cd1`）
+状态：**执行完成并已发布**｜日期：2026-11-21｜分支 `feature/SP006/tui-parity-and-extensions`｜基线 master `dc94731`｜版本 0.6.0 已发布（npm `latest`，运行 #26，源码 `4a63ead`，见 §12）｜含用户检查反馈的命令卡片修复（`f0b11eb`）、`/resume` 历史可见性修复、真实模型端到端暴露的建议/退化终端修复与全命令面端到端暴露的 `/undo` 文案本地化修复（`a869cd1`）
 
 ## 1. 方法与环境
 
@@ -397,14 +397,14 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 | --- | --- |
 | S6-06 打断后同会话新提示词观察不到新回合 | 未稳定复现，标记 UNVERIFIED 并写明恢复条件；不阻断合入，下一轮 SP 开工前排查 |
 | 参考仓 AST 相似度复核仅覆盖函数对阈值命中 | 已自检 3/3 通过且命中「无」；不等于法律洁净室认证，边界见 `docs/independent-development.md` |
-| 0.6.0 尚未发布到 npm | 台账保持 `prepared`；npm 发布由用户在 GitHub 手动触发 |
+| 0.6.0 尚未发布到 npm | 已于 2026-11-21 发布（运行 #26，源码 `4a63ead`），npm `latest` 指向 0.6.0，见 §12 |
 | 回退方式 | 功能分支 `feature/SP006/tui-parity-and-extensions` 保留不删；master 合入为快进/普通 merge，可 `git revert` 该 merge 提交回到 `dc94731` |
 
 ## 8. 交付边界
 
 - 分支：`feature/SP006/tui-parity-and-extensions`，基线 `dc94731`；提交 `cedf2a3`（A）、`031b99b`（B）、`4b78cdb`（C+B3）、`06d7b2a`（D）、`f0b11eb`（命令卡片完成态隐藏与单行修复）、`47c5cb6`（台账源码 SHA 同步）、`1ef588a`（`/resume` 历史可见性与身份切换）、`55ea677`（`/resume` 历史碎片合并与输入框建议改模型生成）、`9e3e88f`（建议清洗按真实模型输出校正、退化终端多行命令输出）、`1877af6`（波次 H 文档收口）、`a869cd1`（`/undo` 文案本地化）、`9dbb6d7`（波次 I 证据与文档数字收口）、`e1393ca`（最终 SHA 回填）、`8f673d2`（合入自审记录与门禁审计加固）、`3e10321`（自审记录相对链接修正）。
 - **已合入 master**：2026-11-21 按用户 m04845 授权「合入master分支并且推送远端，做好发布前的准备工作」，在交叉验证门禁 GREEN 后以 `--no-ff` 合并，合并提交 `601ac7e`；功能分支保留不删。
-- 版本 0.6.0 仅 `prepared`；未打 tag、未 npm 发布、未改远端设置；npm 发布由用户在 GitHub 手动触发。
+- 合入当时版本 0.6.0 仅 `prepared`、未打 tag、未发布；此后由维护者触发发布工作流完成 npm 发布（见 §12）。
 
 ## 11. 发布工作流失败与修复（2026-11-21）
 
@@ -448,7 +448,7 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 
 - 失败原因是产品代码缺陷（超时计时器生命周期），不是 CI 配置、账号授信或 OIDC 问题；发布作业因前置验证失败而跳过，**未触达 npm 上传路径**。
 - 修复已随本节提交推送 master；**需要维护者重新触发 `publish-tui.yml`**（version `0.6.0`、tag `latest`、dry_run 取消勾选），源提交以本节记录的提交号为准。
-- 0.6.0 版本台账仍为 `prepared`；本节不改变 69 条 AC 结论，也不改变 `src/tui/package.json` 的版本号。
+- 本节记录发布验证失败与修复；0.6.0 已于 2026-11-21 发布（见 §12），69 条 AC 结论与 `src/tui/package.json` 的版本号未因此改变。
 
 ### 11.6 第二类偶发失败：Windows 高并行负载下的 Git/进程类用例（发布验证稳定性加固）
 
@@ -486,5 +486,56 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 
 该加固只改变测试执行并行度，不改变任何产品运行时代码与用户可见行为。
 
-相关提交：`d97ffc3`（续问建议超时计时器修复）、`52a4b62`（并发上限与本节记录）；0.6.0 版本台账的 `sourceCommit` 同步为 `52a4b62`。
+相关提交：`d97ffc3`（续问建议超时计时器修复）、`52a4b62`（并发上限与本节记录）、`4a63ead`（台账 `sourceCommit` 同步）；0.6.0 最终由运行 #26 以源码 `4a63ead` 发布。
 
+## 12. 0.6.0 发布完成与发布后核验（2026-11-21）
+
+### 12.1 发布运行
+
+维护者在修复推送后触发发布工作流，新运行全部作业成功：
+
+| 项 | 值 |
+| --- | --- |
+| 运行 | [#26](https://github.com/Limingyang01/budingx-next/actions/runs/44870468295)（id `44870468295`） |
+| 发布源码 SHA | `4a63eade357e94894b8b83ed8de4f35a444dae88`（`4a63ead`） |
+| 分支 | master |
+| `Verify (windows-latest)` | success |
+| `Verify (ubuntu-24.04)` | success |
+| `Publish verified TUI using npm OIDC` | success |
+| 运行结论 | completed / success（2026-11-21T05:21:00Z → 05:28:30Z） |
+
+对照 §11 的失败运行 #25（`44846422075`，head `a9c71d2`，Windows 验证失败、publish skipped、registry 404 未上传）：本次是**新建运行**，不是 Re-run，参数为 version `0.6.0`、tag `latest`、取消 dry_run。
+
+### 12.2 官方 registry 核对
+
+| 项 | 值 |
+| --- | --- |
+| 包 | `budingx@0.6.0` |
+| dist-tags | `{"latest":"0.6.0"}` |
+| publishedAt | `2026-11-21T05:28:07.658Z` |
+| integrity | `sha512-0l2764oBC/Go3E0DqIxHM6Lx06Z8kD7daa8Lxk6fTXrBrLFl7vSyhgfocKhYJ7MGKVSvhYFhRR1ML2rt8aHSDg==` |
+| shasum | `566ba14a5b7e976d1fa6e30078164a8ef6f7d226` |
+| tarball | `https://registry.npmjs.org/budingx/-/budingx-0.6.0.tgz` |
+| license / engines | MIT / `node >=22.18.0` |
+
+### 12.3 来源证明与签名
+
+`https://registry.npmjs.org/-/npm/v1/attestations/budingx@0.6.0` 返回 HTTP 200，含 sigstore bundle（`application/vnd.dev.sigstore.bundle+json;version=0.2`，publicKey hint `SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U`，rekor tlog logIndex 4031461260）。provenance subject 为 `pkg:npm/budingx@0.6.0`，digest `sha256:d25dbeb8a010bf1a8dc4d03a88c4733a2f1d3a67c7903edde69af0bc64e9f4d7ac1acb165eef4b28607e87a85827b3062954af858161454d4c2f6aedf1a1d20e`，发布身份为 GitHub Trusted Publisher，来源指向本次运行与源码。
+
+### 12.4 独立安装复验
+
+| 检查 | 结果 |
+| --- | --- |
+| 隔离目录安装官方包 `budingx@0.6.0` | 成功（npm 11.21.2，`--prefix` 到仓库外临时目录） |
+| `budingx --version` | `0.6.0` |
+| `budingx --prompt "/help" --output-format json` | 正常返回（`stop_reason: completed`，`num_turns: 1`） |
+| 制品内容 | 仅 `package.json`、`README.md`、`LICENSE` 与 `dist/**/*.js`，共 141 个文件，无用户数据目录 |
+| 包内凭据扫描 | 未发现私钥 / npm token / provider key |
+
+### 12.5 证据缺口
+
+CI 的 `tui-publication-receipt` artifact（id `14693817080`）与 `tui-verification-windows-latest`（id `14693977177`）在本机下载均返回 HTTP 401 `Requires authentication`，因此**未取得 CI 的 `report.json`**，不伪造 CI 回执。按 buding-npm-release「公开安装与回执」第 4 条，台账依据公开运行成功、已验证 provenance、registry integrity 与本机独立安装结果登记 `0.6.0`，并显式标注 `ciArtifactDownloaded: false` 与 `verificationSource: public-registry-provenance-and-independent-install`。
+
+### 12.6 结论
+
+0.6.0 已真实发布并可从官方 registry 安装；npm `latest` 指向 0.6.0。未执行：重发同一版本（禁止）、npm 发布以外的其它发布通道。

@@ -2,9 +2,11 @@
 
 本项目的推荐发布入口是 [Publish TUI to npm](https://github.com/Limingyang01/budingx-next/actions/workflows/publish-tui.yml)。配置文件见 [.github/workflows/publish-tui.yml](../.github/workflows/publish-tui.yml)。本指南说明仓库已实现的流程，以及账号端必须由维护者完成的设置；写入工作流不等于 npm 信任关系已建立或真实发布已验证。
 
-## 当前发布状态（2026-11-20）
+## 当前发布状态（2026-11-21）
 
-**0.5.4 已发布，npm `latest` 指向 0.5.4；候选 0.6.0（SP006 TUI 对齐与扩展）已合入 master 并处于 prepared，待维护者触发发布。** [GitHub Actions #23](https://github.com/Limingyang01/budingx-next/actions/runs/44682798887) 使用源码 `16f5e0c`，Ubuntu、Windows 和 OIDC 发布均通过。官方制品完整性、独立安装、本地 HTTP 流式冒烟、签名和 provenance 已核验。详见 [0.5.3 发行说明](../release-notes/v0.5.3.md)。
+**0.6.0 已发布，npm `latest` 指向 0.6.0。** [GitHub Actions #26](https://github.com/Limingyang01/budingx-next/actions/runs/44870468295) 使用源码 `4a63ead`，`Verify (windows-latest)`、`Verify (ubuntu-24.04)` 与 `Publish verified TUI using npm OIDC` 三个作业全部成功。官方 registry integrity、attestation/provenance（GitHub Trusted Publisher）、本机隔离安装与命令入口复验均通过；CI 的 `tui-publication-receipt` artifact 下载需登录未取得，台账依据公开证据登记并标注 `ciArtifactDownloaded: false`。详见 [0.6.0 发行说明](../release-notes/v0.6.0.md)。
+
+**0.5.4 已发布**（此前 latest 指向 0.5.4）。[GitHub Actions #23](https://github.com/Limingyang01/budingx-next/actions/runs/44682798887) 使用源码 `16f5e0c`，Ubuntu、Windows 和 OIDC 发布均通过。官方制品完整性、独立安装、本地 HTTP 流式冒烟、签名和 provenance 已核验。详见 [0.5.3 发行说明](../release-notes/v0.5.3.md)。
 
 **0.4.0 已发布**，当时 npm `latest` 指向 0.4.0。[GitHub Actions #18](https://github.com/Limingyang01/budingx-next/actions/runs/44504716724) 使用源码 `82af4ab`，Windows、Linux 和 OIDC 发布均通过。官方源独立安装、本地 HTTP 流式测试、签名与来源证明均已核对。详见 [0.4.0 发行说明](../release-notes/v0.4.0.md)。
 
@@ -39,7 +41,7 @@ SP002 的 **0.2.0 已发布**，当时 npm latest=0.2.0，台账为 published。
 
 ## 从构建到发布：每轮操作清单
 
-本节适用于新版本交付，不需要重复配置已建立的账号信任。Agent 使用 [buding-npm-release](../skills/buding-npm-release/SKILL.md)，版本规则见 [版本规范](versioning.md)。执行目录是本仓根目录。0.5.4 的发布回执已登记，0.6.0（SP006）已合入 master 且处于 prepared，后续按实际修复或新 SP 准备下一版。
+本节适用于新版本交付，不需要重复配置已建立的账号信任。Agent 使用 [buding-npm-release](../skills/buding-npm-release/SKILL.md)，版本规则见 [版本规范](versioning.md)。执行目录是本仓根目录。0.6.0（SP006）的发布回执已登记，npm `latest` 指向 0.6.0，后续按实际修复或新 SP 准备下一版。
 
 ### 1. 准备版本与发行说明
 

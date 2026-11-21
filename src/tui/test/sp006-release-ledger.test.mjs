@@ -9,16 +9,19 @@ const root = fileURLToPath(new URL('../../..', import.meta.url))
 const pkg = JSON.parse(readFileSync(join(root, 'src/tui/package.json'), 'utf8'))
 const ledger = JSON.parse(readFileSync(join(root, 'release-ledger.json'), 'utf8'))
 
-test('SP006 版本在台账中恰好一条 prepared 记录', () => {
+test('SP006 版本在台账中恰好一条已发布记录', () => {
   assert.match(pkg.version, /^\d+\.\d+\.\d+$/)
   const entries = ledger.releases.filter((entry) => entry.version === pkg.version)
   assert.equal(entries.length, 1)
   assert.equal(entries[0].iteration, 'SP006')
-  assert.equal(entries[0].status, 'prepared')
-  assert.match(entries[0].sourceCommit, /^[0-9a-f]{40}$/, 'prepared 记录必须有源码 SHA')
-  assert.ok('receipt' in entries[0], 'prepared 记录必须有回执占位字段')
+  assert.equal(entries[0].status, 'published')
+  assert.match(entries[0].sourceCommit, /^[0-9a-f]{40}$/, '发布记录必须有源码 SHA')
+  assert.match(entries[0].integrity, /^sha512-/, '发布记录必须有 registry integrity')
+  assert.equal(entries[0].tag, 'latest')
+  assert.match(entries[0].workflowRun, /\/actions\/runs\/\d+$/, '发布记录必须有工作流运行地址')
+  assert.ok('receipt' in entries[0], '发布记录必须保留回执占位字段')
   const prepared = ledger.releases.filter((entry) => entry.status === 'prepared')
-  assert.equal(prepared.length, 1, '同时只允许一条 prepared 记录')
+  assert.equal(prepared.length, 0, '发布后不得残留 prepared 记录')
 })
 
 test('发布说明已写实，不是模板草稿', () => {
