@@ -230,13 +230,15 @@ export type SessionEvent =
   | { type: 'change_set'; changes: ChangeRecordSummary[] }
   | { type: 'denial_recorded'; denial: DenialRecord }
   | { type: 'permission_changed'; mode: PermissionMode }
-  | { type: 'input_queued'; queueId: string; preview: string }
+  | { type: 'input_queued'; queueId: string; preview: string; notification?: boolean }
   | {
       type: 'input_injected'
       turnId: string
       queueId: string
       text: string
       boundary: 'intra_turn' | 'inter_turn'
+      /** SP007 §4.1：子代理终态通知（非用户输入），宿主按系统消息渲染。 */
+      notification?: boolean
     }
   | { type: 'status'; state: SessionState; note?: string }
   | {

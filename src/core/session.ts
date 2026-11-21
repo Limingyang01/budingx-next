@@ -146,10 +146,12 @@ export type SubmitOptions = {
   }
 }
 
-type QueuedInput = { id: string; text: string; options?: SubmitOptions }
+type QueuedInput = { id: string; text: string; options?: SubmitOptions; notification?: boolean }
 
 type ActiveTurn = {
   provider: ModelProvider
+  /** SP007 RD-16：本回合快照，转录按模型归属消息。 */
+  snapshot?: TurnSnapshot
   id: string
   controller: AbortController
   finalized: boolean
@@ -159,6 +161,29 @@ type ActiveTurn = {
   cancelTimer?: NodeJS.Timeout
   /** SP004 agent-observability：本回合根观测句柄。 */
   traceRoot?: TraceHandle
+}
+
+/** SP007 RD-04：/status Usage 页的本地性能聚合形状。 */
+export type SessionPerformance = {
+  requests: number
+  requestMs: { p50: number; p95: number; last: number }
+  firstTokenMs?: { p50: number; p95: number; last: number }
+  inputTokens: number
+  outputTokens: number
+  elapsedMs: number
+  memoryRssBytes: number
+}
+
+/** SP007 §4.1：注册表可发布的代理生命周期事件。 */
+export type AgentSessionEvent = Extract<
+  SessionEvent,
+  { type: 'agent_started' | 'agent_progress' | 'agent_finished' }
+>
+
+/** 最近秩百分位（sorted 升序非空）：p50/p95 取 ceil 秩，避免插值造出不存在的样本。 */
+function percentileOf(sorted: number[], percentile: number): number {
+  const rank = Math.max(1, Math.ceil((percentile / 100) * sorted.length))
+  return sorted[Math.min(rank, sorted.length) - 1]!
 }
 
 const ALLOWED_TRANSITIONS: Record<SessionState, SessionState[]> = {
@@ -294,6 +319,8 @@ export class Session {
   private lastUsage?: Usage
   // 0.5.4 /cost：会话累计用量（跨回合），清空会话时重置。
   private totalUsage = { inputTokens: 0, outputTokens: 0, requests: 0 }
+  // SP007 RD-04：请求计时样本（首 token / 完整请求），上限 500 条逐旧淘汰。
+  private readonly perfSamples: { requestMs: number; firstTokenMs?: number }[] = []
   // 0.5.4 /rewind：回合顺序日志，用于把文件撤销对齐到对话检查点。
   private turnLog: { turnId: string }[] = []
   private readonly startedAt = Date.now()
@@ -471,6 +498,52 @@ export class Session {
   /** 0.5.4 /cost：累计 token 与会话时长。 */
   get usageTotals(): { inputTokens: number; outputTokens: number; requests: number; elapsedMs: number } {
     return { ...this.totalUsage, elapsedMs: Date.now() - this.startedAt }
+  }
+
+  /**
+   * SP007 RD-04：本地性能采样（/status Usage 页）。只存聚合所需的最小样本，
+   * 不记录提示词内容；默认不上传（隐私边界见 design §4.2）。
+   */
+  get performance(): SessionPerformance {
+    const requestSorted = this.perfSamples.map((sample) => sample.requestMs).sort((a, b) => a - b)
+    const firstSorted = this.perfSamples
+      .map((sample) => sample.firstTokenMs)
+      .filter((value): value is number => value !== undefined)
+      .sort((a, b) => a - b)
+    const stats = (sorted: number[]) => sorted.length === 0 ? undefined : {
+      p50: percentileOf(sorted, 50),
+      p95: percentileOf(sorted, 95),
+      last: sorted[sorted.length - 1]!
+    }
+    return {
+      requests: this.totalUsage.requests,
+      requestMs: stats(requestSorted) ?? { p50: 0, p95: 0, last: 0 },
+      ...(firstSorted.length > 0 ? { firstTokenMs: stats(firstSorted)! } : {}),
+      inputTokens: this.totalUsage.inputTokens,
+      outputTokens: this.totalUsage.outputTokens,
+      elapsedMs: Date.now() - this.startedAt,
+      memoryRssBytes: process.memoryUsage.rss()
+    }
+  }
+
+  /**
+   * SP007 §4.1：子代理终态通知入队。复用既有 queue/drain 机制：
+   * 空闲时自动开启回合，回合内按 intra_turn 注入；notification 标记
+   * 让宿主把它渲染成系统消息而不是用户输入。
+   */
+  enqueueNotification(text: string, notice?: string): void {
+    const trimmed = text.trim()
+    if (!trimmed) return
+    const item: QueuedInput = { id: randomUUID(), text: trimmed, notification: true }
+    this.queue.push(item)
+    this.emit({ type: 'input_queued', queueId: item.id, preview: previewOf(trimmed), notification: true })
+    if (notice) this.emit({ type: 'notice', level: 'info', code: 'agent_notification', text: notice })
+    this.scheduleQueueDrain()
+  }
+
+  /** SP007 §4.1：子代理注册表向父会话发布 agent_* 生命周期事件。 */
+  publishAgentEvent(event: AgentSessionEvent): void {
+    this.emit(event)
   }
 
   get history(): readonly Message[] {
@@ -902,6 +975,7 @@ export class Session {
   clearHistory(): void {
     this.lastUsage = undefined
     this.totalUsage = { inputTokens: 0, outputTokens: 0, requests: 0 }
+    this.perfSamples.length = 0
     if (this.state !== 'idle') return
     this.messages.length = 0
     this.emit({ type: 'conversation_cleared' })
@@ -1112,10 +1186,12 @@ export class Session {
         turnId: turn.id,
         queueId: queued.id,
         text: userText,
-        boundary: 'inter_turn'
+        boundary: 'inter_turn',
+        ...(queued.notification ? { notification: true } : {})
       })
     }
     const snapshot = this.options.resolveSnapshot()
+    turn.snapshot = snapshot
     this.emit({ type: 'turn_started', turnId: turn.id, snapshot, userText, startedAt: Date.now() })
     this.setState('requesting')
     const userMessage = this.userMessage(userText, options)
@@ -1180,13 +1256,16 @@ export class Session {
   /** SP005 §5：记录一条消息（用户、助手或工具结果）。 */
   private recordMessage(message: Message, parentId?: string): void {
     if (!this.options.transcript) return
+    // SP007 RD-16：消息归属模型，/stats 按模型聚合（旧转录缺省 unknown 桶）。
+    const model = this.activeTurn?.snapshot?.model
     this.writeTranscript({
       type: 'message',
       ts: new Date().toISOString(),
       id: message.id,
       ...(parentId ? { parentId } : {}),
       role: message.role,
-      blocks: message.blocks
+      blocks: message.blocks,
+      ...(model ? { model } : {})
     })
   }
 
@@ -1429,6 +1508,9 @@ export class Session {
         turn.traceRoot
       )
       let modelUsage: Usage | undefined
+      // SP007 RD-04：请求计时（含 provider 内部重试），首 token＝首个内容增量。
+      const requestStartedAt = Date.now()
+      let firstDeltaAt: number | undefined
 
       try {
         for await (const event of turn.provider.stream(
@@ -1437,6 +1519,7 @@ export class Session {
           if (turn.finalized) break
           switch (event.type) {
             case 'text_delta':
+              if (firstDeltaAt === undefined) firstDeltaAt = Date.now()
               appendStreamBlock(assistant.blocks, 'text', event.text)
               this.emit({
                 type: 'text_delta',
@@ -1447,6 +1530,7 @@ export class Session {
               this.setState('streaming')
               break
             case 'thinking_delta':
+              if (firstDeltaAt === undefined) firstDeltaAt = Date.now()
               appendStreamBlock(assistant.blocks, 'thinking', event.text)
               this.emit({
                 type: 'thinking_delta',
@@ -1456,6 +1540,7 @@ export class Session {
               })
               break
             case 'tool_call_delta':
+              if (firstDeltaAt === undefined) firstDeltaAt = Date.now()
               fragments.push({
                 index: event.index,
                 callId: event.callId,
@@ -1505,6 +1590,11 @@ export class Session {
         if (this.activeTurn === turn && fragments.length) {
           for (const listener of this.toolPreviewListeners) listener([])
         }
+        this.perfSamples.push({
+          requestMs: Date.now() - requestStartedAt,
+          ...(firstDeltaAt !== undefined ? { firstTokenMs: firstDeltaAt - requestStartedAt } : {})
+        })
+        if (this.perfSamples.length > 500) this.perfSamples.shift()
       }
 
       if (providerFailure) {
@@ -2132,7 +2222,8 @@ export class Session {
         turnId: turn.id,
         queueId: item.id,
         text: item.text,
-        boundary: 'intra_turn'
+        boundary: 'intra_turn',
+        ...(item.notification ? { notification: true } : {})
       })
     }
   }
