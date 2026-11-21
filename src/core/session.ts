@@ -43,6 +43,7 @@ import type {
   ToolFragment
 } from './provider.js'
 import { assembleToolCalls, parseToolArguments } from './tool-calls.js'
+import type { ToolSearchController } from './tool-search.js'
 import type {
   ApprovalDecision,
   ApprovalGateway,
@@ -133,6 +134,8 @@ export type SessionOptions = {
   resolveSystemContext?: () => string | undefined
   /** SP006 §9：hooks 宿主端口；未注入时所有 hook 事件为空操作。 */
   hooks?: SessionHooks
+  /** SP007 §4.2：ToolSearch 延迟加载控制器；未注入时全部工具恒加载（既有行为）。 */
+  toolSearch?: ToolSearchController
   onEvent?: (event: SessionEvent) => void
 }
 
@@ -1305,6 +1308,16 @@ export class Session {
         reason: '未完成的工具调用必须显式标记，不能伪造成功'
       })
     }
+    // SP007 RD-13：已发现的延迟工具跨压缩存活（同参考 preCompactDiscoveredTools）。
+    const discovered = this.options.toolSearch?.state.discovered
+    if (this.options.toolSearch?.enabled && discovered && discovered.size > 0) {
+      items.push({
+        kind: 'tool_state',
+        id: 'tool-search-discovered',
+        text: '<discovered-tools>' + [...discovered].sort().join(',') + '</discovered-tools>',
+        reason: '已发现的延迟工具在压缩后必须仍可调用'
+      })
+    }
     return items
   }
 
@@ -1439,7 +1452,11 @@ export class Session {
     const systemContext = this.options.resolveSystemContext?.()
     // hook 上下文只注入一次（本次请求），避免同一回合后续迭代重复堆叠。
     const hookContext = this.hookContext.splice(0, this.hookContext.length).join('\n\n')
-    const extraContext = [systemContext, hookContext].filter(Boolean).join('\n\n')
+    // SP007 RD-13：每次请求前从历史标记重建发现集（覆盖 /resume），并公告当前延迟池。
+    const toolSearch = this.options.toolSearch
+    toolSearch?.scanHistory(this.messages)
+    const deferredNotice = toolSearch?.notice()
+    const extraContext = [systemContext, hookContext, deferredNotice].filter(Boolean).join('\n\n')
     request.messages.unshift({
       role: 'system',
       content: '你是 budingx，一款在终端运行的编程助手。用户询问你的身份时，介绍 budingx。' +
@@ -1448,7 +1465,9 @@ export class Session {
         (extraContext ? '\n\n' + extraContext : '')
     })
     if (this.tools.length > 0 && snapshot.capabilities.tools) {
-      request.tools = this.tools.map((tool) => ({
+      // SP007 RD-12：启用 ToolSearch 时只发送非延迟＋已发现＋ToolSearch 本身。
+      const visible = toolSearch?.enabled ? toolSearch.filter(this.tools) : this.tools
+      request.tools = visible.map((tool) => ({
         name: tool.name,
         parameters: tool.parameters ?? { type: 'object', properties: {} },
         description: tool.summary ?? tool.describe({})
@@ -1828,6 +1847,18 @@ export class Session {
     if (!handler) {
       this.traceEnd(toolTrace, 'error')
       pushResult(`Unknown tool: ${call.name}`,
+        true,
+        ERROR_CODES.coreToolUnknown
+      )
+      return {}
+    }
+    // SP007 RD-14：调用尚未发现的延迟工具 → 明确引导先 ToolSearch 加载，不静默执行。
+    const toolSearch = this.options.toolSearch
+    if (toolSearch?.enabled && toolSearch.isDeferred(call.name) && !toolSearch.state.discovered.has(call.name)) {
+      this.traceEnd(toolTrace, 'blocked')
+      pushResult(
+        'Tool "' + call.name + '" is not loaded yet. call ToolSearch with query "select:' +
+          call.name + '", then retry',
         true,
         ERROR_CODES.coreToolUnknown
       )
