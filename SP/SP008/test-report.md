@@ -118,11 +118,13 @@
 
 每轮均重新创建临时 home、重新启动 serve 子进程并重新建立 HTTP fixture；不共享上一轮磁盘状态。
 
+提交后在最终 HEAD 上再复跑 3 轮（`final-run-{1,2,3}.log`），仍为每轮 20/20、EXIT=0。
+
 ## 7. 模块边界、AST 与门禁
 
 - `scripts/checks/module-boundaries.mjs`：新增 `RULES.host`，`ui` 禁 UI 包但允许 `node:readline`；`dirs` 禁 `tui/provider/workspace/exec/git/plan/observability`；`core`/`storage` 的禁止依赖加入 `host`。`npm run test:checks` → 模块边界检查通过。
 - `scripts/review/sp004-ast.mjs`：新增 17 条 SP008 文件映射，覆盖 `git diff master...HEAD` 的全部 `.ts`；命中 0。
-- 门禁：`npm run merge:gate` → **GATE GREEN**（2026-11-22，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-21T16-53-19-866Z.md`）：`npm test`、`spec:check`、`skills:check`、`pack-smoke` 全通过，禁带路径违规 0。首次 RED 因报告放在 slug 目录而 master 复核按 `SP/SPnnn/test-report.md` 查找；正本移至轮次根目录后复跑 GREEN，偏差见 §8。
+- 门禁：`npm run merge:gate` → **GATE GREEN**（2026-11-22，最终 HEAD `4a638e9`，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-21T16-59-01-452Z.md`）：`npm test`、`spec:check`、`skills:check`、`pack-smoke` 全通过，禁带路径违规 0。首次 RED 因报告放在 slug 目录而 master 复核按 `SP/SPnnn/test-report.md` 查找；正本移至轮次根目录后复跑 GREEN，偏差见 §8。
 
 ## 8. 偏差与实施期修订
 
