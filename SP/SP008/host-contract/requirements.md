@@ -4,7 +4,7 @@
 - 工作目录：`SP/SP008/host-contract/`
 - 路线图条目：[docs/iteration-plan.md](../../../docs/iteration-plan.md) SP008 行（shared-models-and-history、session-ownership、transport-boundaries）
 - 能力锚点：CAP-L4-08（本地 API/WS 服务，必交，SP008，真实进程）、CAP-L4-09（stdio 宿主，必交，SP008，真实进程）；CAP-L4-20 制品属 SP009
-- 基线：master `a8628b5`（SP007 合并与发布准备完成后），产品版本 0.7.0（prepared）
+- 基线：master `a8628b5`（SP007 合并后，0.7.0 已发布），产品版本 0.7.0（published）
 - 状态：需求已建立，等待设计与自审
 
 ## 1. 来源与用户指令

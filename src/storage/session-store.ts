@@ -112,6 +112,13 @@ function isPermissionMode(value: unknown): value is PermissionMode {
  * to pass force to take over, so a crashed process does not cause a silent
  * takeover of somebody else's session.
  */
+/** Observed writer-lock state; `active` means the pid is alive right now. */
+export type WriterLockInfo = {
+  pid?: number
+  createdAt?: string
+  active: boolean
+}
+
 export class SessionWriterLock {
   private readonly file: string
   /** True only while this instance is the process that created the lock. */
@@ -131,6 +138,25 @@ export class SessionWriterLock {
   /** True while this instance created the lock and has not released it. */
   get isOwned(): boolean {
     return this.owned
+  }
+
+  /**
+   * Observe the lock without changing it. Callers get the pid and creation
+   * time and decide from `active` whether a writer is alive; they must not
+   * parse the human-readable acquisition reason.
+   */
+  inspect(): WriterLockInfo {
+    const raw = readPrivateFile(this.file)
+    if (raw === undefined) return { active: false }
+    const lines = raw.split('\n')
+    const pid = Number(lines[0])
+    const createdAt = lines[1]?.trim()
+    const validPid = Number.isFinite(pid) && pid > 0
+    return {
+      ...(validPid ? { pid } : {}),
+      ...(createdAt ? { createdAt } : {}),
+      active: validPid ? isProcessAlive(pid) : false
+    }
   }
 
   /**
@@ -207,6 +233,11 @@ export class SessionWriterLock {
       // Releasing a lock must never throw.
     }
   }
+}
+
+/** Inspect the writer lock of a session without acquiring it. */
+export function inspectWriterLock(sessionId: string, home?: string): WriterLockInfo {
+  return new SessionWriterLock(sessionId, home).inspect()
 }
 
 function isProcessAlive(pid: number): boolean {

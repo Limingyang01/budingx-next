@@ -23,6 +23,7 @@
     "../git/**/*.ts",
     "../plan/**/*.ts",
     "../observability/**/*.ts",
+    "../host/**/*.ts",
     "./**/*.ts",
     "./**/*.tsx"
   ],
