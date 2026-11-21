@@ -55,6 +55,9 @@ import { ModelManager } from './model-manager.js'
 import { RulesManager } from './rules-manager.js'
 import { ResumePicker, RewindPicker, ContextGrid } from './panels.js'
 import { AgentsMenu } from './agents-menu.js'
+import { StatusDialog } from './diagnostics/status-dialog.js'
+import { StatsDialog } from './diagnostics/stats-dialog.js'
+import { DoctorDialog } from './diagnostics/doctor-dialog.js'
 import { homedir } from 'node:os'
 import { agentCardLines, agentTreeLines, type AgentCardInput } from './render/agent-card.js'
 import { readClipboardImage, readImageFile, extractImagePaths } from './image-paste.js'
@@ -450,6 +453,9 @@ export function App({
   const [rewindOpen, setRewindOpen] = useState(false)
   const [contextOpen, setContextOpen] = useState(false)
   const [agentsOpen, setAgentsOpen] = useState(false)
+  const [statusOpen, setStatusOpen] = useState(false)
+  const [statsOpen, setStatsOpen] = useState(false)
+  const [doctorOpen, setDoctorOpen] = useState(false)
   // SP007 T9：子代理卡片状态（agent_* 事件驱动）与图片附件（MM-05）。
   const [agentCards, setAgentCards] = useState<Map<string, AgentCardInput>>(() => new Map())
   const [pastedImages, setPastedImages] = useState<Map<number, { mediaType: string; data: string; width?: number; height?: number }>>(() => new Map())
@@ -563,6 +569,18 @@ export function App({
         setPosition(undefined)
         setAgentsOpen(true)
         await new Promise<void>((resolve) => { managerDone.current = resolve })
+      } else if (result.openStatus) {
+        setPosition(undefined)
+        setStatusOpen(true)
+        await new Promise<void>((resolve) => { managerDone.current = resolve })
+      } else if (result.openStats) {
+        setPosition(undefined)
+        setStatsOpen(true)
+        await new Promise<void>((resolve) => { managerDone.current = resolve })
+      } else if (result.openDoctor) {
+        setPosition(undefined)
+        setDoctorOpen(true)
+        await new Promise<void>((resolve) => { managerDone.current = resolve })
       } else if (result.skillPrompt) {
         setHint(pick(`技能 /${result.skillPrompt.name} 已展开为提示`, `Skill /${result.skillPrompt.name} expanded to prompt`))
         // SM-02：调用记录保留技能名，正文随下一轮提示注入。
@@ -623,7 +641,7 @@ export function App({
   // 0.5.4：/ 补全包含内置命令 + 已加载技能命令（对齐参考）。
   const commandList = useMemo(() => [...COMMAND_NAMES, ...discoverSkillCommands().map((s) => s.name)], [context])
   const completion = useMemo(() => {
-    if (dialog || frame.approval || overlayDismissed || modelManagerOpen || rulesManagerOpen || resumeOpen || rewindOpen || contextOpen || agentsOpen) return null
+    if (dialog || frame.approval || overlayDismissed || modelManagerOpen || rulesManagerOpen || resumeOpen || rewindOpen || contextOpen || agentsOpen || statusOpen || statsOpen || doctorOpen) return null
     const lineText = editor.lines[editor.cursor.line] ?? ''
     const token = activeToken(lineText, editor.cursor.col, commandList)
     if (!token) return null
@@ -905,7 +923,7 @@ export function App({
     }
     // 0.5.4 /rewind 快捷键 Esc+Esc：空闲且无覆盖层时双击 Esc 打开回滚面板。
     if (key.escape && !session.isBusy && editor.isEmpty && !dialog && !frame.approval &&
-      !modelManagerOpen && !rulesManagerOpen && !resumeOpen && !rewindOpen && !contextOpen && !agentsOpen && !transcriptMode && !search) {
+      !modelManagerOpen && !rulesManagerOpen && !resumeOpen && !rewindOpen && !contextOpen && !agentsOpen && !statusOpen && !statsOpen && !doctorOpen && !transcriptMode && !search) {
       const now = Date.now()
       if (now - lastEscRef.current < 500) {
         lastEscRef.current = 0
@@ -1486,7 +1504,7 @@ export function App({
     if (text || key.backspace || key.delete) markTyping()
   })
   useWheel(fullScreen, (lines) => {
-    if (!modelManagerOpen && !rulesManagerOpen && !resumeOpen && !rewindOpen && !contextOpen && !agentsOpen && !dialog) scrollHistory(lines)
+    if (!modelManagerOpen && !rulesManagerOpen && !resumeOpen && !rewindOpen && !contextOpen && !agentsOpen && !statusOpen && !statsOpen && !doctorOpen && !dialog) scrollHistory(lines)
   })
   const config = commandContext.getConfig()
   const footerHint = setupHint(config, strategy)
@@ -1520,6 +1538,21 @@ export function App({
       close={(notice) => {
         const done = managerDone.current; setAgentsOpen(false); setHint(notice ?? ''); managerDone.current = undefined; done?.()
       }} />
+  }
+  if (statusOpen) {
+    return <StatusDialog context={{ ...context, session }} input={managerInput} close={(notice) => {
+      const done = managerDone.current; setStatusOpen(false); setHint(notice ?? ''); managerDone.current = undefined; done?.()
+    }} />
+  }
+  if (statsOpen) {
+    return <StatsDialog context={{ ...context, session }} input={managerInput} close={(notice) => {
+      const done = managerDone.current; setStatsOpen(false); setHint(notice ?? ''); managerDone.current = undefined; done?.()
+    }} />
+  }
+  if (doctorOpen) {
+    return <DoctorDialog context={{ ...context, session }} input={managerInput} close={(notice) => {
+      const done = managerDone.current; setDoctorOpen(false); setHint(notice ?? ''); managerDone.current = undefined; done?.()
+    }} />
   }
   if (rulesManagerOpen) {
     return <RulesManager context={{ ...context, session }} input={managerInput} close={(notice) => {

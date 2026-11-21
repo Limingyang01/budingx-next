@@ -1,12 +1,12 @@
 # STATUS — SP007 agent-quality-and-extensions
 
-- 生命周期：ACTIVE（实施中，T1–T9 完成）
+- 生命周期：ACTIVE（实施中，T1–T10 完成）
 - 更新：2026-11-21
 - 分支：feature/SP007/agent-quality-and-extensions（基线 master 4705232）
-- 提交链：a6466a4 开轮文档 → edf3835 计划 → e7cabeb T1 → 8d02514 T2 → 07104b8 T3 → a813b5f T4 → 7129d6f T5 → c13820e T6 → b14db5d T7 → 68f80db T8 → （T9 待提交）
+- 提交链：a6466a4 开轮文档 → edf3835 计划 → e7cabeb T1 → 8d02514 T2 → 07104b8 T3 → a813b5f T4 → 7129d6f T5 → c13820e T6 → b14db5d T7 → 68f80db T8 → 1a027d2 T9 → （T10 待提交）
 - 需求：requirements.md（60 AC：SA×16 / RD×16 / PC×8 / MM×10 / ER×6 / FB×4）
 - 设计：design/design.zh.md（自审 PASS，含 D1–D14 偏离登记）；计划：design/plan.zh.md（T1–T16）
-- 验证：core+storage+provider 全量 341 项 340 pass 1 skip；T9 sp007-agents-panel 14/14（含真实 Ink 面板功能用例）；全量 TUI 402 项 401 pass（唯一失败 sp006-screen-e2e:216 拒绝写保留草稿＝并发 flaky，单独跑 51/51 全过，非 T9 回归）；T8 image-paste 14/14；sp006-keybindings 8/8；test:checks 模块边界 PASS；Windows 剪贴板无图优雅返回 undefined（有图 UNVERIFIED）
+- 验证：core+storage+provider 全量 341 项 340 pass 1 skip；T10 sp007-diagnostics 15/15＋sp007-diagnostics-ui 7/7（含真实 Ink /status 三页签、/stats 热力图+范围+Models、/doctor Warning/Fix 帧级用例）；全量 TUI 424 项 423 pass（唯一失败 sp006-screen-e2e:216 拒绝写保留草稿＝并发 flaky，单独跑 51/51 全过，非 T10 回归）；T9 sp007-agents-panel 14/14；T8 image-paste 14/14；sp006-keybindings 8/8；test:checks 模块边界 PASS；Windows 剪贴板无图优雅返回 undefined（有图 UNVERIFIED）
 - 参考：budingWorkerSpace b5c9be8（只读）；三份侦察报告已固化入需求（R1 子代理 / R2 诊断 / R3+R4 供应商与多模态）
 - 关键决策：第二协议=Anthropic Messages 直连适配器（D1）；PNG 纯 JS zlib 缩放不引 sharp；ToolSearch 客户端发现集替代 tool_reference beta；
   /doctor 警告式（修正 r5「Fix 屏」措辞）；单目录承载五工作流（沿用 SP006 先例）；
@@ -23,5 +23,6 @@
   - T7 会话图片链路：SubmitOptions.images→userMessage image 块；vision===false 前置拒绝 notice image_rejected 不发请求；vision 未知错误驱动降级（剥离最近 user 图片→notice image_downgraded→无图重试一次→再失败 image_error）；buildRequest 媒体上限 100 丢最旧＋可见 notice；PC-05 非法 JSON 以 <tool_use_error>InputValidationError 回灌；isImageUnsupportedError 移 core/image-errors.ts（provider re-export，core 禁 import provider）
   - T8 图片粘贴与缩放：tui/image-resize.ts（PNG 纯 JS zlib 解码/unfilter 0-4/双线性降采样/filter0 编码，8-bit RGB/RGBA 非隔行，调色板/16-bit/隔行/灰度拒绝，级联 8000→2048→1568 目标 raw≤3.75MB/base64≤5MB，非 PNG 超限拒绝）；tui/image-paste.ts（Windows PowerShell Get-Clipboard 临时 PNG fire-and-forget 删＋Linux/macOS 尽力而为＋路径 token 识别去引号还原双反斜杠＋readImageFile 失败明确报错）；storage/image-cache.ts（~/.budingx/image-cache/<sid>/<id>.<ext> 私有 0o700/0o600＋LRU 200 淘汰＋file:// url）；paths.imageCacheDir；keybindings 平台分支 IMAGE_PASTE_KEY（Win alt+v/其他 ctrl+v）chat:imagePaste＋ctrl+b agent.background
   - T9 TUI 代理接线：runtime（provider 协议分支/resolveSnapshot vision/ToolSearch 门控/agent registry/imageCache/AgentRuntime.agents·toolSearch·imageCache）＋storage createSubagentTranscript（sidechain）＋commands（openAgents 等 outcome、builtin-agents /agents local-jsx·/agent prompt、index 注册）＋render/agent-card.ts（8 色/最后3条/Done/ctrl+b/并行树）＋agents.ts listAgentEntries（overridden）＋agents-menu.tsx（list→view/edit/delete＋Manual 向导 wx）＋app.tsx（COMMAND_NAMES 补全导出/AgentsMenu 模态/agent_* 卡片/submitPrompt 图片附件/imagePaste·ctrl+b 键/卡片渲染）＋cli.ts（agents surface·imageCache）＋/tasks Agents 分组
-- 下一步：T10 诊断面板（/status 三页签 /stats JSONL 聚合热力图 /doctor 警告式＋ToolSearch 宿主门控已随 T9）
+  - T10 诊断面板：tui/diagnostics/{heatmap,ansi-chart,doctor-warnings,status-report,stats,doctor}.ts（纯逻辑：UTC 日键热力图 5 档/折线图+ANSI 截图/阈值 40k 字符·15k token·25k token/状态字段不显权限模式+凭据只显来源/JSONL 按模型按日聚合+子代理单计 token+stats-cache version1 今天实时 7d·30d 绕过缓存/doctor 警告式分区+24h 临时产物清理）＋status-dialog.tsx（Status/Config/Usage 三页签）＋stats-dialog.tsx（Overview 热力图/Models 折线，r 范围循环，Ctrl+S ANSI 截图复制）＋doctor-dialog.tsx（Warning/Fix 分区）＋commands/builtin-diagnostics.ts（/status /stats /doctor local-jsx immediate，无 supportsNonInteractive）＋diagnostics/port.ts（宿主事实→端口：runtime/config/mcp/agents/keybindings/instructions，rg 探测，Windows Set-Clipboard）＋app.tsx 模态接线＋cli.ts 端口接线＋core/transcript.ts message 记录增 usage（/stats 按模型聚合）
+- 下一步：T11 评估 runner＋任务集（scripts/eval/）
 - 清理待办：侦察副产品 .recon-b1.md/.recon-b2.md/undefined/ 已被子代理自行清理（工作区干净）

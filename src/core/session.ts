@@ -1281,7 +1281,7 @@ export class Session {
   }
 
   /** SP005 §5：记录一条消息（用户、助手或工具结果）。 */
-  private recordMessage(message: Message, parentId?: string): void {
+  private recordMessage(message: Message, parentId?: string, usage?: Usage): void {
     if (!this.options.transcript) return
     // SP007 RD-16：消息归属模型，/stats 按模型聚合（旧转录缺省 unknown 桶）。
     const model = this.activeTurn?.snapshot?.model
@@ -1292,7 +1292,8 @@ export class Session {
       ...(parentId ? { parentId } : {}),
       role: message.role,
       blocks: message.blocks,
-      ...(model ? { model } : {})
+      ...(model ? { model } : {}),
+      ...(usage ? { usage } : {})
     })
   }
 
@@ -1747,7 +1748,8 @@ export class Session {
       if (assistant.blocks.length > 0) {
         this.messages.push(assistant)
         turn.messageIds.push(assistant.id)
-        this.recordMessage(assistant)
+        // SP007 RD-04：assistant 消息携带本次请求用量，供 /stats 按模型按日聚合。
+        this.recordMessage(assistant, undefined, modelUsage)
         // SP005 §5：已派发的工具调用先登记，结果未知时只标记 needs_review。
         for (const block of assistant.blocks) {
           if (block.type === 'tool_use') {

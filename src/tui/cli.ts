@@ -12,6 +12,7 @@ import type { PermissionMode } from '../core/permissions.js'
 import { App } from './app.js'
 import { createAgentRuntime, workspacePromptOptions, type AgentRuntime } from './runtime.js'
 import { startMcp } from './mcp/index.js'
+import { buildDiagnosticsPort } from './diagnostics/port.js'
 import { startHooks } from './hooks/index.js'
 import type { CommandContext } from './commands.js'
 import { InkApprovalGateway } from './approval.js'
@@ -266,7 +267,18 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
                 background: (callId: string) => runtime.agents!.background(callId)
               }
             }
-          : {})
+          : {}),
+        // SP007 T10：诊断端口（/status /stats /doctor）。
+        diagnostics: buildDiagnosticsPort({
+          runtime,
+          configStore: stores.configStore,
+          getConfig: () => current,
+          mcpStatuses: mcp.statuses,
+          mcpTools: mcp.tools,
+          version,
+          cwd: process.cwd(),
+          home: homedir()
+        })
       },
       ...(runtime.imageCache ? { imageCache: runtime.imageCache } : {}),
       version,

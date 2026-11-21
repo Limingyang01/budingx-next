@@ -5,7 +5,7 @@ import { formatTokens } from './commands.js'
 
 export type PanelInput = { key: (text: string, key: Key) => void; paste: (text: string) => void }
 
-function usePanelInput(input: RefObject<PanelInput | undefined>, handler: (text: string, key: Key) => void, deps: unknown[]) {
+export function usePanelInput(input: RefObject<PanelInput | undefined>, handler: (text: string, key: Key) => void, deps: unknown[]) {
   useEffect(() => {
     input.current = { key: handler, paste: () => {} }
     return () => { input.current = undefined }

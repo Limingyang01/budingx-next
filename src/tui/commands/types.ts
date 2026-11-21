@@ -115,6 +115,15 @@ export type CommandContext = {
     stop: (agentId: string) => { ok: boolean; state?: string }
     background: (callId: string) => boolean
   }
+  /** SP007 T10：诊断面板数据端口（/status /stats /doctor，宿主注入原始事实）。 */
+  diagnostics?: {
+    statusInput: () => import('../diagnostics/status-report.js').StatusReportInput
+    sessionsDir: string
+    cachePath: string
+    today: string
+    doctorInput: () => import('../diagnostics/doctor.js').DoctorInput
+    copyToClipboard?: (text: string) => boolean
+  }
   /** SP006 CMD-09：MCP 连接状态（由宿主在启动时注入）。 */
   mcp?: {
     statuses: import('../mcp/types.js').McpServerStatus[]
