@@ -21,6 +21,7 @@ import type {
   Usage
 } from './events.js'
 import { normalizeForApi } from './normalize.js'
+import { isImageUnsupportedError } from './image-errors.js'
 import {
   COMPACTION_CIRCUIT_LIMIT,
   collectConstraintItems,
@@ -147,6 +148,8 @@ export type SubmitOptions = {
     context: NonNullable<SubmitOptions['context']>
     notices: string[]
   }
+  /** SP007 MM-07：随本条用户消息附带的图片（base64），按能力传递或降级。 */
+  images?: { id: number; mediaType: string; data: string; width?: number; height?: number }[]
 }
 
 type QueuedInput = { id: string; text: string; options?: SubmitOptions; notification?: boolean }
@@ -1203,6 +1206,19 @@ export class Session {
     }
     const snapshot = this.options.resolveSnapshot()
     turn.snapshot = snapshot
+    // SP007 MM-08：明确不支持图片（vision===false）→ 前置拒绝，不发起请求。
+    if (options?.images?.length && snapshot.capabilities.vision === false) {
+      this.emit({
+        type: 'notice',
+        level: 'warning',
+        code: 'image_rejected',
+        text: '当前模型不支持图片输入，图片未发送。请切换到支持视觉的模型，或移除图片后重试。'
+      })
+      this.traceEnd(turn.traceRoot, 'blocked')
+      turn.finalized = true
+      this.activeTurn = undefined
+      return
+    }
     this.emit({ type: 'turn_started', turnId: turn.id, snapshot, userText, startedAt: Date.now() })
     this.setState('requesting')
     const userMessage = this.userMessage(userText, options)
@@ -1449,6 +1465,36 @@ export class Session {
         : undefined),
       signal: turn.controller.signal
     }
+    // SP007 MM-09：单请求媒体上限 100，超出丢最旧并可见提示（不静默丢弃）。
+    {
+      const MAX_MEDIA = 100
+      let total = 0
+      for (const message of request.messages) {
+        if (message.role === 'user' && Array.isArray(message.content)) {
+          total += message.content.filter((part) => part.type === 'image_url').length
+        }
+      }
+      if (total > MAX_MEDIA) {
+        let drop = total - MAX_MEDIA
+        for (const message of request.messages) {
+          if (drop <= 0) break
+          if (message.role !== 'user' || !Array.isArray(message.content)) continue
+          message.content = message.content.filter((part) => {
+            if (part.type === 'image_url' && drop > 0) {
+              drop--
+              return false
+            }
+            return true
+          })
+        }
+        this.emit({
+          type: 'notice',
+          level: 'warning',
+          code: 'image_rejected',
+          text: `图片数量超过单请求上限 ${MAX_MEDIA}，已丢弃最旧的 ${total - MAX_MEDIA} 张。`
+        })
+      }
+    }
     const systemContext = this.options.resolveSystemContext?.()
     // hook 上下文只注入一次（本次请求），避免同一回合后续迭代重复堆叠。
     const hookContext = this.hookContext.splice(0, this.hookContext.length).join('\n\n')
@@ -1484,6 +1530,8 @@ export class Session {
     let iteration = 0
     // SP005 FR-08：上下文溢出后最多再试一次（先压缩再重试）。
     let overflowRetried = false
+    // SP007 MM-08：图片不支持错误降级后最多再试一次（剥离图片重试）。
+    let imageRetried = false
     // 熔断计数只在一个回合内有效：跨回合累积会让不相关的失败把后续回合误判成空转。
     this.repeatedToolFailures.clear()
     this.toolFailureStreaks.clear()
@@ -1643,8 +1691,27 @@ export class Session {
           overflowRetried = true
           iteration--
           continue
+        } else if (
+          providerFailure.class === 'bad_request' &&
+          isImageUnsupportedError(providerFailure.message) &&
+          !imageRetried &&
+          this.stripLatestUserImages()
+        ) {
+          // SP007 MM-08：错误驱动降级——剥离最近 user 图片后无图重试一次。
+          this.emit({
+            type: 'notice',
+            level: 'warning',
+            code: 'image_downgraded',
+            text: '模型拒绝图片输入，已移除图片并以纯文本重试。'
+          })
+          imageRetried = true
+          iteration--
+          continue
         } else {
-          outcome = 'error'
+          // 降级重试仍因图片失败 → 明确 image_error，不静默吞错。
+          outcome = imageRetried && isImageUnsupportedError(providerFailure.message)
+            ? 'image_error'
+            : 'error'
           error = providerFailure
         }
         break
@@ -1817,7 +1884,8 @@ export class Session {
     try {
       JSON.parse(call.arguments || '{}')
     } catch {
-      pushResult('Tool arguments are not valid JSON',
+      // SP007 PC-05：非法 JSON 以 InputValidationError 形状回灌，供模型自纠不中断。
+      pushResult('<tool_use_error>InputValidationError: Tool arguments are not valid JSON</tool_use_error>',
         true,
         ERROR_CODES.providerToolArgumentsInvalid
       )
@@ -2276,9 +2344,26 @@ export class Session {
           type: 'context' as const,
           ...entry
         })),
-        { type: 'text', text }
+        { type: 'text', text },
+        // SP007 MM-07：图片块随用户消息入史，normalize 按能力转 content parts。
+        ...(options?.images ?? []).map((image) => ({ type: 'image' as const, ...image }))
       ]
     }
+  }
+
+  /**
+   * SP007 MM-08：错误驱动降级——从最近一条含图片的 user 消息剥离 image 块
+   * （保留 text/context），后续轮该消息无图。返回是否确有移除。
+   */
+  private stripLatestUserImages(): boolean {
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      const message = this.messages[i]
+      if (message.role !== 'user') continue
+      const before = message.blocks.length
+      message.blocks = message.blocks.filter((block) => block.type !== 'image')
+      if (message.blocks.length !== before) return true
+    }
+    return false
   }
 
   private injectQueued(turn: ActiveTurn): void {
