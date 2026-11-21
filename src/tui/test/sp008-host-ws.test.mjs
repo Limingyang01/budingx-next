@@ -168,6 +168,7 @@ test('WebSocket 宿主：拒绝非回环绑定', async () => {
   child.stderr.on('data', (data) => (stderr += data))
   const code = await new Promise((resolveClose) => child.on('close', resolveClose))
   assert.equal(code, 2)
+  assert.match(stderr, /HOST_AUTH_004/)
   assert.match(stderr, /loopback/)
 })
 

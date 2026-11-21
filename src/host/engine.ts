@@ -6,6 +6,9 @@
 import type { Message, SessionEvent } from '../core/events.js'
 import type { PermissionMode } from '../core/permissions.js'
 
+/** A tool step whose outcome is unknown after a crash; never replayed. */
+export type NeedsReviewStep = { name: string; callId: string; detail?: string }
+
 export type HostEngineDescription = {
   sessionId: string
   workspaceId: string
@@ -13,12 +16,18 @@ export type HostEngineDescription = {
   state: string
   planMode: boolean
   permissionMode: PermissionMode
+  /** Unknown-outcome tool steps restored from the transcript (SH-05). */
+  needsReview: NeedsReviewStep[]
+  /** Non-fatal restore problems worth showing to the client. */
+  warnings: string[]
 }
 
 export type HostHistory = {
   messages: Message[]
   /** True when older messages were dropped to satisfy the limit. */
   truncated: boolean
+  needsReview: NeedsReviewStep[]
+  warnings: string[]
 }
 
 export type HostEngine = {

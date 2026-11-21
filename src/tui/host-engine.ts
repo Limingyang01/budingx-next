@@ -3,7 +3,12 @@
 import type { ApprovalDecision, ApprovalGateway, ApprovalRequest } from '../core/tools.js'
 import type { Message, SessionEvent } from '../core/events.js'
 import type { PermissionMode } from '../core/permissions.js'
-import type { HostEngine, HostEngineDescription, HostHistory } from '../host/engine.js'
+import type {
+  HostEngine,
+  HostEngineDescription,
+  HostHistory,
+  NeedsReviewStep
+} from '../host/engine.js'
 import type { AgentRuntime } from './runtime.js'
 import { workspacePromptOptions } from './runtime.js'
 
@@ -55,16 +60,25 @@ export class HostApprovalGateway implements ApprovalGateway {
   }
 }
 
+export type HostRestoreState = {
+  needsReview?: NeedsReviewStep[]
+  warnings?: string[]
+}
+
 export type CreateHostEngineOptions = {
   runtime: AgentRuntime
   workspaceId: string
   gateway: HostApprovalGateway
   title?: string
+  /** Restore outcome (SH-05): unknown tool steps and non-fatal warnings. */
+  restore?: HostRestoreState
 }
 
 export function createHostEngine(options: CreateHostEngineOptions): HostEngine {
   const { runtime, workspaceId, gateway, title } = options
   const session = runtime.session
+  const needsReview = options.restore?.needsReview ?? []
+  const warnings = options.restore?.warnings ?? []
 
   return {
     describe(): HostEngineDescription {
@@ -74,14 +88,23 @@ export function createHostEngine(options: CreateHostEngineOptions): HostEngine {
         ...(title === undefined ? {} : { title }),
         state: session.currentState,
         planMode: session.planMode.active,
-        permissionMode: runtime.policy.getMode()
+        permissionMode: runtime.policy.getMode(),
+        needsReview,
+        warnings
       }
     },
     history(limit?: number): HostHistory {
       const all: Message[] = [...session.history]
-      if (limit === undefined) return { messages: all, truncated: false }
+      if (limit === undefined) {
+        return { messages: all, truncated: false, needsReview, warnings }
+      }
       const messages = all.slice(Math.max(0, all.length - limit))
-      return { messages, truncated: messages.length < all.length }
+      return {
+        messages,
+        truncated: messages.length < all.length,
+        needsReview,
+        warnings
+      }
     },
     submit(text: string): void {
       session.submit(text, workspacePromptOptions(text, runtime.workspace, runtime.policy))

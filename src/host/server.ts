@@ -218,8 +218,15 @@ export class HostServer {
           `protocol version ${frame.version} is not supported; this host speaks ${HOST_PROTOCOL_VERSION}`
         )
       })
+      // 协议版本无法协商时按约定返回 HOST_PROTOCOL_001 后断开，避免旧客户端继续
+      // 用不兼容的帧形状驱动服务端。先让响应帧入队，再关闭连接。
+      queueMicrotask(() => {
+        this.clients.delete(client)
+        client.connection.close(1002, 'unsupported protocol version')
+      })
       return
     }
+    client.usedIds.add(frame.id)
     const ownerTaken = [...this.clients].some((other) => other !== client && other.role === 'owner')
     const role: HostRole = this.ownership.role === 'owner' && !ownerTaken ? 'owner' : 'observer'
     client.helloed = true
@@ -245,7 +252,12 @@ export class HostServer {
 
   private handleHistory(client: ClientState, frame: Extract<HostRequestFrame, { type: 'history' }>): void {
     const history = this.history(frame.limit)
-    const result: HistoryResult = { messages: history.messages, truncated: history.truncated }
+    const result: HistoryResult = {
+      messages: history.messages,
+      truncated: history.truncated,
+      needsReview: history.needsReview,
+      warnings: history.warnings
+    }
     this.send(client, { id: frame.id, ok: true, result })
   }
 
@@ -321,17 +333,22 @@ export class HostServer {
         ...(description.title ? { title: description.title } : {}),
         state: description.state,
         planMode: description.planMode,
-        permissionMode: description.permissionMode
+        permissionMode: description.permissionMode,
+        needsReview: description.needsReview,
+        warnings: description.warnings
       }
     }
     const summary = this.sessionStore.summary(this.options.sessionId)
+    const restored = this.sessionStore.restore(this.options.sessionId)
     return {
       sessionId: this.options.sessionId,
       workspaceId: this.options.workspaceId,
       ...(summary ? { title: summary.title } : {}),
       state: 'unknown',
       planMode: false,
-      permissionMode: 'read_only'
+      permissionMode: 'read_only',
+      needsReview: restored.needsReview,
+      warnings: restored.warnings
     }
   }
 
@@ -341,12 +358,22 @@ export class HostServer {
       : this.readOnlyHistory()
     if (limit === undefined || limit >= source.messages.length) return source
     const messages: Message[] = source.messages.slice(source.messages.length - limit)
-    return { messages, truncated: true }
+    return {
+      messages,
+      truncated: true,
+      needsReview: source.needsReview,
+      warnings: source.warnings
+    }
   }
 
   private readOnlyHistory(): HostHistory {
     const restored = this.sessionStore.restore(this.options.sessionId)
-    return { messages: restored.messages as unknown as Message[], truncated: false }
+    return {
+      messages: restored.messages as unknown as Message[],
+      truncated: false,
+      needsReview: restored.needsReview,
+      warnings: restored.warnings
+    }
   }
 
   /** Re-check lock ownership and the client role before any write path. */

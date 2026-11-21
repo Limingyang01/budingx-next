@@ -76,12 +76,17 @@ export type DescribeResult = {
   permissionMode: PermissionMode
   role: HostRole
   scope: HostScope
+  /** Unknown-outcome tool steps restored from disk; never replayed (SH-05). */
+  needsReview?: { name: string; callId: string; detail?: string }[]
+  warnings?: string[]
 }
 
 export type HistoryResult = {
   messages: unknown[]
   /** True when older messages were dropped by the requested limit. */
   truncated: boolean
+  needsReview?: { name: string; callId: string; detail?: string }[]
+  warnings?: string[]
 }
 
 export type HostResult =

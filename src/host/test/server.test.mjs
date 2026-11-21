@@ -145,6 +145,17 @@ test('hello 返回 hello_ok，首个客户端 owner，第二个客户端 observe
   assert.equal(secondReply.result.clientId, 'client-1')
 })
 
+test('协议版本不匹配返回 HOST_PROTOCOL_001 并断开连接', async () => {
+  const { server } = setup()
+  const peer = createPeer()
+  const reply = await hello(server, peer, 2)
+  assert.equal(reply.ok, false)
+  assert.equal(reply.error.code, 'HOST_PROTOCOL_001')
+  await Promise.resolve()
+  assert.equal(peer.closed(), true)
+  assert.equal(server.clientCount, 0)
+})
+
 test('observer 的写请求全部拒绝，读请求可用', async () => {
   const { server, engine } = setup()
   const owner = createPeer()
@@ -260,13 +271,18 @@ test('引擎事件按 seq 广播给所有已 hello 的客户端', async () => {
   owner.frames().length = 0
   observer.frames().length = 0
 
-  engine.emit({ type: 'status', state: 'idle' })
-  engine.emit({ type: 'text_delta', turnId: 't', messageId: 'm', text: 'hi' })
+  const emitted = [
+    { type: 'status', state: 'idle' },
+    { type: 'text_delta', turnId: 't', messageId: 'm', text: 'hi 中文\nsecond line' },
+    { type: 'tool_result', turnId: 't', callId: 'c', content: [{ type: 'text', text: 'ok' }], isError: false }
+  ]
+  for (const event of emitted) engine.emit(event)
   for (const peer of [owner, observer]) {
     const events = peer.frames().filter((frame) => frame.type === 'event')
-    assert.equal(events.length, 2)
-    assert.deepEqual(events.map((frame) => frame.seq), [1, 2])
-    assert.equal(events[0].event.type, 'status')
+    assert.equal(events.length, 3)
+    assert.deepEqual(events.map((frame) => frame.seq), [1, 2, 3])
+    // 帧经 JSON 序列化/反序列化，deepEqual 证明宿主未改写事件形状或丢失字段。
+    assert.deepEqual(events.map((frame) => frame.event), emitted)
   }
 })
 

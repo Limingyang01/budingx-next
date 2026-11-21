@@ -14,7 +14,11 @@ import { HostServer } from '../host/server.js'
 import { claimSessionOwnership, SessionOwnershipRole } from '../host/ownership.js'
 import { connectStdio } from '../host/transport/stdio.js'
 import { isLoopbackHost, startWsHost } from '../host/transport/ws.js'
-import { createHostEngine, HostApprovalGateway } from './host-engine.js'
+import {
+  createHostEngine,
+  HostApprovalGateway,
+  type HostRestoreState
+} from './host-engine.js'
 import { createAgentRuntime } from './runtime.js'
 
 const USAGE = `Usage: budingx serve [--transport stdio|ws] [--session ID] [--takeover]
@@ -179,11 +183,32 @@ export async function runServeCommand(args: string[]): Promise<number> {
     )
   }
 
+  // SH-05：已有 transcript 时先恢复历史与需复核步骤。恢复只装载消息，
+  // 绝不重放工具；没有 transcript 的新会话保持空历史。
+  let restore: HostRestoreState | undefined
+  if (runtime && sessionStore.summary(options.sessionId)) {
+    const resumed = runtime.sessions?.resume(options.sessionId)
+    if (resumed?.ok) {
+      restore = {
+        needsReview: resumed.needsReview ?? [],
+        warnings: resumed.warnings ?? []
+      }
+      for (const warning of restore.warnings ?? []) {
+        process.stderr.write('Warning: ' + warning + '\n')
+      }
+    } else if (resumed) {
+      process.stderr.write(
+        'Warning: session ' + options.sessionId + ' could not be restored: ' + resumed.message + '\n'
+      )
+    }
+  }
+
   const engine = runtime
     ? createHostEngine({
         runtime,
         workspaceId: sessionWorkspaceId(process.cwd()),
-        gateway
+        gateway,
+        ...(restore ? { restore } : {})
       })
     : undefined
 
@@ -223,7 +248,7 @@ export async function runServeCommand(args: string[]): Promise<number> {
     }
     if (!isLoopbackHost(options.host)) {
       process.stderr.write(
-        'Error: --transport ws must bind a loopback host (127.0.0.1, localhost or ::1)\n'
+        'Error: HOST_AUTH_004: --transport ws must bind a loopback host (127.0.0.1, localhost or ::1)\n'
       )
       await server.shutdown()
       return 2
