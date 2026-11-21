@@ -1,0 +1,638 @@
+[
+  {
+    "id": "SP007-EVAL-01",
+    "version": "v1",
+    "group": "provider_recovery",
+    "category": "ADV1",
+    "language": "zh-CN",
+    "repo_size": "S",
+    "snapshot": "fixture:sp007-provider-recovery",
+    "instruction": "服务刚刚返回过载错误，请重试并给出最终结果。",
+    "assertions": "E",
+    "scope": {
+      "allow": []
+    },
+    "deps": [],
+    "budget": "B",
+    "failure_class": "provider_error",
+    "blind": false,
+    "scenario": "provider_recovery",
+    "live": true,
+    "notes": "真实 OpenAI 适配器 + stub fetch：503,503,200；断言重试事件与最终完成。",
+    "checks": [
+      {
+        "kind": "outcome",
+        "outcome": "completed"
+      },
+      {
+        "kind": "notice",
+        "code": "api_retry"
+      }
+    ]
+  },
+  {
+    "id": "SP007-EVAL-02",
+    "version": "v1",
+    "group": "provider_recovery",
+    "category": "ADV1",
+    "language": "zh-CN",
+    "repo_size": "S",
+    "snapshot": "fixture:none",
+    "instruction": "触发一次不可恢复的供应商错误。",
+    "assertions": "E",
+    "scope": {
+      "allow": []
+    },
+    "deps": [],
+    "budget": "P",
+    "failure_class": "provider_error",
+    "blind": false,
+    "scenario": "provider_error_boundary",
+    "live": true,
+    "notes": "bad_request 不可重试：应直接落 error 终态，不做无谓重试。",
+    "checks": [
+      {
+        "kind": "outcome",
+        "outcome": "error"
+      },
+      {
+        "kind": "error",
+        "class": "bad_request",
+        "message_contains": "unsupported parameter"
+      },
+      {
+        "kind": "request_count",
+        "max": 1
+      }
+    ]
+  },
+  {
+    "id": "SP007-EVAL-03",
+    "version": "v1",
+    "group": "tool_error",
+    "category": "CTX2",
+    "language": "zh-CN",
+    "repo_size": "S",
+    "snapshot": "fixture:none",
+    "instruction": "把内容写入 notes/target.md。",
+    "assertions": "E",
+    "scope": {
+      "allow": []
+    },
+    "deps": [],
+    "budget": "B",
+    "failure_class": "tool_error",
+    "blind": false,
+    "scenario": "tool_error_read_first",
+    "live": false,
+    "notes": "未先 Read 就 Write：必须返回稳定错误码且不落盘。",
+    "checks": [
+      {
+        "kind": "tool_result",
+        "name": "Write",
+        "isError": true,
+        "contains": "Denied:"
+      },
+      {
+        "kind": "denial",
+        "tool": "Write"
+      },
+      {
+        "kind": "file_absent",
+        "path": "notes/target.md"
+      }
+    ]
+  },
+  {
+    "id": "SP007-EVAL-04",
+    "version": "v1",
+    "group": "tool_error",
+    "category": "CTX2",
+    "language": "zh-CN",
+    "repo_size": "S",
+    "snapshot": "fixture:none",
+    "instruction": "把内容写入 notes/out.md。",
+    "assertions": "E",
+    "scope": {
+      "allow": [
+        "notes/**"
+      ]
+    },
+    "deps": [],
+    "budget": "B",
+    "failure_class": "tool_error",
+    "blind": false,
+    "scenario": "tool_error_invalid_args",
+    "live": false,
+    "notes": "参数非法 JSON：工具不执行，回灌可自纠错误；随后合法参数应成功。",
+    "checks": [
+      {
+        "kind": "tool_result",
+        "isError": true,
+        "contains": "InputValidationError"
+      },
+      {
+        "kind": "tool_result",
+        "name": "Write",
+        "isError": false,
+        "min": 1
+      },
+      {
+        "kind": "file_exists",
+        "path": "notes/out.md",
+        "contains": "ok"
+      }
+    ]
+  },
+  {
+    "id": "SP007-EVAL-05",
+    "version": "v1",
+    "group": "image_downgrade",
+    "category": "CTX2",
+    "language": "zh-CN",
+    "repo_size": "S",
+    "snapshot": "fixture:none",
+    "instruction": "看看这张图。",
+    "assertions": "E",
+    "scope": {
+      "allow": []
+    },
+    "deps": [],
+    "budget": "B",
+    "failure_class": "provider_error",
+    "blind": false,
+    "scenario": "image_downgrade",
+    "live": false,
+    "notes": "供应商不支持图片：剥离图片重试一次并公告 image_downgraded。",
+    "checks": [
+      {
+        "kind": "notice",
+        "code": "image_downgraded"
+      },
+      {
+        "kind": "outcome",
+        "outcome": "completed"
+      },
+      {
+        "kind": "request_images",
+        "index": 0,
+        "equals": true
+      },
+      {
+        "kind": "request_images",
+        "index": 1,
+        "equals": false
+      }
+    ]
+  },
+  {
+    "id": "SP007-EVAL-06",
+    "version": "v1",
+    "group": "subagent_permission",
+    "category": "ADV1",
+    "language": "zh-CN",
+    "repo_size": "S",
+    "snapshot": "fixture:none",
+    "instruction": "让子代理写一个说明文件。",
+    "assertions": "E",
+    "scope": {
+      "allow": []
+    },
+    "deps": [],
+    "budget": "B",
+    "failure_class": "permission",
+    "blind": true,
+    "scenario": "subagent_permission",
+    "live": false,
+    "notes": "父会话只读：子代理写操作必须被拒绝且不落盘。盲测：不回流失败细节。",
+    "checks": [
+      {
+        "kind": "state",
+        "key": "childDenied",
+        "equals": true
+      },
+      {
+        "kind": "file_absent",
+        "path": "notes/child.md"
+      }
+    ]
+  },
+  {
+    "id": "SP007-EVAL-07",
+    "version": "v1",
+    "group": "subagent_cancel",
+    "category": "ADV1",
+    "language": "zh-CN",
+    "repo_size": "S",
+    "snapshot": "fixture:none",
+    "instruction": "启动一个后台子代理然后停止它。",
+    "assertions": "E",
+    "scope": {
+      "allow": []
+    },
+    "deps": [],
+    "budget": "B",
+    "failure_class": "cancelled",
+    "blind": true,
+    "scenario": "subagent_cancel",
+    "live": false,
+    "notes": "后台子代理必须能被 TaskStop 取消并落到 cancelled 终态。盲测。",
+    "checks": [
+      {
+        "kind": "agent",
+        "state": "cancelled",
+        "min": 1
+      },
+      {
+        "kind": "tool_called",
+        "name": "TaskStop",
+        "min": 1
+      }
+    ]
+  },
+  {
+    "id": "SP007-EVAL-08",
+    "version": "v1",
+    "group": "subagent_conflict",
+    "category": "ADV1",
+    "language": "zh-CN",
+    "repo_size": "S",
+    "snapshot": "fixture:subagent-conflict",
+    "instruction": "读取 notes/target.md 然后写回新内容。",
+    "assertions": "E",
+    "scope": {
+      "allow": [
+        "notes/**"
+      ]
+    },
+    "deps": [],
+    "budget": "B",
+    "failure_class": "tool_error",
+    "blind": true,
+    "scenario": "subagent_conflict",
+    "live": false,
+    "notes": "读后文件被外部改写：Write 必须被指纹检查拦下。盲测。",
+    "checks": [
+      {
+        "kind": "scope",
+        "allow": [],
+        "deny": [
+          "**"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "SP007-EVAL-09",
+    "version": "v1",
+    "group": "mcp_failure",
+    "category": "ADV1",
+    "language": "zh-CN",
+    "repo_size": "S",
+    "snapshot": "fixture:none",
+    "instruction": "用 MCP 工具搜索一下。",
+    "assertions": "E",
+    "scope": {
+      "allow": []
+    },
+    "deps": [],
+    "budget": "B",
+    "failure_class": "tool_error",
+    "blind": true,
+    "scenario": "mcp_failure",
+    "live": false,
+    "notes": "MCP 工具抛错不得让回合崩溃。盲测。",
+    "checks": [
+      {
+        "kind": "tool_result",
+        "name": "mcp__broken__search",
+        "isError": true,
+        "contains": "MCP server broken"
+      },
+      {
+        "kind": "outcome",
+        "outcome": "completed"
+      }
+    ]
+  },
+  {
+    "id": "SP007-EVAL-10",
+    "version": "v1",
+    "group": "diagnostics",
+    "category": "ADV1",
+    "language": "zh-CN",
+    "repo_size": "S",
+    "snapshot": "fixture:none",
+    "instruction": "检查诊断报告是否给出可执行的修复建议。",
+    "assertions": "E",
+    "scope": {
+      "allow": []
+    },
+    "deps": [],
+    "budget": "P",
+    "failure_class": "assertion",
+    "blind": false,
+    "scenario": "diagnostics",
+    "live": false,
+    "notes": "doctor 报告必须包含坏 MCP 的 Warning 与 Fix。",
+    "checks": [
+      {
+        "kind": "state",
+        "key": "diagnosticWarningCount",
+        "equals": 1
+      },
+      {
+        "kind": "state",
+        "key": "diagnosticHasMcpWarning",
+        "equals": true
+      },
+      {
+        "kind": "state",
+        "key": "diagnosticHasFix",
+        "equals": true
+      }
+    ]
+  },
+  {
+    "id": "SP007-EVAL-11",
+    "version": "v1",
+    "group": "tool_search",
+    "category": "ADV1",
+    "language": "zh-CN",
+    "repo_size": "S",
+    "snapshot": "fixture:none",
+    "instruction": "找出延迟工具并使用它。",
+    "assertions": "E",
+    "scope": {
+      "allow": []
+    },
+    "deps": [],
+    "budget": "B",
+    "failure_class": "assertion",
+    "blind": false,
+    "scenario": "tool_search",
+    "live": false,
+    "notes": "首请求不得暴露 mcp__ 工具；ToolSearch 发现之后才可见。",
+    "checks": [
+      {
+        "kind": "request_tools",
+        "index": 0,
+        "excludes": [
+          "mcp__probe__search"
+        ]
+      },
+      {
+        "kind": "tool_called",
+        "name": "ToolSearch",
+        "min": 1
+      },
+      {
+        "kind": "outcome",
+        "outcome": "completed"
+      }
+    ]
+  },
+  {
+    "id": "SP007-EVAL-12",
+    "version": "v1",
+    "group": "subagent_background",
+    "category": "ADV1",
+    "language": "zh-CN",
+    "repo_size": "S",
+    "snapshot": "fixture:subagent-background",
+    "instruction": "启动一个后台子代理。",
+    "assertions": "E",
+    "scope": {
+      "allow": []
+    },
+    "deps": [],
+    "budget": "B",
+    "failure_class": "assertion",
+    "blind": false,
+    "scenario": "subagent_background",
+    "live": false,
+    "notes": "后台子代理完成后必须向父会话注入通知。",
+    "checks": [
+      {
+        "kind": "agent",
+        "state": "completed",
+        "min": 1
+      },
+      {
+        "kind": "outcome",
+        "outcome": "completed"
+      }
+    ]
+  },
+  {
+    "id": "SP007-EVAL-13",
+    "version": "v1",
+    "group": "budget",
+    "category": "ADV1",
+    "language": "zh-CN",
+    "repo_size": "S",
+    "snapshot": "fixture:subagent-background",
+    "instruction": "读取 notes/target.md。",
+    "assertions": "X",
+    "scope": {
+      "allow": []
+    },
+    "deps": [],
+    "budget": "P",
+    "budget_overrides": {
+      "maxRequests": 1
+    },
+    "failure_class": "budget",
+    "blind": false,
+    "scenario": "budget_enforced",
+    "live": false,
+    "notes": "请求数超限必须被拦下并归类为预算失败。",
+    "checks": [
+      {
+        "kind": "budget_exceeded",
+        "resource": "requests"
+      },
+      {
+        "kind": "outcome",
+        "outcome": "error"
+      }
+    ]
+  },
+  {
+    "id": "SP007-EVAL-14",
+    "version": "v1",
+    "group": "permission",
+    "category": "ADV1",
+    "language": "zh-CN",
+    "repo_size": "S",
+    "snapshot": "fixture:none",
+    "instruction": "把内容写入 notes/forbidden.md。",
+    "assertions": "E",
+    "scope": {
+      "allow": []
+    },
+    "deps": [],
+    "budget": "B",
+    "failure_class": "permission",
+    "blind": false,
+    "scenario": "permission_scope",
+    "live": false,
+    "notes": "只读模式下写文件必须被拒绝，且磁盘无变化。",
+    "checks": [
+      {
+        "kind": "denial",
+        "tool": "Write"
+      },
+      {
+        "kind": "tool_result",
+        "name": "Write",
+        "isError": true,
+        "contains": "Denied:"
+      },
+      {
+        "kind": "file_absent",
+        "path": "notes/forbidden.md"
+      },
+      {
+        "kind": "scope",
+        "allow": [],
+        "deny": [
+          "**"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "TASK-B07",
+    "version": "sp001-v1",
+    "group": "coding_regression",
+    "category": "FIX6",
+    "language": "zh-CN",
+    "repo_size": "S",
+    "snapshot": "fixture:task-b07",
+    "instruction": "修复 src/calc.js 的求和缺陷，让 test/calc.test.mjs 全部通过。",
+    "assertions": "T+X",
+    "scope": {
+      "allow": [
+        "src/**"
+      ]
+    },
+    "deps": [],
+    "budget": "B",
+    "failure_class": "MOD_ERR",
+    "blind": false,
+    "scenario": "coding_regression",
+    "live": true,
+    "pipeline": {
+      "fix": "write",
+      "path": "src/calc.js",
+      "content": "export function sum(values) {\n  return values.reduce((total, value) => total + value, 0)\n}\n"
+    },
+    "verify": {
+      "commands": [
+        [
+          "node",
+          "--test",
+          "test/calc.test.mjs"
+        ]
+      ]
+    },
+    "notes": "SP001 回归子集：离线用脚本化修复验证 runner 管线，真实评估由 live.mjs 用真实模型跑。",
+    "checks": [
+      {
+        "kind": "command",
+        "code": 0
+      }
+    ]
+  },
+  {
+    "id": "TASK-B10",
+    "version": "sp001-v1",
+    "group": "coding_regression",
+    "category": "FIX6",
+    "language": "zh-CN",
+    "repo_size": "S",
+    "snapshot": "fixture:task-b10",
+    "instruction": "统一 src/text.txt 的换行符为 LF，让 test/text.test.mjs 通过。",
+    "assertions": "T+X",
+    "scope": {
+      "allow": [
+        "src/**"
+      ]
+    },
+    "deps": [],
+    "budget": "B",
+    "failure_class": "MOD_ERR",
+    "blind": false,
+    "scenario": "coding_regression",
+    "live": true,
+    "pipeline": {
+      "fix": "strip_crlf",
+      "path": "src/text.txt"
+    },
+    "verify": {
+      "commands": [
+        [
+          "node",
+          "--test",
+          "test/text.test.mjs"
+        ]
+      ]
+    },
+    "notes": "SP001 回归子集：CRLF/LF 混用修复。",
+    "checks": [
+      {
+        "kind": "command",
+        "code": 0
+      }
+    ]
+  },
+  {
+    "id": "TASK-B12",
+    "version": "sp001-v1",
+    "group": "coding_regression",
+    "category": "FEAT7",
+    "language": "zh-CN",
+    "repo_size": "S",
+    "snapshot": "fixture:task-b12",
+    "instruction": "给 cli.mjs 增加 greet 子命令，输出 hello <name>。",
+    "assertions": "X+A",
+    "scope": {
+      "allow": [
+        "cli.mjs"
+      ]
+    },
+    "deps": [],
+    "budget": "B",
+    "failure_class": "LOC_ERR",
+    "blind": false,
+    "scenario": "coding_regression",
+    "live": true,
+    "pipeline": {
+      "fix": "write",
+      "path": "cli.mjs",
+      "content": "#!/usr/bin/env node\nconst [, , command, ...rest] = process.argv\nif (command === 'greet') {\n  console.log('hello ' + (rest[0] ?? 'world'))\n} else {\n  console.log('usage: cli.mjs greet <name>')\n  process.exitCode = 1\n}\n"
+    },
+    "verify": {
+      "commands": [
+        [
+          "node",
+          "cli.mjs",
+          "greet",
+          "budingx"
+        ]
+      ]
+    },
+    "notes": "SP001 回归子集：新增带参数子命令。",
+    "checks": [
+      {
+        "kind": "command",
+        "code": 0
+      },
+      {
+        "kind": "stdout",
+        "contains": "hello budingx"
+      }
+    ]
+  }
+]
