@@ -73,6 +73,12 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
   /btw <问题>           旁路提问，不进入主会话上下文
   /worktree [list|create <名称>|remove <路径>]  管理隔离工作树
   /tasks                列出后台或未完成任务
+  /agents               子代理管理面板（列表/新建向导/查看）
+  /agent <类型> <任务>   直接派发一个子代理
+  /status               会话状态、配置来源与用量性能
+  /stats                用量统计（热力图/模型分布/连续天数）
+  /doctor               安装、配置、MCP、键位与上下文诊断
+  /image [路径]         把剪贴板或指定路径的图片挂为附件（alt+v 被终端吞掉时用它）
   /mcp                  查看 MCP 服务器与工具
   /skills               查看已发现技能
   /export [--format jsonl|text] [--path <路径>]  导出会话
@@ -104,6 +110,12 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
   /btw <question>       side question without polluting the main context
   /worktree [list|create <name>|remove <path>]  manage isolated worktrees
   /tasks                list background or unfinished tasks
+  /agents               subagent manager (list / create wizard / inspect)
+  /agent <type> <task>  dispatch one subagent directly
+  /status               session status, config sources, usage and performance
+  /stats                usage stats (heatmap / models / streaks)
+  /doctor               install, config, MCP, keybinding and context diagnostics
+  /image [path]         attach a clipboard or path image (use when alt+v is swallowed)
   /mcp                  show MCP servers and tools
   /skills               show discovered skills
   /export [--format jsonl|text] [--path <path>]  export the session
