@@ -84,11 +84,11 @@ function defaultNow(): string {
   return new Date().toISOString()
 }
 
-function sessionWorkspaceId(root: string): string {
+export function sessionWorkspaceId(root: string): string {
   return createHash('sha256').update(resolve(root)).digest('hex')
 }
 
-function validSessionId(sessionId: string): boolean {
+export function validSessionId(sessionId: string): boolean {
   return /^[a-z0-9][a-z0-9_-]{0,127}$/i.test(sessionId)
 }
 
