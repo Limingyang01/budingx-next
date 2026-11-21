@@ -31,15 +31,16 @@ bug 立即修复复测；缺凭据/平台记 UNVERIFIED。本轮止于推送功�
 - 命令：node --test src/provider/test/anthropic.test.mjs src/provider/test/anthropic-fixtures.test.mjs src/provider/test/image-errors.test.mjs
 
 ## T3 代理定义加载（§4.1；AC SA-01/02、RD-11 代理警告源）
-- 路径：src/core/agent-definitions.ts（loadAgentDefinitions/内置三代理/saveAgentFile/deleteAgentFile/
-  invalidateAgentCache/8 色常量）。
-- Consumes：yaml 依赖、paths.dataRoot。Produces：T4 spawn、T8 面板、T9 doctor。
-- 测试：src/core/test/agent-definitions.test.mjs——RED：加载/覆盖/校验用例失败；GREEN：
+- 路径：src/core/agent-definitions.ts（纯：类型/内置三代理/parseAgentFile/serializeAgentFile/8 色常量）＋
+  src/tui/agents.ts（IO：loadAgentDefinitions/saveAgentFile/deleteAgentFile/invalidateAgentCache）。
+  D13/D14：core 禁 IO、yaml 不入运行时白名单→手写 frontmatter 解析（skills.ts 先例）。
+- Consumes：core/permissions 类型、node:fs/path（仅 tui 层）。Produces：T4 spawn、T8 面板、T9 doctor。
+- 测试：src/core/test/agent-definitions.test.mjs＋src/tui/test/sp007-agent-files.test.mjs——RED：加载/覆盖/校验用例失败；GREEN：
   临时 home＋项目目录树（cwd 向上至 git 根）覆盖序 built-in→user→project；frontmatter 全字段解析；
   name/description 缺失跳过记 warning；未支持字段记 warning；tools 缺省全部；'wx' 防覆盖；
   写后缓存失效；内置禁表（Explore/Plan 禁 Write/Edit/Bash/PowerShell/Agent/AskUserQuestion/
   EnterPlanMode/ExitPlanMode）。
-- 命令：node --test src/core/test/agent-definitions.test.mjs
+- 命令：node --test src/core/test/agent-definitions.test.mjs src/tui/test/sp007-agent-files.test.mjs
 
 ## T4 子代理运行时（§4.1；AC SA-03…10/14/16）
 - 路径：src/core/agent-runtime.ts（createAgentRegistry/spawn/background/stop/taskOutput/通知收集）、

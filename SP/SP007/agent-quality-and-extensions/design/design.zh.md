@@ -60,7 +60,7 @@ SP006 交付命令注册表三型+模态槽、/btw、hooks 8 事件、MCP 客户
 
 | # | 参考机制（b5c9be8 路径） | 本仓落点 |
 | --- | --- | --- |
-| C1 | AgentTool/loadAgentsDir.ts＋markdownConfigLoader.ts：frontmatter 定义、built-in→user→project 覆盖、memoize | src/core/agent-definitions.ts（yaml 解析，目录 .budingx/agents） |
+| C1 | AgentTool/loadAgentsDir.ts＋markdownConfigLoader.ts：frontmatter 定义、built-in→user→project 覆盖、memoize | src/core/agent-definitions.ts（纯解析/内置/序列化）＋src/tui/agents.ts（目录 IO/缓存，.budingx/agents） |
 | C2 | builtInAgents.ts：general-purpose/Explore/Plan 工具禁表 | 同文件内置常量（禁表映射本仓工具名） |
 | C3 | runAgent.ts：独立 query 循环、工具裁剪、权限覆盖、sync 共享取消/async 独立、finally 清理 | src/core/agent-runtime.ts：子 Session 实例＋裁剪工具＋上限 policy＋AbortController 树 |
 | C4 | AgentTool prompt.ts：入参/结果 10 万字符/并发安全/usage 尾注 | src/core/agent-tools.ts：Agent/TaskOutput/TaskStop |
@@ -86,10 +86,13 @@ Read 读图/PDF、/stats 彩蛋对比、doctor 联网 Updates——需求排除�
 
 ### 4.1 R1 子代理（SA-01…16）
 
-**定义加载** src/core/agent-definitions.ts：
-- loadAgentDefinitions({cwd, home})→{agents: AgentDefinition[], warnings: string[]}；
-  目录＝内置→~/.budingx/agents→项目自 cwd 向上每级 .budingx/agents 至 git 根（含）；同名后者胜；
-  文件 <name>.md，YAML frontmatter（yaml 依赖已有）＋正文=系统提示词。
+**定义加载**（D13/D14 边界修正：core 禁 IO（scripts/checks/module-boundaries.mjs CORE_IO_BANNED），
+yaml 不在产品运行时依赖白名单→手写平铺 frontmatter 解析，沿用 src/tui/skills.ts parseFrontmatter 先例）：
+- src/core/agent-definitions.ts（纯函数，无 IO）：AgentDefinition/AgentColor 类型、BUILT_IN_AGENTS、
+  parseAgentFile(text,{source,filePath})→{definition?,warnings}、serializeAgentFile(definition)→md 文本。
+- src/tui/agents.ts（宿主 IO，先例 skills.ts）：loadAgentDefinitions({cwd, home})→{agents: AgentDefinition[], warnings: string[]}；
+  目录＝内置→~/.budingx/agents→项目自 cwd 向上每级 .budingx/agents 至 git 根（含，.git 文件或目录皆算根标记；
+  非 git 目录仅查 cwd 本级）；同名后者胜；文件 <name>.md，平铺 frontmatter＋正文=系统提示词。
 - AgentDefinition{name,description,source:'built-in'|'user'|'project',tools?:string[]（缺省=全部）,
   disallowedTools?:string[],model?:string（'inherit' 缺省）,effort?,permissionMode?:PermissionMode,
   color?:AgentColor,maxTurns?:number,initialPrompt?:string,background?:boolean,filePath?,body}。
@@ -112,15 +115,16 @@ Read 读图/PDF、/stats 彩蛋对比、doctor 联网 Updates——需求排除�
   2. 工具裁剪：父 tools 过滤——恒禁 Agent/TaskOutput/TaskStop/AskUserQuestion/EnterPlanMode/ExitPlanMode
      （本仓计划工具名以实际为准）；definition.tools 白名单（'*' 缺省全部）再减 disallowedTools；
      后台代理额外白名单 Read/Glob/Grep/WebSearch/WebFetch/Bash/PowerShell/Write/Edit/TodoWrite 类＋mcp__* 恒许。
-  3. 权限上限：childPolicy=createPermissionPolicy({workspace, rules:父规则快照, mode:min(父当前模式,
-     def.permissionMode??父模式)})；deny 规则继承；child remember 隔离不写父记忆。
+  3. 权限上限：childPolicy 经注入端口 createChildPolicy(mode)（宿主用 createPermissionPolicy({workspace,
+     rules:父规则快照, mode}) 构造；core 不得 import workspace，D14）；mode=min(父当前模式,
+     def.permissionMode??父模式)；deny 规则继承；child remember 隔离不写父记忆。
      审批网关：sync→转发父 ApprovalGateway（**串行队列**：同一时刻只弹一个审批，防并行代理竞争）；
      background→自动 deny 网关（outcome:'deny',via:'policy'，不弹窗）。
   4. 子 Session：独立 messages（不见父历史）；系统提示词＝definition.body＋环境详情（cwd/平台/日期，
      复用 runtime 环境串）＋initialPrompt 前置首条 user；resolveSnapshot＝model override??父快照
      （capabilities 继承）；maxIterations＝maxTurns 参数??定义??SUBAGENT_MAX_TURNS(=30)；
      transcript＝sidechain JSONL ~/.budingx/sessions/<parent>/subagents/agent-<agentId>.jsonl
-     （复用 createSessionTranscript 形状，独立目录）；hooks 不注入（排除项）；thinking 不启用。
+     （宿主注入 createSessionTranscript 端口，core 不做 IO，D14）；hooks 不注入（排除项）；thinking 不启用。
   5. 取消：child 独立 AbortController；sync 时 parentSignal abort 监听→child.abort()（backgrounded 标志
      置真后解除监听）；registry.stop(agentId)→abort＋stopped=true（抑制通知）；父回合 cancel 只中止 sync 子。
   6. token 预算：累计子 usage≥SUBAGENT_TOKEN_LIMIT(=100000，MODEL_PROPOSED D7)→abort＋
@@ -338,7 +342,7 @@ live 不进 npm test。
 hooks 超时/崩溃/非零/递归防护（FB-02）；MCP 断线/超时/取消/输出上限＋断连延迟工具公告移除（FB-03）；
 headless stream-json 既有事件形状/终态/退出码不变——agent_* 新事件 headless 不输出（UI-only，
 Agent 语义已由 tool_call_completed/tool_result 承载），notice 新码按既有 notice 映射纪律（FB-04）；
-npm pack dry-run 产物符合性；不新增运行时依赖（yaml/zlib 已有）。
+npm pack dry-run 产物符合性；不新增运行时依赖（frontmatter 手写解析；zlib 为 node 内置；yaml 仅根 devDependency 不入产品）。
 
 ### 4.7 契约扩展汇总（新增均向后兼容）
 
@@ -357,7 +361,7 @@ npm pack dry-run 产物符合性；不新增运行时依赖（yaml/zlib 已有�
 
 ## 5. 变更集（精确路径）
 
-新增：src/core/agent-definitions.ts、src/core/agent-runtime.ts、src/core/agent-tools.ts、
+新增：src/core/agent-definitions.ts、src/core/agent-runtime.ts、src/core/agent-tools.ts、src/tui/agents.ts、
 src/core/tool-search.ts、src/provider/anthropic.ts、src/provider/image-errors.ts、
 src/storage/image-cache.ts、src/tui/image-paste.ts、src/tui/image-resize.ts、
 src/tui/agents-menu.tsx、src/tui/render/agent-card.ts、
@@ -366,7 +370,7 @@ src/tui/commands/builtin-agents.ts、src/tui/commands/builtin-diagnostics.ts、
 scripts/eval/{runner.mjs,live.mjs,tasks.json,fixtures/}、
 测试 src/core/test/{agent-definitions,agent-runtime,agent-tools,tool-search,image-blocks}.test.mjs、
 src/provider/test/{anthropic,anthropic-fixtures,image-errors}.test.mjs、
-src/tui/test/{sp007-agents-panel,sp007-diagnostics,sp007-image-paste,sp007-eval,sp007-failure-boundaries}.test.mjs。
+src/tui/test/{sp007-agent-files,sp007-agents-panel,sp007-diagnostics,sp007-image-paste,sp007-eval,sp007-failure-boundaries}.test.mjs。
 修改：src/core/{events.ts,tools.ts,provider.ts,session.ts,normalize.ts,transcript.ts}、
 src/provider/openai.ts（导出 backoffDelay/parseRetryAfter；content parts 直传）、
 src/storage/{config-store.ts,profiles.ts,paths.ts}、
@@ -391,6 +395,8 @@ independent-development.md}、PRODUCT.md、THIRD-PARTY-NOTICES.md（cc-switch MI
 | D10 | Explore/Plan model inherit（无 haiku 对应）；向导 Generate 方式、fork/resume/memory/worktree 延期 | 排除清单；后续轮复用本轮契约 |
 | D11 | anthropic thinking effort→budget＋400 去 thinking 重试 | MODEL_PROPOSED；错误驱动不静默换模型 |
 | D12 | 转录 image 块含 base64 data | 契约简单一致；5MB 上限控体积；image-cache 供重显 |
+| D13 | frontmatter 手写平铺解析 vs yaml 库 | yaml 不在产品运行时依赖白名单（module-boundaries allowedDeps）；skills.ts 已有同型先例；代理 frontmatter 仅平铺标量/逗号列表 |
+| D14 | 定义 IO 落 src/tui/agents.ts；子政策/sidechain 转录经端口注入 | core 禁 node:fs 与跨模块 import（边界检查器）；纯解析/类型/内置留 core，IO 归宿主（skills.ts 先例） |
 
 ## 7. AC→设计映射
 
@@ -426,8 +432,10 @@ ER-01…06→§4.5。FB-01…04→§4.6。
    纯文本路径字节级不变（保护用例断言）；ApiMessage content 联合扩展需同步 openai 请求体构造。
 5. 安全：子权限≤父（min 模式＋deny 继承＋remember 隔离）；后台自动 deny 不弹窗；审批串行队列
    防竞争；凭据脱敏；诊断零网络；不新增运行时依赖。PASS。
-6. 偏离：D1–D12 全部有理由且可追溯 CAP/矩阵；MODEL_PROPOSED（SA-05 常量/RD-03 落点/D7/D11）
+6. 偏离：D1–D14 全部有理由且可追溯 CAP/矩阵；MODEL_PROPOSED（SA-05 常量/RD-03 落点/D7/D11）
    已固化数值，实施不静默变更。PASS。
+8. 实施期边界修正（T3，2026-11-21）：读 scripts/checks/module-boundaries.mjs 发现 core 禁 IO、
+   yaml 不在运行时白名单→D13/D14 登记并回写 §4.1/§5；不改变 AC 行为，仅落点与解析方式修正。PASS。
 7. 遗留风险（§8）：并行审批 UX、PNG 重编码复杂度、转录体积、thinking 400、Anthropic 凭据可能缺——
    均有对策或 UNVERIFIED 纪律，不阻塞实施。
 结论：自审通过。从 master 4705232 创建 feature/SP007/agent-quality-and-extensions，进入计划阶段。
