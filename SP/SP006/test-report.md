@@ -449,3 +449,40 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 - 失败原因是产品代码缺陷（超时计时器生命周期），不是 CI 配置、账号授信或 OIDC 问题；发布作业因前置验证失败而跳过，**未触达 npm 上传路径**。
 - 修复已随本节提交推送 master；**需要维护者重新触发 `publish-tui.yml`**（version `0.6.0`、tag `latest`、dry_run 取消勾选），源提交以本节记录的提交号为准。
 - 0.6.0 版本台账仍为 `prepared`；本节不改变 69 条 AC 结论，也不改变 `src/tui/package.json` 的版本号。
+
+### 11.6 第二类偶发失败：Windows 高并行负载下的 Git/进程类用例（发布验证稳定性加固）
+
+在 §11 修复推送后继续排查，确认另有一类与 §11 无关、但在 Node 22 全量复跑中反复出现的偶发失败，其失败用例每次都不同：
+
+| 失败用例 | 位置 | 现象 |
+| --- | --- | --- |
+| `CE-14 AbortSignal 触发后台任务转 cancelled` | `src/exec/test/background.test.mjs:123` | `error: 'abort 后 5s 内状态必须为 cancelled'` |
+| `T5-16 Session.dispose 终止仍在运行的后台任务` | `src/exec/test/tools.test.mjs:424` | actual `running` / expected `cancelled` |
+| `T9-2 未授权（伪造授权）提交被拒绝且不写 ref` | `src/git/test/commit.test.mjs:101` | `error: "创建 worktree 失败：Preparing worktree (new branch 'master-budingx/demo')"`（缺少 `fatal:` 行） |
+| `CE-05 100KB 输出触发截断标注` | `src/exec/test/runner.test.mjs:101` | actual `failed` / expected `completed` |
+| `T23-3 / T23-4 / T23-8`（worktree 用例） | `src/workspace/test/` | actual `undefined` / expected `true`；`git commit -q -m feature work 失败：1 !== 0` |
+
+判定为**既有 flaky**而非本轮引入，依据：
+
+1. 逐文件与分组单独执行全部通过（`src/exec/test/*.test.mjs` 90/90、`src/core/test/*.test.mjs` 154/154、`src/workspace/test/*.test.mjs` 112/112、`src/exec/test/tools.test.mjs` 16/16、`src/git/test/commit.test.mjs` 11/11、`src/git/test/status-extended.test.mjs` 4/4）。
+2. 在临时 worktree `D:/tmp-pre-fix`（检出 §11 修复之前的提交 `a9c71d2`）复跑，出现同样的 `CE-14`、`T5-16` 失败，且 §11 涉及的 `G-05`–`G-08` 全部 `cancelled`，证明该类失败早于本轮改动存在。
+3. 手工复现 `git worktree add` 失败时 stderr 同时含 `Preparing worktree (new branch 'x')` 与 `fatal: ...`；而 flaky 现场**只有 `Preparing` 行**，说明子进程在 Windows 高负载下被异常终止。独占复现（`enterWorktree` 240 次、`CE-05` 并发 40 次）全部正常。
+4. 本机 12 核，`node --test` 默认按 CPU 并行执行测试文件；Windows 上大量 git/bash 子进程并发即触发该类偶发失败。
+
+处理：给单元回归加并发上限，使 CI Windows 验证作业可稳定复现通过。
+
+- `package.json`：`"test:unit"` 由 `npm run build && node --test src/*/test/*.test.mjs` 改为 `npm run build && node --test --test-concurrency=4 src/*/test/*.test.mjs`。
+- `docs/development.md`：在测试说明处补充并发上限及其原因。
+
+复验：
+
+| 环境 | 命令 | 结果 |
+| --- | --- | --- |
+| Node 22.22.0（复刻 CI Windows） | `node --test --test-concurrency=4 src/*/test/*.test.mjs` 连续 4 轮 | 每轮 `tests=927 pass=926 fail=0 cancelled=0 skipped=1`（约 93–95 s） |
+| Node 22.22.0 | `npm test` 连续 3 轮 | 全部 exit 0（10 + 11 + 927/926/0 fail/1 skip + 81 + 17 + 9） |
+| Node 24.15.0（复刻 CI ubuntu） | `node --test --test-concurrency=4 src/*/test/*.test.mjs` | exit 0，`tests=927 pass=926 fail=0 cancelled=0 skipped=1`，85762 ms |
+| Node 22.22.0 | `npm run publish -- --dry-run --expected-version 0.6.0 --tag latest` | exit 0，`Dry run passed; no publication.` |
+| Node 22.22.0 | `npm run test:checks` / `npm run spec:check` / `npm run skills:check` | 全部 exit 0 |
+
+该加固只改变测试执行并行度，不改变任何产品运行时代码与用户可见行为。
+

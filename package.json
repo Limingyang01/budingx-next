@@ -15,7 +15,7 @@
     "spec:test": "node --test scripts/spec/*.test.mjs",
     "build": "tsc -p src/tui/tsconfig.json",
     "start": "node --env-file-if-exists=.env.e2e.local src/tui/dist/tui/cli.js",
-    "test:unit": "npm run build && node --test src/*/test/*.test.mjs",
+    "test:unit": "npm run build && node --test --test-concurrency=4 src/*/test/*.test.mjs",
     "test:checks": "node scripts/checks/module-boundaries.mjs",
     "test:langfuse": "node --test scripts/langfuse/*.test.mjs",
     "langfuse:init": "node scripts/langfuse/init-local.mjs",

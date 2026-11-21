@@ -18,7 +18,7 @@ node scripts/release/pack-smoke.mjs
 npm run publish -- --dry-run
 ```
 
-`npm test` 执行技能维护、规格自洽性、产品单元回归、模块边界检查与版本管理测试。`npm run merge:gate` 为合入 master 前的交叉验证门禁（全量门禁 + outgoing 路径扫描 + 当轮报告审计），流程与自审要求见 [集成门禁](integration-gate.md)。TUI 屏幕类端到端用进程内伪 TTY harness（`src/tui/test/helpers/mount-tty.mjs` + `screen-e2e.test.mjs`，真实 Ink 渲染帧断言，无需真终端/截图），方法论见 [buding-frontend-testing](../skills/buding-frontend-testing/SKILL.md)；真终端 IME/观感/鼠标仍属人工 smoke 清单。
+`npm test` 执行技能维护、规格自洽性、产品单元回归、模块边界检查与版本管理测试。单元回归以 `--test-concurrency=4` 限制测试文件并行度：Windows 上 Git/进程类用例在高并行负载下会出现偶发失败（git worktree 创建、后台任务取消、输出截断），限流后连续多轮全绿；本机 12 核时并行度 12，CI Windows 验证作业同样受益。`npm run merge:gate` 为合入 master 前的交叉验证门禁（全量门禁 + outgoing 路径扫描 + 当轮报告审计），流程与自审要求见 [集成门禁](integration-gate.md)。TUI 屏幕类端到端用进程内伪 TTY harness（`src/tui/test/helpers/mount-tty.mjs` + `screen-e2e.test.mjs`，真实 Ink 渲染帧断言，无需真终端/截图），方法论见 [buding-frontend-testing](../skills/buding-frontend-testing/SKILL.md)；真终端 IME/观感/鼠标仍属人工 smoke 清单。
 
 ## 源码与构建布局（SP002 起）
 
