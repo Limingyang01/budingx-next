@@ -1,5 +1,5 @@
 // Message normalization for the provider boundary (SP002 design §3.3).
-import type { ApiMessage } from './provider.js'
+import type { ApiContentPart, ApiMessage } from './provider.js'
 import type { Message, MessageBlock } from './events.js'
 
 const SYNTHETIC_TOOL_RESULT = '[tool call did not complete]'
@@ -35,7 +35,25 @@ export function normalizeForApi(
             `<file_context source="${block.source}">\n${block.content}\n</file_context>`
         )
         .join('\n\n')
-      result.push({ role: 'user', content: prefix ? `${prefix}\n\n${text}` : text })
+      const combined = prefix ? `${prefix}\n\n${text}` : text
+      // SP007 MM-07: user images become OpenAI-shaped content parts
+      // (text first, images after). The pure-text path stays byte-identical.
+      const images = message.blocks.filter(
+        (block): block is Extract<MessageBlock, { type: 'image' }> => block.type === 'image'
+      )
+      if (images.length === 0) {
+        result.push({ role: 'user', content: combined })
+      } else {
+        const parts: ApiContentPart[] = []
+        if (combined) parts.push({ type: 'text', text: combined })
+        for (const image of images) {
+          parts.push({
+            type: 'image_url',
+            image_url: { url: `data:${image.mediaType};base64,${image.data}` }
+          })
+        }
+        result.push({ role: 'user', content: parts })
+      }
       continue
     }
     if (message.role === 'tool') {

@@ -1,6 +1,6 @@
 # budingx
 
-An independent **MIT** terminal agent for OpenAI-compatible APIs. Source version 0.6.0 (SP006) adds the four-zone terminal layout with frame-diff rendering, a keybinding system, a configurable status line, project instructions, skill discovery, MCP tools, controlled hooks, web fetch, and a headless CLI (text/json/stream-json), plus a command registry with `/init`, `/btw`, `/worktree`, `/tasks`, `/mcp`, `/skills` and `/export`. It keeps session transcripts and recovery, context compaction, project and session memory, approval previews, and session undo.
+An independent **MIT** terminal agent for OpenAI-compatible APIs. Source version 0.7.0 (SP007) adds subagent execution (Agent/TaskOutput/TaskStop, /agents, agent cards), multimodal context (image paste on alt+v/ctrl+v, path attachments, PNG downscaling, image cache, capability-gated rejection), an Anthropic Messages adapter, tool search with deferred loading, runtime diagnostics (/status, /stats, /doctor) and an evaluation-regression runner under scripts/eval/. It builds on 0.6.0: the four-zone terminal layout with frame-diff rendering, a keybinding system, a configurable status line, project instructions, skill discovery, MCP tools, controlled hooks, web fetch, and a headless CLI (text/json/stream-json), plus a command registry with `/init`, `/btw`, `/worktree`, `/tasks`, `/mcp`, `/skills` and `/export`. It keeps session transcripts and recovery, context compaction, project and session memory, approval previews, and session undo.
 
 ## Install
 

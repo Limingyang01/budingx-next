@@ -5,7 +5,7 @@ import { createWebSearchTool } from '../provider/web-search.js'
 import { createWebFetchTool } from '../provider/web-fetch.js'
 import { Session, type SubmitOptions } from '../core/session.js'
 import type { ApprovalGateway, ToolHandler } from '../core/tools.js'
-import type { DenialRecord } from '../core/events.js'
+import type { DenialRecord, TurnSnapshot } from '../core/events.js'
 import type { PermissionMode } from '../core/permissions.js'
 import { createCommandRunner } from '../exec/runner.js'
 import { createSandboxPolicy } from '../exec/sandbox-policy.js'
@@ -13,6 +13,15 @@ import { createExecTools } from '../exec/tools.js'
 import { createPlanModeHost } from '../plan/host.js'
 import { createPlanModeTools, routePlanDraftTools } from '../plan/tools.js'
 import { createOpenAiProvider } from '../provider/openai.js'
+import { createAnthropicProvider } from '../provider/anthropic.js'
+import { createAgentRegistry, type AgentRegistry } from '../core/agent-runtime.js'
+import { createAgentTools } from '../core/agent-tools.js'
+import { createToolSearch, type ToolSearchController } from '../core/tool-search.js'
+import type { AgentDefinition } from '../core/agent-definitions.js'
+import type { ModelProvider } from '../core/provider.js'
+import { loadAgentDefinitions } from './agents.js'
+import { createSubagentTranscript } from '../storage/session-transcript.js'
+import { createImageCache, type ImageCache } from '../storage/image-cache.js'
 import { loadProjectInstructionsSync } from './project-instructions.js'
 import { generatePromptSuggestion } from './suggestion.js'
 import { ConfigStore } from '../storage/config-store.js'
@@ -93,6 +102,12 @@ export type AgentRuntime = {
   tasks?: { list: () => import('./tasks.js').TaskRecord[] }
   /** SP006 §8.2：MCP 服务器连接状态（/mcp 与诊断用）。 */
   mcp?: { statuses: McpServerStatus[] }
+  /** SP007 T9：子代理 registry（卡片、ctrl+b 后台化、/tasks Agents 分组、TaskOutput/TaskStop）。 */
+  agents?: AgentRegistry
+  /** SP007 RD-12：ToolSearch 控制器（门控状态与诊断用）。 */
+  toolSearch?: ToolSearchController
+  /** SP007 MM-06：图片缓存（[Image #N] 重显 file:// 链接）。 */
+  imageCache?: ImageCache
   /** SP005：会话列表与恢复能力；未开启持久化时为 undefined。 */
   sessions?: {
     list: () => { sessionId: string; title: string; updatedAt: string; turns: number }[]
@@ -239,16 +254,17 @@ export type AgentRuntimeOptions = {
  * /rules writes it back through permissionStore and re-syncs the policy.
  */
 export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
-  const provider = () => {
+  // SP007 PC-01：按档案协议分支选择适配器（OpenAI 兼容 / Anthropic Messages 直连）。
+  const provider = (): ModelProvider => {
     const config = options.getConfig()
-    return createOpenAiProvider({
-      baseUrl: config.baseUrl,
-      apiKey: config.apiKey,
-      limits: {
-        connectTimeoutMs: config.timeoutMs,
-        idleStreamTimeoutMs: config.timeoutMs
-      }
-    })
+    const limits = {
+      connectTimeoutMs: config.timeoutMs,
+      idleStreamTimeoutMs: config.timeoutMs
+    }
+    if (config.protocol === 'anthropic') {
+      return createAnthropicProvider({ baseUrl: config.baseUrl, apiKey: config.apiKey, limits })
+    }
+    return createOpenAiProvider({ baseUrl: config.baseUrl, apiKey: config.apiKey, limits })
   }
   const workspace = createWorkspace(options.cwd)
   const permissionStore = new PermissionsStore(
@@ -342,6 +358,33 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   // SP006 §7：每个请求前重读项目指令，文件改动下一回合生效；读取失败只告警不中断。
   const instructionHome = options.home ?? homedir()
   let instructionWarningsSeen = 0
+  // SP007：快照解析器供主会话与子代理 registry 复用（协议/能力一致）。
+  const resolveSnapshot = (): TurnSnapshot => {
+    const config = options.getConfig()
+    const profile = options.configStore.load().models.find((p) => p.id === config.profileId)
+    return {
+      modelId: config.profileId ?? 'session',
+      model: config.model,
+      baseUrlHost: new URL(config.baseUrl).host,
+      capabilities: {
+        tools: profile?.capabilities.tools ?? false,
+        // SP007 MM-08：vision 缺省 undefined＝未知（错误驱动降级）；false＝前置拒绝。
+        ...(profile?.capabilities.vision !== undefined ? { vision: profile.capabilities.vision } : {})
+      }
+    }
+  }
+  const disposers: (() => void)[] = [() => runner.dispose?.()]
+  // SP007 RD-12：ToolSearch 延迟加载门控（MCP 工具恒延迟，核心工具恒加载）。
+  const contextWindow =
+    options.contextBudget?.maxTokens ??
+    (Number(process.env.BUDINGX_CONTEXT_WINDOW) || DEFAULT_CONTEXT_WINDOW)
+  const toolSearch = createToolSearch({
+    tools,
+    contextWindow,
+    env: process.env,
+    mcpPending: options.mcp?.statuses?.some((s) => !s.connected && !s.error) ?? false
+  })
+  if (toolSearch.tool) tools.push(toolSearch.tool)
   const session = new Session({
     id: sessionId,
     resolveReasoningEffort: () => reasoningEffort,
@@ -360,8 +403,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     tools,
     planMode,
     ...(options.hooks ? { hooks: options.hooks } : {}),
-    disposers: [() => runner.dispose?.()],
+    disposers,
     permissionPolicy: policy,
+    ...(toolSearch.enabled ? { toolSearch } : {}),
     ...(tracing.tracer ? { tracer: tracing.tracer } : {}),
     ...(transcript ? { transcript } : {}),
     ...(options.contextBudget
@@ -374,22 +418,49 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           }
         }
       : {}),
-    resolveSnapshot: () => {
-      const config = options.getConfig()
-      const profile = options.configStore
-        .load()
-        .models.find((p) => p.id === config.profileId)
-      return {
-        modelId: config.profileId ?? 'session',
-        model: config.model,
-        baseUrlHost: new URL(config.baseUrl).host,
-        capabilities: { tools: profile?.capabilities.tools ?? false }
-      }
-    }
+    resolveSnapshot
   })
   // 追问与计划模式工具需要 Session 实例本身，因此在构造后追加（数组引用共享）。
   routePlanDraftTools(tools, session, planMode.draftPath, planMode.draftWorkspace)
   tools.push(createAskUserQuestionTool(session), ...createPlanModeTools(session, planMode.draftPath))
+  // SP007 T9：子代理 registry＋Agent/TaskOutput/TaskStop 工具（构造后追加，数组引用共享）。
+  const agentLoad = loadAgentDefinitions({ cwd: workspace.root, home: instructionHome })
+  for (const line of agentLoad.warnings) warnings.push(line)
+  const agentDefinitions: AgentDefinition[] = agentLoad.agents
+  const registry = createAgentRegistry({
+    parentSession: session,
+    tools,
+    provider: provider(),
+    resolveProvider: provider,
+    resolveSnapshot,
+    approval: options.approval,
+    policy,
+    // 子政策＝min(父,定义)：宿主以父规则快照＋目标档位重建（core 禁 import workspace，D14）。
+    createChildPolicy: (mode) =>
+      createPermissionPolicy({
+        workspace,
+        rules: load.file.rules as PermissionRule[],
+        mode,
+        ...(options.home ? { dataRootOverride: dataRoot(options.home) } : {})
+      }),
+    ...(persistence
+      ? {
+          createTranscript: (agentId: string) =>
+            createSubagentTranscript({
+              parentSessionId: sessionId,
+              agentId,
+              ...(options.home ? { home: options.home } : {})
+            })
+        }
+      : {}),
+    ...(options.contextBudget ? { contextBudget: options.contextBudget } : {})
+  })
+  tools.push(...createAgentTools(registry, agentDefinitions))
+  disposers.push(() => registry.dispose())
+  const imageCache = createImageCache({
+    sessionId,
+    ...(options.home ? { home: options.home } : {})
+  })
   session.on((event) => {
     if (event.type === 'denial_recorded') denials.push(event.denial)
   })
@@ -605,7 +676,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     ...(contextSurface ? { context: contextSurface } : {}),
     ...(memorySurface ? { memory: memorySurface } : {}),
     ...(suggestionsSurface ? { suggestions: suggestionsSurface } : {}),
-    ...(options.mcp ? { mcp: { statuses: options.mcp.statuses } } : {})
+    ...(options.mcp ? { mcp: { statuses: options.mcp.statuses } } : {}),
+    agents: registry,
+    toolSearch,
+    imageCache
   }
 }
 
@@ -636,7 +710,11 @@ export function createConfiguredSession(
         modelId: config.profileId ?? 'session',
         model: config.model,
         baseUrlHost: new URL(config.baseUrl).host,
-        capabilities: { tools: profile?.capabilities.tools ?? false }
+        capabilities: {
+          tools: profile?.capabilities.tools ?? false,
+          // SP007 MM-08：vision 缺省 undefined＝未知（错误驱动降级）；false＝前置拒绝。
+          ...(profile?.capabilities.vision !== undefined ? { vision: profile.capabilities.vision } : {})
+        }
       }
     }
   })

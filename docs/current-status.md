@@ -3,6 +3,42 @@
 截至 2026-11-21，**npm `latest` 为 0.6.0**（TUI 对齐与扩展，SP006）。SP006 **已完成实施与验收，于 2026-11-21 经交叉验证门禁 GREEN 后合入 master（合并提交 `601ac7e`），并由 [GitHub Actions 运行 #26](https://github.com/Limingyang01/budingx-next/actions/runs/44870468295)（源码 `4a63ead`）完成 Windows、Linux 验证与 OIDC 发布**。0.5.3 修复跨工作区会话恢复、追问提交和计划模式工具，加入中文思考强度选择和内置 `WebSearch`（默认 Bing，配置密钥后 Tavily）。0.5.4 修正完全权限下联网搜索仍弹审批、`approved` 口径与审批卡编号问题，见 [0.5.4 发行说明](../release-notes/v0.5.4.md)。
 
 [运行 #26](https://github.com/Limingyang01/budingx-next/actions/runs/44870468295) 以源码 `4a63ead` 完成 Ubuntu、Windows 验证及 OIDC 发布 0.6.0。官方制品 SHA-512、来源证明（attestation）、签名与独立安装均已核对；CI 回执 artifact 需登录未取得，台账据此登记并标注证据缺口。见 [0.6.0 发行说明](../release-notes/v0.6.0.md)、[发布台账](../release-ledger.json)及 [SP006 验收报告](../SP/SP006/test-report.md)。可选本机 Langfuse 观测默认关闭。
+## SP007 · Agent 质量与扩展（交付完成，0.7.0 发布准备就绪）
+
+SP007 功能分支 `feature/SP007/agent-quality-and-extensions` 已完成 17 个任务（含用户反馈后的图片端到端补测）并通过交叉验证门禁 GREEN；经用户 2026-11-21 授权（m02028）随本轮合入 master 并推送，源码版本已准备为 **0.7.0**，等待维护者在 GitHub Actions 触发发布（`branch=master`、`version=0.7.0`、`tag=latest`）。
+
+### 已完成
+
+- **子代理执行**：Agent/TaskOutput/TaskStop 工具、独立上下文、权限≤父、预算终止、通知注入、`/agents` 面板与向导、代理卡片与并行树、ctrl+b 后台化、`/tasks` Agents 分组
+- **多模态上下文**：图片粘贴（alt+v）、PNG 降采样、路径附件、image-cache、能力前置拒绝、错误驱动降级、媒体上限
+- **Anthropic 适配器**：SSE→ProviderEvent、system 顶层/x-api-key/anthropic-version、thinking 400 重试、错误分类
+- **ToolSearch 延迟加载**：auto 阈值门控、计分权重、发现集 resume 重建、压缩快照
+- **运行时诊断**：`/status` 三页签、`/stats` 热力图/streak/折线、`/doctor` 警告式分区、零网络断言
+- **评估回归**：`scripts/eval/` 离线 runner（17 任务/4 盲测/18 种断言/预算帽/失败分类）、live.mjs opt-in
+- **失败边界**：Web/hooks/MCP/headless/依赖纪律测试
+- **真实模型验证**：MiniMax-M3.1-Flash 3 轮 × 3 任务全过（含 Langfuse 本地接收端监管轮）
+- **PowerShell 兼容性修复**：所有 PowerShell 调用添加 -NonInteractive + windowsHide
+- **图片端到端补测（用户反馈后）**：修复 4 个真实缺陷——中文紧贴图片路径导致整轮消息被阻塞、未超限的调色板/灰度/16-bit/隔行 PNG 被拒、剪贴板只有图片时 ctrl+v 无反应、图片读取失败吞掉输入正文；新增 `scripts/eval/live-image.mjs` 与 `src/tui/test/sp007-image-ui.test.mjs`，真实模型 6 种形态（路径/alt+v/ctrl+v/JPEG/多图/9000px 缩放）识图 PASS
+
+### 验证结果
+
+| 指标 | 结果 |
+| --- | --- |
+| 全量单元测试 | 1121 项 / 1120 通过 / 0 失败 / 1 跳过（POSIX 专属） |
+| 模块边界检查 | PASS |
+| 交叉验证门禁 | **GATE GREEN**（npm test + spec:check + skills:check + pack-smoke 全过） |
+| 离线评估 | 17/17 通过 |
+| 真实模型评估 | 3/3 × 3 轮通过；Langfuse 监管轮 3/3 |
+| 真实模型识图 | 6 种形态全 PASS（MiniMax-M3.1-Flash） |
+| Langfuse 离线测试 | 81/81 通过 |
+| 制品 smoke | PASS |
+
+### 待办
+
+- 维护者在 GitHub Actions 触发 0.7.0 发布（Agent 不代为触发）；发布后按 `buding-npm-release` 登记回执
+- Anthropic 真实端点凭据验证（需用户提供密钥）——当前 UNVERIFIED
+
+
 
 ## 已有
 

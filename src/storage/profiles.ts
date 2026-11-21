@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { ConfigFile, ModelProfile } from './config-store.js'
+import type { ConfigFile, ModelProfile, ModelProtocol } from './config-store.js'
 
 export type { ModelProfile }
 
@@ -85,7 +85,16 @@ export function validateProfileInput(input: {
 }
 
 export function createProfile(
-  input: { label: string; baseUrl: string; model: string; tools?: boolean },
+  input: {
+    label: string
+    baseUrl: string
+    model: string
+    tools?: boolean
+    /** SP007 PC-02：缺省 openai，旧档案不写该字段。 */
+    protocol?: ModelProtocol
+    /** SP007 MM-08：undefined＝未知（错误驱动降级），false＝明确拒绝图片。 */
+    vision?: boolean
+  },
   now: Date = new Date()
 ): ModelProfile {
   validateProfileInput(input)
@@ -97,7 +106,11 @@ export function createProfile(
     baseUrl: normalizeBaseUrl(input.baseUrl),
     model: input.model.trim(),
     apiKeyRef: id,
-    capabilities: { tools: input.tools ?? true },
+    capabilities: {
+      tools: input.tools ?? true,
+      ...(input.vision === undefined ? {} : { vision: input.vision })
+    },
+    ...(input.protocol === undefined ? {} : { protocol: input.protocol }),
     createdAt: stamp,
     updatedAt: stamp
   }
@@ -105,7 +118,14 @@ export function createProfile(
 
 export function updateProfile(
   profile: ModelProfile,
-  patch: { label?: string; baseUrl?: string; model?: string; tools?: boolean },
+  patch: {
+    label?: string
+    baseUrl?: string
+    model?: string
+    tools?: boolean
+    protocol?: ModelProtocol
+    vision?: boolean
+  },
   now: Date = new Date()
 ): ModelProfile {
   validateProfileInput({
@@ -113,14 +133,18 @@ export function updateProfile(
     baseUrl: patch.baseUrl ?? profile.baseUrl,
     model: patch.model ?? profile.model
   })
+  const vision = patch.vision ?? profile.capabilities.vision
+  const protocol = patch.protocol ?? profile.protocol
   return {
     ...profile,
     label: (patch.label ?? profile.label).trim(),
     baseUrl: normalizeBaseUrl(patch.baseUrl ?? profile.baseUrl),
     model: (patch.model ?? profile.model).trim(),
     capabilities: {
-      tools: patch.tools ?? profile.capabilities.tools
+      tools: patch.tools ?? profile.capabilities.tools,
+      ...(vision === undefined ? {} : { vision })
     },
+    ...(protocol === undefined ? {} : { protocol }),
     updatedAt: now.toISOString()
   }
 }
@@ -153,6 +177,9 @@ export type ProfileSource = {
   model?: string
   apiKey?: string
   timeoutMs?: number
+  /** SP007 PC-02：仅档案携带协议；CLI/env 不覆盖（缺省 openai）。 */
+  protocol?: ModelProtocol
+  vision?: boolean
 }
 
 export type ResolvedConfig = {
@@ -162,6 +189,8 @@ export type ResolvedConfig = {
   timeoutMs: number
   prompt?: string
   profileId?: string
+  protocol?: ModelProtocol
+  vision?: boolean
   source: 'cli' | 'env' | 'file' | 'default'
 }
 
@@ -227,6 +256,8 @@ export function mergeSources(input: {
     timeoutMs,
     ...(cli.prompt === undefined ? {} : { prompt: cli.prompt }),
     ...(file.profileId ? { profileId: file.profileId } : {}),
+    ...(file.protocol === undefined ? {} : { protocol: file.protocol }),
+    ...(file.vision === undefined ? {} : { vision: file.vision }),
     source
   }
 }

@@ -1,6 +1,6 @@
 # budingx-next
 
-独立开发 Coding Agent 的仓库。**当前 npm `latest` 为 0.6.0**（SP006 TUI 对齐与扩展）：四区终端骨架与帧级刷新、上下文键位、状态栏外部命令、项目指令、技能发现、MCP 客户端、受控 hooks、WebFetch、无头 stream-json，以及命令注册表三型与七条新命令。产品全貌见 [产品说明书](PRODUCT.md)，使用说明见 [TUI README](src/tui/README.md)。
+独立开发 Coding Agent 的仓库。**当前 npm `latest` 为 0.6.0**（SP006 TUI 对齐与扩展）；四区终端骨架与帧级刷新、上下文键位、状态栏外部命令、项目指令、技能发现、MCP 客户端、受控 hooks、WebFetch、无头 stream-json，以及命令注册表三型与七条新命令。**0.7.0（SP007 Agent 质量与扩展）已合入 master 并完成发布准备，等待维护者触发工作流。** 产品全貌见 [产品说明书](PRODUCT.md)，使用说明见 [TUI README](src/tui/README.md)。
 
 默认主分支为 `master`；新项目统一使用 Node.js + TypeScript，不引入 Bun。
 
@@ -24,4 +24,4 @@
 
 推荐 TUI 发布方式现为 [GitHub Actions + npm Trusted Publishing](docs/github-actions-npm.md)：在 Actions 手动 Run workflow，无需 NPM_TOKEN secret。首次建包及账号授信仍需维护者在个人可信设备上验证，未配置前不宣称可发布。
 
-npm 已发布 [0.5.4](https://www.npmjs.com/package/budingx/v/0.5.4)，可用 `npm install -g budingx@latest` 安装或升级；仓库下一个候选版本为 [0.6.0](release-notes/v0.6.0.md)（SP006 TUI 对齐与扩展，已合入 master，尚未发布 npm）。详见 [0.5.4 发行说明与发布回执](release-notes/v0.5.4.md)及 [0.5.3 发行说明](release-notes/v0.5.3.md)。
+npm 已发布 [0.6.0](https://www.npmjs.com/package/budingx/v/0.6.0)，可用 `npm install -g budingx@latest` 安装或升级；仓库下一个候选版本为 [0.7.0](release-notes/v0.7.0.md)（SP007 Agent 质量与扩展，已合入 master 并完成发布准备，尚未发布 npm）。详见 [0.6.0 发行说明与发布回执](release-notes/v0.6.0.md)及 [0.5.4 发行说明](release-notes/v0.5.4.md)。

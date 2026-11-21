@@ -51,6 +51,11 @@ export function tasksDir(home?: string): string {
   return join(dataRoot(home), 'tasks')
 }
 
+/** 图片附件缓存目录（SP007 MM-06）：~/.budingx/image-cache/<sessionId>。 */
+export function imageCacheDir(sessionId: string, home?: string): string {
+  return join(dataRoot(home), 'image-cache', sessionId)
+}
+
 export function backupPath(file: string): string {
   return `${file}.bak`
 }

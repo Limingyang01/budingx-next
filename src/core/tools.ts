@@ -55,6 +55,12 @@ export type ToolHandler = {
   capability?(input: unknown): ToolCapability
   /** Target of the call, resolved enough for policy decisions. */
   target?(input: unknown): { path?: string; kind: 'file' | 'directory' | 'search' | 'none' | 'plan-draft' }
+  /**
+   * SP007 SA-05: consecutive calls of handlers marked concurrencySafe may
+   * run in parallel inside one dispatch group (Agent tool). Everything
+   * else keeps the sequential order.
+   */
+  concurrencySafe?: boolean
   prepareApproval?(input: unknown): PreparedTool
   execute(input: unknown, context: ToolContext): Promise<string>
 }

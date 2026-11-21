@@ -77,7 +77,7 @@ test('CMD-03 三型 kind 保留，hidden 不进默认清单', () => {
   )
 })
 
-const EXTENDED = ['init', 'btw', 'worktree', 'tasks', 'mcp', 'skills', 'export']
+const EXTENDED = ['init', 'btw', 'worktree', 'tasks', 'mcp', 'skills', 'export', 'status', 'stats', 'doctor', 'agents', 'agent']
 
 test('CMD-12 注册表覆盖 22 条既有命令与 7 条新增命令且可直接解析', () => {
   const registry = getDefaultRegistry()

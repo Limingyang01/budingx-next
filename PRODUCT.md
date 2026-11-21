@@ -2,8 +2,8 @@
 
 > **npm 已发布版本**：0.6.0（`latest`）。详见 [0.6.0 发行说明](release-notes/v0.6.0.md)。
 >
-> **下一版本**：暂无已制备版本。
-> **说明书版本**：v1.22
+> **下一版本**：0.7.0（SP007 交付完成、发布准备就绪，随本轮合入 master；等待维护者触发 GitHub Actions 发布，npm `latest` 仍为 0.6.0）。详见 [0.7.0 发行说明](release-notes/v0.7.0.md)。
+> **说明书版本**：v1.24
 > **更新日期**：2026-11-21
 > **产品形态**：独立 MIT 许可的终端 Coding Agent（Node.js ≥ 22.18 + TypeScript，不依赖 Bun）
 
@@ -49,7 +49,7 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | SP004（0.4.0） | 计划、待办、命令与追问；普通命令要求已验证的执行隔离，提交限专用 worktree | 命令执行、后台任务、受控 Git 提交、计划模式与追问、四类会话卡片 | 已发布 |
 | SP005（0.5.0–0.5.4） | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         | 已合入 master。真实模型端到端两场景 PASS，0.5.4 已发布 |
 | SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 本轮实现完成并合入 master，0.6.0 已发布为 npm `latest` |
-| SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | 规划中 |
+| SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | **功能分支完成**（feature/SP007/agent-quality-and-extensions），待合入 master |
 | SP008 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | 规划中（契约轮，轻量测试客户端验证） |
 | SP009 | TUI 独立交付与 npm 发布工程 | tui-distribution、upgrade-compatibility、npm-publish-pipeline                                              | 规划中 |
 | SP010 | 中期编码效果检查        | coding-parity-checkpoint、core-reliability                                                                 | 规划中 |
@@ -358,7 +358,57 @@ Get-Content prompts.jsonl | budingx --input-format stream-json --output-format j
 | 会话持久化与恢复               | SP005 已实现并合入 master（转录落盘、跨进程恢复且不盲重放副作用、上下文压缩保留约束/计划/工具状态、项目与会话记忆、原子写入与损坏隔离）；**已随 0.5.0 发布**，0.5.1 复审修复也已发布；预算过紧、历史已裁到只剩当前消息时强制压缩无法再生效，会明确报错终止；恢复后的「需核对」只是提示，模型自行重发同一操作不会被二次拦截；真实模型的长会话压缩场景仍 UNVERIFIED，真实模型端到端证据见 SP005 验收报告 | 见 [0.5.0 发行说明](release-notes/v0.5.0.md) 与 [0.5.1 发行说明](release-notes/v0.5.1.md) |
 | 权限规则与沙箱                 | 三档权限模式、规则匹配、拒绝记录与撤销已实现（SP003）；命令按权限审批执行（0.5.4）；**默认无操作系统级沙箱**，可选隔离后端接口已就绪但未内置已验收后端 | OS 级隔离后端待后续轮次 |
 | 撤销粒度                       | 仅本会话内可撤销（SP003）；跨会话快照与 rewind 未实现                          | 后续轮次             |
-| 图片与多模态                   | 读取图片只返回尺寸摘要，不发送图像内容                                          | SP007                 |
+### 5.8 SP007 · Agent 质量与扩展
+
+SP007 在 0.6.0 的命令面之上补齐子代理执行、多模态上下文、供应商兼容、运行时诊断与评估回归。
+
+#### 子代理执行（SA-01…16）
+- `.budingx/agents/*.md` 子代理定义加载（frontmatter 解析、built-in→user→project 覆盖序、内置禁表）
+- Agent/TaskOutput/TaskStop 工具，连续 concurrencySafe 组并行派发
+- 独立上下文（父历史不可见）、权限≤父（min 模式＋deny 继承＋remember 隔离）
+- maxTurns/token 预算终止、父取消→sync 子中止/background 子存活
+- `/agents` 面板（列表/向导/查看）、`/agent <type> <prompt>` 命令
+- 代理卡片（Initializing/Done/计数/8 色）、并行树、ctrl+b 后台化
+- `/tasks` 面板 Agents 分组
+
+#### 多模态上下文（MM-01…10）
+- 图片粘贴（Windows alt+v / 其他 ctrl+v；ctrl+v 在剪贴板只有图片时自动回退为图片附件）、PNG 8-bit 降采样级联、5MB/8000px 阈值
+- 小图直通：未超限的调色板/灰度/16-bit/隔行 PNG 原样附件，不再因无法缩放被拒
+- 路径附件识别（引号/反斜杠转义、中文紧贴路径可切分）、image-cache 私有缓存＋200 淘汰
+- 图片读不到时明确报错且保留输入正文，同一路径重复出现只附件一张
+- 能力前置拒绝（vision false 不发请求）、错误驱动降级（拒图→剥离重试→notice）
+- 媒体上限 100 丢最旧＋提示、JSON 错误参数回灌自纠
+
+#### 供应商兼容（PC-01…08）
+- Anthropic 适配器（SSE→ProviderEvent、system 顶层/x-api-key/anthropic-version、thinking 400 去 thinking 重试）
+- 协议缺省 openai、视觉 undefined→未知（错误驱动降级）
+- 配置 protocol?/vision? 字段、profile 传递
+
+#### ToolSearch 延迟加载（RD-12…14）
+- auto 阈值 10%（500/工具开销）、off/standard 模式
+- select 直选大小写不敏感、mcp__ 前缀、+词必需、计分权重
+- 发现集标记扫描（resume 重建）、压缩快照、公告排序
+
+#### 运行时诊断（RD-01…11/15/16）
+- `/status` 三页签（Status/Config/Usage）：版本/会话/模型/协议/来源/MCP 计数/RSS/p50/p95
+- `/stats` 聚合（热力图/streak/折线/模型列表）、r 切范围、Tab 切页、Ctrl+S 复制
+- `/doctor` 警告式分区（指令过大/代理描述过长/MCP 工具过多/不可达规则/临时产物清理）
+- 零网络断言、凭据脱敏、两 home 隔离
+
+#### 评估回归（ER-01…06）
+- `scripts/eval/runner.mjs` 离线评估（17 任务、4 盲测、18 种断言、预算帽、失败分类）
+- `scripts/eval/live.mjs` 真实模型 opt-in（不进 npm test）
+- 报告 JSON＋markdown 入 `artifacts/quality-runs/SP007/`
+- 未测能力清单写入报告
+
+#### 失败边界（FB-01…04）
+- Web 失败权限不变、hooks 超时/崩溃/递归防护
+- MCP 断线/超时/取消/输出上限＋公告移除
+- headless stream-json 形状/终态/退出码/agent_* 不输出
+- 无新增运行时依赖
+
+
+| 图片与多模态                   | SP007 已实现图片粘贴/路径附件/PNG 缩放/能力前置拒绝/错误驱动降级；Anthropic 协议真实端点待凭据验证 | SP007 功能分支已完成 |
 | Desktop / VS Code / 移动端 / 远程/H5 / IM | 当前 SP 范围外，保留通用宿主接口 | 后续如需纳入，另行决定范围和排期 |
 | 真实服务 live 证据             | 已验证一个用户提供的服务：流式、工具审批回合、取消、鉴权错误；见 SP002 报告 §16 | 其他型号/服务仍未测   |
 | SP006 扩展能力 | 项目指令、技能、MCP、hooks、WebFetch、无头 CLI 与七条新命令已实现并通过本地回归；状态栏配置需重启生效；无头模式不加载 MCP 与交互面板；MCP 与 hooks 的真实第三方服务器/脚本兼容性未逐一验证；hooks 的 http/agent 处理器未实现 | 已随 0.6.0 发布；真实第三方兼容性后续补证 |
@@ -384,6 +434,7 @@ Get-Content prompts.jsonl | budingx --input-format stream-json --output-format j
 | 0.4.0 | 2026-11-19 | SP004 真实编码任务：命令执行与后台任务、受控 Git 提交、计划与待办、四类会话卡片；追加可选本机 Langfuse 观测（默认关闭），见 [发行说明](release-notes/v0.4.0.md) | 已发布 |
 | 0.5.0 | 2026-11-20 | SP005 长会话与数据可靠性：会话转录落盘与跨进程恢复（不盲重放副作用）、上下文预算压缩（保留约束/计划/工具状态）、项目与会话记忆、原子写入与损坏隔离、稳定失败错误码与工具空转熔断、`/sessions` `/resume` `/context` `/memory` 四个命令；见 [发行说明](release-notes/v0.5.0.md) | 已发布 |
 | 0.5.3 | 2026-11-20 | 工作区会话隔离、追问与内置工具修复、中文思考强度选择、Bing 和 Tavily 联网搜索。见 [发行说明](release-notes/v0.5.3.md) | 已发布 |
+| 0.7.0（准备中） | 2026-11-21 | SP007：子代理执行（Agent/TaskOutput/TaskStop 工具、/agents 面板、代理卡片与并行树、ctrl+b 后台化）、多模态上下文（图片粘贴/PNG 缩放/路径附件/image-cache/能力前置拒绝/错误驱动降级）、Anthropic 适配器、ToolSearch 延迟加载、运行时诊断（/status /stats /doctor）、评估回归 runner（17 任务/4 盲测）、失败边界测试；PowerShell 兼容性修复（-NonInteractive + windowsHide） |
 | 0.6.0 | 2026-11-21 | SP006：四区骨架与布局计划、转录冻结缓存、键位系统、内置/外部状态栏、项目指令、技能发现、MCP 客户端、hooks 八事件、WebFetch、无头 CLI（text/json/stream-json）、命令注册表三型与 `/init` `/btw` `/worktree` `/tasks` `/mcp` `/skills` `/export`；含命令卡片常驻、`/resume` 历史不可见与恢复排版碎片、输入框续问建议改由模型生成等修复；已合入 master 并发布；见 [发行说明](release-notes/v0.6.0.md) | 已发布 |
 | 0.5.4 | 2026-11-20 | 命令按权限档位宿主信任执行（Bash 可用，对齐参考实现）；Git 命令不再被只读白名单硬拦；Shift+Tab 恢复三档轮播；联网搜索完全权限免审、可按会话记住；审批卡编号一致；追问卡回答后收起、过程性提示不堆叠、时长格式化、状态显示正在思考、底部元信息合并为一行；上下文占用改为真实用量的百分比；`/rules` 改为交互管理面板；移除 `/config` 与 `/model`；修复长会话 `Maximum update depth exceeded` 崩溃；Langfuse 仅开发环境；既有命令复刻改造（/new /continue /rewind /plan /context 网格 /compact /cost /permissions /help 技能清单）。见 [发行说明](release-notes/v0.5.4.md) | 已发布 |
 | 0.5.2 | 2026-11-20 | 长会话渲染优化（流式增量不再每帧全文重排、虚拟列表渐进挂载与高度缓存、状态栏常驻）、上下文用量与推理强度显示、`/effort` 命令、交互式 TUI 默认开启会话持久化；见 [发行说明](release-notes/v0.5.2.md) | 已发布 |

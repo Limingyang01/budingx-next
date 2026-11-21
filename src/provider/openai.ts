@@ -14,7 +14,7 @@ import { classifyHttpStatus, providerError, sanitize } from './errors.js'
 import { SseParser } from './sse.js'
 import { setTimeout as wait } from 'node:timers/promises'
 
-async function readJsonLimited(
+export async function readJsonLimited(
   response: Response,
   signal: AbortSignal,
   limit = 16384
@@ -110,13 +110,13 @@ const defaultSleep = (ms: number) =>
     setTimeout(resolve, ms)
   })
 
-function backoffDelay(attempt: number): number {
+export function backoffDelay(attempt: number): number {
   const base = Math.min(500 * 2 ** (attempt - 1), 8000)
   const jitter = base * 0.2 * (Math.random() * 2 - 1)
   return Math.max(50, Math.round(base + jitter))
 }
 
-function parseRetryAfter(header: string | null): number | undefined {
+export function parseRetryAfter(header: string | null): number | undefined {
   if (!header) return undefined
   const seconds = Number(header)
   if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1000)

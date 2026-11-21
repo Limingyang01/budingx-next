@@ -21,6 +21,7 @@ import type {
   Usage
 } from './events.js'
 import { normalizeForApi } from './normalize.js'
+import { isImageUnsupportedError } from './image-errors.js'
 import {
   COMPACTION_CIRCUIT_LIMIT,
   collectConstraintItems,
@@ -43,6 +44,7 @@ import type {
   ToolFragment
 } from './provider.js'
 import { assembleToolCalls, parseToolArguments } from './tool-calls.js'
+import type { ToolSearchController } from './tool-search.js'
 import type {
   ApprovalDecision,
   ApprovalGateway,
@@ -133,6 +135,8 @@ export type SessionOptions = {
   resolveSystemContext?: () => string | undefined
   /** SP006 §9：hooks 宿主端口；未注入时所有 hook 事件为空操作。 */
   hooks?: SessionHooks
+  /** SP007 §4.2：ToolSearch 延迟加载控制器；未注入时全部工具恒加载（既有行为）。 */
+  toolSearch?: ToolSearchController
   onEvent?: (event: SessionEvent) => void
 }
 
@@ -144,12 +148,16 @@ export type SubmitOptions = {
     context: NonNullable<SubmitOptions['context']>
     notices: string[]
   }
+  /** SP007 MM-07：随本条用户消息附带的图片（base64），按能力传递或降级。 */
+  images?: { id: number; mediaType: string; data: string; width?: number; height?: number }[]
 }
 
-type QueuedInput = { id: string; text: string; options?: SubmitOptions }
+type QueuedInput = { id: string; text: string; options?: SubmitOptions; notification?: boolean }
 
 type ActiveTurn = {
   provider: ModelProvider
+  /** SP007 RD-16：本回合快照，转录按模型归属消息。 */
+  snapshot?: TurnSnapshot
   id: string
   controller: AbortController
   finalized: boolean
@@ -159,6 +167,37 @@ type ActiveTurn = {
   cancelTimer?: NodeJS.Timeout
   /** SP004 agent-observability：本回合根观测句柄。 */
   traceRoot?: TraceHandle
+}
+
+/** SP007 SA-05：并行派发组内缓冲的工具结果，按调用原序回灌。 */
+type DispatchResult = {
+  content: string
+  isError: boolean
+  code?: string
+  trace?: TraceHandle
+}
+
+/** SP007 RD-04：/status Usage 页的本地性能聚合形状。 */
+export type SessionPerformance = {
+  requests: number
+  requestMs: { p50: number; p95: number; last: number }
+  firstTokenMs?: { p50: number; p95: number; last: number }
+  inputTokens: number
+  outputTokens: number
+  elapsedMs: number
+  memoryRssBytes: number
+}
+
+/** SP007 §4.1：注册表可发布的代理生命周期事件。 */
+export type AgentSessionEvent = Extract<
+  SessionEvent,
+  { type: 'agent_started' | 'agent_progress' | 'agent_finished' }
+>
+
+/** 最近秩百分位（sorted 升序非空）：p50/p95 取 ceil 秩，避免插值造出不存在的样本。 */
+function percentileOf(sorted: number[], percentile: number): number {
+  const rank = Math.max(1, Math.ceil((percentile / 100) * sorted.length))
+  return sorted[Math.min(rank, sorted.length) - 1]!
 }
 
 const ALLOWED_TRANSITIONS: Record<SessionState, SessionState[]> = {
@@ -294,6 +333,8 @@ export class Session {
   private lastUsage?: Usage
   // 0.5.4 /cost：会话累计用量（跨回合），清空会话时重置。
   private totalUsage = { inputTokens: 0, outputTokens: 0, requests: 0 }
+  // SP007 RD-04：请求计时样本（首 token / 完整请求），上限 500 条逐旧淘汰。
+  private readonly perfSamples: { requestMs: number; firstTokenMs?: number }[] = []
   // 0.5.4 /rewind：回合顺序日志，用于把文件撤销对齐到对话检查点。
   private turnLog: { turnId: string }[] = []
   private readonly startedAt = Date.now()
@@ -471,6 +512,52 @@ export class Session {
   /** 0.5.4 /cost：累计 token 与会话时长。 */
   get usageTotals(): { inputTokens: number; outputTokens: number; requests: number; elapsedMs: number } {
     return { ...this.totalUsage, elapsedMs: Date.now() - this.startedAt }
+  }
+
+  /**
+   * SP007 RD-04：本地性能采样（/status Usage 页）。只存聚合所需的最小样本，
+   * 不记录提示词内容；默认不上传（隐私边界见 design §4.2）。
+   */
+  get performance(): SessionPerformance {
+    const requestSorted = this.perfSamples.map((sample) => sample.requestMs).sort((a, b) => a - b)
+    const firstSorted = this.perfSamples
+      .map((sample) => sample.firstTokenMs)
+      .filter((value): value is number => value !== undefined)
+      .sort((a, b) => a - b)
+    const stats = (sorted: number[]) => sorted.length === 0 ? undefined : {
+      p50: percentileOf(sorted, 50),
+      p95: percentileOf(sorted, 95),
+      last: sorted[sorted.length - 1]!
+    }
+    return {
+      requests: this.totalUsage.requests,
+      requestMs: stats(requestSorted) ?? { p50: 0, p95: 0, last: 0 },
+      ...(firstSorted.length > 0 ? { firstTokenMs: stats(firstSorted)! } : {}),
+      inputTokens: this.totalUsage.inputTokens,
+      outputTokens: this.totalUsage.outputTokens,
+      elapsedMs: Date.now() - this.startedAt,
+      memoryRssBytes: process.memoryUsage.rss()
+    }
+  }
+
+  /**
+   * SP007 §4.1：子代理终态通知入队。复用既有 queue/drain 机制：
+   * 空闲时自动开启回合，回合内按 intra_turn 注入；notification 标记
+   * 让宿主把它渲染成系统消息而不是用户输入。
+   */
+  enqueueNotification(text: string, notice?: string): void {
+    const trimmed = text.trim()
+    if (!trimmed) return
+    const item: QueuedInput = { id: randomUUID(), text: trimmed, notification: true }
+    this.queue.push(item)
+    this.emit({ type: 'input_queued', queueId: item.id, preview: previewOf(trimmed), notification: true })
+    if (notice) this.emit({ type: 'notice', level: 'info', code: 'agent_notification', text: notice })
+    this.scheduleQueueDrain()
+  }
+
+  /** SP007 §4.1：子代理注册表向父会话发布 agent_* 生命周期事件。 */
+  publishAgentEvent(event: AgentSessionEvent): void {
+    this.emit(event)
   }
 
   get history(): readonly Message[] {
@@ -902,6 +989,7 @@ export class Session {
   clearHistory(): void {
     this.lastUsage = undefined
     this.totalUsage = { inputTokens: 0, outputTokens: 0, requests: 0 }
+    this.perfSamples.length = 0
     if (this.state !== 'idle') return
     this.messages.length = 0
     this.emit({ type: 'conversation_cleared' })
@@ -1112,10 +1200,25 @@ export class Session {
         turnId: turn.id,
         queueId: queued.id,
         text: userText,
-        boundary: 'inter_turn'
+        boundary: 'inter_turn',
+        ...(queued.notification ? { notification: true } : {})
       })
     }
     const snapshot = this.options.resolveSnapshot()
+    turn.snapshot = snapshot
+    // SP007 MM-08：明确不支持图片（vision===false）→ 前置拒绝，不发起请求。
+    if (options?.images?.length && snapshot.capabilities.vision === false) {
+      this.emit({
+        type: 'notice',
+        level: 'warning',
+        code: 'image_rejected',
+        text: '当前模型不支持图片输入，图片未发送。请切换到支持视觉的模型，或移除图片后重试。'
+      })
+      this.traceEnd(turn.traceRoot, 'blocked')
+      turn.finalized = true
+      this.activeTurn = undefined
+      return
+    }
     this.emit({ type: 'turn_started', turnId: turn.id, snapshot, userText, startedAt: Date.now() })
     this.setState('requesting')
     const userMessage = this.userMessage(userText, options)
@@ -1178,15 +1281,19 @@ export class Session {
   }
 
   /** SP005 §5：记录一条消息（用户、助手或工具结果）。 */
-  private recordMessage(message: Message, parentId?: string): void {
+  private recordMessage(message: Message, parentId?: string, usage?: Usage): void {
     if (!this.options.transcript) return
+    // SP007 RD-16：消息归属模型，/stats 按模型聚合（旧转录缺省 unknown 桶）。
+    const model = this.activeTurn?.snapshot?.model
     this.writeTranscript({
       type: 'message',
       ts: new Date().toISOString(),
       id: message.id,
       ...(parentId ? { parentId } : {}),
       role: message.role,
-      blocks: message.blocks
+      blocks: message.blocks,
+      ...(model ? { model } : {}),
+      ...(usage ? { usage } : {})
     })
   }
 
@@ -1216,6 +1323,16 @@ export class Session {
         id: call.callId,
         text: `工具 ${call.name}（${call.callId}）在压缩前未完成，结果未知。`,
         reason: '未完成的工具调用必须显式标记，不能伪造成功'
+      })
+    }
+    // SP007 RD-13：已发现的延迟工具跨压缩存活（同参考 preCompactDiscoveredTools）。
+    const discovered = this.options.toolSearch?.state.discovered
+    if (this.options.toolSearch?.enabled && discovered && discovered.size > 0) {
+      items.push({
+        kind: 'tool_state',
+        id: 'tool-search-discovered',
+        text: '<discovered-tools>' + [...discovered].sort().join(',') + '</discovered-tools>',
+        reason: '已发现的延迟工具在压缩后必须仍可调用'
       })
     }
     return items
@@ -1349,10 +1466,44 @@ export class Session {
         : undefined),
       signal: turn.controller.signal
     }
+    // SP007 MM-09：单请求媒体上限 100，超出丢最旧并可见提示（不静默丢弃）。
+    {
+      const MAX_MEDIA = 100
+      let total = 0
+      for (const message of request.messages) {
+        if (message.role === 'user' && Array.isArray(message.content)) {
+          total += message.content.filter((part) => part.type === 'image_url').length
+        }
+      }
+      if (total > MAX_MEDIA) {
+        let drop = total - MAX_MEDIA
+        for (const message of request.messages) {
+          if (drop <= 0) break
+          if (message.role !== 'user' || !Array.isArray(message.content)) continue
+          message.content = message.content.filter((part) => {
+            if (part.type === 'image_url' && drop > 0) {
+              drop--
+              return false
+            }
+            return true
+          })
+        }
+        this.emit({
+          type: 'notice',
+          level: 'warning',
+          code: 'image_rejected',
+          text: `图片数量超过单请求上限 ${MAX_MEDIA}，已丢弃最旧的 ${total - MAX_MEDIA} 张。`
+        })
+      }
+    }
     const systemContext = this.options.resolveSystemContext?.()
     // hook 上下文只注入一次（本次请求），避免同一回合后续迭代重复堆叠。
     const hookContext = this.hookContext.splice(0, this.hookContext.length).join('\n\n')
-    const extraContext = [systemContext, hookContext].filter(Boolean).join('\n\n')
+    // SP007 RD-13：每次请求前从历史标记重建发现集（覆盖 /resume），并公告当前延迟池。
+    const toolSearch = this.options.toolSearch
+    toolSearch?.scanHistory(this.messages)
+    const deferredNotice = toolSearch?.notice()
+    const extraContext = [systemContext, hookContext, deferredNotice].filter(Boolean).join('\n\n')
     request.messages.unshift({
       role: 'system',
       content: '你是 budingx，一款在终端运行的编程助手。用户询问你的身份时，介绍 budingx。' +
@@ -1361,7 +1512,9 @@ export class Session {
         (extraContext ? '\n\n' + extraContext : '')
     })
     if (this.tools.length > 0 && snapshot.capabilities.tools) {
-      request.tools = this.tools.map((tool) => ({
+      // SP007 RD-12：启用 ToolSearch 时只发送非延迟＋已发现＋ToolSearch 本身。
+      const visible = toolSearch?.enabled ? toolSearch.filter(this.tools) : this.tools
+      request.tools = visible.map((tool) => ({
         name: tool.name,
         parameters: tool.parameters ?? { type: 'object', properties: {} },
         description: tool.summary ?? tool.describe({})
@@ -1378,6 +1531,8 @@ export class Session {
     let iteration = 0
     // SP005 FR-08：上下文溢出后最多再试一次（先压缩再重试）。
     let overflowRetried = false
+    // SP007 MM-08：图片不支持错误降级后最多再试一次（剥离图片重试）。
+    let imageRetried = false
     // 熔断计数只在一个回合内有效：跨回合累积会让不相关的失败把后续回合误判成空转。
     this.repeatedToolFailures.clear()
     this.toolFailureStreaks.clear()
@@ -1429,6 +1584,9 @@ export class Session {
         turn.traceRoot
       )
       let modelUsage: Usage | undefined
+      // SP007 RD-04：请求计时（含 provider 内部重试），首 token＝首个内容增量。
+      const requestStartedAt = Date.now()
+      let firstDeltaAt: number | undefined
 
       try {
         for await (const event of turn.provider.stream(
@@ -1437,6 +1595,7 @@ export class Session {
           if (turn.finalized) break
           switch (event.type) {
             case 'text_delta':
+              if (firstDeltaAt === undefined) firstDeltaAt = Date.now()
               appendStreamBlock(assistant.blocks, 'text', event.text)
               this.emit({
                 type: 'text_delta',
@@ -1447,6 +1606,7 @@ export class Session {
               this.setState('streaming')
               break
             case 'thinking_delta':
+              if (firstDeltaAt === undefined) firstDeltaAt = Date.now()
               appendStreamBlock(assistant.blocks, 'thinking', event.text)
               this.emit({
                 type: 'thinking_delta',
@@ -1456,6 +1616,7 @@ export class Session {
               })
               break
             case 'tool_call_delta':
+              if (firstDeltaAt === undefined) firstDeltaAt = Date.now()
               fragments.push({
                 index: event.index,
                 callId: event.callId,
@@ -1505,6 +1666,11 @@ export class Session {
         if (this.activeTurn === turn && fragments.length) {
           for (const listener of this.toolPreviewListeners) listener([])
         }
+        this.perfSamples.push({
+          requestMs: Date.now() - requestStartedAt,
+          ...(firstDeltaAt !== undefined ? { firstTokenMs: firstDeltaAt - requestStartedAt } : {})
+        })
+        if (this.perfSamples.length > 500) this.perfSamples.shift()
       }
 
       if (providerFailure) {
@@ -1526,8 +1692,27 @@ export class Session {
           overflowRetried = true
           iteration--
           continue
+        } else if (
+          providerFailure.class === 'bad_request' &&
+          isImageUnsupportedError(providerFailure.message) &&
+          !imageRetried &&
+          this.stripLatestUserImages()
+        ) {
+          // SP007 MM-08：错误驱动降级——剥离最近 user 图片后无图重试一次。
+          this.emit({
+            type: 'notice',
+            level: 'warning',
+            code: 'image_downgraded',
+            text: '模型拒绝图片输入，已移除图片并以纯文本重试。'
+          })
+          imageRetried = true
+          iteration--
+          continue
         } else {
-          outcome = 'error'
+          // 降级重试仍因图片失败 → 明确 image_error，不静默吞错。
+          outcome = imageRetried && isImageUnsupportedError(providerFailure.message)
+            ? 'image_error'
+            : 'error'
           error = providerFailure
         }
         break
@@ -1563,7 +1748,8 @@ export class Session {
       if (assistant.blocks.length > 0) {
         this.messages.push(assistant)
         turn.messageIds.push(assistant.id)
-        this.recordMessage(assistant)
+        // SP007 RD-04：assistant 消息携带本次请求用量，供 /stats 按模型按日聚合。
+        this.recordMessage(assistant, undefined, modelUsage)
         // SP005 §5：已派发的工具调用先登记，结果未知时只标记 needs_review。
         for (const block of assistant.blocks) {
           if (block.type === 'tool_use') {
@@ -1638,105 +1824,207 @@ export class Session {
     turn: ActiveTurn,
     calls: { index: number; id: string; name: string; arguments: string }[]
   ): Promise<{ cancelled?: boolean; error?: ErrorInfo }> {
-    for (const call of calls) {
+    let index = 0
+    while (index < calls.length) {
       if (turn.controller.signal.aborted) return { cancelled: true }
-      try {
-        JSON.parse(call.arguments || '{}')
-      } catch {
-        this.pushToolResult(
-          turn,
-          call.id,
-          'Tool arguments are not valid JSON',
-          true,
-          ERROR_CODES.providerToolArgumentsInvalid
-        )
-        continue
-      }
-      let input = parseToolArguments(call)
+      const call = calls[index]
       const handler = this.tools.find((tool) => tool.name === call.name)
-      // 观测要能回答「工具被用什么参数调用」，否则无法判断调用是否合适。
-      const toolTrace = this.traceBegin(
-        `tool.${call.name}`,
-        {
-          'langfuse.observation.type': 'tool',
-          'gen_ai.tool.call.id': call.id,
-          'session.id': this.id,
-          'turn.id': turn.id
-        },
-        turn.traceRoot
-      )
-      this.tracePayload(toolTrace, 'input', input)
-      this.emit({
-        type: 'tool_call_completed',
-        turnId: turn.id,
-        callId: call.id,
-        name: call.name,
-        input
-      })
-      if (!handler) {
-        this.traceEnd(toolTrace, 'error')
-        this.pushToolResult(
-          turn,
-          call.id,
-          `Unknown tool: ${call.name}`,
-          true,
-          ERROR_CODES.coreToolUnknown
-        )
-        continue
+      // SP007 SA-05/SA-15：连续且全部 concurrencySafe 的调用并行成组（D6 范围限定），
+      // 其余工具保持顺序。结果按调用原序回灌；审批由串行队列保证弹窗不竞争。
+      if (handler?.concurrencySafe) {
+        const group = [call]
+        let next = index + 1
+        while (next < calls.length) {
+          const nextHandler = this.tools.find((tool) => tool.name === calls[next].name)
+          if (!nextHandler?.concurrencySafe) break
+          group.push(calls[next])
+          next += 1
+        }
+        if (group.length > 1) {
+          const sinks: DispatchResult[][] = group.map(() => [])
+          const outcomes = await Promise.all(
+            group.map((member, position) =>
+              this.dispatchOne(turn, member, (result) => sinks[position].push(result))
+            )
+          )
+          for (let position = 0; position < group.length; position += 1) {
+            for (const result of sinks[position]) {
+              this.pushToolResult(turn, group[position].id, result.content, result.isError, result.code, result.trace)
+            }
+          }
+          for (const outcome of outcomes) {
+            if (outcome.error) return outcome
+            if (outcome.cancelled) return { cancelled: true }
+          }
+          index = next
+          continue
+        }
       }
-      // SP006 §9：PreToolUse 在权限判定之前运行，可阻断、改写入参或给出审批意见。
-      const preTool = await this.runHook('PreToolUse', {
-        tool_name: call.name,
-        tool_input: input,
-        tool_use_id: call.id
+      const outcome = await this.dispatchOne(turn, call)
+      if (outcome.error) return outcome
+      if (outcome.cancelled) return { cancelled: true }
+      index += 1
+    }
+    return {}
+  }
+
+  /**
+   * SP007：单个工具调用的完整派发（审批/权限/hook/执行/熔断）。
+   * sink 存在时结果先缓冲（并行组），由 dispatchTools 按原序回灌；
+   * 否则立即 pushToolResult（顺序路径，行为与 SP003/SP005 一致）。
+   */
+  private async dispatchOne(
+    turn: ActiveTurn,
+    call: { index: number; id: string; name: string; arguments: string },
+    sink?: (result: DispatchResult) => void
+  ): Promise<{ cancelled?: boolean; error?: ErrorInfo }> {
+    const pushResult = (content: string, isError: boolean, code?: string, trace?: TraceHandle): void => {
+      if (sink) sink({ content, isError, code, trace })
+      else this.pushToolResult(turn, call.id, content, isError, code, trace)
+    }
+    if (turn.controller.signal.aborted) return { cancelled: true }
+    try {
+      JSON.parse(call.arguments || '{}')
+    } catch {
+      // SP007 PC-05：非法 JSON 以 InputValidationError 形状回灌，供模型自纠不中断。
+      pushResult('<tool_use_error>InputValidationError: Tool arguments are not valid JSON</tool_use_error>',
+        true,
+        ERROR_CODES.providerToolArgumentsInvalid
+      )
+      return {}
+    }
+    let input = parseToolArguments(call)
+    const handler = this.tools.find((tool) => tool.name === call.name)
+    // 观测要能回答「工具被用什么参数调用」，否则无法判断调用是否合适。
+    const toolTrace = this.traceBegin(
+      `tool.${call.name}`,
+      {
+        'langfuse.observation.type': 'tool',
+        'gen_ai.tool.call.id': call.id,
+        'session.id': this.id,
+        'turn.id': turn.id
+      },
+      turn.traceRoot
+    )
+    this.tracePayload(toolTrace, 'input', input)
+    this.emit({
+      type: 'tool_call_completed',
+      turnId: turn.id,
+      callId: call.id,
+      name: call.name,
+      input
+    })
+    if (!handler) {
+      this.traceEnd(toolTrace, 'error')
+      pushResult(`Unknown tool: ${call.name}`,
+        true,
+        ERROR_CODES.coreToolUnknown
+      )
+      return {}
+    }
+    // SP007 RD-14：调用尚未发现的延迟工具 → 明确引导先 ToolSearch 加载，不静默执行。
+    const toolSearch = this.options.toolSearch
+    if (toolSearch?.enabled && toolSearch.isDeferred(call.name) && !toolSearch.state.discovered.has(call.name)) {
+      this.traceEnd(toolTrace, 'blocked')
+      pushResult(
+        'Tool "' + call.name + '" is not loaded yet. call ToolSearch with query "select:' +
+          call.name + '", then retry',
+        true,
+        ERROR_CODES.coreToolUnknown
+      )
+      return {}
+    }
+    // SP006 §9：PreToolUse 在权限判定之前运行，可阻断、改写入参或给出审批意见。
+    const preTool = await this.runHook('PreToolUse', {
+      tool_name: call.name,
+      tool_input: input,
+      tool_use_id: call.id
+    })
+    if (preTool?.blocked || preTool?.permissionDecision === 'deny') {
+      const reason = preTool.reason ?? preTool.permissionDecisionReason ?? 'hook 拒绝了该工具调用'
+      this.traceEnd(toolTrace, 'blocked')
+      pushResult(`Denied by hook: ${reason}`, true, ERROR_CODES.permissionDenied)
+      this.emit({
+        type: 'denial_recorded',
+        denial: {
+          tool: call.name,
+          reason: `Denied by hook: ${reason}`,
+          at: new Date().toISOString()
+        }
       })
-      if (preTool?.blocked || preTool?.permissionDecision === 'deny') {
-        const reason = preTool.reason ?? preTool.permissionDecisionReason ?? 'hook 拒绝了该工具调用'
+      return {}
+    }
+    if (preTool?.updatedInput !== undefined) {
+      input = preTool.updatedInput as Record<string, unknown>
+    }
+    // SP003: with a policy the verdict decides; without one the SP002
+    // requiresApproval hook keeps its exact behaviour.
+    const policy = this.options.permissionPolicy
+    const approvalHook = handler.requiresApproval?.(input) ?? false
+    let needsApproval = approvalHook
+    let permissionRequest: PermissionRequest | undefined
+    // 计划模式的一次性批准：即使宿主勾选“本会话允许”，也不写入记忆（§6.2）。
+    let planModeSingleUse = false
+    if (policy) {
+      const capability = handler.capability?.(input) ?? 'read'
+      const target = handler.target?.(input)
+      const managedPlanDraft =
+        target?.kind === 'plan-draft' && target.path !== undefined &&
+        target.path === this.options.planMode?.draftPath &&
+        (capability === 'read'
+          ? this.canReadPlanDraft
+          : capability === 'write' && this.planModeState?.phase === 'research')
+      permissionRequest = {
+        tool: call.name,
+        capability,
+        path: target?.path,
+        ...(managedPlanDraft ? { managedPlanDraft } : {})
+      }
+      let verdict = policy.decide(permissionRequest)
+      if (verdict.action === 'deny') {
         this.traceEnd(toolTrace, 'blocked')
-        this.pushToolResult(turn, call.id, `Denied by hook: ${reason}`, true, ERROR_CODES.permissionDenied)
+        pushResult(`Denied: ${verdict.reason}`,
+          true,
+          ERROR_CODES.permissionDenied
+        )
         this.emit({
           type: 'denial_recorded',
           denial: {
             tool: call.name,
-            reason: `Denied by hook: ${reason}`,
+            ...(permissionRequest.path ? { path: permissionRequest.path } : {}),
+            reason: verdict.reason,
             at: new Date().toISOString()
           }
         })
-        continue
+        return {}
       }
-      if (preTool?.updatedInput !== undefined) {
-        input = preTool.updatedInput as Record<string, unknown>
-      }
-      // SP003: with a policy the verdict decides; without one the SP002
-      // requiresApproval hook keeps its exact behaviour.
-      const policy = this.options.permissionPolicy
-      const approvalHook = handler.requiresApproval?.(input) ?? false
-      let needsApproval = approvalHook
-      let permissionRequest: PermissionRequest | undefined
-      // 计划模式的一次性批准：即使宿主勾选“本会话允许”，也不写入记忆（§6.2）。
-      let planModeSingleUse = false
-      if (policy) {
-        const capability = handler.capability?.(input) ?? 'read'
-        const target = handler.target?.(input)
-        const managedPlanDraft =
-          target?.kind === 'plan-draft' && target.path !== undefined &&
-          target.path === this.options.planMode?.draftPath &&
-          (capability === 'read'
-            ? this.canReadPlanDraft
-            : capability === 'write' && this.planModeState?.phase === 'research')
-        permissionRequest = {
-          tool: call.name,
-          capability,
-          path: target?.path,
-          ...(managedPlanDraft ? { managedPlanDraft } : {})
+      // §6.3：已批准计划在首次副作用前重查目标与前像；漂移则回到待审，
+      // 本次调用不执行任何副作用，也不消耗一次工具批准。
+      if (
+        this.approvedPlanCheck &&
+        !this.approvedPlanCheck.rechecked &&
+        capability !== 'read'
+      ) {
+        const host = this.options.planMode
+        const plan = host?.store.current()
+        if (host && plan) {
+          const check = host.validate(plan)
+          if (!check.ok) {
+            await this.reopenPlanForApproval(plan, check.drift)
+            this.traceEnd(toolTrace, 'blocked')
+            pushResult(`Plan drifted before execution: ${describeDrift(check.drift)}`,
+              true,
+              ERROR_CODES.permissionDenied
+            )
+            return {}
+          }
         }
-        let verdict = policy.decide(permissionRequest)
-        if (verdict.action === 'deny') {
+        this.approvedPlanCheck.rechecked = true
+      }
+      if (this.planModeState) {
+        if (this.planModeState.phase === 'pending' && capability !== 'read') {
           this.traceEnd(toolTrace, 'blocked')
-          this.pushToolResult(
-            turn,
-            call.id,
-            `Denied: ${verdict.reason}`,
+          pushResult('Plan approval pending: only read-only tools may run until the plan is approved',
             true,
             ERROR_CODES.permissionDenied
           )
@@ -1745,276 +2033,219 @@ export class Session {
             denial: {
               tool: call.name,
               ...(permissionRequest.path ? { path: permissionRequest.path } : {}),
-              reason: verdict.reason,
+              reason: 'Plan approval pending',
               at: new Date().toISOString()
             }
           })
-          continue
+          return {}
         }
-        // §6.3：已批准计划在首次副作用前重查目标与前像；漂移则回到待审，
-        // 本次调用不执行任何副作用，也不消耗一次工具批准。
-        if (
-          this.approvedPlanCheck &&
-          !this.approvedPlanCheck.rechecked &&
-          capability !== 'read'
-        ) {
-          const host = this.options.planMode
-          const plan = host?.store.current()
-          if (host && plan) {
-            const check = host.validate(plan)
-            if (!check.ok) {
-              await this.reopenPlanForApproval(plan, check.drift)
-              this.traceEnd(toolTrace, 'blocked')
-              this.pushToolResult(
-                turn,
-                call.id,
-                `Plan drifted before execution: ${describeDrift(check.drift)}`,
-                true,
-                ERROR_CODES.permissionDenied
-              )
-              continue
-            }
-          }
-          this.approvedPlanCheck.rechecked = true
+        // 调研期：底层已准许的只读照常执行，其余非只读一律一次性批准。
+        if (this.planModeState.phase === 'research' && capability !== 'read' && !managedPlanDraft) {
+          verdict = { action: 'ask', reason: 'Plan mode: this step needs a one-time approval' }
+          planModeSingleUse = true
         }
-        if (this.planModeState) {
-          if (this.planModeState.phase === 'pending' && capability !== 'read') {
-            this.traceEnd(toolTrace, 'blocked')
-            this.pushToolResult(
-              turn,
-              call.id,
-              'Plan approval pending: only read-only tools may run until the plan is approved',
-              true,
-              ERROR_CODES.permissionDenied
-            )
-            this.emit({
-              type: 'denial_recorded',
-              denial: {
-                tool: call.name,
-                ...(permissionRequest.path ? { path: permissionRequest.path } : {}),
-                reason: 'Plan approval pending',
-                at: new Date().toISOString()
-              }
-            })
-            continue
-          }
-          // 调研期：底层已准许的只读照常执行，其余非只读一律一次性批准。
-          if (this.planModeState.phase === 'research' && capability !== 'read' && !managedPlanDraft) {
-            verdict = { action: 'ask', reason: 'Plan mode: this step needs a one-time approval' }
-            planModeSingleUse = true
-          }
-        }
-        needsApproval = verdict.action === 'ask'
       }
-      // hook 的意见只在硬性审批之外生效：不得绕过 mandatoryApproval（T25）。
-      if (preTool?.permissionDecision === 'allow') needsApproval = false
-      else if (preTool?.permissionDecision === 'ask') needsApproval = true
-      // 不可逆操作的硬性审批：即使档位允许也必须由宿主确认（T25）。
-      if (!needsApproval && (handler.mandatoryApproval?.(input) ?? false)) {
-        needsApproval = true
-      }
-      let prepared: PreparedTool | undefined
-      let remember = false
-      // 本次调用是否经审批通道允许；删除类工具据此确认宿主授权（T25）。
-      let approved = false
-      if (needsApproval) {
-        try {
-          prepared = handler.prepareApproval?.(input)
-        } catch (error) {
-          this.traceEnd(toolTrace, 'error', error)
-          this.pushToolResult(
-            turn,
-            call.id,
-            error instanceof Error ? error.message : 'Could not preview tool operation',
-            true,
-            typeof (error as { code?: unknown } | null)?.code === 'string'
-              ? (error as { code: string }).code
-              : undefined
-          )
-          continue
-        }
-        this.setState('awaiting_approval')
-        const requestId = randomUUID()
-        const request: ApprovalRequest = {
-          requestId,
-          turnId: turn.id,
-          callId: call.id,
-          name: call.name,
-          summary: handler.describe(input),
-          ...(prepared ? { preview: prepared.preview } : {})
-        }
-        if (permissionRequest) this.approvalForMemory = { id: requestId, target: permissionRequest }
-        this.emit({
-          type: 'approval_requested',
-          turnId: turn.id,
-          requestId,
-          callId: call.id,
-          name: call.name,
-          summary: request.summary,
-          ...(request.preview ? { preview: request.preview } : {}),
-          ...(request.planId !== undefined ? { planId: request.planId } : {}),
-          ...(request.planVersion !== undefined ? { planVersion: request.planVersion } : {})
-        })
-        // SP006 §9：审批等待属于可通知事件，hook 只能旁听、不能改变结局。
-        void this.runHook('Notification', {
-          notification_type: 'approval_requested',
-          message: request.summary
-        })
-        const decision = await this.requestApproval(turn, request)
-        remember =
-          decision.outcome === 'allow_session' && !planModeSingleUse && this.canRememberApproval(requestId)
-        if (this.approvalForMemory?.id === requestId) this.approvalForMemory = undefined
-        this.emit({
-          type: 'approval_resolved',
-          turnId: turn.id,
-          requestId,
-          outcome: decision.outcome,
-          via: decision.via
-        })
-        if (decision.outcome !== 'allow' && decision.outcome !== 'allow_session') {
-          const feedback =
-            decision.feedback && decision.feedback.trim()
-              ? `\nUser feedback: ${decision.feedback.trim()}`
-              : ''
-          this.traceEnd(toolTrace, decision.outcome === 'cancelled' ? 'cancelled' : 'blocked')
-          this.pushToolResult(
-            turn,
-            call.id,
-            (decision.outcome === 'cancelled'
-              ? `Cancelled: ${call.name}`
-              : `Denied by ${decision.via}: ${call.name}`) + feedback,
-            true,
-            decision.outcome === 'cancelled'
-              ? ERROR_CODES.coreApprovalCancelled
-              : ERROR_CODES.permissionDenied
-          )
-          if (decision.outcome === 'deny') {
-            this.emit({
-              type: 'denial_recorded',
-              denial: {
-                tool: call.name,
-                ...(permissionRequest?.path ? { path: permissionRequest.path } : {}),
-                reason: `Denied by ${decision.via}`,
-                at: new Date().toISOString()
-              }
-            })
-          }
-          continue
-        }
-        approved = true
-      }
-      // 能走到执行即代表本次调用已获授权：审批通道放行，或权限档位自动放行。
-      // 出网/删除类工具以 `approved` 确认宿主授权（0.5.4：此前仅审批通道置真，
-      // 导致完全权限档位下自动放行的出网调用被工具自设闸门误拒）。
-      approved = true
-      this.setState('tool_running')
-      let content = ''
-      let isError = false
-      let errorCode: string | undefined
-      let startedAt: number | undefined
+      needsApproval = verdict.action === 'ask'
+    }
+    // hook 的意见只在硬性审批之外生效：不得绕过 mandatoryApproval（T25）。
+    if (preTool?.permissionDecision === 'allow') needsApproval = false
+    else if (preTool?.permissionDecision === 'ask') needsApproval = true
+    // 不可逆操作的硬性审批：即使档位允许也必须由宿主确认（T25）。
+    if (!needsApproval && (handler.mandatoryApproval?.(input) ?? false)) {
+      needsApproval = true
+    }
+    let prepared: PreparedTool | undefined
+    let remember = false
+    // 本次调用是否经审批通道允许；删除类工具据此确认宿主授权（T25）。
+    let approved = false
+    if (needsApproval) {
       try {
-        const toolContext: ToolContext = {
-          signal: turn.controller.signal,
-          changes: (records) => this.emit({ type: 'change_set', changes: records }),
-          turnId: turn.id,
-          callId: call.id,
-          emit: (event) => this.emit(event),
-          approved,
-          ...(this.options.codingTask
-            ? {
-                onCommandResult: (command: string, result: CommandResult) =>
-                  this.options.codingTask?.observeCommand(command, result)
-              }
-            : {})
-        }
-        if (permissionRequest && policy?.decide(permissionRequest).action === 'deny') {
-          this.traceEnd(toolTrace, 'blocked')
-          this.pushToolResult(turn, call.id, 'Permission changed before execution', true, ERROR_CODES.permissionDenied)
-          continue
-        }
-        startedAt = performance.now()
-        content = await (prepared ? prepared.execute(toolContext) : handler.execute(input, toolContext))
-        if (remember && permissionRequest) policy?.remember(permissionRequest)
+        prepared = handler.prepareApproval?.(input)
       } catch (error) {
-        content = error instanceof Error ? error.message : 'Tool execution failed'
-        isError = true
-        // Stable machine readable codes from WorkspaceError survive to the
-        // model so it can self-correct (SP003 AC WT-14).
-        const candidate = (error as { code?: unknown } | null)?.code
-        if (typeof candidate === 'string') errorCode = candidate
-        // SP005 FR-06：工具失败必须带稳定错误码，失败位置才能被定位到具体步骤。
-        errorCode = errorCode ?? ERROR_CODES.coreToolFailed
+        this.traceEnd(toolTrace, 'error', error)
+        pushResult(error instanceof Error ? error.message : 'Could not preview tool operation',
+          true,
+          typeof (error as { code?: unknown } | null)?.code === 'string'
+            ? (error as { code: string }).code
+            : undefined
+        )
+        return {}
       }
-      // SP006 §9：PostToolUse 只旁听执行结果，失败走 PostToolUseFailure。
-      await this.runHook(isError ? 'PostToolUseFailure' : 'PostToolUse', {
-        tool_name: call.name,
-        tool_input: input,
-        tool_use_id: call.id,
-        tool_response: { content, is_error: isError }
+      this.setState('awaiting_approval')
+      const requestId = randomUUID()
+      const request: ApprovalRequest = {
+        requestId,
+        turnId: turn.id,
+        callId: call.id,
+        name: call.name,
+        summary: handler.describe(input),
+        ...(prepared ? { preview: prepared.preview } : {})
+      }
+      if (permissionRequest) this.approvalForMemory = { id: requestId, target: permissionRequest }
+      this.emit({
+        type: 'approval_requested',
+        turnId: turn.id,
+        requestId,
+        callId: call.id,
+        name: call.name,
+        summary: request.summary,
+        ...(request.preview ? { preview: request.preview } : {}),
+        ...(request.planId !== undefined ? { planId: request.planId } : {}),
+        ...(request.planVersion !== undefined ? { planVersion: request.planVersion } : {})
       })
-      if (content.length > TOOL_OUTPUT_CAP) {
-        // SP005 FR-03：截断必须带显式标记，模型与人都能看出结果不完整，
-        // 不能把一段被砍掉的内容当成完整结果。
-        const omitted = content.length - TOOL_OUTPUT_CAP
-        content = content.slice(0, TOOL_OUTPUT_CAP) +
-          `\n[truncated] ${omitted} characters were omitted because the tool output exceeded ` +
-          `${TOOL_OUTPUT_CAP} characters (${ERROR_CODES.coreToolOutputTooLong})`
-        isError = true
-        errorCode = errorCode ?? ERROR_CODES.coreToolOutputTooLong
-      }
-      if (startedAt !== undefined) {
-        this.lastToolElapsed = { turnId: turn.id, callId: call.id, ms: performance.now() - startedAt }
-      }
-      // SP005 FR-05：工具空转熔断，分两级。
-      // 一级：同一工具 + 同一参数连续失败 —— 完全重复的调用。
-      // 二级：同一工具 + 同一错误码连续失败 —— 模型换参数瞎试同一件事，
-      //       参数签名变了但错误类型没变，同样不会带来新信息。
-      // 两种情况都只会让长任务空转到最大迭代次数，因此必须显式停下并给出稳定原因。
-      const signature = this.toolSignature(call.name, call.arguments)
-      const streakKey = `${call.name}:${errorCode ?? 'unknown'}`
-      if (isError) {
-        const count = (this.repeatedToolFailures.get(signature) ?? 0) + 1
-        this.repeatedToolFailures.set(signature, count)
-        const streak = (this.toolFailureStreaks.get(streakKey) ?? 0) + 1
-        this.toolFailureStreaks.set(streakKey, streak)
-        const tripped =
-          count >= MAX_REPEATED_TOOL_FAILURES
-            ? `failed ${count} times with the same arguments`
-            : streak >= MAX_TOOL_FAILURE_STREAK
-              ? `failed ${streak} times in a row with the same error (${errorCode ?? 'unknown'})`
-              : undefined
-        if (tripped) {
-          this.repeatedToolFailures.delete(signature)
-          this.toolFailureStreaks.delete(streakKey)
-          this.traceEnd(toolTrace, 'error')
-          this.pushToolResult(
-            turn,
-            call.id,
-            `Tool "${call.name}" ${tripped}; retrying it again cannot add information. ` +
-              `Stop and report the reason instead. (${ERROR_CODES.coreToolLoopDetected})`,
-            true,
-            ERROR_CODES.coreToolLoopDetected
-          )
-          return {
-            error: {
-              class: 'unknown',
-              code: ERROR_CODES.coreToolLoopDetected,
-              message:
-                `Tool "${call.name}" ${tripped} ` +
-                `(${ERROR_CODES.coreToolLoopDetected})`,
-              retryable: false
+      // SP006 §9：审批等待属于可通知事件，hook 只能旁听、不能改变结局。
+      void this.runHook('Notification', {
+        notification_type: 'approval_requested',
+        message: request.summary
+      })
+      const decision = await this.requestApproval(turn, request)
+      remember =
+        decision.outcome === 'allow_session' && !planModeSingleUse && this.canRememberApproval(requestId)
+      if (this.approvalForMemory?.id === requestId) this.approvalForMemory = undefined
+      this.emit({
+        type: 'approval_resolved',
+        turnId: turn.id,
+        requestId,
+        outcome: decision.outcome,
+        via: decision.via
+      })
+      if (decision.outcome !== 'allow' && decision.outcome !== 'allow_session') {
+        const feedback =
+          decision.feedback && decision.feedback.trim()
+            ? `\nUser feedback: ${decision.feedback.trim()}`
+            : ''
+        this.traceEnd(toolTrace, decision.outcome === 'cancelled' ? 'cancelled' : 'blocked')
+        pushResult((decision.outcome === 'cancelled'
+            ? `Cancelled: ${call.name}`
+            : `Denied by ${decision.via}: ${call.name}`) + feedback,
+          true,
+          decision.outcome === 'cancelled'
+            ? ERROR_CODES.coreApprovalCancelled
+            : ERROR_CODES.permissionDenied
+        )
+        if (decision.outcome === 'deny') {
+          this.emit({
+            type: 'denial_recorded',
+            denial: {
+              tool: call.name,
+              ...(permissionRequest?.path ? { path: permissionRequest.path } : {}),
+              reason: `Denied by ${decision.via}`,
+              at: new Date().toISOString()
             }
-          }
+          })
         }
-      } else {
+        return {}
+      }
+      approved = true
+    }
+    // 能走到执行即代表本次调用已获授权：审批通道放行，或权限档位自动放行。
+    // 出网/删除类工具以 `approved` 确认宿主授权（0.5.4：此前仅审批通道置真，
+    // 导致完全权限档位下自动放行的出网调用被工具自设闸门误拒）。
+    approved = true
+    this.setState('tool_running')
+    let content = ''
+    let isError = false
+    let errorCode: string | undefined
+    let startedAt: number | undefined
+    try {
+      const toolContext: ToolContext = {
+        signal: turn.controller.signal,
+        changes: (records) => this.emit({ type: 'change_set', changes: records }),
+        turnId: turn.id,
+        callId: call.id,
+        emit: (event) => this.emit(event),
+        approved,
+        ...(this.options.codingTask
+          ? {
+              onCommandResult: (command: string, result: CommandResult) =>
+                this.options.codingTask?.observeCommand(command, result)
+            }
+          : {})
+      }
+      if (permissionRequest && policy?.decide(permissionRequest).action === 'deny') {
+        this.traceEnd(toolTrace, 'blocked')
+        pushResult('Permission changed before execution', true, ERROR_CODES.permissionDenied)
+        return {}
+      }
+      startedAt = performance.now()
+      content = await (prepared ? prepared.execute(toolContext) : handler.execute(input, toolContext))
+      if (remember && permissionRequest) policy?.remember(permissionRequest)
+    } catch (error) {
+      content = error instanceof Error ? error.message : 'Tool execution failed'
+      isError = true
+      // Stable machine readable codes from WorkspaceError survive to the
+      // model so it can self-correct (SP003 AC WT-14).
+      const candidate = (error as { code?: unknown } | null)?.code
+      if (typeof candidate === 'string') errorCode = candidate
+      // SP005 FR-06：工具失败必须带稳定错误码，失败位置才能被定位到具体步骤。
+      errorCode = errorCode ?? ERROR_CODES.coreToolFailed
+    }
+    // SP006 §9：PostToolUse 只旁听执行结果，失败走 PostToolUseFailure。
+    await this.runHook(isError ? 'PostToolUseFailure' : 'PostToolUse', {
+      tool_name: call.name,
+      tool_input: input,
+      tool_use_id: call.id,
+      tool_response: { content, is_error: isError }
+    })
+    if (content.length > TOOL_OUTPUT_CAP) {
+      // SP005 FR-03：截断必须带显式标记，模型与人都能看出结果不完整，
+      // 不能把一段被砍掉的内容当成完整结果。
+      const omitted = content.length - TOOL_OUTPUT_CAP
+      content = content.slice(0, TOOL_OUTPUT_CAP) +
+        `\n[truncated] ${omitted} characters were omitted because the tool output exceeded ` +
+        `${TOOL_OUTPUT_CAP} characters (${ERROR_CODES.coreToolOutputTooLong})`
+      isError = true
+      errorCode = errorCode ?? ERROR_CODES.coreToolOutputTooLong
+    }
+    if (startedAt !== undefined) {
+      this.lastToolElapsed = { turnId: turn.id, callId: call.id, ms: performance.now() - startedAt }
+    }
+    // SP005 FR-05：工具空转熔断，分两级。
+    // 一级：同一工具 + 同一参数连续失败 —— 完全重复的调用。
+    // 二级：同一工具 + 同一错误码连续失败 —— 模型换参数瞎试同一件事，
+    //       参数签名变了但错误类型没变，同样不会带来新信息。
+    // 两种情况都只会让长任务空转到最大迭代次数，因此必须显式停下并给出稳定原因。
+    const signature = this.toolSignature(call.name, call.arguments)
+    const streakKey = `${call.name}:${errorCode ?? 'unknown'}`
+    if (isError) {
+      const count = (this.repeatedToolFailures.get(signature) ?? 0) + 1
+      this.repeatedToolFailures.set(signature, count)
+      const streak = (this.toolFailureStreaks.get(streakKey) ?? 0) + 1
+      this.toolFailureStreaks.set(streakKey, streak)
+      const tripped =
+        count >= MAX_REPEATED_TOOL_FAILURES
+          ? `failed ${count} times with the same arguments`
+          : streak >= MAX_TOOL_FAILURE_STREAK
+            ? `failed ${streak} times in a row with the same error (${errorCode ?? 'unknown'})`
+            : undefined
+      if (tripped) {
         this.repeatedToolFailures.delete(signature)
         this.toolFailureStreaks.delete(streakKey)
+        this.traceEnd(toolTrace, 'error')
+        pushResult(`Tool "${call.name}" ${tripped}; retrying it again cannot add information. ` +
+            `Stop and report the reason instead. (${ERROR_CODES.coreToolLoopDetected})`,
+          true,
+          ERROR_CODES.coreToolLoopDetected
+        )
+        return {
+          error: {
+            class: 'unknown',
+            code: ERROR_CODES.coreToolLoopDetected,
+            message:
+              `Tool "${call.name}" ${tripped} ` +
+              `(${ERROR_CODES.coreToolLoopDetected})`,
+            retryable: false
+          }
+        }
       }
-      try {
-        this.pushToolResult(turn, call.id, content, isError, errorCode, toolTrace)
-      } finally {
-        this.lastToolElapsed = undefined
-      }
+    } else {
+      this.repeatedToolFailures.delete(signature)
+      this.toolFailureStreaks.delete(streakKey)
+    }
+    try {
+      pushResult(content, isError, errorCode, toolTrace)
+    } finally {
+      this.lastToolElapsed = undefined
     }
     return {}
   }
@@ -2115,9 +2346,26 @@ export class Session {
           type: 'context' as const,
           ...entry
         })),
-        { type: 'text', text }
+        { type: 'text', text },
+        // SP007 MM-07：图片块随用户消息入史，normalize 按能力转 content parts。
+        ...(options?.images ?? []).map((image) => ({ type: 'image' as const, ...image }))
       ]
     }
+  }
+
+  /**
+   * SP007 MM-08：错误驱动降级——从最近一条含图片的 user 消息剥离 image 块
+   * （保留 text/context），后续轮该消息无图。返回是否确有移除。
+   */
+  private stripLatestUserImages(): boolean {
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      const message = this.messages[i]
+      if (message.role !== 'user') continue
+      const before = message.blocks.length
+      message.blocks = message.blocks.filter((block) => block.type !== 'image')
+      if (message.blocks.length !== before) return true
+    }
+    return false
   }
 
   private injectQueued(turn: ActiveTurn): void {
@@ -2132,7 +2380,8 @@ export class Session {
         turnId: turn.id,
         queueId: item.id,
         text: item.text,
-        boundary: 'intra_turn'
+        boundary: 'intra_turn',
+        ...(item.notification ? { notification: true } : {})
       })
     }
   }

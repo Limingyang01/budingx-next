@@ -12,6 +12,7 @@ import type { PermissionMode } from '../core/permissions.js'
 import { App } from './app.js'
 import { createAgentRuntime, workspacePromptOptions, type AgentRuntime } from './runtime.js'
 import { startMcp } from './mcp/index.js'
+import { buildDiagnosticsPort } from './diagnostics/port.js'
 import { startHooks } from './hooks/index.js'
 import type { CommandContext } from './commands.js'
 import { InkApprovalGateway } from './approval.js'
@@ -256,8 +257,30 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
         ...(runtime.sessions ? { sessions: runtime.sessions } : {}),
         ...(runtime.context ? { context: runtime.context } : {}),
         ...(runtime.memory ? { memory: runtime.memory } : {}),
-        ...(runtime.effort ? { effort: runtime.effort } : {})
+        ...(runtime.effort ? { effort: runtime.effort } : {}),
+        // SP007 T9：子代理登记表（/tasks Agents 分组、ctrl+b 后台化、停止）。
+        ...(runtime.agents
+          ? {
+              agents: {
+                list: () => runtime.agents!.list(),
+                stop: (agentId: string) => runtime.agents!.stop(agentId),
+                background: (callId: string) => runtime.agents!.background(callId)
+              }
+            }
+          : {}),
+        // SP007 T10：诊断端口（/status /stats /doctor）。
+        diagnostics: buildDiagnosticsPort({
+          runtime,
+          configStore: stores.configStore,
+          getConfig: () => current,
+          mcpStatuses: mcp.statuses,
+          mcpTools: mcp.tools,
+          version,
+          cwd: process.cwd(),
+          home: homedir()
+        })
       },
+      ...(runtime.imageCache ? { imageCache: runtime.imageCache } : {}),
       version,
       cwd: process.cwd(),
       fullScreen,

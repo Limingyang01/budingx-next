@@ -50,6 +50,11 @@ export type NoticeCode =
   | 'hook_output'
   | 'hook_warning'
   | 'hook_blocked'
+  /** SP007 §4.7：子代理终态通知、图片降级/拒绝、ToolSearch 发现公告。 */
+  | 'agent_notification'
+  | 'image_downgraded'
+  | 'image_rejected'
+  | 'tool_search'
 
 export type ErrorClass =
   | 'auth'
@@ -82,7 +87,8 @@ export type TurnSnapshot = {
   modelId: string
   model: string
   baseUrlHost: string
-  capabilities: { tools: boolean }
+  /** vision undefined＝未知（错误驱动降级）；false＝明确拒绝图片（SP007 MM-08）。 */
+  capabilities: { tools: boolean; vision?: boolean }
 }
 
 export type MessageBlock =
@@ -97,6 +103,12 @@ export type MessageBlock =
    * file content never masquerades as user instruction.
    */
   | { type: 'context'; source: string; content: string }
+  /**
+   * Pasted/attached image carried by a user message (SP007 MM-05).
+   * data is base64 (single image ≤5MB base64, design D12); id is the
+   * per-session paste counter used for the [Image #N] placeholder.
+   */
+  | { type: 'image'; id: number; mediaType: string; data: string; width?: number; height?: number }
 
 /** Summary of one recorded workspace write (SP003 design §4.2). */
 export type ChangeRecordSummary = {
@@ -218,13 +230,15 @@ export type SessionEvent =
   | { type: 'change_set'; changes: ChangeRecordSummary[] }
   | { type: 'denial_recorded'; denial: DenialRecord }
   | { type: 'permission_changed'; mode: PermissionMode }
-  | { type: 'input_queued'; queueId: string; preview: string }
+  | { type: 'input_queued'; queueId: string; preview: string; notification?: boolean }
   | {
       type: 'input_injected'
       turnId: string
       queueId: string
       text: string
       boundary: 'intra_turn' | 'inter_turn'
+      /** SP007 §4.1：子代理终态通知（非用户输入），宿主按系统消息渲染。 */
+      notification?: boolean
     }
   | { type: 'status'; state: SessionState; note?: string }
   | {
@@ -286,3 +300,31 @@ export type SessionEvent =
     }
   | ContextCompactedEvent
   | TurnFinalizedEvent
+  /** SP007 §4.1：子代理生命周期事件（UI-only；headless 不输出，FB-04）。 */
+  | {
+      type: 'agent_started'
+      turnId: string
+      callId: string
+      agentId: string
+      agentType: string
+      description: string
+      color?: string
+      background: boolean
+    }
+  | {
+      type: 'agent_progress'
+      agentId: string
+      toolUses: number
+      tokens: number
+      lastTools: string[]
+      state: 'running' | 'backgrounded'
+    }
+  | {
+      type: 'agent_finished'
+      agentId: string
+      outcome: TurnOutcome
+      toolUses: number
+      tokens: number
+      durationMs: number
+      background: boolean
+    }

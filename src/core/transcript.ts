@@ -29,6 +29,10 @@ export type TranscriptRecord =
       parentId?: string
       role: Message['role']
       blocks: MessageBlock[]
+      /** SP007 RD-16：assistant 消息所属模型（/stats 按模型聚合；旧转录缺省 unknown 桶）。 */
+      model?: string
+      /** SP007 RD-04：assistant 消息本次请求用量（/stats 按模型按日累加；旧转录缺省不计）。 */
+      usage?: Usage
     }
   | {
       type: 'turn'
