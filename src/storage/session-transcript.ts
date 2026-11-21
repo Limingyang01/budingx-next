@@ -16,6 +16,8 @@ import type {
   TranscriptRead,
   TranscriptRecord
 } from '../core/transcript.js'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   appendPrivateLine,
   ensurePrivateDirectory,
@@ -29,6 +31,31 @@ export const TRANSCRIPT_VERSION = 1
 
 /** Name of the transcript file inside a session directory. */
 export const TRANSCRIPT_FILE = 'transcript.jsonl'
+
+/** Owner lock written by the session store; kept in sync with session-store.ts. */
+const WRITER_LOCK_FILE = 'writer.lock'
+
+/**
+ * True while a live process holds this session's writer lock. An unterminated
+ * last line is only treated as an in-flight append then; a partial line left
+ * without a live writer is a real truncation and stays counted (SP005 SR-07).
+ */
+function hasLiveWriter(directory: string): boolean {
+  let raw: string
+  try {
+    raw = readFileSync(join(directory, WRITER_LOCK_FILE), 'utf8')
+  } catch {
+    return false
+  }
+  const pid = Number(raw.split('\n')[0])
+  if (!Number.isFinite(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM'
+  }
+}
 
 export type {
   SessionTranscript,
@@ -72,10 +99,16 @@ function makeTranscript(directory: string, file: string, now: () => string): Ses
     },
 
     read(): TranscriptRead {
-      const raw = readPrivateFile(file)
-      if (raw === undefined) {
+      const stored = readPrivateFile(file)
+      if (stored === undefined) {
         return { records: [], corruptLines: 0, unsupported: false }
       }
+      // SP008 SH-03: another process may be appending right now. Drop the
+      // unterminated tail fragment so a half-written line is neither parsed
+      // nor counted as corruption, and never rewrite the file.
+      const inFlightTail =
+        stored.length > 0 && !stored.endsWith('\n') && hasLiveWriter(directory)
+      const raw = inFlightTail ? stored.slice(0, stored.lastIndexOf('\n') + 1) : stored
       const lines = raw.split('\n').filter((line) => line.trim().length > 0)
       const records: TranscriptRecord[] = []
       let corruptLines = 0

@@ -150,8 +150,9 @@ export interface HostEngine {
    `mutate(config)` → `save()` → 释放；锁被占用时每 5–25ms 退避重试，默认 `timeoutMs=2000`；
    超时抛 `ConfigStoreError('storageLockTimeout', 'BUDINGX_STORAGE_006')`；锁 pid 已死或 mtime 超过 10s
    视为陈旧并清除重试；`save` 仍用 `writeJsonAtomic`，失败不产生半写文件。
-2. transcript 尾行容错：`read()` 先判断 `raw.endsWith('\n')`；否则丢弃最后一个换行后的片段
-   （视为正在追加的半行，不解析、不计 `corruptLines`、不回写文件）。完整行损坏仍计 `corruptLines`。
+2. transcript 尾行容错：`read()` 先判断 `raw.endsWith('\n')`；若同一会话目录存在**活** `writer.lock`
+   （pid 存活），则丢弃最后一个换行后的片段（视为正在追加的半行，不解析、不计 `corruptLines`、不回写文件）。
+   没有活写者时保持 SP005 SR-07：残缺尾行仍计 `corruptLines`，避免把真实截断静默当成并发。完整行损坏仍计 `corruptLines`。
 3. 凭据：不改变存储格式；宿主只暴露 `hasCredential(id)` 或模型能力描述，不返回 key 明文；
    测试对三种传输的全部字节做断言（SH-04/TB-06）。
 4. 并发新增会话：沿用目录扫描；测试只断言两个进程各自 `startSession` 后 `list()` 都能看到两条。
@@ -228,7 +229,7 @@ connectWebSocket({ url, token }): Promise<HostClient>
 | Modify | `src/tui/cli.ts` | `serve` 子命令分流（parseCliArgs 前） | TB-01/07 |
 | Modify | `src/tui/headless.ts` | `--help` 之外不变；仅在需要时共享选项类型（无行为变更） | — |
 | Modify | `src/storage/config-store.ts` | `update(mutate)`、锁文件、`storageLockTimeout` 错误码 | SH-01/02 |
-| Modify | `src/storage/session-transcript.ts` | 尾行半行容错（不计数、不回写） | SH-03 |
+| Modify | `src/storage/session-transcript.ts` | 活写者时尾行半行容错（不计数、不回写）；无活写者保持 SR-07 计数 | SH-03 |
 | Modify | `src/storage/session-store.ts` | `inspectWriterLock`（pid/活性/时间） | SO-01/03 |
 | Modify | `scripts/checks/module-boundaries.mjs` | 新增 `host` 规则（禁 tui、禁 UI/IO 包），保留既有检查 | TB-08 |
 | Modify | `src/tui/tsconfig.json` | include `../host/**` | 构建 |
@@ -246,7 +247,7 @@ connectWebSocket({ url, token }): Promise<HostClient>
 | --- | --- | --- |
 | SH-01 | `config-lock` 锁/退避/超时 | 两个 node 子进程并发 `ConfigStore.update` |
 | SH-02 | 锁超时错误码、陈旧清除、无半写文件 | 子进程持锁 + kill，另一个进程重试 |
-| SH-03 | transcript 读取尾行片段不计 corrupt | 子进程追加时父进程 `restore()` |
+| SH-03 | 活写者存在时尾行片段不计 corrupt | 子进程持锁追加时父进程 `restore()` |
 | SH-04 | 协议编码/凭据作用域单测 | 三传输抓包断言无 key 明文 |
 | SH-05 | — | SIGKILL owner → 新进程 takeover → restore 完整、不重放 |
 | SO-01 | ownership claim 单元 | 两进程 stdio/WS 抢同一会话 |
@@ -301,6 +302,11 @@ connectWebSocket({ url, token }): Promise<HostClient>
 | 观察者跨进程无实时事件 | 体验限制 | 明确写入文档与 describe；同进程多客户端实时，跨进程恢复历史 |
 | 配置锁与用户手工编辑竞争 | 锁超时 | 超时错误码提示重试；不静默覆盖；保存仍原子 |
 | AST 复核判定为相似 | 无法交付 | 独立实现（不同结构/命名/组织）；命中按事实处置；必要时重构而非照抄 |
+
+设计修订（实施期，2026-11-22）：SH-03 初稿把所有“无结尾换行”的尾片段都视为在途、不计损坏，
+但这与已验收的 SP005 SR-07（半写入损坏行被跳过**并计数**）直接冲突。实施改为按证据区分：仅当同目录存在
+活 `writer.lock`（pid 存活）时按在途追加跳过且不计数；没有活写者时仍计 `corruptLines`，保留 SR-07 的
+真实截断告警。选择依据：两个 AC 都保留，且不把崩溃截断静默吞掉；代价是读取方需多一次锁文件读取。
 
 开放项（不阻塞本轮）：事件重放/幂等（范围外）、会话删除/导出策略（SP005 遗留）、
 WS 鉴权扩展（令牌轮换/多用户，未来 Gateway）、跨设备同步（未来路线图）。

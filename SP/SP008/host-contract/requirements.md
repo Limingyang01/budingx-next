@@ -74,7 +74,7 @@
 | --- | --- | --- |
 | SH-01 | Given 同一 `~/.budingx/config.json`，When 两个独立进程并发更新不同字段（各自改写 `defaultModelId` 与新增 model，或同时新增不同 model），Then 两次更新都保留，文件始终是合法 JSON，退出码 0；不得出现后写覆盖先写的丢更新 | 单元（锁原语）+ 功能（两个真实子进程） |
 | SH-02 | Given 配置更新进行中或持锁进程已被杀死，When 另一个进程尝试更新，Then 活锁进程存在时等待/超时给出稳定错误码 `BUDINGX_STORAGE_006` 且不覆盖原文件；陈旧锁（pid 已死）自动清理后完成更新；失败路径不产生半写文件 | 单元 + 功能（真实进程 kill） |
-| SH-03 | Given 会话正被 owner 追加记录，When 另一进程只读恢复该会话，Then 已落盘完整记录全部可见，正在写的尾部半行被跳过且不计入 `corruptLines`，原文件字节不被修改 | 单元 + 功能（并发子进程） |
+| SH-03 | Given 会话正被持有 `writer.lock` 的活 owner 追加记录，When 另一进程只读恢复该会话，Then 已落盘完整记录全部可见，正在写的尾部半行被跳过且不计入 `corruptLines`，原文件字节不被修改；没有活写者时残缺尾行仍按 SP005 SR-07 计为损坏 | 单元 + 功能（并发子进程） |
 | SH-04 | Given 共享配置与凭据，When 任意宿主传输（进程内/stdio/WS）返回身份、事件或错误，Then 消息中不含 `apiKey` 明文、`credentials.json` 内容或 key 片段；凭据仅在 `(id, host)` 匹配时可取，host 变化返回 undefined | 单元 + 功能（三种传输抓包断言） |
 | SH-05 | Given owner 进程崩溃（SIGKILL）留下锁与完整 transcript，When 新进程显式接管并读取历史，Then 历史完整、工具步骤不重放、需复核步骤被标出；接管前只读读取同样不重放 | 功能（真实进程崩溃） |
 

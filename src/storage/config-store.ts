@@ -1,9 +1,10 @@
 // Configuration repository (SP002 design §3.5, AC MM-01/MM-06).
 // Atomic writes, schema versioning, unknown field preservation.
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { ERROR_CODES } from '../core/constants.js'
 import { writeJsonAtomic } from './atomic.js'
 import { backupPath, configPath } from './paths.js'
+import { createPrivateFileExclusive, readPrivateFile } from './private-file.js'
 
 export const CONFIG_VERSION = 1
 
@@ -55,6 +56,61 @@ export class ConfigStoreError extends Error {
 
 function emptyConfig(): ConfigFile {
   return { version: CONFIG_VERSION, models: [] }
+}
+
+/** Lock file used by ConfigStore.update (SP008 §3.5). */
+export function configLockPath(file: string): string {
+  return file + '.lock'
+}
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+function lockOwnerPid(lockFile: string): number | undefined {
+  const raw = readPrivateFile(lockFile)
+  if (!raw) return undefined
+  const pid = Number(raw.split('\n')[0])
+  return Number.isInteger(pid) && pid > 0 ? pid : undefined
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException)?.code === 'EPERM'
+  }
+}
+
+/** Returns true when a stale lock was removed and the caller may retry. */
+function clearStaleConfigLock(lockFile: string): boolean {
+  const pid = lockOwnerPid(lockFile)
+  if (pid !== undefined && processAlive(pid)) return false
+  if (pid === undefined) {
+    // A lock whose content cannot be read is only cleared once it is old
+    // enough that a concurrent create cannot still be in progress.
+    try {
+      if (Date.now() - statSync(lockFile).mtimeMs < 10_000) return false
+    } catch {
+      return true
+    }
+  }
+  try {
+    rmSync(lockFile, { force: true })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function releaseConfigLock(lockFile: string): void {
+  if (lockOwnerPid(lockFile) !== process.pid) return
+  try {
+    rmSync(lockFile, { force: true })
+  } catch {
+    // Releasing a lock must never throw.
+  }
 }
 
 export class ConfigStore {
@@ -111,6 +167,55 @@ export class ConfigStore {
       throw new ConfigStoreError(
         `Cannot write configuration: ${(error as Error).message}`
       )
+    }
+  }
+
+  /**
+   * Shared read-modify-write for configs used by several processes (SP008
+   * SH-01/SH-02). The lock is taken first, then the file is re-read so a
+   * concurrent update is never lost, and the write stays atomic. A live
+   * holder makes the caller wait up to timeoutMs before failing with
+   * BUDINGX_STORAGE_006; a crashed holder (dead pid) is cleared.
+   */
+  update(
+    mutate: (config: ConfigFile) => ConfigFile | void,
+    options: { timeoutMs?: number; retryDelayMs?: number } = {}
+  ): ConfigFile {
+    const lockFile = configLockPath(this.file)
+    const timeoutMs = options.timeoutMs ?? 2000
+    const retryDelayMs = Math.max(1, options.retryDelayMs ?? 10)
+    this.acquireLock(lockFile, timeoutMs, retryDelayMs)
+    try {
+      const current = this.load()
+      const next = mutate(current) ?? current
+      this.save(next)
+      return next
+    } finally {
+      releaseConfigLock(lockFile)
+    }
+  }
+
+  private acquireLock(lockFile: string, timeoutMs: number, retryDelayMs: number): void {
+    const deadline = Date.now() + timeoutMs
+    for (;;) {
+      try {
+        createPrivateFileExclusive(lockFile, `${process.pid}\n${new Date().toISOString()}\n`)
+        return
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException)?.code !== 'EEXIST') {
+          throw new ConfigStoreError(
+            `Cannot lock configuration: ${(error as Error).message}`
+          )
+        }
+      }
+      if (clearStaleConfigLock(lockFile)) continue
+      if (Date.now() >= deadline) {
+        throw new ConfigStoreError(
+          'Configuration is being updated by another process; retry later',
+          ERROR_CODES.storageSessionLocked
+        )
+      }
+      sleepSync(retryDelayMs)
     }
   }
 
