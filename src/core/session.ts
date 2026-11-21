@@ -163,6 +163,14 @@ type ActiveTurn = {
   traceRoot?: TraceHandle
 }
 
+/** SP007 SA-05：并行派发组内缓冲的工具结果，按调用原序回灌。 */
+type DispatchResult = {
+  content: string
+  isError: boolean
+  code?: string
+  trace?: TraceHandle
+}
+
 /** SP007 RD-04：/status Usage 页的本地性能聚合形状。 */
 export type SessionPerformance = {
   requests: number
@@ -1728,105 +1736,194 @@ export class Session {
     turn: ActiveTurn,
     calls: { index: number; id: string; name: string; arguments: string }[]
   ): Promise<{ cancelled?: boolean; error?: ErrorInfo }> {
-    for (const call of calls) {
+    let index = 0
+    while (index < calls.length) {
       if (turn.controller.signal.aborted) return { cancelled: true }
-      try {
-        JSON.parse(call.arguments || '{}')
-      } catch {
-        this.pushToolResult(
-          turn,
-          call.id,
-          'Tool arguments are not valid JSON',
-          true,
-          ERROR_CODES.providerToolArgumentsInvalid
-        )
-        continue
-      }
-      let input = parseToolArguments(call)
+      const call = calls[index]
       const handler = this.tools.find((tool) => tool.name === call.name)
-      // 观测要能回答「工具被用什么参数调用」，否则无法判断调用是否合适。
-      const toolTrace = this.traceBegin(
-        `tool.${call.name}`,
-        {
-          'langfuse.observation.type': 'tool',
-          'gen_ai.tool.call.id': call.id,
-          'session.id': this.id,
-          'turn.id': turn.id
-        },
-        turn.traceRoot
-      )
-      this.tracePayload(toolTrace, 'input', input)
-      this.emit({
-        type: 'tool_call_completed',
-        turnId: turn.id,
-        callId: call.id,
-        name: call.name,
-        input
-      })
-      if (!handler) {
-        this.traceEnd(toolTrace, 'error')
-        this.pushToolResult(
-          turn,
-          call.id,
-          `Unknown tool: ${call.name}`,
-          true,
-          ERROR_CODES.coreToolUnknown
-        )
-        continue
+      // SP007 SA-05/SA-15：连续且全部 concurrencySafe 的调用并行成组（D6 范围限定），
+      // 其余工具保持顺序。结果按调用原序回灌；审批由串行队列保证弹窗不竞争。
+      if (handler?.concurrencySafe) {
+        const group = [call]
+        let next = index + 1
+        while (next < calls.length) {
+          const nextHandler = this.tools.find((tool) => tool.name === calls[next].name)
+          if (!nextHandler?.concurrencySafe) break
+          group.push(calls[next])
+          next += 1
+        }
+        if (group.length > 1) {
+          const sinks: DispatchResult[][] = group.map(() => [])
+          const outcomes = await Promise.all(
+            group.map((member, position) =>
+              this.dispatchOne(turn, member, (result) => sinks[position].push(result))
+            )
+          )
+          for (let position = 0; position < group.length; position += 1) {
+            for (const result of sinks[position]) {
+              this.pushToolResult(turn, group[position].id, result.content, result.isError, result.code, result.trace)
+            }
+          }
+          for (const outcome of outcomes) {
+            if (outcome.error) return outcome
+            if (outcome.cancelled) return { cancelled: true }
+          }
+          index = next
+          continue
+        }
       }
-      // SP006 §9：PreToolUse 在权限判定之前运行，可阻断、改写入参或给出审批意见。
-      const preTool = await this.runHook('PreToolUse', {
-        tool_name: call.name,
-        tool_input: input,
-        tool_use_id: call.id
+      const outcome = await this.dispatchOne(turn, call)
+      if (outcome.error) return outcome
+      if (outcome.cancelled) return { cancelled: true }
+      index += 1
+    }
+    return {}
+  }
+
+  /**
+   * SP007：单个工具调用的完整派发（审批/权限/hook/执行/熔断）。
+   * sink 存在时结果先缓冲（并行组），由 dispatchTools 按原序回灌；
+   * 否则立即 pushToolResult（顺序路径，行为与 SP003/SP005 一致）。
+   */
+  private async dispatchOne(
+    turn: ActiveTurn,
+    call: { index: number; id: string; name: string; arguments: string },
+    sink?: (result: DispatchResult) => void
+  ): Promise<{ cancelled?: boolean; error?: ErrorInfo }> {
+    const pushResult = (content: string, isError: boolean, code?: string, trace?: TraceHandle): void => {
+      if (sink) sink({ content, isError, code, trace })
+      else this.pushToolResult(turn, call.id, content, isError, code, trace)
+    }
+    if (turn.controller.signal.aborted) return { cancelled: true }
+    try {
+      JSON.parse(call.arguments || '{}')
+    } catch {
+      pushResult('Tool arguments are not valid JSON',
+        true,
+        ERROR_CODES.providerToolArgumentsInvalid
+      )
+      return {}
+    }
+    let input = parseToolArguments(call)
+    const handler = this.tools.find((tool) => tool.name === call.name)
+    // 观测要能回答「工具被用什么参数调用」，否则无法判断调用是否合适。
+    const toolTrace = this.traceBegin(
+      `tool.${call.name}`,
+      {
+        'langfuse.observation.type': 'tool',
+        'gen_ai.tool.call.id': call.id,
+        'session.id': this.id,
+        'turn.id': turn.id
+      },
+      turn.traceRoot
+    )
+    this.tracePayload(toolTrace, 'input', input)
+    this.emit({
+      type: 'tool_call_completed',
+      turnId: turn.id,
+      callId: call.id,
+      name: call.name,
+      input
+    })
+    if (!handler) {
+      this.traceEnd(toolTrace, 'error')
+      pushResult(`Unknown tool: ${call.name}`,
+        true,
+        ERROR_CODES.coreToolUnknown
+      )
+      return {}
+    }
+    // SP006 §9：PreToolUse 在权限判定之前运行，可阻断、改写入参或给出审批意见。
+    const preTool = await this.runHook('PreToolUse', {
+      tool_name: call.name,
+      tool_input: input,
+      tool_use_id: call.id
+    })
+    if (preTool?.blocked || preTool?.permissionDecision === 'deny') {
+      const reason = preTool.reason ?? preTool.permissionDecisionReason ?? 'hook 拒绝了该工具调用'
+      this.traceEnd(toolTrace, 'blocked')
+      pushResult(`Denied by hook: ${reason}`, true, ERROR_CODES.permissionDenied)
+      this.emit({
+        type: 'denial_recorded',
+        denial: {
+          tool: call.name,
+          reason: `Denied by hook: ${reason}`,
+          at: new Date().toISOString()
+        }
       })
-      if (preTool?.blocked || preTool?.permissionDecision === 'deny') {
-        const reason = preTool.reason ?? preTool.permissionDecisionReason ?? 'hook 拒绝了该工具调用'
+      return {}
+    }
+    if (preTool?.updatedInput !== undefined) {
+      input = preTool.updatedInput as Record<string, unknown>
+    }
+    // SP003: with a policy the verdict decides; without one the SP002
+    // requiresApproval hook keeps its exact behaviour.
+    const policy = this.options.permissionPolicy
+    const approvalHook = handler.requiresApproval?.(input) ?? false
+    let needsApproval = approvalHook
+    let permissionRequest: PermissionRequest | undefined
+    // 计划模式的一次性批准：即使宿主勾选“本会话允许”，也不写入记忆（§6.2）。
+    let planModeSingleUse = false
+    if (policy) {
+      const capability = handler.capability?.(input) ?? 'read'
+      const target = handler.target?.(input)
+      const managedPlanDraft =
+        target?.kind === 'plan-draft' && target.path !== undefined &&
+        target.path === this.options.planMode?.draftPath &&
+        (capability === 'read'
+          ? this.canReadPlanDraft
+          : capability === 'write' && this.planModeState?.phase === 'research')
+      permissionRequest = {
+        tool: call.name,
+        capability,
+        path: target?.path,
+        ...(managedPlanDraft ? { managedPlanDraft } : {})
+      }
+      let verdict = policy.decide(permissionRequest)
+      if (verdict.action === 'deny') {
         this.traceEnd(toolTrace, 'blocked')
-        this.pushToolResult(turn, call.id, `Denied by hook: ${reason}`, true, ERROR_CODES.permissionDenied)
+        pushResult(`Denied: ${verdict.reason}`,
+          true,
+          ERROR_CODES.permissionDenied
+        )
         this.emit({
           type: 'denial_recorded',
           denial: {
             tool: call.name,
-            reason: `Denied by hook: ${reason}`,
+            ...(permissionRequest.path ? { path: permissionRequest.path } : {}),
+            reason: verdict.reason,
             at: new Date().toISOString()
           }
         })
-        continue
+        return {}
       }
-      if (preTool?.updatedInput !== undefined) {
-        input = preTool.updatedInput as Record<string, unknown>
-      }
-      // SP003: with a policy the verdict decides; without one the SP002
-      // requiresApproval hook keeps its exact behaviour.
-      const policy = this.options.permissionPolicy
-      const approvalHook = handler.requiresApproval?.(input) ?? false
-      let needsApproval = approvalHook
-      let permissionRequest: PermissionRequest | undefined
-      // 计划模式的一次性批准：即使宿主勾选“本会话允许”，也不写入记忆（§6.2）。
-      let planModeSingleUse = false
-      if (policy) {
-        const capability = handler.capability?.(input) ?? 'read'
-        const target = handler.target?.(input)
-        const managedPlanDraft =
-          target?.kind === 'plan-draft' && target.path !== undefined &&
-          target.path === this.options.planMode?.draftPath &&
-          (capability === 'read'
-            ? this.canReadPlanDraft
-            : capability === 'write' && this.planModeState?.phase === 'research')
-        permissionRequest = {
-          tool: call.name,
-          capability,
-          path: target?.path,
-          ...(managedPlanDraft ? { managedPlanDraft } : {})
+      // §6.3：已批准计划在首次副作用前重查目标与前像；漂移则回到待审，
+      // 本次调用不执行任何副作用，也不消耗一次工具批准。
+      if (
+        this.approvedPlanCheck &&
+        !this.approvedPlanCheck.rechecked &&
+        capability !== 'read'
+      ) {
+        const host = this.options.planMode
+        const plan = host?.store.current()
+        if (host && plan) {
+          const check = host.validate(plan)
+          if (!check.ok) {
+            await this.reopenPlanForApproval(plan, check.drift)
+            this.traceEnd(toolTrace, 'blocked')
+            pushResult(`Plan drifted before execution: ${describeDrift(check.drift)}`,
+              true,
+              ERROR_CODES.permissionDenied
+            )
+            return {}
+          }
         }
-        let verdict = policy.decide(permissionRequest)
-        if (verdict.action === 'deny') {
+        this.approvedPlanCheck.rechecked = true
+      }
+      if (this.planModeState) {
+        if (this.planModeState.phase === 'pending' && capability !== 'read') {
           this.traceEnd(toolTrace, 'blocked')
-          this.pushToolResult(
-            turn,
-            call.id,
-            `Denied: ${verdict.reason}`,
+          pushResult('Plan approval pending: only read-only tools may run until the plan is approved',
             true,
             ERROR_CODES.permissionDenied
           )
@@ -1835,276 +1932,219 @@ export class Session {
             denial: {
               tool: call.name,
               ...(permissionRequest.path ? { path: permissionRequest.path } : {}),
-              reason: verdict.reason,
+              reason: 'Plan approval pending',
               at: new Date().toISOString()
             }
           })
-          continue
+          return {}
         }
-        // §6.3：已批准计划在首次副作用前重查目标与前像；漂移则回到待审，
-        // 本次调用不执行任何副作用，也不消耗一次工具批准。
-        if (
-          this.approvedPlanCheck &&
-          !this.approvedPlanCheck.rechecked &&
-          capability !== 'read'
-        ) {
-          const host = this.options.planMode
-          const plan = host?.store.current()
-          if (host && plan) {
-            const check = host.validate(plan)
-            if (!check.ok) {
-              await this.reopenPlanForApproval(plan, check.drift)
-              this.traceEnd(toolTrace, 'blocked')
-              this.pushToolResult(
-                turn,
-                call.id,
-                `Plan drifted before execution: ${describeDrift(check.drift)}`,
-                true,
-                ERROR_CODES.permissionDenied
-              )
-              continue
-            }
-          }
-          this.approvedPlanCheck.rechecked = true
+        // 调研期：底层已准许的只读照常执行，其余非只读一律一次性批准。
+        if (this.planModeState.phase === 'research' && capability !== 'read' && !managedPlanDraft) {
+          verdict = { action: 'ask', reason: 'Plan mode: this step needs a one-time approval' }
+          planModeSingleUse = true
         }
-        if (this.planModeState) {
-          if (this.planModeState.phase === 'pending' && capability !== 'read') {
-            this.traceEnd(toolTrace, 'blocked')
-            this.pushToolResult(
-              turn,
-              call.id,
-              'Plan approval pending: only read-only tools may run until the plan is approved',
-              true,
-              ERROR_CODES.permissionDenied
-            )
-            this.emit({
-              type: 'denial_recorded',
-              denial: {
-                tool: call.name,
-                ...(permissionRequest.path ? { path: permissionRequest.path } : {}),
-                reason: 'Plan approval pending',
-                at: new Date().toISOString()
-              }
-            })
-            continue
-          }
-          // 调研期：底层已准许的只读照常执行，其余非只读一律一次性批准。
-          if (this.planModeState.phase === 'research' && capability !== 'read' && !managedPlanDraft) {
-            verdict = { action: 'ask', reason: 'Plan mode: this step needs a one-time approval' }
-            planModeSingleUse = true
-          }
-        }
-        needsApproval = verdict.action === 'ask'
       }
-      // hook 的意见只在硬性审批之外生效：不得绕过 mandatoryApproval（T25）。
-      if (preTool?.permissionDecision === 'allow') needsApproval = false
-      else if (preTool?.permissionDecision === 'ask') needsApproval = true
-      // 不可逆操作的硬性审批：即使档位允许也必须由宿主确认（T25）。
-      if (!needsApproval && (handler.mandatoryApproval?.(input) ?? false)) {
-        needsApproval = true
-      }
-      let prepared: PreparedTool | undefined
-      let remember = false
-      // 本次调用是否经审批通道允许；删除类工具据此确认宿主授权（T25）。
-      let approved = false
-      if (needsApproval) {
-        try {
-          prepared = handler.prepareApproval?.(input)
-        } catch (error) {
-          this.traceEnd(toolTrace, 'error', error)
-          this.pushToolResult(
-            turn,
-            call.id,
-            error instanceof Error ? error.message : 'Could not preview tool operation',
-            true,
-            typeof (error as { code?: unknown } | null)?.code === 'string'
-              ? (error as { code: string }).code
-              : undefined
-          )
-          continue
-        }
-        this.setState('awaiting_approval')
-        const requestId = randomUUID()
-        const request: ApprovalRequest = {
-          requestId,
-          turnId: turn.id,
-          callId: call.id,
-          name: call.name,
-          summary: handler.describe(input),
-          ...(prepared ? { preview: prepared.preview } : {})
-        }
-        if (permissionRequest) this.approvalForMemory = { id: requestId, target: permissionRequest }
-        this.emit({
-          type: 'approval_requested',
-          turnId: turn.id,
-          requestId,
-          callId: call.id,
-          name: call.name,
-          summary: request.summary,
-          ...(request.preview ? { preview: request.preview } : {}),
-          ...(request.planId !== undefined ? { planId: request.planId } : {}),
-          ...(request.planVersion !== undefined ? { planVersion: request.planVersion } : {})
-        })
-        // SP006 §9：审批等待属于可通知事件，hook 只能旁听、不能改变结局。
-        void this.runHook('Notification', {
-          notification_type: 'approval_requested',
-          message: request.summary
-        })
-        const decision = await this.requestApproval(turn, request)
-        remember =
-          decision.outcome === 'allow_session' && !planModeSingleUse && this.canRememberApproval(requestId)
-        if (this.approvalForMemory?.id === requestId) this.approvalForMemory = undefined
-        this.emit({
-          type: 'approval_resolved',
-          turnId: turn.id,
-          requestId,
-          outcome: decision.outcome,
-          via: decision.via
-        })
-        if (decision.outcome !== 'allow' && decision.outcome !== 'allow_session') {
-          const feedback =
-            decision.feedback && decision.feedback.trim()
-              ? `\nUser feedback: ${decision.feedback.trim()}`
-              : ''
-          this.traceEnd(toolTrace, decision.outcome === 'cancelled' ? 'cancelled' : 'blocked')
-          this.pushToolResult(
-            turn,
-            call.id,
-            (decision.outcome === 'cancelled'
-              ? `Cancelled: ${call.name}`
-              : `Denied by ${decision.via}: ${call.name}`) + feedback,
-            true,
-            decision.outcome === 'cancelled'
-              ? ERROR_CODES.coreApprovalCancelled
-              : ERROR_CODES.permissionDenied
-          )
-          if (decision.outcome === 'deny') {
-            this.emit({
-              type: 'denial_recorded',
-              denial: {
-                tool: call.name,
-                ...(permissionRequest?.path ? { path: permissionRequest.path } : {}),
-                reason: `Denied by ${decision.via}`,
-                at: new Date().toISOString()
-              }
-            })
-          }
-          continue
-        }
-        approved = true
-      }
-      // 能走到执行即代表本次调用已获授权：审批通道放行，或权限档位自动放行。
-      // 出网/删除类工具以 `approved` 确认宿主授权（0.5.4：此前仅审批通道置真，
-      // 导致完全权限档位下自动放行的出网调用被工具自设闸门误拒）。
-      approved = true
-      this.setState('tool_running')
-      let content = ''
-      let isError = false
-      let errorCode: string | undefined
-      let startedAt: number | undefined
+      needsApproval = verdict.action === 'ask'
+    }
+    // hook 的意见只在硬性审批之外生效：不得绕过 mandatoryApproval（T25）。
+    if (preTool?.permissionDecision === 'allow') needsApproval = false
+    else if (preTool?.permissionDecision === 'ask') needsApproval = true
+    // 不可逆操作的硬性审批：即使档位允许也必须由宿主确认（T25）。
+    if (!needsApproval && (handler.mandatoryApproval?.(input) ?? false)) {
+      needsApproval = true
+    }
+    let prepared: PreparedTool | undefined
+    let remember = false
+    // 本次调用是否经审批通道允许；删除类工具据此确认宿主授权（T25）。
+    let approved = false
+    if (needsApproval) {
       try {
-        const toolContext: ToolContext = {
-          signal: turn.controller.signal,
-          changes: (records) => this.emit({ type: 'change_set', changes: records }),
-          turnId: turn.id,
-          callId: call.id,
-          emit: (event) => this.emit(event),
-          approved,
-          ...(this.options.codingTask
-            ? {
-                onCommandResult: (command: string, result: CommandResult) =>
-                  this.options.codingTask?.observeCommand(command, result)
-              }
-            : {})
-        }
-        if (permissionRequest && policy?.decide(permissionRequest).action === 'deny') {
-          this.traceEnd(toolTrace, 'blocked')
-          this.pushToolResult(turn, call.id, 'Permission changed before execution', true, ERROR_CODES.permissionDenied)
-          continue
-        }
-        startedAt = performance.now()
-        content = await (prepared ? prepared.execute(toolContext) : handler.execute(input, toolContext))
-        if (remember && permissionRequest) policy?.remember(permissionRequest)
+        prepared = handler.prepareApproval?.(input)
       } catch (error) {
-        content = error instanceof Error ? error.message : 'Tool execution failed'
-        isError = true
-        // Stable machine readable codes from WorkspaceError survive to the
-        // model so it can self-correct (SP003 AC WT-14).
-        const candidate = (error as { code?: unknown } | null)?.code
-        if (typeof candidate === 'string') errorCode = candidate
-        // SP005 FR-06：工具失败必须带稳定错误码，失败位置才能被定位到具体步骤。
-        errorCode = errorCode ?? ERROR_CODES.coreToolFailed
+        this.traceEnd(toolTrace, 'error', error)
+        pushResult(error instanceof Error ? error.message : 'Could not preview tool operation',
+          true,
+          typeof (error as { code?: unknown } | null)?.code === 'string'
+            ? (error as { code: string }).code
+            : undefined
+        )
+        return {}
       }
-      // SP006 §9：PostToolUse 只旁听执行结果，失败走 PostToolUseFailure。
-      await this.runHook(isError ? 'PostToolUseFailure' : 'PostToolUse', {
-        tool_name: call.name,
-        tool_input: input,
-        tool_use_id: call.id,
-        tool_response: { content, is_error: isError }
+      this.setState('awaiting_approval')
+      const requestId = randomUUID()
+      const request: ApprovalRequest = {
+        requestId,
+        turnId: turn.id,
+        callId: call.id,
+        name: call.name,
+        summary: handler.describe(input),
+        ...(prepared ? { preview: prepared.preview } : {})
+      }
+      if (permissionRequest) this.approvalForMemory = { id: requestId, target: permissionRequest }
+      this.emit({
+        type: 'approval_requested',
+        turnId: turn.id,
+        requestId,
+        callId: call.id,
+        name: call.name,
+        summary: request.summary,
+        ...(request.preview ? { preview: request.preview } : {}),
+        ...(request.planId !== undefined ? { planId: request.planId } : {}),
+        ...(request.planVersion !== undefined ? { planVersion: request.planVersion } : {})
       })
-      if (content.length > TOOL_OUTPUT_CAP) {
-        // SP005 FR-03：截断必须带显式标记，模型与人都能看出结果不完整，
-        // 不能把一段被砍掉的内容当成完整结果。
-        const omitted = content.length - TOOL_OUTPUT_CAP
-        content = content.slice(0, TOOL_OUTPUT_CAP) +
-          `\n[truncated] ${omitted} characters were omitted because the tool output exceeded ` +
-          `${TOOL_OUTPUT_CAP} characters (${ERROR_CODES.coreToolOutputTooLong})`
-        isError = true
-        errorCode = errorCode ?? ERROR_CODES.coreToolOutputTooLong
-      }
-      if (startedAt !== undefined) {
-        this.lastToolElapsed = { turnId: turn.id, callId: call.id, ms: performance.now() - startedAt }
-      }
-      // SP005 FR-05：工具空转熔断，分两级。
-      // 一级：同一工具 + 同一参数连续失败 —— 完全重复的调用。
-      // 二级：同一工具 + 同一错误码连续失败 —— 模型换参数瞎试同一件事，
-      //       参数签名变了但错误类型没变，同样不会带来新信息。
-      // 两种情况都只会让长任务空转到最大迭代次数，因此必须显式停下并给出稳定原因。
-      const signature = this.toolSignature(call.name, call.arguments)
-      const streakKey = `${call.name}:${errorCode ?? 'unknown'}`
-      if (isError) {
-        const count = (this.repeatedToolFailures.get(signature) ?? 0) + 1
-        this.repeatedToolFailures.set(signature, count)
-        const streak = (this.toolFailureStreaks.get(streakKey) ?? 0) + 1
-        this.toolFailureStreaks.set(streakKey, streak)
-        const tripped =
-          count >= MAX_REPEATED_TOOL_FAILURES
-            ? `failed ${count} times with the same arguments`
-            : streak >= MAX_TOOL_FAILURE_STREAK
-              ? `failed ${streak} times in a row with the same error (${errorCode ?? 'unknown'})`
-              : undefined
-        if (tripped) {
-          this.repeatedToolFailures.delete(signature)
-          this.toolFailureStreaks.delete(streakKey)
-          this.traceEnd(toolTrace, 'error')
-          this.pushToolResult(
-            turn,
-            call.id,
-            `Tool "${call.name}" ${tripped}; retrying it again cannot add information. ` +
-              `Stop and report the reason instead. (${ERROR_CODES.coreToolLoopDetected})`,
-            true,
-            ERROR_CODES.coreToolLoopDetected
-          )
-          return {
-            error: {
-              class: 'unknown',
-              code: ERROR_CODES.coreToolLoopDetected,
-              message:
-                `Tool "${call.name}" ${tripped} ` +
-                `(${ERROR_CODES.coreToolLoopDetected})`,
-              retryable: false
+      // SP006 §9：审批等待属于可通知事件，hook 只能旁听、不能改变结局。
+      void this.runHook('Notification', {
+        notification_type: 'approval_requested',
+        message: request.summary
+      })
+      const decision = await this.requestApproval(turn, request)
+      remember =
+        decision.outcome === 'allow_session' && !planModeSingleUse && this.canRememberApproval(requestId)
+      if (this.approvalForMemory?.id === requestId) this.approvalForMemory = undefined
+      this.emit({
+        type: 'approval_resolved',
+        turnId: turn.id,
+        requestId,
+        outcome: decision.outcome,
+        via: decision.via
+      })
+      if (decision.outcome !== 'allow' && decision.outcome !== 'allow_session') {
+        const feedback =
+          decision.feedback && decision.feedback.trim()
+            ? `\nUser feedback: ${decision.feedback.trim()}`
+            : ''
+        this.traceEnd(toolTrace, decision.outcome === 'cancelled' ? 'cancelled' : 'blocked')
+        pushResult((decision.outcome === 'cancelled'
+            ? `Cancelled: ${call.name}`
+            : `Denied by ${decision.via}: ${call.name}`) + feedback,
+          true,
+          decision.outcome === 'cancelled'
+            ? ERROR_CODES.coreApprovalCancelled
+            : ERROR_CODES.permissionDenied
+        )
+        if (decision.outcome === 'deny') {
+          this.emit({
+            type: 'denial_recorded',
+            denial: {
+              tool: call.name,
+              ...(permissionRequest?.path ? { path: permissionRequest.path } : {}),
+              reason: `Denied by ${decision.via}`,
+              at: new Date().toISOString()
             }
-          }
+          })
         }
-      } else {
+        return {}
+      }
+      approved = true
+    }
+    // 能走到执行即代表本次调用已获授权：审批通道放行，或权限档位自动放行。
+    // 出网/删除类工具以 `approved` 确认宿主授权（0.5.4：此前仅审批通道置真，
+    // 导致完全权限档位下自动放行的出网调用被工具自设闸门误拒）。
+    approved = true
+    this.setState('tool_running')
+    let content = ''
+    let isError = false
+    let errorCode: string | undefined
+    let startedAt: number | undefined
+    try {
+      const toolContext: ToolContext = {
+        signal: turn.controller.signal,
+        changes: (records) => this.emit({ type: 'change_set', changes: records }),
+        turnId: turn.id,
+        callId: call.id,
+        emit: (event) => this.emit(event),
+        approved,
+        ...(this.options.codingTask
+          ? {
+              onCommandResult: (command: string, result: CommandResult) =>
+                this.options.codingTask?.observeCommand(command, result)
+            }
+          : {})
+      }
+      if (permissionRequest && policy?.decide(permissionRequest).action === 'deny') {
+        this.traceEnd(toolTrace, 'blocked')
+        pushResult('Permission changed before execution', true, ERROR_CODES.permissionDenied)
+        return {}
+      }
+      startedAt = performance.now()
+      content = await (prepared ? prepared.execute(toolContext) : handler.execute(input, toolContext))
+      if (remember && permissionRequest) policy?.remember(permissionRequest)
+    } catch (error) {
+      content = error instanceof Error ? error.message : 'Tool execution failed'
+      isError = true
+      // Stable machine readable codes from WorkspaceError survive to the
+      // model so it can self-correct (SP003 AC WT-14).
+      const candidate = (error as { code?: unknown } | null)?.code
+      if (typeof candidate === 'string') errorCode = candidate
+      // SP005 FR-06：工具失败必须带稳定错误码，失败位置才能被定位到具体步骤。
+      errorCode = errorCode ?? ERROR_CODES.coreToolFailed
+    }
+    // SP006 §9：PostToolUse 只旁听执行结果，失败走 PostToolUseFailure。
+    await this.runHook(isError ? 'PostToolUseFailure' : 'PostToolUse', {
+      tool_name: call.name,
+      tool_input: input,
+      tool_use_id: call.id,
+      tool_response: { content, is_error: isError }
+    })
+    if (content.length > TOOL_OUTPUT_CAP) {
+      // SP005 FR-03：截断必须带显式标记，模型与人都能看出结果不完整，
+      // 不能把一段被砍掉的内容当成完整结果。
+      const omitted = content.length - TOOL_OUTPUT_CAP
+      content = content.slice(0, TOOL_OUTPUT_CAP) +
+        `\n[truncated] ${omitted} characters were omitted because the tool output exceeded ` +
+        `${TOOL_OUTPUT_CAP} characters (${ERROR_CODES.coreToolOutputTooLong})`
+      isError = true
+      errorCode = errorCode ?? ERROR_CODES.coreToolOutputTooLong
+    }
+    if (startedAt !== undefined) {
+      this.lastToolElapsed = { turnId: turn.id, callId: call.id, ms: performance.now() - startedAt }
+    }
+    // SP005 FR-05：工具空转熔断，分两级。
+    // 一级：同一工具 + 同一参数连续失败 —— 完全重复的调用。
+    // 二级：同一工具 + 同一错误码连续失败 —— 模型换参数瞎试同一件事，
+    //       参数签名变了但错误类型没变，同样不会带来新信息。
+    // 两种情况都只会让长任务空转到最大迭代次数，因此必须显式停下并给出稳定原因。
+    const signature = this.toolSignature(call.name, call.arguments)
+    const streakKey = `${call.name}:${errorCode ?? 'unknown'}`
+    if (isError) {
+      const count = (this.repeatedToolFailures.get(signature) ?? 0) + 1
+      this.repeatedToolFailures.set(signature, count)
+      const streak = (this.toolFailureStreaks.get(streakKey) ?? 0) + 1
+      this.toolFailureStreaks.set(streakKey, streak)
+      const tripped =
+        count >= MAX_REPEATED_TOOL_FAILURES
+          ? `failed ${count} times with the same arguments`
+          : streak >= MAX_TOOL_FAILURE_STREAK
+            ? `failed ${streak} times in a row with the same error (${errorCode ?? 'unknown'})`
+            : undefined
+      if (tripped) {
         this.repeatedToolFailures.delete(signature)
         this.toolFailureStreaks.delete(streakKey)
+        this.traceEnd(toolTrace, 'error')
+        pushResult(`Tool "${call.name}" ${tripped}; retrying it again cannot add information. ` +
+            `Stop and report the reason instead. (${ERROR_CODES.coreToolLoopDetected})`,
+          true,
+          ERROR_CODES.coreToolLoopDetected
+        )
+        return {
+          error: {
+            class: 'unknown',
+            code: ERROR_CODES.coreToolLoopDetected,
+            message:
+              `Tool "${call.name}" ${tripped} ` +
+              `(${ERROR_CODES.coreToolLoopDetected})`,
+            retryable: false
+          }
+        }
       }
-      try {
-        this.pushToolResult(turn, call.id, content, isError, errorCode, toolTrace)
-      } finally {
-        this.lastToolElapsed = undefined
-      }
+    } else {
+      this.repeatedToolFailures.delete(signature)
+      this.toolFailureStreaks.delete(streakKey)
+    }
+    try {
+      pushResult(content, isError, errorCode, toolTrace)
+    } finally {
+      this.lastToolElapsed = undefined
     }
     return {}
   }
