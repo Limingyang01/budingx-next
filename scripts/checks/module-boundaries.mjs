@@ -13,6 +13,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const violations = []
 
 const UI_BANNED = ['ink', 'lowlight', 'marked', 'react', 'node:readline', 'node:tty', 'chalk', 'ansi-', 'blessed', 'yoga-layout']
+// 宿主传输允许 node:readline 做 NDJSON 分帧，但仍不得引入终端渲染依赖。
+const HOST_UI_BANNED = UI_BANNED.filter((name) => name !== 'node:readline')
 const CORE_IO_BANNED = [
   'node:fs',
   'node:http',
@@ -71,10 +73,10 @@ const RULES = {
   core: {
     ui: UI_BANNED,
     io: CORE_IO_BANNED,
-    dirs: ['provider', 'storage', 'tui', 'workspace', 'exec', 'git', 'plan', 'observability']
+    dirs: ['provider', 'storage', 'tui', 'host', 'workspace', 'exec', 'git', 'plan', 'observability']
   },
   provider: { ui: UI_BANNED, io: [], dirs: ['storage', 'tui'] },
-  storage: { ui: UI_BANNED, io: [], dirs: ['tui'] },
+  storage: { ui: UI_BANNED, io: [], dirs: ['tui', 'host'] },
   workspace: { ui: UI_BANNED, io: [], dirs: ['tui'] },
   // 真实进程执行层：允许子进程/文件/路径 IO，但不得反向依赖宿主 UI 与其他能力层。
   exec: { ui: UI_BANNED, io: [], dirs: ['tui', 'git', 'plan'] },
@@ -83,7 +85,14 @@ const RULES = {
   // 计划层：状态机 + 持久化 + 宿主计划集成（T22 落盘用 node:fs，T15 读 Git HEAD 用 node:child_process）。
   plan: { ui: UI_BANNED, io: [], dirs: ['tui', 'exec', 'git'] },
   // SP004 agent-observability：观测传输层只依赖 core 纯端口，不得依赖宿主 UI 或其他能力层。
-  observability: { ui: UI_BANNED, io: [], dirs: ['tui', 'exec', 'git', 'plan', 'workspace', 'provider', 'storage'] }
+  observability: { ui: UI_BANNED, io: [], dirs: ['tui', 'exec', 'git', 'plan', 'workspace', 'provider', 'storage'] },
+  // SP008 宿主契约层：可依赖 core/storage 与 Node 内建，但不得反向依赖宿主 UI
+  // 或其他能力层；传输适配器（stdio/HTTP/WS）在此层内实现。
+  host: {
+    ui: HOST_UI_BANNED,
+    io: [],
+    dirs: ['tui', 'provider', 'workspace', 'exec', 'git', 'plan', 'observability']
+  }
 }
 
 for (const [moduleName, rule] of Object.entries(RULES)) {
