@@ -10,7 +10,7 @@
 
 首发 bootstrap 或明确授权的本机交互发布入口是在仓库根目录执行 **`npm run publish`**，由跨平台 Node 发布入口完成检查、构建、打包、实际安装测试和 registry 发布，再核对回执。无参数的稳定发布使用已准备且经审阅的版本，默认发布到 https://registry.npmjs.org；不静默自增版本、不顺带提交/推送/tag。
 
-当前 npm `latest` 为 0.5.4，正式发布回执见 [0.5.4 发行说明](../release-notes/v0.5.4.md)；候选 0.6.0（SP006）已合入 master 并处于 prepared，见 [0.6.0 发行说明](../release-notes/v0.6.0.md)。后续版本完成准备后，可按下面命令预演。
+当前 npm `latest` 为 0.6.0，正式发布回执见 [0.6.0 发行说明](../release-notes/v0.6.0.md)；候选 0.7.0（SP007）已完成发布准备（prepared），随 SP007 收口合入 master，见 [0.7.0 发行说明](../release-notes/v0.7.0.md)。后续版本完成准备后，可按下面命令预演。
 
 ```powershell
 $releaseVersion = (Get-Content src/tui/package.json -Raw | ConvertFrom-Json).version

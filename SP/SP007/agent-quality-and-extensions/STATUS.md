@@ -1,6 +1,6 @@
 # STATUS — SP007 agent-quality-and-extensions
 
-- 生命周期：**功能分支完成**（T1–T16 全部完成，已推送远端，待合入 master）
+- 生命周期：**功能分支完成**（T1–T17 全部完成，已推送远端；0.7.0 发布准备完成，等待维护者触发发布）
 - 更新：2026-11-21（T13–T16 完成）
 - 分支：feature/SP007/agent-quality-and-extensions（基线 master 4705232）
 - 提交链：a6466a4 开轮文档 → edf3835 计划 → e7cabeb T1 → 8d02514 T2 → 07104b8 T3 → a813b5f T4 → 7129d6f T5 → c13820e T6 → b14db5d T7 → 68f80db T8 → 1a027d2 T9 → 996aacf T10 → 0a45cb8 T11+T12 → a8da8e0 STATUS → （T13–T16 本轮提交待 push）
