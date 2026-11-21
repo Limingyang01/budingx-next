@@ -64,3 +64,21 @@ test('报告审计跳过汇总表表头与分隔行（列名 FAIL 不算失败�
   )
   assert.equal(result.fails.length, 0)
 })
+
+test('报告审计跳过汇总表零计数行（| FAIL | **0** | 与 | FAIL | 0 | 不是失败）', () => {
+  const summary = auditReport(
+    '| 指标 | 结果 |\n| --- | --- |\n| PASS | **69** |\n| PARTIAL | **0** |\n| FAIL | **0** |\n| UNVERIFIED | **0** |'
+  )
+  assert.equal(summary.fails.length, 0)
+  const plain = auditReport('| 结论 | 条数 |\n| --- | --- |\n| PASS | 46 |\n| FAIL | 0 |\n| UNVERIFIED | 0 |')
+  assert.equal(plain.fails.length, 0)
+  const nonZero = auditReport('| 结论 | 条数 |\n| --- | --- |\n| FAIL | 3 |')
+  assert.equal(nonZero.fails.length, 1)
+})
+
+test('报告审计仍拦截无计数与带说明的失败行', () => {
+  assert.equal(auditReport('| AC-01 | x | FAIL |').fails.length, 1)
+  assert.equal(auditReport('FAIL：something broke').fails.length, 1)
+  assert.equal(auditReport('| FAIL | **2** |').fails.length, 1)
+  assert.equal(auditReport('| FAIL | 0（无失败） |').fails.length, 0)
+})

@@ -37,14 +37,32 @@ export function scanOutgoingPaths(files) {
  * Audit an iteration test report: no FAIL rows may survive; UNVERIFIED rows
  * are allowed only while a recovery-conditions section exists.
  */
+/**
+ * A summary row such as `| FAIL | **0** |` states the failure count, not a failure.
+ * Only rows whose FAIL cell carries a non-zero count (or no count at all, e.g.
+ * `| AC-01 | x | FAIL |`) denote an actual failure and must block the gate.
+ */
+function isFailureRow(line) {
+  if (!/\|\s*FAIL\b/.test(line) && !/^FAIL\b/.test(line)) return false
+  const cell = line
+    .replace(/^\s*\|?\s*FAIL\b\s*\|?/i, '| ')
+    .split('|')
+    .map((part) => part.trim())
+    .find((part) => part.length > 0 && !/^FAIL$/i.test(part))
+  if (cell === undefined) return true
+  const normalized = cell.replace(/[*`]/g, '').trim()
+  if (normalized === '' || normalized === '-') return true
+  if (/^0+$/.test(normalized)) return false
+  if (/^0+\s*（.*）$/.test(normalized)) return false
+  return true
+}
+
 export function auditReport(text) {
   const lines = text.split('\n')
   const isHeaderOrRule = (line) =>
     /AC 数/.test(line) || /^\s*\|[\s:|-]+\|\s*$/.test(line)
   const fails = lines.filter(
-    (line) =>
-      !isHeaderOrRule(line) &&
-      (/\|\s*FAIL\b/.test(line) || /^FAIL\b/.test(line))
+    (line) => !isHeaderOrRule(line) && isFailureRow(line)
   )
   const unverified = lines.filter((line) => /UNVERIFIED/.test(line)).length
   const hasRecovery = /恢复条件/.test(text)
