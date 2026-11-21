@@ -486,3 +486,5 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 
 该加固只改变测试执行并行度，不改变任何产品运行时代码与用户可见行为。
 
+相关提交：`d97ffc3`（续问建议超时计时器修复）、`52a4b62`（并发上限与本节记录）；0.6.0 版本台账的 `sourceCommit` 同步为 `52a4b62`。
+
