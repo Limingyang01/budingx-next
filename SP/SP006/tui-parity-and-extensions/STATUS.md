@@ -64,6 +64,7 @@
 | D-14 | `src/core/exec.ts` 的 `CommandResult` 增加 `command?`/`startedAt?`，后台快照回填 | /tasks 需要稳定的命令标识与启动时间 |
 | D-15 | 用户 m02328 授权「修复后提交并推送远端，先不要合入master分支」：推送放开、合入仍禁止 | 用户 m02328 明确「提交并且推送远端，先不要合入master分支」；覆盖 D-01 中「不推送」部分 |
 | D-21 | 用户 m04845 授权「合入master分支并且推送远端，做好发布前的准备工作」：合入与推送放开，npm 实际上传仍由用户在 GitHub 手动触发 | 用户 m04845 明确授权；发布前准备（版本/文档/台账/dry-run）在委托内，实际 npm 发布与打 tag 不在 |
+| D-22 | 合入后 master 自身复核改为审计仓内最新一轮 SP 报告（`spDirectories` + `reportFileForMaster`），不再因 master 分支名不含 SP slug 判「报告缺失」假 RED | 合入后复跑门禁时四项检查全绿却因 `reportFileForBranch('master')` 返回 null 判 RED；真实缺报告仍须 RED，严格度不降低 |
 | D-16 | `/resume` 历史可见性走会话事件通路（新增 `conversation_restored` 事件 + 渲染层重建转录），并按参考实现的 `switchSession` 语义切换会话身份与转录端口 | 渲染层契约规定不直接读会话；参考实现 `REPL.tsx` 的 resume 回调除写回消息列表外还切换会话 id 与转录文件指针，只做可见性会让续写落回旧会话 |
 
 ## 未验证项与恢复条件
@@ -89,5 +90,5 @@
 ## 下一步
 
 1. 功能分支已按用户 m02328、m03678 授权推送远端（`origin/feature/SP006/tui-parity-and-extensions`）；2026-11-21 按用户 m04845 授权，经交叉验证门禁 GREEN（报告 `artifacts/merge-gate/feature-SP006-tui-parity-and-extensions-2026-11-21T00-23-20-601Z.md`）后以 `--no-ff` 合入 master（合并提交 `601ac7e`）。
-2. 推送 `origin/master` 后，npm 0.6.0 由维护者在 GitHub 手动触发发布工作流，回执按 buding-npm-release 收尾。
+2. `origin/master` 已推送（`a232140` 文档同步，随后 `bb4df76` 门禁口径修复）；master 自身复核门禁 GREEN（报告 `artifacts/merge-gate/master-2026-11-21T00-34-27-308Z.md`）。0.6.0 发布 dry-run 已通过（142 files，未上传），npm 实际上传由维护者在 GitHub 手动触发发布工作流，回执按 buding-npm-release 收尾。
 3. 合入前若继续改代码，需重跑全量单测、制品 smoke 与 AST 复核。

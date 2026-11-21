@@ -349,6 +349,12 @@ node scripts/review/sp004-ast.mjs --reference <ref> --reference-revision b5c9be8
 4. 第四轮 RED —— `npm test` 的 skills 完整性用例失败：自审记录 §10.1 引用的 `../docs/integration-gate.md` 与 `../skills/buding-merge/SKILL.md` 从 `SP/SP006/` 出发层级错误，解析不到目标文件。修正为 `../../docs/integration-gate.md` 与 `../../skills/buding-merge/SKILL.md`，并对 `docs/` 与 `SP/` 全量 Markdown 复扫，相对链接失效数为 0。提交 `3e10321`。
 5. 第五轮 GREEN —— 报告 `feature-SP006-tui-parity-and-extensions-2026-11-21T00-23-20-601Z.md`（19 commits / 97 files，四项检查退出码均 0，禁带路径违规 0，报告审计失败行 0）。
 
+### 10.1b 合入后 master 自身复核（2026-11-21）
+
+- 首次在 master 上复跑 `npm run merge:gate` 报告 `artifacts/merge-gate/master-2026-11-21T00-25-35-047Z.md` 结论为 RED，但四项检查退出码均为 0、禁带路径违规 0、报告审计 FAIL 行 0；根因是 `scripts/merge/cross-validate.mjs` 的 `reportFileForBranch('master')` 返回 `null`（master 分支名不含 SP slug），门禁因此判定「当轮报告缺失」——属门禁脚本对 master 自身分支的口径缺陷，不是产品缺陷。
+- 修复：`cross-validate.mjs` 新增 `spDirectories()` 与 `reportFileForMaster(spDirs)`，master 复核时审计仓内最新一轮 SP 报告（SP006 → `SP/SP006/test-report.md`）；真实缺报告仍 RED，严格度未降低。新增单测 1 例（`scripts/merge/cross-validate.test.mjs` 共 9 例全过），并同步 `docs/integration-gate.md` 口径与变更记录。
+- 修复后 master 复跑门禁报告 `artifacts/merge-gate/master-2026-11-21T00-34-27-308Z.md`：**GATE GREEN**（`npm test`、`spec:check`、`skills:check`、`pack-smoke` 退出码均 0）。
+
 ### 10.2 AC 逐条结论
 
 69 条 AC 全部 PASS，逐条证据见 §3（每条给出依据文件、用例名与执行命令）。PARTIAL 0、FAIL 0、UNVERIFIED 1 项（S6-06，见 §9.4 与恢复条件）。
