@@ -38,6 +38,17 @@ export type CommandOutcome = {
   openStatus?: boolean
   openStats?: boolean
   openDoctor?: boolean
+  /**
+   * SP007 MM-01 补：/image 已准备好的附件。终端无关——VS Code 等宿主会把
+   * alt+v 当 chord 前缀吞掉，用户仍可用 /image 附上剪贴板图片。
+   */
+  attachImage?: {
+    mediaType: string
+    data: string
+    width?: number
+    height?: number
+    resized?: boolean
+  }
 }
 
 export type CommandContext = {
@@ -123,6 +134,11 @@ export type CommandContext = {
     today: string
     doctorInput: () => import('../diagnostics/doctor.js').DoctorInput
     copyToClipboard?: (text: string) => boolean
+  }
+  /** SP007：/image 的图片来源（默认读剪贴板/本地文件，测试可替换）。 */
+  imageSource?: {
+    clipboard: () => { data: Buffer; mediaType: string } | undefined
+    file: (path: string) => { data: Buffer; mediaType: string }
   }
   /** SP006 CMD-09：MCP 连接状态（由宿主在启动时注入）。 */
   mcp?: {

@@ -11,6 +11,7 @@ import {
   type DOMElement,
   type Key
 } from 'ink'
+import { createHash } from 'node:crypto'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 import stringWidth from 'string-width'
 /**
@@ -126,7 +127,9 @@ export const COMMAND_NAMES = [
   'agent',
   'status',
   'stats',
-  'doctor'
+  'doctor',
+  // SP007 MM-01 补：终端无关的图片附件入口（VS Code 会吞掉 alt+v）。
+  'image'
 ]
 // 0.5.4：请求/流式阶段统一显示「正在思考」，不再暴露「流式输出」这类实现措辞。
 const STATUS_ZH: Record<string, string> = {
@@ -458,7 +461,9 @@ export function App({
   const [doctorOpen, setDoctorOpen] = useState(false)
   // SP007 T9：子代理卡片状态（agent_* 事件驱动）与图片附件（MM-05）。
   const [agentCards, setAgentCards] = useState<Map<string, AgentCardInput>>(() => new Map())
-  const [pastedImages, setPastedImages] = useState<Map<number, { mediaType: string; data: string; width?: number; height?: number }>>(() => new Map())
+  const [pastedImages, setPastedImages] = useState<
+    Map<number, { mediaType: string; data: string; width?: number; height?: number; hash?: string }>
+  >(() => new Map())
   const nextImageId = useRef(1)
   const lastEscRef = useRef(0)
   const [typing, setTyping] = useState(false)
@@ -468,6 +473,36 @@ export function App({
     setTyping(true)
     clearTimeout(typingTimer.current)
     typingTimer.current = setTimeout(() => setTyping(false), 700)
+  }
+  // SP007 MM-01 补：把已准备好的图片挂为附件。粘贴键与 /image 命令共用同一条
+  // 路径，保证「同一个 [Image #N] 占位、同一份提交时收集逻辑」。
+  const attachPreparedImage = (prepared: {
+    mediaType: string
+    data: string
+    width?: number
+    height?: number
+    resized?: boolean
+  }) => {
+    // 同一张图重复粘贴（用户连按 alt+v）不该变成两次上传：内容相同时复用
+    // 已有占位，输入区不出现 [Image #1][Image #2]。
+    const hash = createHash('sha256').update(prepared.data).digest('hex')
+    for (const [existingId, existing] of pastedImages) {
+      if (existing.hash !== hash) continue
+      if (editor.text.includes(`[Image #${existingId}]`)) {
+        setHint(pick('该图片已在附件中', 'Image already attached'))
+        return
+      }
+    }
+    const id = nextImageId.current++
+    setPastedImages((previous) => new Map(previous).set(id, { ...prepared, hash }))
+    imageCache?.put(id, prepared.mediaType, Buffer.from(prepared.data, 'base64'))
+    editor.insert(`[Image #${id}]`)
+    setInput(editor.text)
+    bumpEditor()
+    markTyping()
+    setHint(prepared.resized
+      ? pick('图片已压缩并附件', 'Image resized and attached')
+      : pick('图片已附件', 'Image attached'))
   }
   useEffect(
     () => () => {
@@ -581,6 +616,9 @@ export function App({
         setPosition(undefined)
         setDoctorOpen(true)
         await new Promise<void>((resolve) => { managerDone.current = resolve })
+      } else if (result.attachImage) {
+        // SP007 MM-01 补：/image 把剪贴板/路径图片挂进输入区。
+        attachPreparedImage(result.attachImage)
       } else if (result.skillPrompt) {
         setHint(pick(`技能 /${result.skillPrompt.name} 已展开为提示`, `Skill /${result.skillPrompt.name} expanded to prompt`))
         // SM-02：调用记录保留技能名，正文随下一轮提示注入。
@@ -724,12 +762,25 @@ export function App({
       })
       consumed.add(id)
     }
+    // 同一张图（同内容哈希）在这次提交里只上传一次：连按粘贴、或用不同写法
+    // 指向同一个文件，都复用最先分配的占位 id。
+    const keptByHash = new Map<string, number>()
+    for (const [existingId, existing] of pastedImages) {
+      if (existing.hash && outgoing.includes(`[Image #${existingId}]`)) keptByHash.set(existing.hash, existingId)
+    }
     for (const match of extractImagePaths(outgoing)) {
       try {
         const file = readImageFile(match.path)
         const prepared = prepareImage(file.data, file.mediaType)
+        const hash = createHash('sha256').update(prepared.data).digest('hex')
+        const kept = keptByHash.get(hash)
+        if (kept !== undefined) {
+          outgoing = outgoing.replaceAll(match.token, `[Image #${kept}]`)
+          continue
+        }
         const id = nextImageId.current++
-        setPastedImages((previous) => new Map(previous).set(id, prepared))
+        keptByHash.set(hash, id)
+        setPastedImages((previous) => new Map(previous).set(id, { ...prepared, hash }))
         imageCache?.put(id, prepared.mediaType, Buffer.from(prepared.data, 'base64'))
         outgoing = outgoing.replaceAll(match.token, `[Image #${id}]`)
         pushImage(id, prepared)
@@ -1069,20 +1120,12 @@ export function App({
     }
     // SP007 MM-01/MM-02：把剪贴板图片挂为附件（[Image #N]），返回是否成功。
     const attachClipboardImage = (): boolean => {
-      const clip = readClipboardImage()
+      // 剪贴板读取可被宿主替换（测试注入）；产品默认读系统剪贴板。
+      const readClip = context.imageSource?.clipboard ?? readClipboardImage
+      const clip = readClip()
       if (!clip) return false
       try {
-        const prepared = prepareImage(clip.data, clip.mediaType)
-        const id = nextImageId.current++
-        setPastedImages((previous) => new Map(previous).set(id, prepared))
-        imageCache?.put(id, prepared.mediaType, Buffer.from(prepared.data, 'base64'))
-        editor.insert(`[Image #${id}]`)
-        setInput(editor.text)
-        bumpEditor()
-        markTyping()
-        setHint(prepared.resized
-          ? pick('图片已压缩并附件', 'Image resized and attached')
-          : pick('图片已附件', 'Image attached'))
+        attachPreparedImage(prepareImage(clip.data, clip.mediaType))
       } catch (error) {
         setHint(String((error as Error).message))
       }
