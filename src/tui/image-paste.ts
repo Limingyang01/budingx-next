@@ -70,7 +70,7 @@ export function readClipboardImage(): ClipboardImage | undefined {
       'if ($null -eq $img) { exit 2 }; ' +
       '$img.Save("' + escaped + '", [System.Drawing.Imaging.ImageFormat]::Png)'
     try {
-      execFileSync('powershell.exe', ['-NoProfile', '-Command', script], { stdio: 'ignore' })
+      execFileSync('powershell.exe', ['-NonInteractive', '-NoProfile', '-Command', script], { stdio: 'ignore', windowsHide: true, timeout: 5000 })
     } catch {
       return undefined
     }

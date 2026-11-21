@@ -4,10 +4,11 @@ import { execFileSync } from 'node:child_process'
 export function readClipboard(): string {
   let clip = ''
   if (process.platform === 'win32') {
-    clip = execFileSync('powershell', ['-NoProfile', '-Command', 'Get-Clipboard -Raw'], {
+    clip = execFileSync('powershell', ['-NonInteractive', '-NoProfile', '-Command', 'Get-Clipboard -Raw'], {
       encoding: 'utf8',
       timeout: 3000,
-      windowsHide: true
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore']
     })
   } else if (process.platform === 'darwin') {
     clip = execFileSync('pbpaste', [], { encoding: 'utf8', timeout: 3000 })

@@ -61,7 +61,7 @@ async function main() {
   }
 
   // Dynamic import to avoid loading provider in offline tests
-  const { createOpenAiProvider } = await import('../src/tui/dist/provider/openai.js')
+  const { createOpenAiProvider } = await import('../../src/tui/dist/provider/openai.js')
   const provider = createOpenAiProvider({ baseUrl, apiKey })
 
   const allTasks = loadTasks(ROOT)

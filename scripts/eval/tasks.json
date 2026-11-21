@@ -17,7 +17,6 @@
     "failure_class": "provider_error",
     "blind": false,
     "scenario": "provider_recovery",
-    "live": true,
     "notes": "真实 OpenAI 适配器 + stub fetch：503,503,200；断言重试事件与最终完成。",
     "checks": [
       {
@@ -48,7 +47,6 @@
     "failure_class": "provider_error",
     "blind": false,
     "scenario": "provider_error_boundary",
-    "live": true,
     "notes": "bad_request 不可重试：应直接落 error 终态，不做无谓重试。",
     "checks": [
       {
