@@ -62,3 +62,13 @@
 - 首次推送已完成（a8da8e0）
 - T13–T16 变更待提交后再次推送
 - **未合入 master**（遵循 m00001 用户指令）
+
+## T17 图片端到端补测与缺陷修复（2026-11-21，用户 m02085）
+
+- 新增 scripts/eval/live-image.mjs（opt-in，不进 npm test）：真实 Ink App + 真实 provider + 真实文件/剪贴板，支持 --mode path|clipboard|ctrlv 与可重复 --image。
+- 修复 4 个真实缺陷：D1 中文紧贴路径 token 切分（整轮消息被阻塞）；D2 未超限的调色板/灰度/16-bit/隔行 PNG 被拒；D3 剪贴板只有图片时 ctrl+v 无反应；D4 图片读取失败吞掉输入正文。
+- 新增 src/tui/test/sp007-image-ui.test.mjs（3 项，真实 Ink）：附件 data URI 形状、失败不发起请求且保留正文、同路径只附件一次；均已验证修复前失败/修复后通过。
+- sp007-image-paste.test.mjs 15→18 项（4 种 PNG 变体直通、超限明确拒绝、损坏 PNG 明确拒绝）。
+- 真实模型（MiniMax-M3.1-Flash）6 种形态 PASS：path、alt+v、ctrl+v 回退、JPEG、多图、9000px 级联缩放。
+- 全量回归：npm run test:unit 1117→1120 pass / 0 fail / 1 skip；模块边界 PASS。
+- 文档同步：PRODUCT.md §5.8 增补小图直通/ctrl+v 回退/正文保留；本文件与 test-report.md §9 记录证据。

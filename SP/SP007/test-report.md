@@ -116,3 +116,30 @@
 
 - Anthropic 真实端点：需用户提供 BUDINGX_ANTHROPIC_API_KEY 或等效凭据后重跑 `node scripts/eval/live.mjs`
 - Docker Langfuse 栈：需 Docker Desktop + WSL2 可用后运行 `node scripts/langfuse/init-local.mjs && node scripts/langfuse/control.ps1 start`
+
+## 9. 图片端到端补测与缺陷修复（用户反馈后延伸，2026-11-21）
+
+用户 m02085 要求「跑通发送图片到 TUI 且模型能识别图片内容」的端到端测试，并排查这一轮未检出的问题。执行 scripts/eval/live-image.mjs（真实 Ink App + 真实 MiniMax provider + 真实剪贴板/文件）后共发现并修复 **4 个真实缺陷**（全部先 RED 后 GREEN）：
+
+| 缺陷 | 位置 | 现象 | 修复 |
+| --- | --- | --- | --- |
+| D1 路径 token 切分错误 | src/tui/image-paste.ts | 中文句子紧贴图片路径（如「请描述这张图片：C:\tmp\a.png」）整句被当成一个 token，readImageFile ENOENT → 整轮消息被阻塞，模型收不到内容 | 改为按扩展名定位并止于中英文标点/空白；引号内路径单独扫描；URL 不当作本地附件；无法确认存在且不带路径分隔符的裸文件名按普通文本处理 |
+| D2 合法小 PNG 被拒 | src/tui/image-resize.ts prepareImage | 调色板/灰度/16-bit/隔行 PNG（截图工具、pngquant 常见输出）即使只有几百字节也被 decodePng 拒绝 | 先用 imageDimensions()（只读 IHDR）判定是否超限，未超限直接原样附件；仅在确需缩放时才解码，失败时给出可操作的转换提示 |
+| D3 剪贴板只有图片时 ctrl+v 无反应 | src/tui/app.tsx | Windows 主键位是 alt+v，用户按 ctrl+v 粘贴截图时无任何反馈，易被判定「功能没实现」 | 抽出 attachClipboardImage()；ctrl+v 无文本时回退为图片附件（alt+v 行为不变） |
+| D4 图片读取失败吞掉正文 | src/tui/app.tsx submitPrompt | Enter 提交先清空输入区，图片读不到只弹提示 → 用户整段已写好的正文丢失 | 失败时把原文写回编辑器并提示；同一路径重复出现改为 replaceAll，只附件一张 |
+
+### 验证证据
+- src/tui/test/sp007-image-paste.test.mjs：**18/18 GREEN**（含 4 种无法缩放的 PNG 变体「未超限则原样附件」、超限明确拒绝、损坏 PNG 明确拒绝、中文紧贴路径、引号包裹、URL 忽略、多图按序）。
+- src/tui/test/sp007-image-ui.test.mjs（新增）：**3/3 GREEN**，真实 Ink/App/Session：①路径→[Image #1]→请求携带且仅携带 1 个 data:image/png;base64 部件；②不存在的显式路径→**不发起请求**、提示「无法读取图片」、**输入区仍保留原文**（已反向验证：去掉恢复语句后该用例 not ok）；③同一路径写两次只附件一张。
+- 真实模型 E2E（node scripts/eval/live-image.mjs，MiniMax-M3.1-Flash）：
+  - path 模式红蓝图 → 「左半边是红色，右半边是蓝色。」PASS
+  - alt+v 剪贴板模式 → PASS
+  - ctrl+v 回退 + 调色板 PNG → 「左边红色，右边蓝色。」PASS
+  - ctrl+v + JPEG 单图 → PASS
+  - 多图（调色板 PNG + JPEG）→ 「图1：左红，右蓝。图2：左红，右蓝。」PASS
+  - 9000×1000 PNG（触发级联缩放）→ 「左半：红色；右半：蓝色」PASS
+- 全量回归：npm run test:unit **1120 pass / 0 fail / 1 skip**（POSIX 专属 skip）；模块边界检查 PASS。
+
+### 结论与仍存限制
+- TUI 输入区附件（alt+v / ctrl+v / 路径）到真实模型识图已端到端跑通，四种图片形态（真彩 PNG / 调色板 PNG / JPEG / 超尺寸 PNG）均被模型正确识别。
+- 仍存限制（设计已固化，本轮不改）：Read 工具与 @image.png 上下文引用对图片只返回文本占位；headless --prompt 不处理图片路径；Anthropic 真实端点缺凭据 UNVERIFIED。

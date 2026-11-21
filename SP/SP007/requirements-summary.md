@@ -1,6 +1,6 @@
 # SP007 需求汇总 — Agent 质量与扩展
 
-状态：ACTIVE（2026-11-21 开轮；用户指令启动，SDD 自主推进，止于推送功能分支，不合入 master）
+状态：功能分支完成（2026-11-21 开轮；用户 m00001 后经 m02028 授权合入 master 并推送；发布前准备进行中）
 
 ## 本轮目标与边界
 
@@ -26,12 +26,12 @@ evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-
 
 | 目录 | 来源 | 验收目标 | 责任范围 | 阶段 | 文档 | 验证 | 集成状态 | 下一步 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| agent-quality-and-extensions §R1 子代理执行（SA-01…SA-16） | 路线图 SP007；矩阵「子代理与委派」；r5 卡片分离 | 独立上下文/权限≤父/预算/取消传播/冲突可见/父验证结果；/agents 面板与 /agent 命令；同步+后台代理真实链路 | core 子会话+工具、TUI 面板/卡片 | ACTIVE | [requirements](agent-quality-and-extensions/requirements.md) | 未开始 | 未合入 | 设计 |
-| agent-quality-and-extensions §R2 运行时诊断（RD-01…RD-16） | 路线图 SP007；矩阵「诊断与性能」；r5 /status /stats doctor ToolSearch | /status 三页签、/stats JSONL 聚合+热力图+折线、/doctor 警告式报告+过期锁清理、ToolSearch 延迟加载、首token/p50/p95/内存采集、默认不上传 | TUI 命令/面板、storage 聚合、core 计时 | ACTIVE | 同上 | 未开始 | 未合入 | 设计 |
-| agent-quality-and-extensions §R3 供应商兼容（PC-01…PC-08） | 路线图 SP007；矩阵「Provider 运行行为」「配置与模型管理」；CAP-L3-16 | 第二公开协议 Anthropic Messages 适配器；档案 protocol 字段；模型管理预设/验证；错误参数自纠；fixture+真实模型双协议证据 | provider、storage/profiles、TUI 模型管理 | ACTIVE | 同上 | 未开始 | 未合入 | 设计 |
-| agent-quality-and-extensions §R4 多模态上下文（MM-01…MM-10） | 路线图 SP007；矩阵「文件上下文和附件」 | alt+v/ctrl+v 图片粘贴、路径附件、[Image #N]、5MB base64 上限+PNG 纯 JS 缩放、双协议映射、错误驱动降级、明确拒绝 | TUI 输入/键位、core 消息块、provider 映射、storage 图片缓存 | ACTIVE | 同上 | 未开始 | 未合入 | 设计 |
-| agent-quality-and-extensions §R5 评估回归（ER-01…ER-06） | 路线图 SP007；矩阵「基线与任务集」；SP001 O5=B | 固定任务快照 runner+预算+失败分类+盲测保留；≥12 任务覆盖本轮失败类别；真实模型 opt-in；未测能力明列 | scripts/eval、任务 fixture | ACTIVE | 同上 | 未开始 | 未合入 | 设计 |
-| agent-quality-and-extensions §R6 失败边界与宿主契约（FB-01…FB-04） | 路线图 SP007 出口；矩阵 MCP/Hooks/联网/无头行 | 联网/hooks/MCP 失败不越权回归；headless 契约与产物符合性不劣化 | 跨模块回归 | ACTIVE | 同上 | 未开始 | 未合入 | 设计 |
+| agent-quality-and-extensions §R1 子代理执行（SA-01…SA-16） | 路线图 SP007；矩阵「子代理与委派」；r5 卡片分离 | 独立上下文/权限≤父/预算/取消传播/冲突可见/父验证结果；/agents 面板与 /agent 命令；同步+后台代理真实链路 | core 子会话+工具、TUI 面板/卡片 | COMPLETE | [requirements](agent-quality-and-extensions/requirements.md) | SA 16 条 AC 全 PASS（sp007-agents-panel 14/14、agent-runtime/agent-tools 单元） | 待合入 | 交付完成 |
+| agent-quality-and-extensions §R2 运行时诊断（RD-01…RD-16） | 路线图 SP007；矩阵「诊断与性能」；r5 /status /stats doctor ToolSearch | /status 三页签、/stats JSONL 聚合+热力图+折线、/doctor 警告式报告+过期锁清理、ToolSearch 延迟加载、首token/p50/p95/内存采集、默认不上传 | TUI 命令/面板、storage 聚合、core 计时 | COMPLETE | 同上 | RD 16 条 AC 全 PASS（sp007-diagnostics 15/15、diagnostics-ui 7/7） | 待合入 | 交付完成 |
+| agent-quality-and-extensions §R3 供应商兼容（PC-01…PC-08） | 路线图 SP007；矩阵「Provider 运行行为」「配置与模型管理」；CAP-L3-16 | 第二公开协议 Anthropic Messages 适配器；档案 protocol 字段；模型管理预设/验证；错误参数自纠；fixture+真实模型双协议证据 | provider、storage/profiles、TUI 模型管理 | COMPLETE | 同上 | PC 8 条 AC 全 PASS（anthropic 适配器单元；真实端点 UNVERIFIED） | 待合入 | 交付完成 |
+| agent-quality-and-extensions §R4 多模态上下文（MM-01…MM-10） | 路线图 SP007；矩阵「文件上下文和附件」 | alt+v/ctrl+v 图片粘贴、路径附件、[Image #N]、5MB base64 上限+PNG 纯 JS 缩放、双协议映射、错误驱动降级、明确拒绝 | TUI 输入/键位、core 消息块、provider 映射、storage 图片缓存 | COMPLETE | 同上 | MM 10 条 AC 全 PASS（image-paste 18/18、image-ui 3/3、live-image 6 形态真实模型 PASS） | 待合入 | 交付完成 |
+| agent-quality-and-extensions §R5 评估回归（ER-01…ER-06） | 路线图 SP007；矩阵「基线与任务集」；SP001 O5=B | 固定任务快照 runner+预算+失败分类+盲测保留；≥12 任务覆盖本轮失败类别；真实模型 opt-in；未测能力明列 | scripts/eval、任务 fixture | COMPLETE | 同上 | ER 6 条 AC 全 PASS（sp007-eval 22/22、离线 17/17、真实模型 4 轮） | 待合入 | 交付完成 |
+| agent-quality-and-extensions §R6 失败边界与宿主契约（FB-01…FB-04） | 路线图 SP007 出口；矩阵 MCP/Hooks/联网/无头行 | 联网/hooks/MCP 失败不越权回归；headless 契约与产物符合性不劣化 | 跨模块回归 | COMPLETE | 同上 | FB 5 条 AC 全 PASS（failure-boundaries 15/15） | 待合入 | 交付完成 |
 
 ## 验收与交接
 
@@ -44,3 +44,6 @@ evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-
 | 日期 | 变更 | 依据 |
 | --- | --- | --- |
 | 2026-11-21 | 开轮，建立汇总与需求骨架；三路参考侦察完成（b5c9be8） | 用户 m00001/m00014；路线图 SP007 |
+| 2026-11-21 | T1–T16 完成并推送功能分支；全量回归 1117 pass / 0 fail | 用户 m00001；design/plan/STATUS |
+| 2026-11-21 | 用户反馈图片链路有缺陷 → T17 补测：修复 4 个真实缺陷（中文紧贴路径切分、合法小 PNG 被拒、ctrl+v 无回退、失败吞正文），真实模型 6 形态 PASS | 用户 m02085；test-report §9 |
+| 2026-11-21 | 用户授权合入 master + 推送 + 发布前准备（不触发实际 npm 发布） | 用户 m02028 |

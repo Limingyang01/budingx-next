@@ -8,8 +8,14 @@ import { tmpdir } from 'node:os'
 import { join, extname } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
-const IMAGE_EXTENSION = /\.(png|jpe?g|gif|webp)$/i
-const TOKEN_PATTERN = /"[^"]*"|'[^']*'|\S+/g
+// 图片路径形态：任何不含空白/引号/常见中英文标点的 run 收尾于图片扩展名。
+// 中文没有空格分词，说明文字常紧贴路径，因此保留 run 从左剥离的能力（glue）。
+const IMAGE_PATH_PATTERN = /[^\s"'<>|`，。；：！？、（）【】「」《》〔〕…]*\.(?:png|jpe?g|gif|webp)(?![A-Za-z0-9_])/gi
+// 引号内路径可含空格（Windows 常见），单独先扫。
+const QUOTED_PATTERN = /"([^"\n]{1,2048})"|'([^'\n]{1,2048})'/g
+// 明确的本地路径前缀：盘符、UNC、根/相对分隔符。
+const EXPLICIT_PATH = /^(?:[A-Za-z]:[\\/]|\\\\|[\\/]|\.{1,2}[\\/])/
+const URL_LIKE = /^(?:https?|data|ftp):\/\//i
 const PS_BACKTICK = String.fromCharCode(96)
 
 export type ImagePathMatch = { path: string; token: string }
@@ -35,12 +41,74 @@ function cleanToken(raw: string): string {
   return value.replace(/\\\\/g, '\\').replace(/\\"/g, '"').replace(/\\'/g, "'")
 }
 
+/**
+ * 从候选串里定位真实文件：先按原样试，再从左侧逐字剥离说明文字（最多 64 个字符）。
+ * 中文说明常与路径直接相邻（无空格），剥离后命中已存在文件即认定。
+ */
+function resolveExistingCandidate(candidate: string): { path: string; glue: number } | undefined {
+  if (existsSync(candidate)) return { path: candidate, glue: 0 }
+  const limit = Math.min(candidate.length - 1, 64)
+  for (let glue = 1; glue <= limit; glue += 1) {
+    const rest = candidate.slice(glue)
+    if (!rest || rest[0] !== candidate[glue]) break
+    if (!/\.(?:png|jpe?g|gif|webp)(?![A-Za-z0-9_])/i.test(rest)) break
+    if (existsSync(rest)) return { path: rest, glue }
+  }
+  return undefined
+}
+
+/** cleanToken 会折叠转义对，把「清洗后」的下标映射回原始 run 下标。 */
+function rawIndexForCleaned(raw: string, cleanedIndex: number): number {
+  let ci = 0
+  let ri = 0
+  while (ri < raw.length && ci < cleanedIndex) {
+    if (raw[ri] === '\\' && (raw[ri + 1] === '\\' || raw[ri + 1] === '"' || raw[ri + 1] === "'")) ri += 2
+    else ri += 1
+    ci += 1
+  }
+  return ri
+}
+
+/**
+ * 判定一个路径形态的候选（run 内匹配到的子串）：已存在或形如明确本地路径才认作图片附件。
+ * 形如路径但不存在 → 保留，提交时明确报「无法读取」（MM-10），不假装已读。
+ * 裸文件名且不存在 → 当普通文本，避免「为什么 a.png 没加载」这类叙述阻塞发送。
+ */
+function acceptCandidate(raw: string): ImagePathMatch | undefined {
+  const candidate = cleanToken(raw)
+  if (!candidate || URL_LIKE.test(candidate)) return undefined
+  const found = resolveExistingCandidate(candidate)
+  if (found) {
+    const token = found.glue > 0 ? raw.slice(rawIndexForCleaned(raw, found.glue)) : raw
+    return { path: found.path, token }
+  }
+  if (EXPLICIT_PATH.test(candidate) || /[\\/]/.test(candidate)) return { path: candidate, token: raw }
+  return undefined
+}
+
 /** 从输入文本提取图片路径 token（MM-03）。 */
 export function extractImagePaths(text: string): ImagePathMatch[] {
   const matches: ImagePathMatch[] = []
-  for (const raw of text.match(TOKEN_PATTERN) ?? []) {
-    const path = cleanToken(raw)
-    if (IMAGE_EXTENSION.test(path)) matches.push({ path, token: raw })
+  const seen = new Set<string>()
+  const push = (match: ImagePathMatch | undefined) => {
+    if (!match || seen.has(match.path)) return
+    seen.add(match.path)
+    matches.push(match)
+  }
+  // 引号内路径优先（可含空格），并从后续扫描中挖空，避免重复识别。
+  let remainder = text
+  for (const quote of text.matchAll(QUOTED_PATTERN)) {
+    const inner = quote[1] ?? quote[2] ?? ''
+    const innerMatch = inner.match(IMAGE_PATH_PATTERN)?.[0]
+    if (innerMatch) {
+      const accepted = acceptCandidate(innerMatch)
+      if (accepted) push({ path: accepted.path, token: quote[0] })
+    }
+    const start = quote.index ?? 0
+    remainder = remainder.slice(0, start) + ' '.repeat(quote[0].length) + remainder.slice(start + quote[0].length)
+  }
+  for (const found of remainder.matchAll(IMAGE_PATH_PATTERN)) {
+    push(acceptCandidate(found[0]))
   }
   return matches
 }
@@ -48,10 +116,13 @@ export function extractImagePaths(text: string): ImagePathMatch[] {
 /** 提交时从文本移除已附件的路径 token（MM-03）。 */
 export function stripImageTokens(text: string, paths: readonly string[]): string {
   const set = new Set(paths)
-  return text
-    .replace(TOKEN_PATTERN, (raw) => (set.has(cleanToken(raw)) ? '' : raw))
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim()
+  let out = text
+  for (const match of extractImagePaths(text)) {
+    if (!set.has(match.path)) continue
+    const index = out.indexOf(match.token)
+    if (index >= 0) out = out.slice(0, index) + ' ' + out.slice(index + match.token.length)
+  }
+  return out.replace(/[ \t]{2,}/g, ' ').trim()
 }
 
 export type ClipboardImage = { data: Buffer; mediaType: string }

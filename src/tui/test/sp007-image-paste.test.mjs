@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { deflateSync } from 'node:zlib'
-import { mkdtempSync, readFileSync, statSync, existsSync } from 'node:fs'
+import { mkdtempSync, readFileSync, statSync, existsSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -185,6 +185,37 @@ test('MM-04：大噪声 PNG（base64>5MB）级联缩到≤5MB', () => {
   assert.ok(Buffer.from(prep.data, 'base64').length <= IMAGE_TARGET_RAW_BYTES)
 })
 
+// BUG：MM-04 曾对任何 PNG 无条件 decodePng，导致调色板/灰度/16-bit/隔行等
+// 「无法缩放但完全合法」的小 PNG 被拒绝附件。未超限时必须原样附件。
+test('MM-04/MM-10：调色板/灰度/16-bit/隔行 PNG 未超限时原样附件（不因无法缩放而拒绝）', () => {
+  const variants = [
+    { colorType: 3 },
+    { colorType: 0 },
+    { colorType: 2, bitDepth: 16 },
+    { colorType: 6, interlace: 1 }
+  ]
+  for (const variant of variants) {
+    const png = makePng({ width: 8, height: 6, rgba: solidRgba(8, 6, 9, 8, 7), ...variant })
+    const prep = prepareImage(png, 'image/png')
+    assert.equal(prep.resized, false, JSON.stringify(variant))
+    assert.equal(prep.mediaType, 'image/png')
+    assert.equal(prep.data, png.toString('base64'), JSON.stringify(variant))
+    assert.equal(prep.width, 8)
+    assert.equal(prep.height, 6)
+  }
+})
+
+test('MM-04/MM-10：无法自动缩放的 PNG 变体超限 → 明确拒绝并提示转换', () => {
+  // 9000px 宽调色板 PNG：尺寸超限且无法缩放，必须明确拒绝（不是静默失败）
+  const png = makePng({ width: 9000, height: 1, colorType: 3, rgba: solidRgba(9000, 1, 1, 2, 3) })
+  assert.throws(() => prepareImage(png, 'image/png'), /调色板|palette|转换/)
+})
+
+test('MM-04：损坏 PNG（无 IHDR）→ 明确拒绝而不是静默直通', () => {
+  const broken = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), Buffer.alloc(24, 0)])
+  assert.throws(() => prepareImage(broken, 'image/png'), /PNG|IHDR|有效/)
+})
+
 test('MM-04/MM-10：非 PNG 超 5MB → 明确拒绝；非 PNG 小图原样', () => {
   const big = Buffer.alloc(6 * 1024 * 1024, 7)
   assert.throws(() => prepareImage(big, 'image/jpeg'), /PNG|缩小|5MB|上限/)
@@ -208,8 +239,40 @@ test('MM-03：extractImagePaths 识别引号/反斜杠转义路径', () => {
   const paths = found.map((f) => f.path)
   assert.ok(paths.includes('C:\\shots\\a.png'), JSON.stringify(paths))
   assert.ok(paths.includes('D:/pics/b.JPG'))
-  assert.ok(paths.includes('c.webp'))
+  // 裸文件名且磁盘不存在 → 当普通文本，不阻塞发送（真实文件由下一条用例覆盖）。
+  assert.ok(!paths.includes('c.webp'))
   assert.ok(!paths.some((p) => p.endsWith('.txt')))
+})
+
+test('MM-03：中文紧贴图片路径可识别，说明文字不被吞掉', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'budingx-imgpath-'))
+  const real = join(dir, 'redblue.png')
+  writeFileSync(real, makePng({ width: 2, height: 2, rgba: solidRgba(2, 2, 255, 0, 0) }))
+  // 1) 中文冒号直接接路径（无空格）——SP007 实测缺陷：旧实现把整句当路径→ENOENT 阻塞发送。
+  const glued = '请读取并描述这张图片：' + real + ' 它左右两半分别是什么颜色？'
+  const found = extractImagePaths(glued)
+  assert.equal(found.length, 1, JSON.stringify(found))
+  assert.equal(found[0].path, real)
+  const stripped = glued.replace(found[0].token, '[Image #1]')
+  assert.ok(stripped.startsWith('请读取并描述这张图片：[Image #1]'), stripped)
+  // 2) 前后都有中文紧贴
+  const wrapped = '前面中文' + real + '后面中文'
+  const inner = extractImagePaths(wrapped)
+  assert.equal(inner.length, 1, JSON.stringify(inner))
+  assert.equal(inner[0].path, real)
+  assert.equal(wrapped.replace(inner[0].token, '[Image #1]'), '前面中文[Image #1]后面中文')
+  // 3) 引号包裹的中文说明 + 路径
+  const quoted = '看这个图："' + real + '"'
+  const q = extractImagePaths(quoted)
+  assert.equal(q.length, 1, JSON.stringify(q))
+  assert.equal(q[0].path, real)
+  // 4) URL 结尾 .png 不当作本地附件
+  assert.deepEqual(extractImagePaths('见 https://example.com/a.png 说明'), [])
+  // 5) 多个图片按出现顺序
+  const second = join(dir, 'two.webp')
+  writeFileSync(second, Buffer.from([1, 2, 3]))
+  const many = extractImagePaths('第一张 ' + real + ' 第二张 ' + second)
+  assert.deepEqual(many.map((m) => m.path), [real, second])
 })
 
 test('MM-03：stripImageTokens 从文本移除已附件 token', () => {

@@ -222,12 +222,27 @@ export function prepareImage(buffer: Buffer, mediaType: string): PreparedImage {
     }
     return { data: base64, mediaType, resized: false }
   }
-  const decoded = decodePng(buffer)
   const withinBase64 = base64.length <= IMAGE_MAX_BASE64_BYTES
   const withinRaw = buffer.length <= IMAGE_TARGET_RAW_BYTES
-  const withinDim = decoded.width <= IMAGE_MAX_DIMENSION && decoded.height <= IMAGE_MAX_DIMENSION
+  // 尺寸只读 IHDR：调色板/灰度/16-bit/隔行等只影响像素解码，不影响尺寸读取，
+  // 因此这些「合法但本仓无法缩放」的 PNG 只要未超限就应当原样附件。
+  const dims = imageDimensions(buffer)
+  const withinDim =
+    dims !== undefined &&
+    dims.width > 0 &&
+    dims.height > 0 &&
+    dims.width <= IMAGE_MAX_DIMENSION &&
+    dims.height <= IMAGE_MAX_DIMENSION
   if (withinBase64 && withinRaw && withinDim) {
-    return { data: base64, mediaType: 'image/png', width: decoded.width, height: decoded.height, resized: false }
+    return { data: base64, mediaType: 'image/png', width: dims.width, height: dims.height, resized: false }
+  }
+  // 需要缩放或校验像素时才解码；无法解码的变体在此明确拒绝（未超限的已在上面直通）。
+  let decoded: PngImage
+  try {
+    decoded = decodePng(buffer)
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    throw new Error(`${reason}（该 PNG 无法自动缩放；请转换为 8-bit RGB/RGBA 非隔行 PNG，或裁剪到 8000px 与 5MB 以内）`)
   }
   let { width, height } = decoded
   let rgba = decoded.rgba

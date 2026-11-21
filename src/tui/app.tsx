@@ -731,9 +731,14 @@ export function App({
         const id = nextImageId.current++
         setPastedImages((previous) => new Map(previous).set(id, prepared))
         imageCache?.put(id, prepared.mediaType, Buffer.from(prepared.data, 'base64'))
-        outgoing = outgoing.replace(match.token, `[Image #${id}]`)
+        outgoing = outgoing.replaceAll(match.token, `[Image #${id}]`)
         pushImage(id, prepared)
       } catch (error) {
+        // MM-10：图片读不到时明确报错，但绝不静默吞掉用户已经写好的正文——
+        // Enter 提交时输入区已清空，这里把原文放回去，用户可改路径后重发。
+        editor.setText(text)
+        setInput(editor.text)
+        bumpEditor()
         setHint(String((error as Error).message))
         return
       }
@@ -1062,26 +1067,31 @@ export function App({
       }
       return
     }
+    // SP007 MM-01/MM-02：把剪贴板图片挂为附件（[Image #N]），返回是否成功。
+    const attachClipboardImage = (): boolean => {
+      const clip = readClipboardImage()
+      if (!clip) return false
+      try {
+        const prepared = prepareImage(clip.data, clip.mediaType)
+        const id = nextImageId.current++
+        setPastedImages((previous) => new Map(previous).set(id, prepared))
+        imageCache?.put(id, prepared.mediaType, Buffer.from(prepared.data, 'base64'))
+        editor.insert(`[Image #${id}]`)
+        setInput(editor.text)
+        bumpEditor()
+        markTyping()
+        setHint(prepared.resized
+          ? pick('图片已压缩并附件', 'Image resized and attached')
+          : pick('图片已附件', 'Image attached'))
+      } catch (error) {
+        setHint(String((error as Error).message))
+      }
+      return true
+    }
     // SP007 MM-01/MM-02：图片粘贴键（Windows alt+v，其他平台 ctrl+v）。
     const imagePastePressed = (process.platform === 'win32' ? key.meta : key.ctrl) && text === 'v'
     if (imagePastePressed && !rejectEntry && !dialog && !search && !transcriptMode && pendingQuestion === undefined) {
-      const clip = readClipboardImage()
-      if (clip) {
-        try {
-          const prepared = prepareImage(clip.data, clip.mediaType)
-          const id = nextImageId.current++
-          setPastedImages((previous) => new Map(previous).set(id, prepared))
-          imageCache?.put(id, prepared.mediaType, Buffer.from(prepared.data, 'base64'))
-          editor.insert(`[Image #${id}]`)
-          setInput(editor.text)
-          bumpEditor()
-          markTyping()
-          setHint(prepared.resized ? pick('图片已压缩并附件', 'Image resized and attached') : pick('图片已附件', 'Image attached'))
-        } catch (error) {
-          setHint(String((error as Error).message))
-        }
-        return
-      }
+      if (attachClipboardImage()) return
       if (process.platform === 'win32') {
         setHint(pick('剪贴板没有图片', 'No image in clipboard'))
         return
@@ -1106,17 +1116,23 @@ export function App({
     // which these terminals ignore, so Ctrl+V arrives as a plain ctrl+v
     // keypress. Read the system clipboard and insert it directly.
     if (key.ctrl && text === 'v' && !rejectEntry && !dialog && !search && !transcriptMode) {
+      let clip = ''
       try {
-        const clip = readClipboard()
-        if (clip) {
-          editor.insert(clip)
-          setInput(editor.text)
-          bumpEditor()
-          markTyping()
-        }
+        clip = readClipboard()
       } catch {
         setHint(pick('无法读取剪贴板', 'Clipboard read failed'))
+        return
       }
+      if (clip) {
+        editor.insert(clip)
+        setInput(editor.text)
+        bumpEditor()
+        markTyping()
+        return
+      }
+      // 剪贴板里没有文本但有图片时，ctrl+v 也按图片附件处理：Windows 主键位是
+      // alt+v（MM-01），但多数终端用户会先按 ctrl+v，空文本静默丢弃最像「没实现」。
+      if (pendingQuestion === undefined) attachClipboardImage()
       return
     }
     if (rejectEntry) {
