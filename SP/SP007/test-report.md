@@ -1,6 +1,6 @@
 # SP007 验收报告
 
-状态：**功能分支完成，待合入**｜日期：2026-11-21｜分支 `feature/SP007/agent-quality-and-extensions`｜基线 master `4705232`｜版本准备 0.7.0（本轮不发布）
+状态：**已合入 master `5dbfe3a`**｜日期：2026-11-21｜分支 `feature/SP007/agent-quality-and-extensions`｜基线 master `4705232`｜版本 0.7.0（prepared，待维护者触发发布）
 
 ## 1. 方法与环境
 

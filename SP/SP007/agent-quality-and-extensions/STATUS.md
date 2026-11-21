@@ -1,6 +1,6 @@
 # STATUS — SP007 agent-quality-and-extensions
 
-- 生命周期：**功能分支完成**（T1–T17 全部完成，已推送远端；0.7.0 发布准备完成，等待维护者触发发布）
+- 生命周期：**已合入 master**（合并提交 5dbfe3a，T1–T17 全部完成；0.7.0 发布准备完成，等待维护者触发 GitHub Actions 发布）
 - 更新：2026-11-21（T13–T16 完成）
 - 分支：feature/SP007/agent-quality-and-extensions（基线 master 4705232）
 - 提交链：a6466a4 开轮文档 → edf3835 计划 → e7cabeb T1 → 8d02514 T2 → 07104b8 T3 → a813b5f T4 → 7129d6f T5 → c13820e T6 → b14db5d T7 → 68f80db T8 → 1a027d2 T9 → 996aacf T10 → 0a45cb8 T11+T12 → a8da8e0 STATUS → （T13–T16 本轮提交待 push）
@@ -72,3 +72,13 @@
 - 真实模型（MiniMax-M3.1-Flash）6 种形态 PASS：path、alt+v、ctrl+v 回退、JPEG、多图、9000px 级联缩放。
 - 全量回归：npm run test:unit 1117→1120 pass / 0 fail / 1 skip；模块边界 PASS。
 - 文档同步：PRODUCT.md §5.8 增补小图直通/ctrl+v 回退/正文保留；本文件与 test-report.md §9 记录证据。
+
+## T18 合入 master 与发布准备（2026-11-21，用户 m02028）
+
+- 版本准备：`npm run version:prepare -- minor --iteration SP007` → src/tui/package.json 0.7.0、台账追加 prepared、新建 release-notes/v0.7.0.md（提交 db6784d）。
+- 发布准备暴露的自测缺陷已修：sp006-release-ledger 用例把「当前版本 = SP006 已发布」写死，推进到 prepared 后必然失败 → 改为按当前版本状态分支校验；发行说明章节名对齐 `## 已知限制`。
+- `npm run publish -- --dry-run --expected-version 0.7.0 --tag latest` 通过：state=verified-local、167 files、smoke version 0.7.0、externalProvider UNVERIFIED（真实发布由维护者触发）。
+- 合入前门禁：`npm run merge:gate` → **GATE GREEN**（报告 artifacts/merge-gate/feature-SP007-agent-quality-and-extensions-2026-11-21T14-09-08-512Z.md）；npm test / spec:check / skills:check / pack-smoke 全过。
+- 合并：`git merge --no-ff` → master **5dbfe3a**（父 db6784d + 4705232），合并后工作树与 db6784d 一致。
+- 验证：`npm run test:unit` 1122 项 **1121 pass / 0 fail / 1 skip**（POSIX 专属 skip）。
+- 实际 npm 发布**未触发**，由维护者在 GitHub Actions 以 branch=master、version=0.7.0、tag=latest、dry_run 关闭触发。
