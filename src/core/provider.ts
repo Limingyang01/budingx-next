@@ -52,9 +52,18 @@ export type ApiToolCall = {
   function: { name: string; arguments: string }
 }
 
+/**
+ * Multimodal user content part (SP007 MM-07). The OpenAI shape is the
+ * canonical form; protocol adapters translate it (Anthropic image source
+ * blocks). Pure-text requests keep using plain string content.
+ */
+export type ApiContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
 export type ApiMessage =
   | { role: 'system'; content: string }
-  | { role: 'user'; content: string }
+  | { role: 'user'; content: string | ApiContentPart[] }
   | { role: 'assistant'; content: string | null; tool_calls?: ApiToolCall[]; reasoning_content?: string }
   | { role: 'tool'; tool_call_id: string; content: string }
 

@@ -7,13 +7,17 @@ import { backupPath, configPath } from './paths.js'
 
 export const CONFIG_VERSION = 1
 
+/** Wire protocol of the endpoint (SP007 PC-02). Absent means openai (legacy profiles). */
+export type ModelProtocol = 'openai' | 'anthropic'
+
 export type ModelProfile = {
   id: string
   label: string
   baseUrl: string
   model: string
   apiKeyRef: string
-  capabilities: { tools: boolean }
+  capabilities: { tools: boolean; vision?: boolean }
+  protocol?: ModelProtocol
   createdAt: string
   updatedAt: string
   [key: string]: unknown
