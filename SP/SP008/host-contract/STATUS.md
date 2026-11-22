@@ -5,7 +5,7 @@
 - 需求：`SP/SP008/host-contract/requirements.md`（R1/R2/R3，SH-01…SH-05、SO-01…SO-04、TB-01…TB-08）
 - 设计：`design/design.zh.md`（v1.1，已自审；含令牌策略与传输 API 实施修订）
 - 计划：`design/plan.zh.md`（T1…T14，含 RED/GREEN 与命令）
-- 验收：`../test-report.md`（17 个新增测试文件 + 共享 helper/自模拟 MCP 服务器；AC 逐条证据）
+- 验收：`../test-report.md`（18 个新增测试文件 + 共享 helper/自模拟 MCP 服务器；AC 逐条证据）
 - 基线：master `a8628b5`；功能分支 `feature/SP008/host-contract`；产品版本 0.7.0（不 bump）
 - 授权范围：设计、计划、实施、测试、交付记录、功能分支本地提交（中文说明）；
   **不含**合入 master / 推送 master（用户 m00133），不含打标签、npm 发布、远端设置、分支删除。
@@ -16,11 +16,12 @@
 - [x] 设计：design/design.zh.md + 自审记录（§6/§8）
 - [x] 计划：design/plan.zh.md（T1…T14）
 - [x] 实施：T1–T10（共享数据、会话归属、协议/服务端、进程内/stdio/WS、引擎适配）
-- [x] 测试收口：T11 定向 55/55 PASS；T15 复测后定向 58/58 PASS；全量 1180 项 / 1179 通过 / 1 跳过 / 0 失败
-- [x] 多轮端到端：交付 3 轮 × 20 例 + 复测 3 轮 × 23 例 + 最终 HEAD 再 3 轮 × 23 例，全部 PASS（日志 `artifacts/quality-runs/SP008/host-contract/`）
+- [x] 测试收口：T11 定向 55/55 PASS；T15 复测后定向 58/58 PASS；T16 扩展矩阵后定向 66/66 PASS；全量 1188 项 / 1187 通过 / 1 跳过 / 0 失败
+- [x] 多轮端到端：交付 3 轮 × 20 例 + 复测 3 轮 × 23 例 + 最终 HEAD 再 3 轮 × 23 例 + 扩展矩阵 3 轮 × 11 例 + 定向全量 3 轮 × 66 例，全部 PASS（日志 `artifacts/quality-runs/SP008/host-contract/`）
 - [x] 扩展复测（T15，用户 m01288/m01304）：`serve` 装配 MCP/hooks，自模拟 MCP 服务器与 hook 子进程，3 例真实进程端到端 PASS
+- [x] 扩展矩阵（T16，用户 m01515）：MCP/hooks 端到端矩阵 8 例 PASS（八事件、updatedInput、additionalContext、ask、多服务器、isError、崩溃、连接失败）；扩展 3 轮 × 11/11 PASS
 - [x] AST 复核：17/17 文件映射，命中 0，PASS
-- [x] 交叉验证门禁：`npm run merge:gate` → **GATE GREEN**（交付 HEAD `4a638e9`；T15 复测后 HEAD `abbdcb1` 再次 GREEN，13 commits / 49 files，四项检查全通过）
+- [x] 交叉验证门禁：`npm run merge:gate` → **GATE GREEN**（交付 HEAD `4a638e9`；T15 复测后 HEAD `abbdcb1` 再次 GREEN，13 commits / 49 files；T16 扩展矩阵后 HEAD `9f7f00b` 再次 GREEN，15 commits / 50 files；四项检查全通过）
 - [x] 交付记录：test-report、PRODUCT.md §5.9、docs/development.md、汇总索引
 - [ ] 合入 master：**用户 m00133 明确不做**，保持功能分支完成态
 
@@ -34,6 +35,7 @@
 | 不合入 master | 用户 m00133（2026-11-21） | 覆盖 AGENTS.md 默认「门禁 GREEN 后合入并推送」委托 |
 | 多轮端到端 + AST 检测 | 用户 m00133（2026-11-21） | 交付前必须完成 |
 | 再次全面测试，MCP/hooks 自己模拟 | 用户 m01288、m01304（2026-11-22） | serve 接入扩展并全面复测，仍不合入 master |
+| 完成 SP008 全部内容，尤其 MCP/hooks 端到端 | 用户 m01515（2026-11-22） | 补齐 MCP/hooks 端到端矩阵（T16），仍不合入 master |
 | 参考实现对照 | AGENTS.md 工作边界；用户 m00133 | `D:\my_project\budingWorkerSpace` @ b5c9be8，只读，不抄代码 |
 
 ## 4. AC 与验证
@@ -58,6 +60,8 @@
 | TB-07 | PARTIAL | EOF/shutdown/客户端断开均 PASS；**SIGTERM 在 Windows 无法优雅投递，UNVERIFIED**（恢复条件见 test-report §9） |
 | TB-08 | PASS | 边界脚本禁 host→tui/UI；PRODUCT §5.9 写明 scope=local、仅回环、同机≠跨设备 |
 
+扩展矩阵（T16，非新增 AC）：`sp008-serve-extensions-matrix` 8 例 PASS —— hooks 八事件全覆盖（含 Notification/Stop、无 StopFailure）、`updatedInput` 改写入参真实到达 MCP、`additionalContext` 注入模型 system 消息、hook `ask` 仍回到人工审批、两个 MCP 服务器并存且调用隔离、MCP 工具 `isError` 反映为 `tool_result isError=true`、MCP 服务器崩溃后宿主仍可 ping/shutdown、连接失败只写 stderr 告警不阻断启动。
+
 扩展复测（T15，非新增 AC）：`sp008-serve-extensions` 3 例 PASS —— MCP 工具经审批真实执行、hooks 五事件生命周期、提示词阻断（模型 0 调用）、PreToolUse deny 不执行工具、hook allow 跳过审批、observer 不启动扩展、shutdown 回收 MCP 子进程；加强 TB-03/TB-07 与 SO-02 的功能证据。
 
 ## 5. 提交与集成
@@ -73,5 +77,6 @@
 - T12/T13：`943591f`（host 边界、AST 映射）
 - T14：`4a638e9`（文档与验收报告；其后追加最终 HEAD 复跑记录 `10008e9`）
 - T15：`2b1b003`（serve 装配 MCP/hooks + 自模拟扩展端到端复测）
+- T16：`9f7f00b`（MCP/hooks 端到端矩阵 8 例 + 扩展夹具增强）
 - 合并/推送 master：**未执行**；用户 m00133 要求不合入 master
 - 发布：**未执行**，不 bump 版本

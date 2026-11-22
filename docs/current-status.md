@@ -52,17 +52,18 @@ SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已
 - **共享数据**：`ConfigStore.update` 锁内重读-改-写、活锁超时 `BUDINGX_STORAGE_006`、陈旧锁清理；transcript 并发尾行不误判损坏；凭据继续按 `(id,host)` 作用域
 - **归属与恢复**：第二进程 observer 只读、写请求 `HOST_SESSION_003`；活 owner 拒绝 takeover，SIGKILL 后显式 `--takeover`；接管不重放工具、标出需复核步骤
 - **扩展装配（复测）**：`serve` owner 与交互入口一致装配 `~/.budingx/mcp.json` 与 `hooks.json`；MCP 工具经审批执行、hooks 阻断/拒绝/放行生效；observer 不启动扩展；关闭时回收 MCP 子进程
+- **扩展矩阵**：hooks 八事件全覆盖、`updatedInput` 改写入参、`additionalContext` 注入模型上下文、hook `ask` 回到人工审批、多 MCP 服务器隔离、MCP 工具 `isError`、MCP 服务器崩溃、连接失败只告警 —— 全部经真实进程验证通过
 
 ### 验证结果
 
 | 指标 | 结果 |
 | --- | --- |
-| SP008 定向套件 | 58/58 通过，0 失败，0 跳过 |
-| 全量回归 | 1180 项 / 1179 通过 / 0 失败 / 1 跳过（既有 POSIX 权限用例） |
-| 多轮端到端 | 3 轮 × 23 例全部通过；最终 HEAD 再复跑 3 轮 × 23 例全部通过（真实 stdio/WS 进程、并发、崩溃恢复、自模拟 MCP/hooks） |
+| SP008 定向套件 | 66/66 通过，0 失败，0 跳过 |
+| 全量回归 | 1188 项 / 1187 通过 / 0 失败 / 1 跳过（既有 POSIX 权限用例） |
+| 多轮端到端 | 3 轮 × 23 例全部通过；最终 HEAD 再复跑 3 轮 × 23 例全部通过；扩展矩阵再 3 轮 × 11 例全部通过（真实 stdio/WS 进程、并发、崩溃恢复、自模拟 MCP/hooks） |
 | 模块边界 | PASS（`src/host` 禁 import tui/UI） |
 | AST 复核 | PASS（17/17 文件映射，命中 0） |
-| 交叉验证门禁 | **GATE GREEN**（2026-11-22，`npm test`/`spec:check`/`skills:check`/`pack-smoke` 全通过；扩展复测后 HEAD `abbdcb1` 再次 GREEN） |
+| 交叉验证门禁 | **GATE GREEN**（2026-11-22，`npm test`/`spec:check`/`skills:check`/`pack-smoke` 全通过；扩展复测后 HEAD `abbdcb1` 再次 GREEN；扩展矩阵后 HEAD `9f7f00b` 再次 GREEN） |
 
 ### 已知限制
 

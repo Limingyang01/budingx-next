@@ -22,10 +22,10 @@
 | PARTIAL | **1**（TB-07 的 SIGTERM 子项，Windows 平台限制，见 §5） |
 | FAIL | **0** |
 | UNVERIFIED | **0** |
-| 全量回归 | **1180 项 / 1179 通过 / 0 失败 / 1 跳过**，EXIT=0（跳过项为既有 POSIX 权限用例） |
-| SP008 定向套件 | **58 / 58 通过 / 0 失败 / 0 跳过**，27.3s |
-| 多轮端到端 | **3 轮 × 23 例，全部 23/23 通过**（真实 stdio/WS 进程、并发、崩溃恢复、自模拟 MCP/hooks） |
-| 宿主扩展装配 | **PASS**（`serve` 接入 MCP/hooks；observer 不启动扩展；关闭回收 MCP 子进程） |
+| 全量回归 | **1188 项 / 1187 通过 / 0 失败 / 1 跳过**，EXIT=0（跳过项为既有 POSIX 权限用例） |
+| SP008 定向套件 | **66 / 66 通过 / 0 失败 / 0 跳过**，29.1s |
+| 多轮端到端 | **3 轮 × 23 例 + 扩展矩阵 3 轮 × 11 例，全部通过**（真实 stdio/WS 进程、并发、崩溃恢复、自模拟 MCP/hooks） |
+| 宿主扩展装配 | **PASS**（`serve` 接入 MCP/hooks；observer 不启动扩展；关闭回收 MCP 子进程；扩展矩阵 8 类场景全通过） |
 | 模块边界 | **PASS**（`npm run test:checks`） |
 | AST 复核 | **PASS**（17/17 文件已映射；118 本仓单元 vs 15852 参考单元；18639 函数对；命中 0） |
 | 门禁 | 见 §7（`npm run merge:gate`） |
@@ -49,6 +49,7 @@
 | T13 | AST 复核映射与处置 | PASS | 本轮 |
 | T14 | 文档与交付记录（PRODUCT/STATUS/test-report） | PASS | 本轮 |
 | T15 | 复测：`serve` 装配 MCP/hooks + 自模拟扩展端到端（用户 m01288/m01304） | PASS | 2b1b003 |
+| T16 | MCP/hooks 端到端矩阵：八事件覆盖、updatedInput、additionalContext、hook ask、多服务器、isError、崩溃、连接失败（用户 m01515） | PASS | 9f7f00b |
 
 ## 4. 新增验证资产
 
@@ -71,8 +72,9 @@
 | `src/tui/test/sp008-crash-recovery.test.mjs` | SH-05/SO-03 崩溃后历史、needs_review、不重放、字节不变 | 1 |
 | `src/tui/test/sp008-transport-parity.test.mjs` | TB-01…07 三传输身份一致、边界帧、双 WS 事件、审批往返 | 4 |
 | `src/tui/test/sp008-serve-extensions.test.mjs` | 复测：MCP 审批执行、hooks 生命周期/阻断/拒绝/放行、observer 不启动扩展、关闭回收子进程 | 3 |
-| `src/tui/test/helpers/host-process.mjs` | 共享 helper（fixture SSE 含 `mcp` 工具调用模式、serve 子进程、WS 客户端、记录帧），非用例 | — |
-| `src/tui/test/helpers/sim-mcp-server.mjs` | 自模拟 stdio MCP 服务器（initialize/tools/list/tools/call，pid 与调用日志落盘），非用例 | — |
+| `src/tui/test/sp008-serve-extensions-matrix.test.mjs` | T16 扩展矩阵：hooks 八事件全覆盖、updatedInput 改写入参、additionalContext 注入模型上下文、hook ask 回到人工审批、多 MCP 服务器隔离、MCP 工具 isError、MCP 服务器崩溃、连接失败只告警 | 8 |
+| `src/tui/test/helpers/host-process.mjs` | 共享 helper（fixture SSE 含 `mcp` 工具调用模式、可覆盖工具调用参数、serve 子进程、WS 客户端、记录帧），非用例 | — |
+| `src/tui/test/helpers/sim-mcp-server.mjs` | 自模拟 stdio MCP 服务器（initialize/tools/list/tools/call，多工具名、失败工具 isError、崩溃退出、pid 与调用日志落盘），非用例 | — |
 
 ## 5. AC 验收明细
 
@@ -124,6 +126,20 @@
 | observer 不启动扩展（WS） | PASS | 例3：同 home/session 第二进程为 observer，submit 拒 `HOST_SESSION_003`；其 MCP pid 文件不存在、调用日志 0 条；observer shutdown 后 owner 的 writer.lock 仍在 |
 | 关闭回收 MCP 子进程 | PASS | 例1：运行期间 MCP pid 存活；`shutdown` 后退出码 0、writer.lock 删除，轮询确认 MCP 子进程已退出（TB-07 清理路径扩展到扩展子进程） |
 
+### R5 MCP 与 hooks 端到端矩阵（2026-11-22，用户 m01515）
+
+T16 补齐第一组扩展用例未覆盖的八类场景，全部经真实 `budingx serve` 进程、真实 stdio/WS 传输、真实 stdio MCP 子进程与真实 hook Node 子进程；断言基于落盘日志、MCP 调用日志、模型请求体与宿主事件流。
+
+| 场景 | 结果 | 证据（`sp008-serve-extensions-matrix.test.mjs`） |
+| --- | --- | --- |
+| hooks 八事件全覆盖 | PASS | 例1：hook 日志精确等于 `SessionStart|-`、`UserPromptSubmit|-`、`PreToolUse|mcp__sim__echo`、`PostToolUse|mcp__sim__echo`、`Notification|-`、`Stop|-`，且无 `StopFailure|-`（回合 outcome=completed，未走失败分支） |
+| `PreToolUse` updatedInput 改写入参 | PASS | 例2：hook 输出 `hookSpecificOutput.updatedInput` 后，MCP 服务器侧收到的 `tools/call` 参数为 `{text:'rewritten-by-hook'}`，证明改写后的入参真正到达工具 |
+| `additionalContext` 注入模型上下文 | PASS | 例3：hook 输出 `hookSpecificOutput.additionalContext`，SSE fixture 捕获的请求首条 system 消息含 `CTX-SIM-42` |
+| hook `ask` 回到人工审批 | PASS | 例4：`PreToolUse` 返回 `permissionDecision:'ask'` 时仍产生 `approval_requested`，人工 allow 后 `tool_result isError=false` 且 MCP 调用 1 条 |
+| 多 MCP 服务器并存 | PASS | 例5：`alpha`/`beta` 两个服务器同时挂载，模型调用 `mcp__beta__echo`；beta 调用日志 1 条、alpha 0 条，证明服务器隔离与路由正确 |
+| MCP 工具 isError 失败 | PASS | 例6：`tools/call` 返回 `isError:true` → 宿主 `tool_result isError=true`；随后 ping 正常，宿主未崩溃 |
+| MCP 服务器崩溃 | PASS | 例7：工具调用使 MCP 子进程 `exit(7)`，宿主仍可 ping、可 `shutdown` 退出 0，writer.lock 正常删除 |
+| MCP 连接失败只告警 | PASS | 例8：服务器命令不可执行 → stderr 出现 `Warning: MCP broken`，宿主照常启动并能正常对话（未被连接失败阻断） |
 ## 6. 多轮端到端
 
 `node --test src/tui/test/sp008-*.test.mjs` 连续 3 轮；日志保存在 `artifacts/quality-runs/SP008/host-contract/`（gitignore 忽略）：
@@ -134,6 +150,8 @@
 | final-run-1…3（交付 HEAD） | 每轮 20/20 PASS，EXIT=0 | 同上，提交后复跑 |
 | ext-run-1…3（扩展复测） | 每轮 **23/23** PASS，EXIT=0，约 26.2s/轮 | 上述 20 例 + 自模拟 MCP/hooks 3 例（审批执行、生命周期、阻断、拒绝、放行、observer 隔离、子进程回收） |
 | final2-run-1…3（复测 HEAD `abbdcb1`） | 每轮 **23/23** PASS，EXIT=0，26.9s / 26.2s / 26.2s | 同上，文档提交后在最终 HEAD 复跑，确认无回归 |
+| matrix-run-1…3（扩展矩阵 HEAD `9f7f00b`） | 每轮 **11/11** PASS，EXIT=0 | 扩展用例 3 例 + T16 矩阵 8 例（八事件、updatedInput、additionalContext、ask、多服务器、isError、崩溃、连接失败） |
+| t16-run-1…3（文档收口前定向全量） | 每轮 **66/66** PASS，EXIT=0 | SP008 定向 66 例全量复跑（宿主、传输、存储、三传输、归属、崩溃恢复、扩展、扩展矩阵） |
 
 每轮均重新创建临时 home、重新启动 serve 子进程、重新建立 HTTP fixture 与 MCP/hook 子进程；不共享上一轮磁盘状态。
 
@@ -143,6 +161,8 @@
 - `scripts/review/sp004-ast.mjs`：新增 17 条 SP008 文件映射，覆盖 `git diff master...HEAD` 的全部 `.ts`；命中 0。
 - 门禁：`npm run merge:gate` → **GATE GREEN**（2026-11-22，最终 HEAD `4a638e9`，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-21T16-59-01-452Z.md`）：`npm test`、`spec:check`、`skills:check`、`pack-smoke` 全通过，禁带路径违规 0。首次 RED 因报告放在 slug 目录而 master 复核按 `SP/SPnnn/test-report.md` 查找；正本移至轮次根目录后复跑 GREEN，偏差见 §8。
 - 复测门禁（T15 后）：`npm run merge:gate` → **GATE GREEN**（HEAD `abbdcb1`，outgoing 13 commits / 49 files，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T00-41-00-318Z.md`）：四项检查退出码全 0，禁带路径违规 0，报告 FAIL 行 0、UNVERIFIED 行 2（TB-07 SIGTERM 与既有 POSIX 权限用例），恢复条件节齐备。
+- 扩展矩阵门禁（T16 后）：`npm run merge:gate` → **GATE GREEN**（HEAD `9f7f00b`，outgoing 15 commits / 50 files，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T01-27-09-665Z.md`）：`npm test`/`spec:check`/`skills:check`/`pack-smoke` 四项检查全通过，禁带路径违规 0。
+- 文档收口门禁（T16 文档后）：`npm run merge:gate` → **GATE GREEN**（outgoing 15 commits / 50 files，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T01-41-12-691Z.md`）：四项检查退出码全 0，禁带路径违规 0，报告 FAIL 行 0、UNVERIFIED 行 3（TB-07 SIGTERM 与 2 项既有 POSIX 权限用例），恢复条件节齐备。
 
 ## 8. 偏差与实施期修订
 
@@ -158,6 +178,7 @@
 | 崩溃恢复测试命名 | 计划覆盖 SO-03 | 实际同时覆盖 SH-05 与 SO-03 | 同一场景（SIGKILL 后接管）自然覆盖两条 AC，避免重复造数据 |
 | 验收报告位置 | 计划：`SP/SP008/host-contract/test-report.md` | 正本：`SP/SP008/test-report.md`；slug 路径保留入口页 | `merge:gate` 的 master 复核按 `SP/SPnnn/test-report.md` 读取最新一轮报告（SP001–SP007 同此约定）；报告留在 slug 目录会使门禁判为缺少报告 |
 | serve 扩展装配 | 初版 `serve` 未传 `mcp`/`hooks`，作为已知限制记录 | 复测按用户 m01288「mcp 和 hooks 自己模拟」接入 `startMcp`/`startHooks`，并新增 3 例真实进程端到端 | 宿主入口应与交互入口能力一致；observer 仍不启动扩展。限制条目已从 §9 与 PRODUCT §5.9.2 移除，改为装配说明 |
+| 扩展矩阵覆盖 | 计划未单列矩阵用例 | T16 新增 `sp008-serve-extensions-matrix.test.mjs` 8 例 | 覆盖八事件语义、入参改写、上下文注入、ask 审批、多服务器隔离、工具失败、服务器崩溃、连接失败降级；能力早已在 `core`/`tui` 就位，本次只补证据，未改实现 |
 
 ## 9. 已知限制与恢复条件
 
@@ -184,4 +205,6 @@ npm run merge:gate
 
 扩展复测单独跑：`node --test src/tui/test/sp008-serve-extensions.test.mjs`（3 例，自模拟 MCP/hooks）。
 
-多轮日志：`artifacts/quality-runs/SP008/host-contract/run-{1,2,3}.log`、`final-run-{1,2,3}.log`、`ext-run-{1,2,3}.log`、`final2-run-{1,2,3}.log`（本地保留，不提交）。
+扩展矩阵单独跑：`node --test src/tui/test/sp008-serve-extensions-matrix.test.mjs`（8 例，MCP/hooks 端到端矩阵）。
+
+多轮日志：`artifacts/quality-runs/SP008/host-contract/run-{1,2,3}.log`、`final-run-{1,2,3}.log`、`ext-run-{1,2,3}.log`、`final2-run-{1,2,3}.log`、`matrix-run-{1,2,3}.log`、`t16-run-{1,2,3}.log`（本地保留，不提交）。
