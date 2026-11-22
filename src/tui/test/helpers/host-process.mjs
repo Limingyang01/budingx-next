@@ -11,8 +11,17 @@ import { connectWebSocket } from '../../dist/host/transport/ws-client.js'
 
 export const cli = fileURLToPath(new URL('../../dist/tui/cli.js', import.meta.url))
 
-/** Fake OpenAI-compatible SSE endpoint. mode selects text, Bash or MCP tool call. */
-export async function startFixtureServer(t, mode = 'text') {
+/**
+ * Fake OpenAI-compatible SSE endpoint.
+ *
+ * mode selects the first-turn behaviour:
+ *   'text' —— 普通文本回答
+ *   'bash' —— 请求 Bash 工具（用于审批往返）
+ *   'mcp'  —— 请求 MCP 工具 mcp__sim__echo
+ * options.toolCall 可覆盖工具名/参数/调用 id；options.requests 暴露收到的请求体，
+ * 便于断言 additionalContext 是否进入模型上下文。
+ */
+export async function startFixtureServer(t, mode = 'text', options = {}) {
   const requests = []
   const server = createServer(async (req, res) => {
     const parts = []
@@ -20,8 +29,9 @@ export async function startFixtureServer(t, mode = 'text') {
     const body = parts.length > 0 ? JSON.parse(Buffer.concat(parts).toString('utf8')) : {}
     requests.push(body)
     const hasToolResult = (body.messages ?? []).some((item) => item.role === 'tool')
-    const toolCall =
-      mode === 'bash'
+    const toolCall = options.toolCall
+      ? { id: options.toolCall.id ?? 'call-custom', ...options.toolCall }
+      : mode === 'bash'
         ? { id: 'call-bash', name: 'Bash', args: { command: 'rm -rf sp008-approval-temp' } }
         : mode === 'mcp'
           ? { id: 'call-mcp', name: 'mcp__sim__echo', args: { text: 'hello' } }
@@ -55,6 +65,9 @@ export async function startFixtureServer(t, mode = 'text') {
     baseUrl: 'http://127.0.0.1:' + server.address().port + '/v1',
     get requestCount() {
       return requests.length
+    },
+    get requests() {
+      return requests
     }
   }
 }
@@ -104,6 +117,7 @@ export function spawnServe(t, options) {
     transportName === 'ws' && !options.args.includes('--token')
       ? [...options.args, '--token', 'test-token']
       : options.args
+  // MCP 夹具的环境变量必须透传给 serve 进程，再由 mcp.json 的 ${ENV} 引用解析。
   const child = spawn(
     process.execPath,
     [cli, 'serve', ...forwarded, '--home', home],
