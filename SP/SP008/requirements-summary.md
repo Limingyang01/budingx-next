@@ -39,7 +39,7 @@ shared-models-and-history、session-ownership、transport-boundaries。
   存储、UI 证据分层记录；缺环境记 UNVERIFIED 并写恢复条件，不以 mock 冒充真实链路。
 - 用户额外要求（m00133）：多轮端到端复跑（stdio/WS 真实进程、并发、崩溃恢复），AST 复核 PASS。
 - 门禁：`npm run merge:gate` 用于证明分支可交付；**本轮不合入 master、不推送 master**（m00133）。
-- 验收结果：定向 58/58、全量 1180 项（1179 通过 / 1 跳过）、交付 3 轮端到端各 20/20 + 扩展复测 3 轮各 23/23、模块边界 PASS、AST PASS；TB-07 的 SIGTERM 子项因 Windows 平台限制记 PARTIAL/UNVERIFIED，恢复条件见 test-report §9。
+- 验收结果：定向 58/58、全量 1180 项（1179 通过 / 1 跳过）、交付 3 轮端到端各 20/20 + 扩展复测 3 轮各 23/23 + 最终 HEAD 再 3 轮各 23/23、模块边界 PASS、AST PASS；TB-07 的 SIGTERM 子项因 Windows 平台限制记 PARTIAL/UNVERIFIED，恢复条件见 test-report §9。
 - 扩展复测（m01288/m01304）：`serve` owner 装配 MCP/hooks，自模拟 stdio MCP 服务器与真实 hook 子进程验证审批执行、五事件生命周期、提示词阻断、工具拒绝、hook 放行、observer 不启动扩展、关闭回收子进程（test-report §5 R4）。
 - 交接输入（供 SP009/SP014/SP011）：宿主身份/事件/权限契约、`serve` 入口参数、共享更新错误码、
   归属/接管语义与已知限制（无跨进程实时事件、无事件重放）。

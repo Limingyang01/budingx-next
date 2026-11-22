@@ -17,10 +17,10 @@
 - [x] 计划：design/plan.zh.md（T1…T14）
 - [x] 实施：T1–T10（共享数据、会话归属、协议/服务端、进程内/stdio/WS、引擎适配）
 - [x] 测试收口：T11 定向 55/55 PASS；T15 复测后定向 58/58 PASS；全量 1180 项 / 1179 通过 / 1 跳过 / 0 失败
-- [x] 多轮端到端：交付 3 轮 × 20 例 + 复测 3 轮 × 23 例，全部 PASS（日志 `artifacts/quality-runs/SP008/host-contract/`）
+- [x] 多轮端到端：交付 3 轮 × 20 例 + 复测 3 轮 × 23 例 + 最终 HEAD 再 3 轮 × 23 例，全部 PASS（日志 `artifacts/quality-runs/SP008/host-contract/`）
 - [x] 扩展复测（T15，用户 m01288/m01304）：`serve` 装配 MCP/hooks，自模拟 MCP 服务器与 hook 子进程，3 例真实进程端到端 PASS
 - [x] AST 复核：17/17 文件映射，命中 0，PASS
-- [x] 交叉验证门禁：`npm run merge:gate` → **GATE GREEN**（2026-11-22，`npm test`/`spec:check`/`skills:check`/`pack-smoke` 全通过）
+- [x] 交叉验证门禁：`npm run merge:gate` → **GATE GREEN**（交付 HEAD `4a638e9`；T15 复测后 HEAD `abbdcb1` 再次 GREEN，13 commits / 49 files，四项检查全通过）
 - [x] 交付记录：test-report、PRODUCT.md §5.9、docs/development.md、汇总索引
 - [ ] 合入 master：**用户 m00133 明确不做**，保持功能分支完成态
 

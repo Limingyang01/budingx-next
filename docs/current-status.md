@@ -59,10 +59,10 @@ SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已
 | --- | --- |
 | SP008 定向套件 | 58/58 通过，0 失败，0 跳过 |
 | 全量回归 | 1180 项 / 1179 通过 / 0 失败 / 1 跳过（既有 POSIX 权限用例） |
-| 多轮端到端 | 3 轮 × 23 例，全部 23/23 通过（真实 stdio/WS 进程、并发、崩溃恢复、自模拟 MCP/hooks） |
+| 多轮端到端 | 3 轮 × 23 例全部通过；最终 HEAD 再复跑 3 轮 × 23 例全部通过（真实 stdio/WS 进程、并发、崩溃恢复、自模拟 MCP/hooks） |
 | 模块边界 | PASS（`src/host` 禁 import tui/UI） |
 | AST 复核 | PASS（17/17 文件映射，命中 0） |
-| 交叉验证门禁 | **GATE GREEN**（2026-11-22，`npm test`/`spec:check`/`skills:check`/`pack-smoke` 全通过） |
+| 交叉验证门禁 | **GATE GREEN**（2026-11-22，`npm test`/`spec:check`/`skills:check`/`pack-smoke` 全通过；扩展复测后 HEAD `abbdcb1` 再次 GREEN） |
 
 ### 已知限制
 

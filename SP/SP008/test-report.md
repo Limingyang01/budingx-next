@@ -133,6 +133,7 @@
 | run-1…3（交付前） | 每轮 20/20 PASS，EXIT=0 | stdio/WS 真实进程、owner/observer、崩溃接管、崩溃恢复、三传输、审批、配置并发、共享历史 |
 | final-run-1…3（交付 HEAD） | 每轮 20/20 PASS，EXIT=0 | 同上，提交后复跑 |
 | ext-run-1…3（扩展复测） | 每轮 **23/23** PASS，EXIT=0，约 26.2s/轮 | 上述 20 例 + 自模拟 MCP/hooks 3 例（审批执行、生命周期、阻断、拒绝、放行、observer 隔离、子进程回收） |
+| final2-run-1…3（复测 HEAD `abbdcb1`） | 每轮 **23/23** PASS，EXIT=0，26.9s / 26.2s / 26.2s | 同上，文档提交后在最终 HEAD 复跑，确认无回归 |
 
 每轮均重新创建临时 home、重新启动 serve 子进程、重新建立 HTTP fixture 与 MCP/hook 子进程；不共享上一轮磁盘状态。
 
@@ -141,6 +142,7 @@
 - `scripts/checks/module-boundaries.mjs`：新增 `RULES.host`，`ui` 禁 UI 包但允许 `node:readline`；`dirs` 禁 `tui/provider/workspace/exec/git/plan/observability`；`core`/`storage` 的禁止依赖加入 `host`。`npm run test:checks` → 模块边界检查通过。
 - `scripts/review/sp004-ast.mjs`：新增 17 条 SP008 文件映射，覆盖 `git diff master...HEAD` 的全部 `.ts`；命中 0。
 - 门禁：`npm run merge:gate` → **GATE GREEN**（2026-11-22，最终 HEAD `4a638e9`，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-21T16-59-01-452Z.md`）：`npm test`、`spec:check`、`skills:check`、`pack-smoke` 全通过，禁带路径违规 0。首次 RED 因报告放在 slug 目录而 master 复核按 `SP/SPnnn/test-report.md` 查找；正本移至轮次根目录后复跑 GREEN，偏差见 §8。
+- 复测门禁（T15 后）：`npm run merge:gate` → **GATE GREEN**（HEAD `abbdcb1`，outgoing 13 commits / 49 files，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T00-41-00-318Z.md`）：四项检查退出码全 0，禁带路径违规 0，报告 FAIL 行 0、UNVERIFIED 行 2（TB-07 SIGTERM 与既有 POSIX 权限用例），恢复条件节齐备。
 
 ## 8. 偏差与实施期修订
 
@@ -182,4 +184,4 @@ npm run merge:gate
 
 扩展复测单独跑：`node --test src/tui/test/sp008-serve-extensions.test.mjs`（3 例，自模拟 MCP/hooks）。
 
-多轮日志：`artifacts/quality-runs/SP008/host-contract/run-{1,2,3}.log`、`final-run-{1,2,3}.log`、`ext-run-{1,2,3}.log`（本地保留，不提交）。
+多轮日志：`artifacts/quality-runs/SP008/host-contract/run-{1,2,3}.log`、`final-run-{1,2,3}.log`、`ext-run-{1,2,3}.log`、`final2-run-{1,2,3}.log`（本地保留，不提交）。
