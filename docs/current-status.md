@@ -42,7 +42,7 @@ SP007 功能分支 `feature/SP007/agent-quality-and-extensions` 已完成 17 个
 
 ## SP008 · 多端架构入口与共享边界（功能分支交付完成，未合入 master）
 
-SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已完成 T1–T14：通用宿主契约（进程内/stdio/WS）、活动会话归属与崩溃接管、共享配置/历史并发安全、`budingx serve` 入口与轻量测试客户端。按用户 m00133 要求，**本轮不合入 master、不推送、不发布**，产品版本保持 0.7.0。
+SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已完成 T1–T17：通用宿主契约（进程内/stdio/WS）、活动会话归属与崩溃接管、共享配置/历史并发安全、`budingx serve` 入口与轻量测试客户端。按用户 m00133 要求，**本轮不合入 master、不推送、不发布**，产品版本保持 0.7.0。
 
 ### 已完成
 
@@ -53,17 +53,18 @@ SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已
 - **归属与恢复**：第二进程 observer 只读、写请求 `HOST_SESSION_003`；活 owner 拒绝 takeover，SIGKILL 后显式 `--takeover`；接管不重放工具、标出需复核步骤
 - **扩展装配（复测）**：`serve` owner 与交互入口一致装配 `~/.budingx/mcp.json` 与 `hooks.json`；MCP 工具经审批执行、hooks 阻断/拒绝/放行生效；observer 不启动扩展；关闭时回收 MCP 子进程
 - **扩展矩阵**：hooks 八事件全覆盖、`updatedInput` 改写入参、`additionalContext` 注入模型上下文、hook `ask` 回到人工审批、多 MCP 服务器隔离、MCP 工具 `isError`、MCP 服务器崩溃、连接失败只告警 —— 全部经真实进程验证通过
+- **测试加固（T17）**：WS 服务端帧级分支、HostClient 错误分支、协议校验文案、serve 参数/退出码、owner 打断活动回合、history.limit 截断、ws-client 连接失败路径全部补齐；修复 interrupt 空闲语义、WS 客户端首帧竞争、空端口静默接受三处缺陷；`test:unit` 纳入 transport 测试
 
 ### 验证结果
 
 | 指标 | 结果 |
 | --- | --- |
-| SP008 定向套件 | 66/66 通过，0 失败，0 跳过 |
-| 全量回归 | 1188 项 / 1187 通过 / 0 失败 / 1 跳过（既有 POSIX 权限用例） |
-| 多轮端到端 | 3 轮 × 23 例全部通过；最终 HEAD 再复跑 3 轮 × 23 例全部通过；扩展矩阵再 3 轮 × 11 例全部通过（真实 stdio/WS 进程、并发、崩溃恢复、自模拟 MCP/hooks） |
+| SP008 定向套件 | 113/113 通过，0 失败，0 跳过 |
+| 全量回归 | 1241 项 / 1240 通过 / 0 失败 / 1 跳过（既有 POSIX 权限用例；T17 起含 transport 测试） |
+| 多轮端到端 | 3 轮 × 23 例全部通过；最终 HEAD 再复跑 3 轮 × 23 例全部通过；扩展矩阵再 3 轮 × 11 例全部通过；T17 加固再 3 轮 × 42 例全部通过（真实 stdio/WS 进程、并发、崩溃恢复、自模拟 MCP/hooks） |
 | 模块边界 | PASS（`src/host` 禁 import tui/UI） |
 | AST 复核 | PASS（17/17 文件映射，命中 0） |
-| 交叉验证门禁 | **GATE GREEN**（2026-11-22，`npm test`/`spec:check`/`skills:check`/`pack-smoke` 全通过；扩展复测后 HEAD `abbdcb1` 再次 GREEN；扩展矩阵后 HEAD `9f7f00b` 再次 GREEN） |
+| 交叉验证门禁 | **GATE GREEN**（2026-11-22，`npm test`/`spec:check`/`skills:check`/`pack-smoke` 全通过；扩展复测后 HEAD `abbdcb1` 再次 GREEN；扩展矩阵后 HEAD `9f7f00b` 再次 GREEN；T17 加固后 HEAD `c47e224` 再次 GREEN） |
 
 ### 已知限制
 

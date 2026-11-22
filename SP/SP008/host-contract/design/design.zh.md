@@ -322,5 +322,15 @@ connectWebSocket({ url, token, timeoutMs? }): Promise<HostTransport>
 §3.6/§3.7 的传输与客户端签名回写为实际导出（`connectStdio`、`startWsHost`、`HostClient` 类），
 避免设计与实现名义漂移；其余行为不变。
 
+设计修订（实施期，2026-11-22，T17 测试加固）：补齐七处测试缺口时发现并修复三个实现缺陷——
+① `HostEngine.interrupt()` 初版恒返回 true，改为 `session.isBusy` 为 false 时返回 false、
+有活动回合才转发打断（§3.3 本就约定 `{ interrupted: boolean }`）；② `connectWebSocket` 的 101
+握手与首批帧同 TCP 块到达时，同步 pump 会在调用方 await 后注册监听器之前投递导致丢帧，
+改为握手剩余字节 `setTimeout(pump, 0)` 推迟到宏任务；③ `parseServeArgs` 的 `Number('')===0`
+会静默接受 `--port ''`，改为空白值显式拒绝（退出码 2）。另把 `test:unit` 的 glob 扩到
+`src/host/transport/test/*.test.mjs`，使 WS 帧级测试进入全量回归与门禁。证据：
+`sp008-host-engine` 第 5 例、`sp008-interrupt-history`（stdio/WS 真实进程）、`ws-client.test` 10 例、
+`sp008-serve-cli` 7 例；详见 test-report §5 R6。
+
 开放项（不阻塞本轮）：事件重放/幂等（范围外）、会话删除/导出策略（SP005 遗留）、
 WS 鉴权扩展（令牌轮换/多用户，未来 Gateway）、跨设备同步（未来路线图）。

@@ -1,6 +1,6 @@
 # SP008 验收报告 — 多端架构入口与共享边界
 
-状态：**功能分支完成，未合入 master**（用户 m00133）｜日期：2026-11-22（含当日扩展复测）｜分支 `feature/SP008/host-contract`｜基线 master `a8628b5`｜产品版本 0.7.0（不 bump）
+状态：**功能分支完成，未合入 master**（用户 m00133）｜日期：2026-11-22（含当日扩展复测与 T17 测试加固）｜分支 `feature/SP008/host-contract`｜基线 master `a8628b5`｜产品版本 0.7.0（不 bump）
 
 ## 1. 方法与环境
 
@@ -22,9 +22,9 @@
 | PARTIAL | **1**（TB-07 的 SIGTERM 子项，Windows 平台限制，见 §5） |
 | FAIL | **0** |
 | UNVERIFIED | **0** |
-| 全量回归 | **1188 项 / 1187 通过 / 0 失败 / 1 跳过**，EXIT=0（跳过项为既有 POSIX 权限用例） |
-| SP008 定向套件 | **66 / 66 通过 / 0 失败 / 0 跳过**，29.1s |
-| 多轮端到端 | **3 轮 × 23 例 + 扩展矩阵 3 轮 × 11 例，全部通过**（真实 stdio/WS 进程、并发、崩溃恢复、自模拟 MCP/hooks） |
+| 全量回归 | **1241 项 / 1240 通过 / 0 失败 / 1 跳过**，EXIT=0，156.3s（T17 起 `test:unit` 纳入 `src/host/transport/test`；跳过项为既有 POSIX 权限用例） |
+| SP008 定向套件 | **113 / 113 通过 / 0 失败 / 0 跳过**，33.0s |
+| 多轮端到端 | **3 轮 × 23 例 + 扩展矩阵 3 轮 × 11 例 + T17 加固 3 轮 × 42 例，全部通过**（真实 stdio/WS 进程、并发、崩溃恢复、自模拟 MCP/hooks） |
 | 宿主扩展装配 | **PASS**（`serve` 接入 MCP/hooks；observer 不启动扩展；关闭回收 MCP 子进程；扩展矩阵 8 类场景全通过） |
 | 模块边界 | **PASS**（`npm run test:checks`） |
 | AST 复核 | **PASS**（17/17 文件已映射；118 本仓单元 vs 15852 参考单元；18639 函数对；命中 0） |
@@ -50,6 +50,7 @@
 | T14 | 文档与交付记录（PRODUCT/STATUS/test-report） | PASS | 本轮 |
 | T15 | 复测：`serve` 装配 MCP/hooks + 自模拟扩展端到端（用户 m01288/m01304） | PASS | 2b1b003 |
 | T16 | MCP/hooks 端到端矩阵：八事件覆盖、updatedInput、additionalContext、hook ask、多服务器、isError、崩溃、连接失败（用户 m01515） | PASS | 9f7f00b |
+| T17 | 测试加固：补齐七处缺口（WS 帧级/客户端错误分支/协议文案/serve 退出码/interrupt/history.limit/ws-client 失败路径），修复 interrupt 语义、WS 首帧竞争、空端口三处缺陷（用户 m01996） | PASS | c47e224 |
 
 ## 4. 新增验证资产
 
@@ -58,13 +59,16 @@
 | `src/storage/test/config-store-lock.test.mjs` | SH-01/02 锁内重读-改-写、超时、陈旧锁、失败清理 | 4 |
 | `src/storage/test/session-transcript-tail.test.mjs` | SH-03 尾行跳过、完整坏行、无写者时保持 SR-07 | 3 |
 | `src/storage/test/session-writer-lock-inspect.test.mjs` | SO-01/03 锁检视语义 | 3 |
-| `src/host/test/protocol.test.mjs` | TB-01/04/06 编解码、错误码、超限、事件不含密钥 | 5 |
+| `src/host/test/protocol.test.mjs` | TB-01/04/06 编解码、错误码、超限、事件不含密钥；T17 增解析/字段校验文案精确断言与合法边界 | 8 |
 | `src/host/test/ownership.test.mjs` | SO-01/03 归属、观察者、陈旧锁接管 | 4 |
 | `src/host/test/server.test.mjs` | SO-01…04、TB-01/02/04/07 服务端路由与关闭 | 10 |
 | `src/host/transport/test/in-process.test.mjs` | TB-01/02 进程内 hello/写/事件/关闭 | 3 |
 | `src/host/transport/test/ws-frames.test.mjs` | TB-01/04 RFC6455 帧与 RFC 向量 | 3 |
+| `src/host/test/client.test.mjs` | T17：HostClient 握手、错误透传、请求超时、close 后拒绝、fatal 失败全部挂起、传输断开、事件/角色分派、畸形帧忽略 | 8 |
+| `src/host/transport/test/ws-server.test.mjs` | T17：真实服务端帧级分支——426/401/400、101 与 accept、分片重组与冲突、continuation 无起点、binary 1003、未知 opcode、未掩码、累计超限 1009、ping/pong、close、分片控制帧、非回环/空令牌 | 15 |
+| `src/host/transport/test/ws-client.test.mjs` | T17：非法 URL/wss 拒绝、403 带 statusCode、accept 不匹配、握手超时、连接失败、头过大、掩码/分片/自动 pong/close、binary 与掩码违规回应 | 10 |
 | `src/tui/test/sp008-config-concurrency.test.mjs` | SH-01/02 两真实进程并发更新、kill 持锁进程 | 2 |
-| `src/tui/test/sp008-host-engine.test.mjs` | TB-03/SH-05 引擎描述、真实 SSE 回合、审批超时、dispose | 4 |
+| `src/tui/test/sp008-host-engine.test.mjs` | TB-03/SH-05 引擎描述、真实 SSE 回合、审批超时、dispose；T17 增 interrupt 空闲 false/活动 true 并 cancelled 收尾 | 5 |
 | `src/tui/test/sp008-host-stdio.test.mjs` | TB-01/07 stdio owner/observer、EOF 释放锁 | 2 |
 | `src/tui/test/sp008-host-ws.test.mjs` | TB-01/05/07 401、回环限制、事件、超限帧 | 3 |
 | `src/tui/test/sp008-shared-history.test.mjs` | SH-03 并发追加期间只读恢复 | 1 |
@@ -73,7 +77,9 @@
 | `src/tui/test/sp008-transport-parity.test.mjs` | TB-01…07 三传输身份一致、边界帧、双 WS 事件、审批往返 | 4 |
 | `src/tui/test/sp008-serve-extensions.test.mjs` | 复测：MCP 审批执行、hooks 生命周期/阻断/拒绝/放行、observer 不启动扩展、关闭回收子进程 | 3 |
 | `src/tui/test/sp008-serve-extensions-matrix.test.mjs` | T16 扩展矩阵：hooks 八事件全覆盖、updatedInput 改写入参、additionalContext 注入模型上下文、hook ask 回到人工审批、多 MCP 服务器隔离、MCP 工具 isError、MCP 服务器崩溃、连接失败只告警 | 8 |
-| `src/tui/test/helpers/host-process.mjs` | 共享 helper（fixture SSE 含 `mcp` 工具调用模式、可覆盖工具调用参数、serve 子进程、WS 客户端、记录帧），非用例 | — |
+| `src/tui/test/sp008-serve-cli.test.mjs` | T17：parseServeArgs 默认值/全选项/端口边界/15 组用法错误文案；真实进程 --help 退出 0、未知参数/越界端口/非法 session 退出 2、损坏配置退出 1 且 .bak 保留 | 7 |
+| `src/tui/test/sp008-interrupt-history.test.mjs` | T17：stdio/WS owner 打断进行中回合（cancelled 收尾、空闲 interrupt false、回到 idle）；history.limit 0/1/超量/非法值真实进程语义 | 3 |
+| `src/tui/test/helpers/host-process.mjs` | 共享 helper（fixture SSE 含 `mcp`/`slow` 模式、可覆盖工具调用参数、serve 子进程、WS 客户端、记录帧），非用例 | — |
 | `src/tui/test/helpers/sim-mcp-server.mjs` | 自模拟 stdio MCP 服务器（initialize/tools/list/tools/call，多工具名、失败工具 isError、崩溃退出、pid 与调用日志落盘），非用例 | — |
 
 ## 5. AC 验收明细
@@ -140,6 +146,30 @@ T16 补齐第一组扩展用例未覆盖的八类场景，全部经真实 `budin
 | MCP 工具 isError 失败 | PASS | 例6：`tools/call` 返回 `isError:true` → 宿主 `tool_result isError=true`；随后 ping 正常，宿主未崩溃 |
 | MCP 服务器崩溃 | PASS | 例7：工具调用使 MCP 子进程 `exit(7)`，宿主仍可 ping、可 `shutdown` 退出 0，writer.lock 正常删除 |
 | MCP 连接失败只告警 | PASS | 例8：服务器命令不可执行 → stderr 出现 `Warning: MCP broken`，宿主照常启动并能正常对话（未被连接失败阻断） |
+### R6 测试加固与实现修复（2026-11-22，用户 m01996「继续做，测试并且修复到位」）
+
+针对验收后勘察出的七处未测到位缺口补齐证据，全部先 RED 后 GREEN；过程中发现并修复三个真实实现缺陷。
+
+| 缺口 | 结果 | 证据 |
+| --- | --- | --- |
+| WS 服务端帧级分支 | PASS | `ws-server.test.mjs` 15 例：非 upgrade HTTP→426；错令牌 401；缺 key/错版本 400；101+accept 正确；分片重组；分片中发新消息→fatal+1002；continuation 无起点→1002；binary→1003；未知 opcode→1002；未掩码→1002；分片累计超限→1009；ping→同载荷 pong、主动 pong 忽略；close→1000 回应；分片控制帧→1002；非回环/空令牌抛 WsBindingError |
+| HostClient 错误分支 | PASS | `client.test.mjs` 8 例：错误响应原码原文透传；请求超时 `request timed out: describe`；close 后 `client is closed`；fatal 帧失败全部挂起请求；传输断开失败挂起并回调 onClose；event/role_changed 分派；畸形帧忽略 |
+| 协议校验文案 | PASS | `protocol.test.mjs` 新增 3 例：解析层 6 条与字段层 14 组文案精确断言（hello.version/clientId、history.limit、submit.text、approval.requestId/outcome、set_permission_mode.mode 等），合法边界不误拒 |
+| serve 参数与退出码 | PASS | `sp008-serve-cli.test.mjs` 7 例：parseServeArgs 单测（默认值、全选项、端口 0/65535 边界、15 组错误文案）+ 真实进程 --help→0、未知参数/越界端口/非法 session→2、损坏配置→1 且 stderr 含 corrupt、.bak 保留原文件 |
+| owner 打断活动回合 | PASS | `sp008-interrupt-history.test.mjs`：stdio 与 WS 各一例——慢 SSE 夹具使回合停留 streaming，interrupt→`{interrupted:true}`→`turn_finalized outcome=cancelled`→再 interrupt false、describe state idle；空闲 interrupt 返回 false |
+| history.limit 截断 | PASS | 同文件：真实回合后 limit 缺省全量 truncated=false；limit 0 空且 truncated=true；limit 1 取末条且 truncated=true；limit 999 全量不截断；limit -1 拒 HOST_PROTOCOL_002 文案精确 |
+| ws-client 连接失败路径 | PASS | `ws-client.test.mjs` 10 例：非法 URL、wss/http 拒绝、403 带 statusCode、accept 不匹配、握手超时、连接拒绝、响应头过大；成功路径掩码/分片/自动 pong/close；服务端 binary/掩码违规时客户端回 1003/1002 |
+
+**修复的三个实现缺陷（均先有失败用例）：**
+
+| 缺陷 | 修复 | 证据 |
+| --- | --- | --- |
+| `HostEngine.interrupt()` 恒返回 true，无活动回合语义（design §3.3 约定 `{interrupted:boolean}`） | `src/tui/host-engine.ts`：`session.isBusy` 为 false 时返回 false，否则转发 `session.interrupt('user')` 返回 true | RED：引擎第 5 例空闲断言 false 失败（true!==false）；GREEN 后单元+stdio/WS e2e 全通过 |
+| `connectWebSocket` 101 握手与首批帧同 TCP 块到达时，同步 pump 在调用方注册监听器前投递→丢帧/丢关闭事件 | `src/host/transport/ws-client.ts`：握手剩余字节改 `setTimeout(pump, 0)` 推迟到宏任务 | RED：成功路径 3 例收不到帧；GREEN 后 10/10，既有 WS e2e 无回归 |
+| `parseServeArgs` 的 `Number('')===0` 静默接受 `--port ''` | `src/tui/serve.ts`：空白值置 NaN 显式拒绝，退出码 2 | RED：用法错误用例失败；GREEN 后 7/7 |
+
+另：`test:unit` glob 扩至 `src/host/transport/test/*.test.mjs`，WS 帧级/客户端测试自此进入全量回归与门禁（此前仅定向命令覆盖）。
+
 ## 6. 多轮端到端
 
 `node --test src/tui/test/sp008-*.test.mjs` 连续 3 轮；日志保存在 `artifacts/quality-runs/SP008/host-contract/`（gitignore 忽略）：
@@ -153,6 +183,7 @@ T16 补齐第一组扩展用例未覆盖的八类场景，全部经真实 `budin
 | matrix-run-1…3（扩展矩阵 HEAD `9f7f00b`） | 每轮 **11/11** PASS，EXIT=0 | 扩展用例 3 例 + T16 矩阵 8 例（八事件、updatedInput、additionalContext、ask、多服务器、isError、崩溃、连接失败） |
 | t16-run-1…3（文档收口前定向全量） | 每轮 **66/66** PASS，EXIT=0 | SP008 定向 66 例全量复跑（宿主、传输、存储、三传输、归属、崩溃恢复、扩展、扩展矩阵） |
 | final-t16-run-1…3（最终 HEAD `562722b`） | 每轮 **11/11** PASS，EXIT=0 | 文档提交后在最终 HEAD 复跑扩展与矩阵用例，确认无回归 |
+| t17-run-1…3（T17 加固后） | 每轮 **42/42** PASS，EXIT=0 | 全部 `sp008-*` 真实进程用例（含扩展 3 + 矩阵 8 + serve-cli 7 + interrupt/history 3），每轮重建 home/serve/fixture/MCP/hook 子进程 |
 
 每轮均重新创建临时 home、重新启动 serve 子进程、重新建立 HTTP fixture 与 MCP/hook 子进程；不共享上一轮磁盘状态。
 
@@ -166,6 +197,7 @@ T16 补齐第一组扩展用例未覆盖的八类场景，全部经真实 `budin
 - 文档收口门禁（T16 文档后）：`npm run merge:gate` → **GATE GREEN**（outgoing 15 commits / 50 files，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T01-41-12-691Z.md`）：四项检查退出码全 0，禁带路径违规 0，报告 FAIL 行 0、UNVERIFIED 行 3（TB-07 SIGTERM 与 2 项既有 POSIX 权限用例），恢复条件节齐备。
 - 最终 HEAD 门禁（文档提交 `562722b` 后）：`npm run merge:gate` → **GATE GREEN**（outgoing 16 commits，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T01-44-51-287Z.md`）：四项检查退出码全 0。
 - 收尾门禁（HEAD `95d7e3e`）：`npm run merge:gate` → **GATE GREEN**（outgoing 19 commits，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T01-55-47-853Z.md`）：四项检查退出码全 0，禁带路径违规 0。工作树干净，此为交付最终 HEAD `b417705`（报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T01-59-01-605Z.md`）。
+- T17 加固门禁（HEAD `c47e224`）：`npm run merge:gate` → **GATE GREEN**（报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T02-59-26-608Z.md`）：`npm test`（含新纳入的 transport 测试，全量 1241 项）/`spec:check`/`skills:check`/`pack-smoke` 四项检查全通过。
 
 ## 8. 偏差与实施期修订
 
@@ -182,6 +214,10 @@ T16 补齐第一组扩展用例未覆盖的八类场景，全部经真实 `budin
 | 验收报告位置 | 计划：`SP/SP008/host-contract/test-report.md` | 正本：`SP/SP008/test-report.md`；slug 路径保留入口页 | `merge:gate` 的 master 复核按 `SP/SPnnn/test-report.md` 读取最新一轮报告（SP001–SP007 同此约定）；报告留在 slug 目录会使门禁判为缺少报告 |
 | serve 扩展装配 | 初版 `serve` 未传 `mcp`/`hooks`，作为已知限制记录 | 复测按用户 m01288「mcp 和 hooks 自己模拟」接入 `startMcp`/`startHooks`，并新增 3 例真实进程端到端 | 宿主入口应与交互入口能力一致；observer 仍不启动扩展。限制条目已从 §9 与 PRODUCT §5.9.2 移除，改为装配说明 |
 | 扩展矩阵覆盖 | 计划未单列矩阵用例 | T16 新增 `sp008-serve-extensions-matrix.test.mjs` 8 例 | 覆盖八事件语义、入参改写、上下文注入、ask 审批、多服务器隔离、工具失败、服务器崩溃、连接失败降级；能力早已在 `core`/`tui` 就位，本次只补证据，未改实现 |
+| interrupt 语义 | design §3.3 约定 `{interrupted:boolean}`，初版实现恒 true | T17 修复为按 `session.isBusy` 返回，空闲 false | 测试加固对照设计发现；RED→GREEN，单元+stdio/WS e2e 证明；已回写 design 修订段 |
+| WS 客户端首帧竞争 | 初版握手后同步 pump 剩余字节 | 改 `setTimeout(pump, 0)`，监听器注册先于投递 | 101 与首批帧同 TCP 块到达时丢帧；真实缺陷，ws-client 成功路径用例 RED 暴露 |
+| 空端口静默接受 | `Number('')===0` 使 `--port ''` 落到端口 0 | 空白值显式拒绝，退出码 2 | 与「0=随机端口」语义混淆；用法错误用例 RED 暴露 |
+| test:unit 覆盖 | glob `src/*/test/*.test.mjs` 不含嵌套的 `src/host/transport/test` | glob 追加该目录 | WS 帧级测试此前只在定向命令中跑；纳入后全量与门禁覆盖一致 |
 
 ## 9. 已知限制与恢复条件
 
@@ -210,4 +246,6 @@ npm run merge:gate
 
 扩展矩阵单独跑：`node --test src/tui/test/sp008-serve-extensions-matrix.test.mjs`（8 例，MCP/hooks 端到端矩阵）。
 
-多轮日志：`artifacts/quality-runs/SP008/host-contract/run-{1,2,3}.log`、`final-run-{1,2,3}.log`、`ext-run-{1,2,3}.log`、`final2-run-{1,2,3}.log`、`matrix-run-{1,2,3}.log`、`t16-run-{1,2,3}.log`、`final-t16-run-{1,2,3}.log`（本地保留，不提交）。
+T17 加固单独跑：`node --test src/host/test/client.test.mjs src/host/transport/test/ws-server.test.mjs src/host/transport/test/ws-client.test.mjs src/tui/test/sp008-serve-cli.test.mjs src/tui/test/sp008-interrupt-history.test.mjs`（43 例）。
+
+多轮日志：`artifacts/quality-runs/SP008/host-contract/run-{1,2,3}.log`、`final-run-{1,2,3}.log`、`ext-run-{1,2,3}.log`、`final2-run-{1,2,3}.log`、`matrix-run-{1,2,3}.log`、`t16-run-{1,2,3}.log`、`final-t16-run-{1,2,3}.log`、`t17-run-{1,2,3}.log`（本地保留，不提交）。
