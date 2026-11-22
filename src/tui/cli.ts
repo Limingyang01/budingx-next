@@ -19,6 +19,7 @@ import { InkApprovalGateway } from './approval.js'
 import { runCommand } from './commands.js'
 import { parseCliArgs, runHeadless, UsageError } from './headless.js'
 import { terminalStrategy } from './render/header.js'
+import { runServeCommand } from './serve.js'
 
 const MODE_ORDER: PermissionMode[] = ['read_only', 'workspace_edit', 'full_access']
 
@@ -306,6 +307,10 @@ async function main(): Promise<void> {
   }
   if (args.length === 1 && ['--help', '-h'].includes(args[0])) {
     process.stdout.write(`${help}\n`)
+    return
+  }
+  if (args[0] === 'serve') {
+    process.exitCode = await runServeCommand(args.slice(1))
     return
   }
 

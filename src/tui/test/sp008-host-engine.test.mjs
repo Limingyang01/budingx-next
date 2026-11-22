@@ -131,3 +131,41 @@ test('dispose 取消挂起审批并清理会话', async (t) => {
   assert.deepEqual(await pending, { outcome: 'cancelled', via: 'policy' })
   assert.equal(gateway.pendingCount, 0)
 })
+
+test('interrupt 空闲返回 false，活动回合返回 true 并真正取消回合', async (t) => {
+  // 慢夹具：SSE 首片段后保持连接不结束，回合停留在 streaming 直到被打断。
+  const server = createServer(async (req, res) => {
+    for await (const _chunk of req) {
+      // drain
+    }
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    res.write('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n')
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  t.after(() => {
+    server.closeAllConnections()
+    server.close()
+  })
+  const baseUrl = 'http://127.0.0.1:' + server.address().port + '/v1'
+  const { engine } = createEngine(baseUrl, t)
+
+  // 空闲会话没有可打断的回合：interrupted 必须为 false。
+  assert.equal(engine.interrupt(), false)
+
+  const finished = finalized(engine)
+  engine.submit('long task')
+  await new Promise((resolveWait) => {
+    const off = engine.onEvent((event) => {
+      if (event.type === 'text_delta') {
+        off()
+        resolveWait()
+      }
+    })
+  })
+  assert.equal(engine.interrupt(), true)
+  const result = await finished
+  assert.equal(result.outcome, 'cancelled')
+  // 回合结束后再次打断：没有活动回合，返回 false。
+  assert.equal(engine.interrupt(), false)
+})

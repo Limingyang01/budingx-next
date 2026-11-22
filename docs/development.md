@@ -26,13 +26,16 @@ npm run publish -- --dry-run
 src/
   core/       # 事件契约、会话与回合状态机、工具回合、输入队列（零 UI、零 IO 副作用）
   provider/   # OpenAI 兼容流解析、tool_calls 碎片、错误分类、有界重试、取消、probe
-  storage/    # ~/.budingx 配置与凭据仓库、档案 CRUD、三源合并
-  tui/        # Ink 对话界面、渲染 reducer、多行编辑器、审批卡、CLI 入口
+  storage/    # ~/.budingx 配置与凭据仓库、档案 CRUD、三源合并、配置锁与转录尾行容错
+  host/       # 通用宿主契约：协议/服务端、归属视图、进程内/stdio/WS 传输、轻量客户端
+  tui/        # Ink 对话界面、渲染 reducer、多行编辑器、审批卡、CLI 入口、宿主引擎适配与 serve
 ```
 
-单一 tsc 程序编译整个 `src/`（`src/tui/tsconfig.json`，`rootDir=src`、`outDir=src/tui/dist`），产物为 `src/tui/dist/{core,provider,storage,tui}`，产品 bin 为 `dist/tui/cli.js`。源码目录按模块拍平到 `src/<模块>/` 直下。
+单一 tsc 程序编译整个 `src/`（`src/tui/tsconfig.json`，`rootDir=src`、`outDir=src/tui/dist`），产物为 `src/tui/dist/{core,provider,storage,host,tui}`，产品 bin 为 `dist/tui/cli.js`。源码目录按模块拍平到 `src/<模块>/` 直下。`src/host` 只依赖 core 类型与 Node 内建，禁止 import `src/tui`；宿主引擎实现与 `serve` 入口留在 `src/tui`，由运行时工厂注入。
 
-模块边界由 `scripts/checks/module-boundaries.mjs` 强制：core/provider/storage 禁止 import UI/终端库，core 额外禁止 IO 模块与跨模块反向依赖；产品运行时依赖白名单恰为 `{ink, react, string-width}`。该检查已并入 `npm test`。
+模块边界由 `scripts/checks/module-boundaries.mjs` 强制：core/provider/storage/host 禁止 import UI/终端库，core 额外禁止 IO 模块与跨模块反向依赖，host 额外禁止 import `tui/provider/workspace/exec/git/plan/observability`；产品运行时依赖白名单恰为 `{ink, react, string-width}`。该检查已并入 `npm test`。
+
+宿主入口的本地验证：`npm run build` 后运行 `npm test:unit`（含 `sp008-*` 真实子进程用例），或定向 `node --test src/host/test/*.test.mjs src/host/transport/test/*.test.mjs src/tui/test/sp008-*.test.mjs`。手动试用 `budingx serve --transport stdio` / `--transport ws --token <令牌>`，stdout 只写协议帧，诊断在 stderr；协议与限制见 [PRODUCT.md](../PRODUCT.md) §5.9。
 
 ## 运行时依赖
 

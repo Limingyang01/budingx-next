@@ -104,7 +104,24 @@ const REFERENCE_ALLOWLIST = [
   { ours: 'src/tui/suggestion.ts', theirs: ['src/services/PromptSuggestion', 'src/hooks/usePromptSuggestion.ts'] },
   { ours: 'src/tui/tasks.ts', theirs: ['src/tasks', 'src/tools/TaskListTool'] },
   { ours: 'src/tui/use-statusline.ts', theirs: ['src/components/StatusLine.tsx'] },
-  { ours: 'src/tui/worktree.ts', theirs: ['src/tools/EnterWorktreeTool', 'src/tools/ExitWorktreeTool'] }
+  { ours: 'src/tui/worktree.ts', theirs: ['src/tools/EnterWorktreeTool', 'src/tools/ExitWorktreeTool'] },
+  // SP008：宿主契约与传输边界（§T13 映射）。参考仓的 SDK/传输属于不同形态的
+  // 远程会话通道，只按公共协议与传输机制对照；进程内适配器无对应实现。
+  { ours: 'src/host/client.ts', theirs: ['src/entrypoints/sdk', 'src/cli/transports/Transport.ts'] },
+  { ours: 'src/host/engine.ts', theirs: ['src/entrypoints/sdk', 'src/QueryEngine.ts'] },
+  { ours: 'src/host/ownership.ts', theirs: ['src/utils/concurrentSessions.ts'] },
+  { ours: 'src/host/protocol.ts', theirs: ['src/entrypoints/sdk', 'src/entrypoints/agentSdkTypes.ts'] },
+  { ours: 'src/host/server.ts', theirs: ['src/entrypoints/sdk', 'src/cli/transports'] },
+  { ours: 'src/host/transport/in-process.ts', theirs: [], note: '进程内传输为本仓轻量测试客户端新增的适配器，参考仓无对应实现' },
+  { ours: 'src/host/transport/stdio.ts', theirs: ['src/cli/transports/transportUtils.ts', 'src/entrypoints/sdk'] },
+  { ours: 'src/host/transport/transport.ts', theirs: ['src/cli/transports/Transport.ts'] },
+  { ours: 'src/host/transport/ws-client.ts', theirs: ['src/cli/transports/WebSocketTransport.ts'] },
+  { ours: 'src/host/transport/ws-frames.ts', theirs: ['src/cli/transports/transportUtils.ts', 'src/cli/transports/HybridTransport.ts'] },
+  { ours: 'src/host/transport/ws.ts', theirs: ['src/cli/transports/WebSocketTransport.ts', 'src/cli/transports/SSETransport.ts'] },
+  { ours: 'src/storage/session-store.ts', theirs: ['src/utils/sessionStorage.ts', 'src/utils/concurrentSessions.ts'] },
+  { ours: 'src/storage/session-transcript.ts', theirs: ['src/utils/sessionStorage.ts'] },
+  { ours: 'src/tui/host-engine.ts', theirs: ['src/QueryEngine.ts', 'src/entrypoints/sdk'] },
+  { ours: 'src/tui/serve.ts', theirs: ['src/entrypoints/cli.tsx', 'src/entrypoints/init.ts', 'src/entrypoints/agentSdkTypes.ts'] }
 ]
 
 // 人工处置：命中项的复核结论（按「本仓路径::单元名」）。

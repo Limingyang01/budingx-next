@@ -32,3 +32,6 @@ scripts/tmp-*.py
 .vscode/settings.json
 .DS_Store
 Thumbs.db
+
+# Accidentally captured system caches (Windows app caches, literal %SystemDrive% dir)
+%SystemDrive%/

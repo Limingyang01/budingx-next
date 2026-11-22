@@ -29,6 +29,31 @@ test('0.5.4 / 菜单显示全部命令+短描述，无[命令]文案，单一 pe
   await ui.send('\x1b')
 })
 
+test('验收期修复（m02582）：曾缺描述的命令在菜单中显示中文短描述', async (t) => {
+  const ui = await mountTty(t, { fullScreen: true, columns: 90, rows: 40, config: { model: 'fixture' }, provider: { async *stream() { yield { type: 'message_completed', finishReason: 'stop' } } } })
+  const cases = [
+    ['init', '生成项目指令骨架'],
+    ['btw', '旁路提问'],
+    ['worktree', '管理隔离工作树'],
+    ['tasks', '后台任务与子代理'],
+    ['mcp', 'MCP 服务器与工具'],
+    ['skills', '查看已发现技能'],
+    ['export', '导出会话记录'],
+    ['agents', '管理子代理'],
+    ['agent', '派发子代理任务'],
+    ['status', '会话状态与配置来源'],
+    ['stats', '用量统计'],
+    ['doctor', '安装与配置诊断'],
+    ['image', '挂载图片附件']
+  ]
+  for (const [name, desc] of cases) {
+    await ui.send('/' + name)
+    await ui.waitFor((f) => f.includes('/' + name) && f.includes(desc), 3000)
+    for (let i = 0; i < name.length + 1; i++) await ui.send('\x7f')
+  }
+  await ui.send('\x1b')
+})
+
 test('0.5.4 Shift+Tab 三档完整轮播回到仅可查看', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'budingx-cycle-'))
   t.after(() => rmSync(dir, { recursive: true, force: true }))

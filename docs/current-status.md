@@ -40,6 +40,44 @@ SP007 功能分支 `feature/SP007/agent-quality-and-extensions`（及用户反�
 
 
 
+## SP008 · 多端架构入口与共享边界（功能分支交付完成，未合入 master）
+
+SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已完成 T1–T17：通用宿主契约（进程内/stdio/WS）、活动会话归属与崩溃接管、共享配置/历史并发安全、`budingx serve` 入口与轻量测试客户端。按用户 m00133 要求，**不合入 master、不发布**，产品版本保持 0.7.0；功能分支已按用户 m02549 授权于 2026-11-22 推送 origin（`a4690c4`，26 commits，远端 SHA 已核对；远端 master 未改动）。
+
+### 已完成
+
+- **宿主契约**：版本化 hello/identity（`scope=local`）、NDJSON 请求/响应、稳定错误码、事件 seq、审批往返与 120s 超时 deny、`needsReview`/`warnings` 恢复视图
+- **三种传输**：进程内、stdio（stdin EOF 关闭）、WebSocket（仅回环 + Bearer 令牌、RFC6455 帧、1 MiB 上限、ping/pong/close）
+- **`budingx serve`**：`--transport stdio|ws`、`--session`、`--takeover`、`--token`/`BUDINGX_HOST_TOKEN`、`--host/--port`、`--home`；owner/observer 角色与 writer lock
+- **共享数据**：`ConfigStore.update` 锁内重读-改-写、活锁超时 `BUDINGX_STORAGE_006`、陈旧锁清理；transcript 并发尾行不误判损坏；凭据继续按 `(id,host)` 作用域
+- **归属与恢复**：第二进程 observer 只读、写请求 `HOST_SESSION_003`；活 owner 拒绝 takeover，SIGKILL 后显式 `--takeover`；接管不重放工具、标出需复核步骤
+- **扩展装配（复测）**：`serve` owner 与交互入口一致装配 `~/.budingx/mcp.json` 与 `hooks.json`；MCP 工具经审批执行、hooks 阻断/拒绝/放行生效；observer 不启动扩展；关闭时回收 MCP 子进程
+- **扩展矩阵**：hooks 八事件全覆盖、`updatedInput` 改写入参、`additionalContext` 注入模型上下文、hook `ask` 回到人工审批、多 MCP 服务器隔离、MCP 工具 `isError`、MCP 服务器崩溃、连接失败只告警 —— 全部经真实进程验证通过
+- **测试加固（T17）**：WS 服务端帧级分支、HostClient 错误分支、协议校验文案、serve 参数/退出码、owner 打断活动回合、history.limit 截断、ws-client 连接失败路径全部补齐；修复 interrupt 空闲语义、WS 客户端首帧竞争、空端口静默接受三处缺陷；`test:unit` 纳入 transport 测试
+
+### 验证结果
+
+| 指标 | 结果 |
+| --- | --- |
+| SP008 定向套件 | 113/113 通过，0 失败，0 跳过 |
+| 全量回归 | 1241 项 / 1240 通过 / 0 失败 / 1 跳过（既有 POSIX 权限用例；T17 起含 transport 测试） |
+| 多轮端到端 | 3 轮 × 23 例全部通过；最终 HEAD 再复跑 3 轮 × 23 例全部通过；扩展矩阵再 3 轮 × 11 例全部通过；T17 加固再 3 轮 × 42 例全部通过（真实 stdio/WS 进程、并发、崩溃恢复、自模拟 MCP/hooks） |
+| 模块边界 | PASS（`src/host` 禁 import tui/UI） |
+| AST 复核 | PASS（17/17 文件映射，命中 0） |
+| 交叉验证门禁 | **GATE GREEN**（2026-11-22，`npm test`/`spec:check`/`skills:check`/`pack-smoke` 全通过；扩展复测后 HEAD `abbdcb1` 再次 GREEN；扩展矩阵后 HEAD `9f7f00b` 再次 GREEN；T17 加固后 HEAD `c47e224` 再次 GREEN；最终 HEAD `60d1688` 再次 GREEN，25 commits / 56 files） |
+
+### 已知限制
+
+- 同机共享不等于跨设备同步；observer 跨进程只能读持久化历史，无实时事件、无事件重放
+- WS 仅 `ws://` 回环，不支持 `wss://`/TLS/公网监听；令牌必须显式提供
+- `serve` 已装配 MCP/hooks，但无 `/mcp`、`/hooks` 交互面板；扩展配置启动时读取一次，修改后需重启；MCP 连接失败只告警不阻断启动
+- SIGTERM 优雅退出的 OS 信号投递在 Windows 无法验证（强制终止后由 `--takeover` 恢复）；恢复条件见 [SP008 验收报告](../SP/SP008/test-report.md)
+
+### 待办
+
+- 用户验收功能分支；未获新授权前不合入 master、不发布
+- 如需补齐 SIGTERM 证据，在 Linux/macOS 运行 stdio serve 后发 SIGTERM
+
 ## 已有
 
 - 用户创建的 Git 仓库，主线 master；首个提交 f3c4675 已推送，GitHub API 已核对远端 SHA。
