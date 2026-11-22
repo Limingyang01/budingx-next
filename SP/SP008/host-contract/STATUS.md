@@ -26,7 +26,7 @@
 - [x] 交叉验证门禁：`npm run merge:gate` → **GATE GREEN**（交付 HEAD `4a638e9`；T15 复测后 HEAD `abbdcb1` 再次 GREEN，13 commits / 49 files；T16 扩展矩阵后 HEAD `9f7f00b` 再次 GREEN，15 commits / 50 files；T17 加固后 HEAD `c47e224` 再次 GREEN，四项检查全通过；竞态修复与收口后最终 HEAD `60d1688` 再次 GREEN，25 commits / 56 files）
 - [x] 交付记录：test-report、PRODUCT.md §5.9、docs/development.md、汇总索引
 - [x] 合入 master：已完成（用户 m02815 授权，2026-11-22，合并提交 `1d1ec9f`）；合入后全量 1243 项 / 1242 通过 / 0 失败 / 1 跳过
-- [x] 发布前准备：0.8.0（minor，台账 prepared）、`release-notes/v0.8.0.md`、入口文档版本同步、dry-run GREEN（`artifacts/release/0.8.0-1795335507762/report.json`）、master 门禁 GREEN（`artifacts/merge-gate/master-2026-11-22T08-26-17-077Z.md`）
+- [x] 发布前准备：0.8.0（minor，台账 prepared）、`release-notes/v0.8.0.md`、入口文档版本同步、dry-run GREEN（`artifacts/release/0.8.0-1795335507762/report.json`）、master 门禁 GREEN（`artifacts/merge-gate/master-2026-11-22T08-30-26-648Z.md`，HEAD `63180eb`）
 - [x] 推送 master：已推送并核对远端 SHA（`93adeb2`）
 - [ ] npm 发布：待维护者在 GitHub 手动触发发布工作流（不在本轮授权内）
 
