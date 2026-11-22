@@ -201,6 +201,7 @@ T16 补齐第一组扩展用例未覆盖的八类场景，全部经真实 `budin
 - 最终 HEAD 门禁（文档提交 `562722b` 后）：`npm run merge:gate` → **GATE GREEN**（outgoing 16 commits，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T01-44-51-287Z.md`）：四项检查退出码全 0。
 - 收尾门禁（HEAD `95d7e3e`）：`npm run merge:gate` → **GATE GREEN**（outgoing 19 commits，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T01-55-47-853Z.md`）：四项检查退出码全 0，禁带路径违规 0。工作树干净，此为交付最终 HEAD `b417705`（报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T01-59-01-605Z.md`）。
 - T17 加固门禁（HEAD `c47e224`）：`npm run merge:gate` → **GATE GREEN**（报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T02-59-26-608Z.md`）：`npm test`（含新纳入的 transport 测试，全量 1241 项）/`spec:check`/`skills:check`/`pack-smoke` 四项检查全通过。
+- 最终 HEAD 门禁（HEAD `60d1688`，pid 竞态修复与文档收口后）：`npm run merge:gate` → **GATE GREEN**（报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T03-11-24-455Z.md`，outgoing 25 commits / 56 files）：四项检查退出码全 0，禁带路径违规 0，报告 FAIL 行 0，恢复条件节齐备。
 
 ## 8. 偏差与实施期修订
 

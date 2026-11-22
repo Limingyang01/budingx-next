@@ -22,7 +22,7 @@
 - [x] 扩展矩阵（T16，用户 m01515）：MCP/hooks 端到端矩阵 8 例 PASS（八事件、updatedInput、additionalContext、ask、多服务器、isError、崩溃、连接失败）；扩展 3 轮 × 11/11 PASS
 - [x] 测试加固（T17，用户 m01996）：补齐七处缺口（WS 服务端帧级 15 例、HostClient 错误分支 8 例、协议文案 3 例、serve 参数/退出码 7 例、interrupt/history.limit e2e 3 例、ws-client 失败路径 10 例、引擎 interrupt 语义 1 例）；修复 interrupt 恒 true、WS 客户端首帧竞争、空端口静默接受三处缺陷；test:unit 纳入 transport 测试
 - [x] AST 复核：17/17 文件映射，命中 0，PASS
-- [x] 交叉验证门禁：`npm run merge:gate` → **GATE GREEN**（交付 HEAD `4a638e9`；T15 复测后 HEAD `abbdcb1` 再次 GREEN，13 commits / 49 files；T16 扩展矩阵后 HEAD `9f7f00b` 再次 GREEN，15 commits / 50 files；T17 加固后 HEAD `c47e224` 再次 GREEN，四项检查全通过）
+- [x] 交叉验证门禁：`npm run merge:gate` → **GATE GREEN**（交付 HEAD `4a638e9`；T15 复测后 HEAD `abbdcb1` 再次 GREEN，13 commits / 49 files；T16 扩展矩阵后 HEAD `9f7f00b` 再次 GREEN，15 commits / 50 files；T17 加固后 HEAD `c47e224` 再次 GREEN，四项检查全通过；竞态修复与收口后最终 HEAD `60d1688` 再次 GREEN，25 commits / 56 files）
 - [x] 交付记录：test-report、PRODUCT.md §5.9、docs/development.md、汇总索引
 - [ ] 合入 master：**用户 m00133 明确不做**，保持功能分支完成态
 

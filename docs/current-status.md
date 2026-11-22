@@ -64,7 +64,7 @@ SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已
 | 多轮端到端 | 3 轮 × 23 例全部通过；最终 HEAD 再复跑 3 轮 × 23 例全部通过；扩展矩阵再 3 轮 × 11 例全部通过；T17 加固再 3 轮 × 42 例全部通过（真实 stdio/WS 进程、并发、崩溃恢复、自模拟 MCP/hooks） |
 | 模块边界 | PASS（`src/host` 禁 import tui/UI） |
 | AST 复核 | PASS（17/17 文件映射，命中 0） |
-| 交叉验证门禁 | **GATE GREEN**（2026-11-22，`npm test`/`spec:check`/`skills:check`/`pack-smoke` 全通过；扩展复测后 HEAD `abbdcb1` 再次 GREEN；扩展矩阵后 HEAD `9f7f00b` 再次 GREEN；T17 加固后 HEAD `c47e224` 再次 GREEN） |
+| 交叉验证门禁 | **GATE GREEN**（2026-11-22，`npm test`/`spec:check`/`skills:check`/`pack-smoke` 全通过；扩展复测后 HEAD `abbdcb1` 再次 GREEN；扩展矩阵后 HEAD `9f7f00b` 再次 GREEN；T17 加固后 HEAD `c47e224` 再次 GREEN；最终 HEAD `60d1688` 再次 GREEN，25 commits / 56 files） |
 
 ### 已知限制
 
