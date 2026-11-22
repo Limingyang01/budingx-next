@@ -20,6 +20,8 @@ import {
   type HostRestoreState
 } from './host-engine.js'
 import { createAgentRuntime } from './runtime.js'
+import { startMcp } from './mcp/index.js'
+import { startHooks } from './hooks/index.js'
 
 const USAGE = `Usage: budingx serve [--transport stdio|ws] [--session ID] [--takeover]
                     [--host ADDRESS] [--port N] [--token TOKEN] [--home DIR]
@@ -158,8 +160,15 @@ export async function runServeCommand(args: string[]): Promise<number> {
     workspaceRoot: process.cwd()
   })
   let runtime: ReturnType<typeof createAgentRuntime> | undefined
+  let mcp: Awaited<ReturnType<typeof startMcp>> | undefined
   if (claim.role === 'owner') {
+    // 与交互入口一致：owner 进程装配同一 home 下的 MCP 与 hooks；
+    // observer 只读历史，不启动任何扩展子进程。
     try {
+      mcp = await startMcp({ ...(home ? { homeDir: home } : {}) })
+      for (const warning of mcp.warnings) process.stderr.write(`Warning: ${warning}\n`)
+      const hooks = startHooks({ ...(home ? { homeDir: home } : {}) })
+      for (const warning of hooks.loaded.warnings) process.stderr.write(`Warning: ${warning}\n`)
       runtime = createAgentRuntime({
         cwd: process.cwd(),
         ...(home ? { home } : {}),
@@ -169,9 +178,12 @@ export async function runServeCommand(args: string[]): Promise<number> {
         sessionId: options.sessionId,
         persistence: true,
         persistPermissionMode: true,
-        mode: 'workspace_edit'
+        mode: 'workspace_edit',
+        mcp: { tools: mcp.tools, statuses: mcp.statuses },
+        hooks: hooks.runner
       })
     } catch (error) {
+      if (mcp) await mcp.close()
       ownership.release()
       process.stderr.write(`Error: ${(error as Error).message}\n`)
       return 1
@@ -274,5 +286,7 @@ export async function runServeCommand(args: string[]): Promise<number> {
     }
   } finally {
     for (const signal of signals) process.removeListener(signal, onSignal)
+    // 关闭顺序：先停会话（engine.dispose），再收 MCP 子进程，避免孤儿进程。
+    if (mcp) await mcp.close()
   }
 }

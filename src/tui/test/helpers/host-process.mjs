@@ -11,7 +11,7 @@ import { connectWebSocket } from '../../dist/host/transport/ws-client.js'
 
 export const cli = fileURLToPath(new URL('../../dist/tui/cli.js', import.meta.url))
 
-/** Fake OpenAI-compatible SSE endpoint. mode selects text or Bash tool call. */
+/** Fake OpenAI-compatible SSE endpoint. mode selects text, Bash or MCP tool call. */
 export async function startFixtureServer(t, mode = 'text') {
   const requests = []
   const server = createServer(async (req, res) => {
@@ -20,16 +20,22 @@ export async function startFixtureServer(t, mode = 'text') {
     const body = parts.length > 0 ? JSON.parse(Buffer.concat(parts).toString('utf8')) : {}
     requests.push(body)
     const hasToolResult = (body.messages ?? []).some((item) => item.role === 'tool')
+    const toolCall =
+      mode === 'bash'
+        ? { id: 'call-bash', name: 'Bash', args: { command: 'rm -rf sp008-approval-temp' } }
+        : mode === 'mcp'
+          ? { id: 'call-mcp', name: 'mcp__sim__echo', args: { text: 'hello' } }
+          : undefined
     const choice =
-      mode === 'bash' && !hasToolResult
+      toolCall && !hasToolResult
         ? {
             delta: {
               tool_calls: [
                 {
                   index: 0,
-                  id: 'call-bash',
+                  id: toolCall.id,
                   type: 'function',
-                  function: { name: 'Bash', arguments: JSON.stringify({ command: 'rm -rf sp008-approval-temp' }) }
+                  function: { name: toolCall.name, arguments: JSON.stringify(toolCall.args) }
                 }
               ]
             },
