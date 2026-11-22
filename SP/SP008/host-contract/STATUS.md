@@ -26,7 +26,7 @@
 - [x] 交付记录：test-report、PRODUCT.md §5.9、docs/development.md、汇总索引
 - [ ] 合入 master：**用户 m00133 明确不做**，保持功能分支完成态
 
-当前停点：SP008 功能分支交付完成，等待用户验收；未合入、未发布。
+当前停点：SP008 功能分支交付完成并已推送远端（用户 m02549 授权），等待用户验收；未合入 master、未发布。
 
 ## 3. 批准与来源
 
@@ -84,4 +84,5 @@
 - T16：`9f7f00b`（MCP/hooks 端到端矩阵 8 例 + 扩展夹具增强）；其后文档收口 `562722b`、最终复跑记录 `cb07bc8`、收尾门禁回执 `95d7e3e`
 - T17：`c47e224`（测试加固 43 新例 + 三处实现修复 + test:unit 纳入 transport）；`b876552`（崩溃接管 pid 判活竞态的测试侧修复）；文档收口 `27b5eae` 及本轮提交
 - 合并/推送 master：**未执行**；用户 m00133 要求不合入 master
+- 推送功能分支：**已执行**（用户 m02549，2026-11-22）：`git push -u origin feature/SP008/host-contract`，远端新建分支；`git ls-remote` 核对 `a4690c485139270ac410b4ce34cbdd824bfe162e` 与本地 HEAD 一致（26 commits / 67 files，master..HEAD）。远端 master 仍为 `56a161c`，未改动
 - 发布：**未执行**，不 bump 版本

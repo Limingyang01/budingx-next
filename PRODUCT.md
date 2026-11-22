@@ -50,7 +50,7 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | SP005（0.5.0–0.5.4） | 长会话与数据可靠性      | context-budget、session-recovery、failure-recovery、project-memory                                         | 已合入 master。真实模型端到端两场景 PASS，0.5.4 已发布 |
 | SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 本轮实现完成并合入 master，0.6.0 已发布为 npm `latest` |
 | SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | **功能分支完成**（feature/SP007/agent-quality-and-extensions），待合入 master |
-| SP008 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | **功能分支实现完成**（`feature/SP008/host-contract`），门禁通过；宿主扩展（MCP/hooks）端到端矩阵已验证；按用户 m00133 要求暂不合入 master、不发布 |
+| SP008 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | **功能分支实现完成**（`feature/SP008/host-contract`），门禁通过；宿主扩展（MCP/hooks）端到端矩阵已验证；按用户 m00133 要求暂不合入 master、不发布；功能分支已按 m02549 授权推送远端 |
 | SP009 | TUI 独立交付与 npm 发布工程 | tui-distribution、upgrade-compatibility、npm-publish-pipeline                                              | 规划中 |
 | SP010 | 中期编码效果检查        | coding-parity-checkpoint、core-reliability                                                                 | 规划中 |
 | SP011 | 多代理团队              | team-lifecycle、task-coordination、team-messaging、worktree-isolation                                      | 规划中 |

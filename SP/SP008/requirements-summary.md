@@ -1,6 +1,6 @@
 # SP008 需求汇总 — 多端架构入口与共享边界
 
-状态：**功能分支交付完成，未合入 master**（2026-11-21 开轮；用户 m00001 授权开发，m00133 要求**不合入 master**）。验收证据见 [test-report](test-report.md)。
+状态：**功能分支交付完成，已推送远端，未合入 master**（2026-11-21 开轮；用户 m00001 授权开发，m00133 要求**不合入 master**，m02549 授权推送功能分支）。验收证据见 [test-report](test-report.md)。
 
 ## 本轮目标与边界
 
@@ -42,7 +42,7 @@ shared-models-and-history、session-ownership、transport-boundaries。
 - 验收口径：每条 AC 至少各一例单元 + 一例功能（端到端）用例，先 RED 后 GREEN；真实进程、协议、
   存储、UI 证据分层记录；缺环境记 UNVERIFIED 并写恢复条件，不以 mock 冒充真实链路。
 - 用户额外要求（m00133）：多轮端到端复跑（stdio/WS 真实进程、并发、崩溃恢复），AST 复核 PASS。
-- 门禁：`npm run merge:gate` 用于证明分支可交付；**本轮不合入 master、不推送 master**（m00133）。
+- 门禁：`npm run merge:gate` 用于证明分支可交付；**本轮不合入 master、不推送 master**（m00133）。功能分支已按用户 m02549 授权推送 origin（`a4690c4`，远端 SHA 已核对）。
 - 验收结果：定向 113/113、全量 1241 项（1240 通过 / 1 跳过，T17 起含 transport 测试）、交付 3 轮端到端各 20/20 + 扩展复测 3 轮各 23/23 + 最终 HEAD 再 3 轮各 23/23 + 扩展矩阵 3 轮各 11/11 + T17 加固 3 轮各 42/42、模块边界 PASS、AST PASS；TB-07 的 SIGTERM 子项因 Windows 平台限制记 PARTIAL/UNVERIFIED，恢复条件见 test-report §9。
 - 扩展复测（m01288/m01304）：`serve` owner 装配 MCP/hooks，自模拟 stdio MCP 服务器与真实 hook 子进程验证审批执行、五事件生命周期、提示词阻断、工具拒绝、hook 放行、observer 不启动扩展、关闭回收子进程（test-report §5 R4）。
 - 扩展矩阵（m01515）：MCP/hooks 端到端矩阵 8 例 PASS —— hooks 八事件全覆盖、`updatedInput` 改写入参真实到达 MCP、`additionalContext` 注入模型 system 消息、hook `ask` 回到人工审批、两个 MCP 服务器并存且调用隔离、MCP 工具 `isError` 反映为 `tool_result isError=true`、MCP 服务器崩溃后宿主仍可 ping/shutdown、连接失败只告警不阻断启动（test-report §5 R5）。
@@ -61,3 +61,4 @@ shared-models-and-history、session-ownership、transport-boundaries。
 | 2026-11-22 | T16 扩展矩阵：新增 `sp008-serve-extensions-matrix` 8 例（`9f7f00b`）；定向 66/66、全量 1188、扩展 3 轮 × 11 全通过、门禁 GREEN | 用户 m01515 |
 | 2026-11-22 | T17 测试加固：七处缺口补齐 + 三处实现修复（`c47e224`）；定向 113/113、全量 1241/1240、3 轮 × 42 全通过；test:unit 纳入 transport 测试 | 用户 m01996 |
 | 2026-11-22 | 最终复跑暴露崩溃接管 pid 判活竞态，测试侧 waitForPidDead 修复（`b876552`）；修复后 3 轮 × 42 全通过 | 用户 m01996 |
+| 2026-11-22 | 功能分支推送 origin（`a4690c4`，26 commits / 67 files，远端 SHA 核对一致）；master 未合入未改动 | 用户 m02549 |

@@ -42,7 +42,7 @@ SP007 功能分支 `feature/SP007/agent-quality-and-extensions` 已完成 17 个
 
 ## SP008 · 多端架构入口与共享边界（功能分支交付完成，未合入 master）
 
-SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已完成 T1–T17：通用宿主契约（进程内/stdio/WS）、活动会话归属与崩溃接管、共享配置/历史并发安全、`budingx serve` 入口与轻量测试客户端。按用户 m00133 要求，**本轮不合入 master、不推送、不发布**，产品版本保持 0.7.0。
+SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已完成 T1–T17：通用宿主契约（进程内/stdio/WS）、活动会话归属与崩溃接管、共享配置/历史并发安全、`budingx serve` 入口与轻量测试客户端。按用户 m00133 要求，**不合入 master、不发布**，产品版本保持 0.7.0；功能分支已按用户 m02549 授权于 2026-11-22 推送 origin（`a4690c4`，26 commits，远端 SHA 已核对；远端 master 未改动）。
 
 ### 已完成
 
