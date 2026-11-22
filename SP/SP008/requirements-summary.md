@@ -60,3 +60,4 @@ shared-models-and-history、session-ownership、transport-boundaries。
 | 2026-11-22 | T15 复测：`serve` 装配 MCP/hooks（`2b1b003`），新增自模拟 MCP 服务器与 3 例端到端；定向 58/58、全量 1180、3 轮 × 23 全通过；移除「serve 未接 MCP/hooks」限制 | 用户 m01288/m01304 |
 | 2026-11-22 | T16 扩展矩阵：新增 `sp008-serve-extensions-matrix` 8 例（`9f7f00b`）；定向 66/66、全量 1188、扩展 3 轮 × 11 全通过、门禁 GREEN | 用户 m01515 |
 | 2026-11-22 | T17 测试加固：七处缺口补齐 + 三处实现修复（`c47e224`）；定向 113/113、全量 1241/1240、3 轮 × 42 全通过；test:unit 纳入 transport 测试 | 用户 m01996 |
+| 2026-11-22 | 最终复跑暴露崩溃接管 pid 判活竞态，测试侧 waitForPidDead 修复（`b876552`）；修复后 3 轮 × 42 全通过 | 用户 m01996 |

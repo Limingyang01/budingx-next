@@ -409,7 +409,7 @@ budingx serve --transport ws --session my-session --port 0
 - 协议：每行一个 JSON 帧。请求 `{id,type,...}`，响应 `{id,ok,result|error}`；服务端主动帧为 `hello_ok`、`event`（带递增 `seq`）、`role_changed`、`fatal`、`pong`。请求类型：`hello`、`describe`、`history`、`submit`、`interrupt`、`approval`、`set_permission_mode`、`takeover`、`shutdown`、`ping`。`interrupt` 无活动回合时返回 `{interrupted:false}`，有活动回合时返回 `{interrupted:true}` 并取消回合（以 `cancelled` 收尾）；`history` 支持 `limit` 截断（`limit:0` 返回空历史且 `truncated:true`，超过历史长度不截断）。
 - 身份：`hello_ok` 返回 `protocolVersion=1`、`sessionId`、`workspaceId`、`clientId`、`role`、`scope`（固定 `local`）。
 - 归属：同一会话只有一个 writer（`~/.budingx/sessions/<id>/writer.lock`）。首个连接是 `owner`；同进程第二个连接、或另一进程在活 owner 存在时启动，都是 `observer`。observer 可读描述/历史、可收本进程实时事件，但 submit/interrupt/改权限/审批/接管均以 `HOST_SESSION_003` 拒绝；shutdown 仍可用。
-- 崩溃恢复：owner 被杀死后锁变陈旧，新进程需显式 `--takeover` 才成为 owner；活 owner 存在时 takeover 被拒绝且原锁不变。恢复只装载历史，不重放工具；结果未知的步骤列在 `needsReview`，并附 `warnings`。
+- 崩溃恢复：owner 被杀死后锁变陈旧，新进程需显式 `--takeover` 才成为 owner；活 owner 存在时 takeover 被拒绝且原锁不变。进程刚被杀死时系统判活可能短暂滞后（尤其 Windows），紧随的接管若被拒绝属保守保护，稍后重试即可。恢复只装载历史，不重放工具；结果未知的步骤列在 `needsReview`，并附 `warnings`。
 - 关闭：stdin EOF、`shutdown` 请求都会停止监听、释放锁并以 0 退出；POSIX 下 SIGINT/SIGTERM 走同一清理路径。Windows 无法向 Node 投递可捕获的 SIGTERM，强制终止会留下陈旧锁，需用 `--takeover` 恢复（属预期恢复路径）。WS 客户端断开不会中断正在进行的回合（默认策略，事件不缓存）。
 - 扩展：owner 进程装配 `~/.budingx/mcp.json` 与 `~/.budingx/hooks.json`（与交互 TUI 同一份配置）。MCP 工具名为 `mcp__<服务器>__<工具>`，默认需要审批；hook 返回 `allow` 可跳过审批，`ask` 回到人工审批，`deny` 或退出码 2 会阻断并记录原因；`PreToolUse` 可改写工具入参，附加上下文会进入模型请求。多个 MCP 服务器可并存且调用互不串台。配置告警写 stderr，不进入协议帧。
 - 退出码：0 正常关闭；1 归属/运行时启动失败；2 参数、认证或绑定违规。

@@ -170,6 +170,8 @@ T16 补齐第一组扩展用例未覆盖的八类场景，全部经真实 `budin
 
 另：`test:unit` glob 扩至 `src/host/transport/test/*.test.mjs`，WS 帧级/客户端测试自此进入全量回归与门禁（此前仅定向命令覆盖）。
 
+**最终复跑暴露的测试竞态（b876552 修复）**：final-t17 第 2 轮崩溃恢复用例失败——`cannot take over session sh-crash-recovery; another process is still writing`。根因：SIGKILL 后 Windows 进程句柄释放可能滞后于 close 事件（并行负载下 pid 亦可能被短暂复用），`writer.lock` 判活（`process.kill(pid,0)`）短暂仍报活，紧随的 `--takeover` 被保守拒绝。这是判活机制的固有窗口，产品的保守语义（活 pid 拒绝接管）正确、不改；修复在测试侧：新增 `waitForPidDead` 夹具，崩溃恢复与 SO-03 在接管前等待 pid 真正不可查询（50ms 轮询、10s 上限）。两文件连跑 3 遍 4/4 稳定，随后 3 轮 × 42 全通过。
+
 ## 6. 多轮端到端
 
 `node --test src/tui/test/sp008-*.test.mjs` 连续 3 轮；日志保存在 `artifacts/quality-runs/SP008/host-contract/`（gitignore 忽略）：
@@ -184,6 +186,7 @@ T16 补齐第一组扩展用例未覆盖的八类场景，全部经真实 `budin
 | t16-run-1…3（文档收口前定向全量） | 每轮 **66/66** PASS，EXIT=0 | SP008 定向 66 例全量复跑（宿主、传输、存储、三传输、归属、崩溃恢复、扩展、扩展矩阵） |
 | final-t16-run-1…3（最终 HEAD `562722b`） | 每轮 **11/11** PASS，EXIT=0 | 文档提交后在最终 HEAD 复跑扩展与矩阵用例，确认无回归 |
 | t17-run-1…3（T17 加固后） | 每轮 **42/42** PASS，EXIT=0 | 全部 `sp008-*` 真实进程用例（含扩展 3 + 矩阵 8 + serve-cli 7 + interrupt/history 3），每轮重建 home/serve/fixture/MCP/hook 子进程 |
+| final-t17-run-1…3（竞态修复后最终 HEAD） | 每轮 **42/42** PASS，EXIT=0 | 首轮第 2 轮曾暴露 pid 判活竞态（见 §5 R6），`b876552` 修复后重跑 3 轮全通过 |
 
 每轮均重新创建临时 home、重新启动 serve 子进程、重新建立 HTTP fixture 与 MCP/hook 子进程；不共享上一轮磁盘状态。
 
@@ -218,6 +221,7 @@ T16 补齐第一组扩展用例未覆盖的八类场景，全部经真实 `budin
 | WS 客户端首帧竞争 | 初版握手后同步 pump 剩余字节 | 改 `setTimeout(pump, 0)`，监听器注册先于投递 | 101 与首批帧同 TCP 块到达时丢帧；真实缺陷，ws-client 成功路径用例 RED 暴露 |
 | 空端口静默接受 | `Number('')===0` 使 `--port ''` 落到端口 0 | 空白值显式拒绝，退出码 2 | 与「0=随机端口」语义混淆；用法错误用例 RED 暴露 |
 | test:unit 覆盖 | glob `src/*/test/*.test.mjs` 不含嵌套的 `src/host/transport/test` | glob 追加该目录 | WS 帧级测试此前只在定向命令中跑；纳入后全量与门禁覆盖一致 |
+| 崩溃接管 pid 判活竞态 | SIGKILL 后立即 takeover 偶发被拒（Windows 句柄释放滞后/pid 复用） | 测试侧 `waitForPidDead` 等待判活落定（b876552） | 产品保守语义正确不改；final-t17 第 2 轮 RED 暴露，修复后 3 轮 × 42 全通过 |
 
 ## 9. 已知限制与恢复条件
 
@@ -248,4 +252,4 @@ npm run merge:gate
 
 T17 加固单独跑：`node --test src/host/test/client.test.mjs src/host/transport/test/ws-server.test.mjs src/host/transport/test/ws-client.test.mjs src/tui/test/sp008-serve-cli.test.mjs src/tui/test/sp008-interrupt-history.test.mjs`（43 例）。
 
-多轮日志：`artifacts/quality-runs/SP008/host-contract/run-{1,2,3}.log`、`final-run-{1,2,3}.log`、`ext-run-{1,2,3}.log`、`final2-run-{1,2,3}.log`、`matrix-run-{1,2,3}.log`、`t16-run-{1,2,3}.log`、`final-t16-run-{1,2,3}.log`、`t17-run-{1,2,3}.log`（本地保留，不提交）。
+多轮日志：`artifacts/quality-runs/SP008/host-contract/run-{1,2,3}.log`、`final-run-{1,2,3}.log`、`ext-run-{1,2,3}.log`、`final2-run-{1,2,3}.log`、`matrix-run-{1,2,3}.log`、`t16-run-{1,2,3}.log`、`final-t16-run-{1,2,3}.log`、`t17-run-{1,2,3}.log`、`final-t17-run-{1,2,3}.log`（本地保留，不提交）。
