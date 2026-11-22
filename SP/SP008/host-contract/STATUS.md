@@ -26,7 +26,8 @@
 - [x] 交叉验证门禁：`npm run merge:gate` → **GATE GREEN**（交付 HEAD `4a638e9`；T15 复测后 HEAD `abbdcb1` 再次 GREEN，13 commits / 49 files；T16 扩展矩阵后 HEAD `9f7f00b` 再次 GREEN，15 commits / 50 files；T17 加固后 HEAD `c47e224` 再次 GREEN，四项检查全通过；竞态修复与收口后最终 HEAD `60d1688` 再次 GREEN，25 commits / 56 files）
 - [x] 交付记录：test-report、PRODUCT.md §5.9、docs/development.md、汇总索引
 - [x] 合入 master：已完成（用户 m02815 授权，2026-11-22，合并提交 `1d1ec9f`）；合入后全量 1243 项 / 1242 通过 / 0 失败 / 1 跳过
-- [x] 发布前准备：0.8.0（minor，台账 prepared）、`release-notes/v0.8.0.md`、入口文档版本同步、dry-run GREEN（`artifacts/release/0.8.0-1795335507762/report.json`）、master 门禁 GREEN（`artifacts/merge-gate/master-2026-11-22T08-21-33-109Z.md`）
+- [x] 发布前准备：0.8.0（minor，台账 prepared）、`release-notes/v0.8.0.md`、入口文档版本同步、dry-run GREEN（`artifacts/release/0.8.0-1795335507762/report.json`）、master 门禁 GREEN（`artifacts/merge-gate/master-2026-11-22T08-26-17-077Z.md`）
+- [x] 推送 master：已推送并核对远端 SHA（`93adeb2`）
 - [ ] npm 发布：待维护者在 GitHub 手动触发发布工作流（不在本轮授权内）
 
 当前停点：SP008 已合入 master（`1d1ec9f`）并完成 0.8.0 发布前准备（版本 bump、发行说明、台账 prepared）；实际 npm 发布由维护者手动触发发布工作流。
@@ -88,6 +89,6 @@
 - T16：`9f7f00b`（MCP/hooks 端到端矩阵 8 例 + 扩展夹具增强）；其后文档收口 `562722b`、最终复跑记录 `cb07bc8`、收尾门禁回执 `95d7e3e`
 - T17：`c47e224`（测试加固 43 新例 + 三处实现修复 + test:unit 纳入 transport）；`b876552`（崩溃接管 pid 判活竞态的测试侧修复）；文档收口 `27b5eae` 及本轮提交
 - 合并 master：**已执行**（用户 m02815，2026-11-22）：`git merge --no-ff feature/SP008/host-contract`，合并提交 `1d1ec9f`；冲突 3 处按用户决策解决（缓存二进制删除并加入 `.gitignore`，host-engine 取功能分支版本，PRODUCT.md 手工合并保留 0.7.0 已发布事实）
-- 推送 master：**待执行**（发布前准备收口后推送，附回执）
+- 推送 master：**已执行**（用户 m02815，2026-11-22）：`git push origin master`（9ca499b → 93adeb2）；`git ls-remote origin master` 核对 `93adeb2206d7a7808f25adfaec08e60fe33e55f2` 与本地一致
 - 推送功能分支：**已执行**（用户 m02549，2026-11-22）：`git push -u origin feature/SP008/host-contract`，远端新建分支；`git ls-remote` 核对 `a4690c485139270ac410b4ce34cbdd824bfe162e` 与本地 HEAD 一致（26 commits / 67 files，master..HEAD）。远端 master 仍为 `56a161c`，未改动
 - 发布：**未执行**，不 bump 版本

@@ -42,7 +42,7 @@ SP007 功能分支 `feature/SP007/agent-quality-and-extensions`（及用户反�
 
 ## SP008 · 多端架构入口与共享边界（已合入 master，0.8.0 已准备待发布）
 
-SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已完成 T1–T17：通用宿主契约（进程内/stdio/WS）、活动会话归属与崩溃接管、共享配置/历史并发安全、`budingx serve` 入口与轻量测试客户端。按用户 2026-11-22 授权（m02815）**已合入 master**（合并提交 `1d1ec9f`，同时清理误入仓库的 Windows 缓存二进制并加入 `.gitignore`），并按 minor 规则准备 0.8.0（`src/tui/package.json` = 0.8.0，台账 prepared）；**实际 npm 发布由维护者手动触发发布工作流**，发布前 npm `latest` 仍为 0.7.0。
+SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已完成 T1–T17：通用宿主契约（进程内/stdio/WS）、活动会话归属与崩溃接管、共享配置/历史并发安全、`budingx serve` 入口与轻量测试客户端。按用户 2026-11-22 授权（m02815）**已合入 master**（合并提交 `1d1ec9f`，同时清理误入仓库的 Windows 缓存二进制并加入 `.gitignore`），并按 minor 规则准备 0.8.0（`src/tui/package.json` = 0.8.0，台账 prepared）；master 已推送远端（`93adeb2`，远端 SHA 核对一致）；**实际 npm 发布由维护者手动触发发布工作流**，发布前 npm `latest` 仍为 0.7.0。
 
 ### 已完成
 

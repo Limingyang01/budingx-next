@@ -67,3 +67,4 @@ shared-models-and-history、session-ownership、transport-boundaries。
 | 2026-11-22 | 功能分支推送 origin（`a4690c4`，26 commits / 67 files，远端 SHA 核对一致）；master 未合入未改动 | 用户 m02549 |
 | 2026-11-22 | 合入 master（`1d1ec9f`，--no-ff，3 处冲突按用户决策解决：删除误入仓库的 Windows 缓存二进制并加 `.gitignore`、host-engine 取功能分支版本、PRODUCT.md 手工合并）；合入后全量 1243/1242 通过 | 用户 m02815 |
 | 2026-11-22 | 发布前准备：minor → 0.8.0（`src/tui/package.json`）、台账 prepared、发行说明 `release-notes/v0.8.0.md`、入口文档版本同步；dry-run GREEN；master 门禁 GREEN；实际 npm 发布待维护者触发 | 用户 m02815 |
+| 2026-11-22 | 推送 master（9ca499b → 93adeb2），远端 SHA 与本地一致 | 用户 m02815 |
