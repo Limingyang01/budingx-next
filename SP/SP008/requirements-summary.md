@@ -1,6 +1,6 @@
 # SP008 需求汇总 — 多端架构入口与共享边界
 
-状态：**已合入 master，0.8.0 已准备待发布**（2026-11-21 开轮；用户 m00001 授权开发，m00133 一度要求不合入 master，m02549 授权推送功能分支，m02815 解除不合入约束并授权合入 master 与发布前准备）。首次发布（run 45003613733）在 ubuntu-24.04 因一处测试取样竞态失败，已修复（master `37a4cfd`）并 Linux 复验 GREEN，待维护者重新触发发布。验收证据见 [test-report](test-report.md)。
+状态：**已合入 master，0.8.0 已发布**（2026-11-21 开轮；用户 m00001 授权开发，m00133 一度要求不合入 master，m02549 授权推送功能分支，m02815 解除不合入约束并授权合入 master 与发布前准备）。首次发布（run 45003613733）在 ubuntu-24.04 因一处测试取样竞态失败，已修复（master `37a4cfd`）并 Linux 复验 GREEN；维护者重新触发 [运行 #45010118350](https://github.com/Limingyang01/budingx-next/actions/runs/45010118350)（源码 `b71b3f5`）三作业全 success，**0.8.0 已发布，npm `latest` = 0.8.0**，台账 published。验收证据见 [test-report](test-report.md)。
 
 ## 本轮目标与边界
 
@@ -23,7 +23,8 @@ shared-models-and-history、session-ownership、transport-boundaries。
   补齐证据并修复发现的实现缺陷（T17）；仍不合入 master。
 - m02815（2026-11-22）：**允许合入 master，做好发布前的工作，我进行发布即可** —— 解除 m00133 的不合入约束；
   授权合入 master、推送 master 与发布前准备（版本 bump、台账、发行说明、dry-run）；实际 npm 发布由维护者手动触发。
-- m03137（2026-11-22）：**我点击了，你更新下文档吧** —— 维护者已触发发布；发布在 Linux 验证失败后由 Agent 诊断修复并更新文档，待维护者重新触发。
+- m03137（2026-11-22）：**我点击了，你更新下文档吧** —— 维护者已触发发布；发布在 Linux 验证失败后由 Agent 诊断修复并更新文档。
+- m03781（2026-11-22）：**已经发布成功了** —— 维护者重新触发后 0.8.0 发布成功；Agent 核验 registry/provenance/独立安装并登记发布回执、台账置 published。
 
 边界：
 - 不交付 Desktop/VS Code/远程/H5/IM 任何真实端；不做跨设备同步；不实现账号/云端 Gateway。
@@ -36,9 +37,9 @@ shared-models-and-history、session-ownership、transport-boundaries。
 
 | 目录 | 来源 | 验收目标 | 责任范围 | 阶段 | 文档 | 验证 | 集成状态 | 下一步 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| host-contract §R1 shared-models-and-history（SH-01…SH-05） | 路线图 SP008；能力矩阵「多端共享边界」「会话管理」 | 并发配置更新不丢、陈旧锁恢复、读并发尾行容错、凭据按 (id,host) 作用域且传输不外泄、崩溃后接管不重放 | storage 配置/转录/凭据、host 身份 | 交付完成 | [requirements](host-contract/requirements.md) · [design](host-contract/design/design.zh.md) · [plan](host-contract/design/plan.zh.md) · [test-report](test-report.md) | PASS 5/5 | 已合入 master（`1d1ec9f`，m02815） | 0.8.0 已准备待发布 |
-| host-contract §R2 session-ownership（SO-01…SO-04） | 路线图 SP008；矩阵「活动会话归属/只读观察/接管」 | 单写者 owner、第二连接 observer、submit 拒绝、崩溃 stale 显式 takeover、observer 无管理权 | storage writer lock、host 归属视图、host server 角色 | 交付完成 | 同上 | PASS 4/4 | 已合入 master（`1d1ec9f`，m02815） | 0.8.0 已准备待发布 |
-| host-contract §R3 transport-boundaries（TB-01…TB-08） | 路线图 SP008；CAP-L4-08/09；矩阵「宿主契约」 | 版本化身份、事件一致、权限往返+超时 deny、帧/错误边界、WS 回环+令牌、关闭释放锁、边界声明 | host 协议/传输/服务端、tui serve 入口、边界脚本 | 交付完成 | 同上 | PASS 7 · PARTIAL 1（TB-07 SIGTERM，Windows 无法投递） | 已合入 master（`1d1ec9f`，m02815） | 0.8.0 已准备待发布 |
+| host-contract §R1 shared-models-and-history（SH-01…SH-05） | 路线图 SP008；能力矩阵「多端共享边界」「会话管理」 | 并发配置更新不丢、陈旧锁恢复、读并发尾行容错、凭据按 (id,host) 作用域且传输不外泄、崩溃后接管不重放 | storage 配置/转录/凭据、host 身份 | 交付完成 | [requirements](host-contract/requirements.md) · [design](host-contract/design/design.zh.md) · [plan](host-contract/design/plan.zh.md) · [test-report](test-report.md) | PASS 5/5 | 已合入 master（`1d1ec9f`，m02815） | 0.8.0 已发布 |
+| host-contract §R2 session-ownership（SO-01…SO-04） | 路线图 SP008；矩阵「活动会话归属/只读观察/接管」 | 单写者 owner、第二连接 observer、submit 拒绝、崩溃 stale 显式 takeover、observer 无管理权 | storage writer lock、host 归属视图、host server 角色 | 交付完成 | 同上 | PASS 4/4 | 已合入 master（`1d1ec9f`，m02815） | 0.8.0 已发布 |
+| host-contract §R3 transport-boundaries（TB-01…TB-08） | 路线图 SP008；CAP-L4-08/09；矩阵「宿主契约」 | 版本化身份、事件一致、权限往返+超时 deny、帧/错误边界、WS 回环+令牌、关闭释放锁、边界声明 | host 协议/传输/服务端、tui serve 入口、边界脚本 | 交付完成 | 同上 | PASS 7 · PARTIAL 1（TB-07 SIGTERM，Windows 无法投递） | 已合入 master（`1d1ec9f`，m02815） | 0.8.0 已发布 |
 
 ## 验收与交接
 
@@ -71,4 +72,5 @@ shared-models-and-history、session-ownership、transport-boundaries。
 | 2026-11-22 | 发布前准备：minor → 0.8.0（`src/tui/package.json`）、台账 prepared、发行说明 `release-notes/v0.8.0.md`、入口文档版本同步；dry-run GREEN；master 门禁 GREEN；实际 npm 发布待维护者触发 | 用户 m02815 |
 | 2026-11-22 | 推送 master（9ca499b → 93adeb2 → 63180eb → 9a34ede），远端 SHA 与本地一致 | 用户 m02815 |
 | 2026-11-22 | 维护者触发发布 run 45003613733；ubuntu-24.04 验证因共享历史只读恢复用例并发取样竞态失败、OIDC 发布跳过 | 用户 m03137 |
-| 2026-11-22 | 修复测试取样竞态（等半行落盘再取样），Linux 复验 1242/1240/0 失败/2 跳过，cherry-pick 到 master（`37a4cfd`）、删除诊断分支、门禁 GREEN、推送 master；待维护者重新触发发布 | 用户 m03137 |
+| 2026-11-22 | 修复测试取样竞态（等半行落盘再取样），Linux 复验 1242/1240/0 失败/2 跳过，cherry-pick 到 master（`37a4cfd`）、删除诊断分支、门禁 GREEN、推送 master | 用户 m03137 |
+| 2026-11-22 | 维护者重新触发发布 run 45010118350（源码 `b71b3f5`）三作业全 success，0.8.0 已发布（publishedAt=2026-11-22T10:06:13.912Z，npm `latest`=0.8.0）；核验 registry integrity/shasum、2 条 attestation/provenance、隔离安装 53 包 + 签名、tarball 重算哈希一致；台账置 published（`ciArtifactDownloaded: false`），发行说明补发布回执段 | 用户 m03781 |

@@ -26,7 +26,7 @@
 
 首发使用与交付：[TUI README](../src/tui/README.md)、[版本管理](versioning.md)、[首发状态](requirements/tui-bootstrap/STATUS.md)。
 
-当前 npm `latest` 为 [0.7.0 · Agent 质量与扩展](../release-notes/v0.7.0.md)（SP007，由 [GitHub Actions 运行 #27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352) 发布）；源码已准备 [0.8.0 · 多端架构入口与共享边界](../release-notes/v0.8.0.md)（SP008，待维护者触发发布工作流），进度见 [SP008 迭代汇总](../SP/SP008/requirements-summary.md)。历史发布见 [0.6.0 发行说明](../release-notes/v0.6.0.md)、[0.5.4 发行说明](../release-notes/v0.5.4.md)、[0.5.3 发行说明](../release-notes/v0.5.3.md)、[0.5.2 发行说明](../release-notes/v0.5.2.md)和 [0.5.0 发行说明](../release-notes/v0.5.0.md)。
+当前 npm `latest` 为 [0.8.0 · 多端架构入口与共享边界](../release-notes/v0.8.0.md)（SP008，由 [GitHub Actions 运行 #45010118350](https://github.com/Limingyang01/budingx-next/actions/runs/45010118350) 发布）；此前 [0.7.0 · Agent 质量与扩展](../release-notes/v0.7.0.md)（SP007，由 [运行 #27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352) 发布），进度见 [SP008 迭代汇总](../SP/SP008/requirements-summary.md)。历史发布见 [0.6.0 发行说明](../release-notes/v0.6.0.md)、[0.5.4 发行说明](../release-notes/v0.5.4.md)、[0.5.3 发行说明](../release-notes/v0.5.3.md)、[0.5.2 发行说明](../release-notes/v0.5.2.md)和 [0.5.0 发行说明](../release-notes/v0.5.0.md)。
 
 源码模块组织见 [仓库布局](repository-layout.md)。
 

@@ -1,6 +1,8 @@
 # 当前状态
 
-截至 2026-11-21，**npm `latest` 为 0.7.0**（Agent 质量与扩展，SP007）。SP007 **已完成实施与验收，于 2026-11-21 经交叉验证门禁 GREEN 后合入 master（合并提交 `ee9118e`），并由 [GitHub Actions 运行 #27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352)（源码 `a8628b5`）完成 Windows、Linux 验证与 OIDC 发布**。本版补齐子代理执行、多模态上下文（图片附件）、第二供应商协议、运行时诊断面板与评估回归，并修复图片粘贴相关用户可见缺陷。0.6.0（TUI 对齐与扩展，SP006）此前已完成实施与验收并发布，见 [0.6.0 发行说明](../release-notes/v0.6.0.md)。
+截至 2026-11-22，**npm `latest` 为 0.8.0**（多端架构入口与共享边界，SP008）。SP008 **已完成实施与验收，合入 master 后由 [GitHub Actions 运行 #45010118350](https://github.com/Limingyang01/budingx-next/actions/runs/45010118350)（源码 `b71b3f5`）完成 Windows、Linux 验证与 OIDC 发布**。本版新增通用宿主契约（进程内/stdio/WS）、活动会话归属与崩溃接管、共享配置/历史并发安全与 `budingx serve` 入口。0.7.0（Agent 质量与扩展，SP007）此前已于 2026-11-21 经门禁 GREEN 合入 master（合并提交 `ee9118e`）并由运行 #27（源码 `a8628b5`）发布，见 [0.7.0 发行说明](../release-notes/v0.7.0.md)；0.6.0（TUI 对齐与扩展，SP006）更早已发布，见 [0.6.0 发行说明](../release-notes/v0.6.0.md)。
+
+[运行 #45010118350](https://github.com/Limingyang01/budingx-next/actions/runs/45010118350) 以源码 `b71b3f5` 完成 Ubuntu、Windows 验证及 OIDC 发布 0.8.0。官方制品 SHA-1/SHA-512、来源证明（attestation/provenance）、签名与独立安装均已核对；CI 回执 artifact 需登录未取得，台账据此登记并标注证据缺口。见 [0.8.0 发行说明](../release-notes/v0.8.0.md)、[发布台账](../release-ledger.json)及 [SP008 验收报告](../SP/SP008/test-report.md)。首次发布尝试（run 45003613733）曾在 ubuntu-24.04 因一处测试取样竞态失败，已修复（`37a4cfd`）后重新触发成功。
 
 [运行 #25–#27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352) 以源码 `a8628b5` 完成 Ubuntu、Windows 验证及 OIDC 发布 0.7.0。官方制品 SHA-512、来源证明（attestation）、签名与独立安装均已核对；CI 回执 artifact 需登录未取得，台账据此登记并标注证据缺口。见 [0.7.0 发行说明](../release-notes/v0.7.0.md)、[发布台账](../release-ledger.json)及 [SP007 验收报告](../SP/SP007/test-report.md)。可选本机 Langfuse 观测默认关闭。
 ## SP007 · Agent 质量与扩展（交付完成，0.7.0 已发布）
@@ -40,9 +42,9 @@ SP007 功能分支 `feature/SP007/agent-quality-and-extensions`（及用户反�
 
 
 
-## SP008 · 多端架构入口与共享边界（已合入 master，0.8.0 已准备待发布）
+## SP008 · 多端架构入口与共享边界（交付完成，0.8.0 已发布）
 
-SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已完成 T1–T17：通用宿主契约（进程内/stdio/WS）、活动会话归属与崩溃接管、共享配置/历史并发安全、`budingx serve` 入口与轻量测试客户端。按用户 2026-11-22 授权（m02815）**已合入 master**（合并提交 `1d1ec9f`，同时清理误入仓库的 Windows 缓存二进制并加入 `.gitignore`），并按 minor 规则准备 0.8.0（`src/tui/package.json` = 0.8.0，台账 prepared）。维护者首次触发发布（run 45003613733）时 ubuntu-24.04 验证作业因一处**测试取样竞态**失败（`sp008-shared-history` 只读恢复用例，非产品缺陷），已修复（提交 `37a4cfd`）并在 ubuntu-24.04 + Node 24 复跑全量单测 **1242 项 / 1240 通过 / 0 失败 / 2 跳过**；修复后 master 门禁再次 GREEN，master 已推送远端（`37a4cfd`，远端 SHA 核对一致）。**实际 npm 发布由维护者对 master 重新触发发布工作流**，发布前 npm `latest` 仍为 0.7.0。
+SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已完成 T1–T17：通用宿主契约（进程内/stdio/WS）、活动会话归属与崩溃接管、共享配置/历史并发安全、`budingx serve` 入口与轻量测试客户端。按用户 2026-11-22 授权（m02815）**已合入 master**（合并提交 `1d1ec9f`，同时清理误入仓库的 Windows 缓存二进制并加入 `.gitignore`），并按 minor 规则准备 0.8.0（`src/tui/package.json` = 0.8.0，台账 prepared）。维护者首次触发发布（run 45003613733）时 ubuntu-24.04 验证作业因一处**测试取样竞态**失败（`sp008-shared-history` 只读恢复用例，非产品缺陷），已修复（提交 `37a4cfd`）并在 ubuntu-24.04 + Node 24 复跑全量单测 **1242 项 / 1240 通过 / 0 失败 / 2 跳过**；修复后 master 门禁再次 GREEN。维护者对 master（`b71b3f5`）重新触发 [运行 #45010118350](https://github.com/Limingyang01/budingx-next/actions/runs/45010118350)，`Verify (ubuntu-24.04)`、`Verify (windows-latest)`、`Publish verified TUI using npm OIDC` 三作业全部 success，**0.8.0 已发布，npm `latest` = 0.8.0**（publishedAt=2026-11-22T10:06:13.912Z）；registry/provenance/独立安装回执已核验登记。
 
 ### 已完成
 
@@ -76,7 +78,7 @@ SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已
 
 ### 待办
 
-- 维护者对 master（`37a4cfd`）**重新触发** [Publish TUI to npm](github-actions-npm.md) 发布 0.8.0（首次尝试因 Linux 测试竞态失败，已修复），并按 [Actions 发布回执](versioning.md#actions-发布回执) 导入 registry 回执、把台账置为 published
+- 0.8.0 已发布（运行 #45010118350，源码 `b71b3f5`），台账已置 published；registry/provenance/独立安装回执已核验登记，见 [0.8.0 发行说明](../release-notes/v0.8.0.md)
 - 如需补齐 SIGTERM 证据，在 Linux/macOS 运行 stdio serve 后发 SIGTERM
 
 ## 已有
@@ -259,3 +261,7 @@ SP002 的制品布局已变更（bin 由 `dist/cli.js` 改为 `dist/tui/cli.js`�
 ## 0.7.0 正式发布完成（2026-11-21）
 
 维护者触发运行 #27（源码 `a8628b5`），`Verify (windows-latest)`、`Verify (ubuntu-24.04)` 与 `Publish verified TUI using npm OIDC` 三个作业全部 success；publishedAt=2026-11-21T15:58:10.709Z，latest=0.7.0。官方 registry integrity `sha512-LfvAmRL2gZel3FkN/Ct7pLZbaLzoT1FPvAwseMGditpPbBzlzX5Aet5YmWDwd9kTmKFJvOAfyOFCS+ZJ6F+UqQ==`，167 files，shasum `e4961b6eba8e1b253cc3bd7f3c7ae8221b2c9071`；2 条 attestation（npm publish + SLSA provenance）核验通过，provenance 指向 master@`a8628b5` 与本次 invocationId，身份为 GitHub Trusted Publisher。本机从官方 registry 隔离安装 0.7.0 成功，`--version` 输出 0.7.0，`npm audit signatures` 53 包签名、7 条 attestation 核验通过，制品内无用户数据。原始 CI artifact 下载要求认证，未取得，使用公开 provenance 与独立安装证据；ledger 已 published，`ciArtifactDownloaded: false`。SP007 功能分支 `feature/SP007/agent-quality-and-extensions` 与 `feature/SP007/image-command` 已合入 master（`ee9118e`），0.7.0 不可重复上传。
+
+## 0.8.0 正式发布完成（2026-11-22）
+
+维护者触发 [运行 #45010118350](https://github.com/Limingyang01/budingx-next/actions/runs/45010118350)（源码 `b71b3f5`），`Verify (windows-latest)`、`Verify (ubuntu-24.04)` 与 `Publish verified TUI using npm OIDC` 三个作业全部 success；publishedAt=2026-11-22T10:06:13.912Z，latest=0.8.0。官方 registry integrity `sha512-jS+9yNUKokLC7A9cM8lsdhwb52q4a9BMj8rfDamsVwopzjgcQAowA7a6VHbO8Q9jxi+UGcK19ElNlkefa780vA==`，180 files，shasum `3ac13a14be68b92e5b60caa083805d607d5c57b1`；2 条 attestation（npm publish + SLSA provenance）核验通过，provenance 指向 master@`b71b3f5` 与本次 invocationId，subject SHA-512 与 integrity 解码一致，身份为 GitHub Trusted Publisher。本机从官方 registry 隔离安装 0.8.0 成功（53 包），`--version` 输出 0.8.0，`npm audit signatures` 53 包签名、7 条 attestation 核验通过，本地 HTTP 流式 smoke 返回 `{version:0.8.0, fixtureRequests:1}`，制品内无用户数据；本机下载 tarball 重算 SHA-1/SHA-512 与 registry 一致。原始 CI artifact 下载要求认证，未取得，使用公开 provenance 与独立安装证据；ledger 已 published，`ciArtifactDownloaded: false`。首次运行 #45003613733（源码 `9a34ede`）曾在 ubuntu-24.04 验证作业因 `sp008-shared-history` 只读恢复用例的并发取样竞态失败并被跳过（restore 经核实纯只读，非产品缺陷），修复于 `37a4cfd` 后重新触发成功；0.8.0 不可重复上传。

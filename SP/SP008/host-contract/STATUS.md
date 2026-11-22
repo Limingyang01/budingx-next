@@ -6,7 +6,7 @@
 - 设计：`design/design.zh.md`（v1.1，已自审；含令牌策略与传输 API 实施修订）
 - 计划：`design/plan.zh.md`（T1…T14，含 RED/GREEN 与命令）
 - 验收：`../test-report.md`（23 个新增测试文件 + 共享 helper/自模拟 MCP 服务器；AC 逐条证据）
-- 基线：master `a8628b5`；功能分支 `feature/SP008/host-contract`；产品版本 0.8.0（prepared，待发布）
+- 基线：master `a8628b5`；功能分支 `feature/SP008/host-contract`；产品版本 0.8.0（**已发布**，npm `latest` = 0.8.0）
 - 授权范围：设计、计划、实施、测试、交付记录、本地提交（中文说明）；
   **不含**打标签、npm 发布（由用户在 GitHub 手动触发）、远端设置、分支删除。
   用户 m02815（2026-11-22）解除 m00133 的「不合入 master」约束，授权合入 master、推送 master 与发布前准备。
@@ -29,9 +29,9 @@
 - [x] 发布前准备：0.8.0（minor，台账 prepared）、`release-notes/v0.8.0.md`、入口文档版本同步、dry-run GREEN（`artifacts/release/0.8.0-1795335507762/report.json`）、master 门禁 GREEN（`artifacts/merge-gate/master-2026-11-22T08-30-26-648Z.md`，HEAD `63180eb`）
 - [x] 推送 master：已推送并核对远端 SHA（发布准备 `93adeb2` → 回执 `63180eb`/`9a34ede` → 发布链路修复 `37a4cfd`）
 - [x] 发布链路修复：首次发布（run 45003613733）ubuntu-24.04 验证因 `sp008-shared-history` 只读恢复用例并发取样竞态失败（restore 经核实纯只读，非产品缺陷）；改为等半行落盘再取样（提交 `37a4cfd`），Linux 复验全量 1242 项 / 1240 通过 / 0 失败 / 2 跳过，修复后 master 门禁再次 GREEN（`artifacts/merge-gate/master-2026-11-22T09-16-34-982Z.md`）
-- [ ] npm 发布：首次触发失败已修复，待维护者对 master（`37a4cfd`）**重新触发**发布工作流（不在本轮授权内）
+- [x] npm 发布：**已发布**（维护者手动触发，[运行 #45010118350](https://github.com/Limingyang01/budingx-next/actions/runs/45010118350)，源码 `b71b3f5`，三作业全 success，publishedAt=2026-11-22T10:06:13.912Z）；首次 run 45003613733 因 Linux 测试取样竞态失败，修复（`37a4cfd`）后重新触发成功；registry/provenance/独立安装回执已核验，台账置 published（`ciArtifactDownloaded: false`）
 
-当前停点：SP008 已合入 master（`1d1ec9f`）并完成 0.8.0 发布前准备；首次发布在 Linux 因测试取样竞态失败，已修复（`37a4cfd`）并复验 GREEN；实际 npm 发布由维护者对 master 重新触发发布工作流。
+当前停点：SP008 已合入 master（`1d1ec9f`）并**发布 0.8.0**（运行 #45010118350，源码 `b71b3f5`，npm `latest` = 0.8.0）；首次发布在 Linux 因测试取样竞态失败，已修复（`37a4cfd`）后重新触发成功；registry/provenance/独立安装回执已核验登记，台账 published。本轮交付完成。
 
 ## 3. 批准与来源
 
@@ -93,4 +93,4 @@
 - 推送 master：**已执行**（用户 m02815，2026-11-22）：`git push origin master`（9ca499b → 93adeb2 → 63180eb → 9a34ede → 37a4cfd）；`git ls-remote origin master` 核对最终 `37a4cfde72e507587ed4f046a9f5ef5aff8eac6c` 与本地一致
 - 发布链路修复：**已执行**（2026-11-22）：首次发布 run 45003613733 在 ubuntu-24.04 因 `src/tui/test/sp008-shared-history.test.mjs:74` 并发取样竞态失败；修复等待条件（等半行落盘再取样），诊断分支 Linux 复验 0 失败后 cherry-pick 到 master（`37a4cfd`），删除临时诊断分支，修复后门禁 GREEN；详见 test-report §11.3
 - 推送功能分支：**已执行**（用户 m02549，2026-11-22）：`git push -u origin feature/SP008/host-contract`，远端新建分支；`git ls-remote` 核对 `a4690c485139270ac410b4ce34cbdd824bfe162e` 与本地 HEAD 一致（26 commits / 67 files，master..HEAD）。远端 master 仍为 `56a161c`，未改动
-- 发布：**首次触发失败已修复，待重新触发**。维护者首次触发 run 45003613733，ubuntu-24.04 验证作业因测试取样竞态失败、OIDC 发布跳过；修复（`37a4cfd`）并 Linux 复验 GREEN 后，待维护者对 master 重新触发。版本仍 0.8.0、制品内容不变
+- 发布：**已执行**（维护者手动触发）。首次 run 45003613733 在 ubuntu-24.04 因测试取样竞态失败、OIDC 跳过；修复（`37a4cfd`）并 Linux 复验 GREEN 后，维护者对 master（`b71b3f5`）重新触发 run 45010118350，三作业全 success，0.8.0 已发布（publishedAt=2026-11-22T10:06:13.912Z）。registry integrity `sha512-jS+9yNUKokLC…`、shasum `3ac13a14…`、2 条 attestation/provenance（master@`b71b3f5`）、隔离安装 53 包 + `npm audit signatures` 通过、tarball 重算 SHA-1/SHA-512 一致；CI 回执 artifact 需登录未取得，台账 `ciArtifactDownloaded: false`。详见 test-report §11.4 与 release-notes/v0.8.0.md 发布回执段

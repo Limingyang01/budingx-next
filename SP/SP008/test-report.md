@@ -1,6 +1,6 @@
 # SP008 验收报告 — 多端架构入口与共享边界
 
-状态：**已合入 master**（用户 m02815，2026-11-22 解除 m00133 的不合入约束），产品版本已按 minor 准备 0.8.0（待发布）｜日期：2026-11-22（含当日扩展复测与 T17 测试加固）｜分支 `feature/SP008/host-contract` → master（合并提交 `1d1ec9f`）｜基线 master `a8628b5`｜产品版本 0.8.0（prepared）
+状态：**已合入 master，0.8.0 已发布**（用户 m02815 授权合入，m03781 确认发布成功）｜日期：2026-11-22（含当日扩展复测与 T17 测试加固）｜分支 `feature/SP008/host-contract` → master（合并提交 `1d1ec9f`）｜基线 master `a8628b5`｜产品版本 0.8.0（**published**，npm `latest` = 0.8.0，发布运行 [#45010118350](https://github.com/Limingyang01/budingx-next/actions/runs/45010118350)，源码 `b71b3f5`）
 
 ## 1. 方法与环境
 
@@ -284,10 +284,10 @@ T17 加固单独跑：`node --test src/host/test/client.test.mjs src/host/transp
 
 dry-run 首次执行 RED：scripts/skills/integrity.test.mjs 报 docs/current-status.md 指向 ../SP/SP007/agent-quality-and-extensions/test-report.md 的链接不存在。根因是该链接为基线遗留错误（SP007 验收报告正本始终位于轮次根目录 SP/SP007/test-report.md，从未在 slug 目录），与 SP008 改动无关，但被发布检查链路触发。按 SP008 同一正本规则修正链接，复跑 node --test scripts/skills/integrity.test.mjs 得 5/5 通过，dry-run 随即 GREEN。
 
-### 11.2 待用户完成
+### 11.2 发布触发与回执（已完成，2026-11-22）
 
-- 在 Publish TUI to npm 工作流对 master 手动触发发布。
-- 发布成功后按 Actions 发布回执 导入 registry 版本、integrity 与 attestation 回执，把 release-ledger.json 的 0.8.0 置为 published，并把 release-notes/v0.8.0.md 状态改为已发布、补发布回执段。
+- 维护者在 Publish TUI to npm 工作流对 master 手动触发发布（首次失败见 §11.3，修复后重新触发成功，见 §11.4）。
+- 已按公开 registry/provenance/独立安装核验发布回执，把 release-ledger.json 的 0.8.0 置为 published，并把 release-notes/v0.8.0.md 状态改为已发布、补发布回执段（详见 §11.4）。
 
 ### 11.3 首次发布尝试失败与修复（Linux 测试取样竞态，2026-11-22）
 
@@ -304,3 +304,23 @@ dry-run 首次执行 RED：scripts/skills/integrity.test.mjs 报 docs/current-st
 | 修复后门禁 | npm run merge:gate GATE GREEN（HEAD 37a4cfd），报告 artifacts/merge-gate/master-2026-11-22T09-16-34-982Z.md：四项检查退出码全 0，禁带路径违规 0，报告 FAIL 行 0、UNVERIFIED 行 5 |
 
 结论：0.8.0 制品内容不变（仅测试稳定化），发布前准备仍有效；维护者对 master（37a4cfd）**重新触发** Publish TUI to npm 即可。
+
+### 11.4 0.8.0 正式发布回执（2026-11-22，用户 m03781 确认发布成功）
+
+维护者对 master（`b71b3f5`）重新触发 [Publish TUI to npm 运行 #45010118350](https://github.com/Limingyang01/budingx-next/actions/runs/45010118350)，三作业（Verify ubuntu-24.04、Verify windows-latest、Publish OIDC）全部 success，**0.8.0 已发布，npm `latest` = 0.8.0**。
+
+| 项 | 内容 |
+| --- | --- |
+| 发布运行 | [#45010118350](https://github.com/Limingyang01/budingx-next/actions/runs/45010118350)，workflow_dispatch，head_sha=`b71b3f5cc8bd913139398ae7253c30f896166da6`，三作业全 success |
+| registry 版本 | budingx@0.8.0，npm `latest`=0.8.0，publishedAt=2026-11-22T10:06:13.912Z |
+| 制品 | fileCount=180，unpackedSize=1222295，tarball https://registry.npmjs.org/budingx/-/budingx-0.8.0.tgz |
+| integrity | `sha512-jS+9yNUKokLC7A9cM8lsdhwb52q4a9BMj8rfDamsVwopzjgcQAowA7a6VHbO8Q9jxi+UGcK19ElNlkefa780vA==` |
+| shasum | `3ac13a14be68b92e5b60caa083805d607d5c57b1` |
+| attestation/provenance | https://registry.npmjs.org/-/npm/v1/attestations/budingx@0.8.0 共 2 条（npm publish + SLSA provenance v1）；provenance gitCommit=`b71b3f5`、invocationId=run45010118350/attempts/1，subject sha512 与 integrity 解码一致；signatures keyid=`SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U` |
+| 独立安装核验 | 隔离目录 `npm install budingx@0.8.0` 成功（53 包）；`--version`=0.8.0；`npm audit signatures` 53 签名 + 7 attestation 通过；smoke {version:0.8.0, fixtureRequests:1, externalProvider:UNVERIFIED} |
+| tarball 重算 | 下载 tarball 重算 SHA-1=`3ac13a14…`、SHA-512 解码均与 registry 一致 |
+| 台账 | release-ledger.json 0.8.0 置 published（sourceCommit `b71b3f5`、publishedAt、verifiedAt=2026-11-22T10:24:37.977Z、authMode oidc、workflowRun 45010118350、verificationSource=public-registry-provenance-and-independent-install） |
+| 证据缺口 | CI 发布回执 artifact 需登录下载（匿名 GET 401），未取得；不伪造，依公开 registry/provenance/独立安装证据登记，台账 `ciArtifactDownloaded: false`、`receipt: null`。真实外部 Provider 端到端仍 UNVERIFIED（本轮用本地 SSE fixture） |
+
+结论：0.8.0 正式发布完成，registry/provenance/独立安装三方一致；台账 published、发行说明补发布回执段、PRODUCT/README/SP008/current-status 版本状态同步为已发布。SP008 全流程（开发→合入→发布）交付完成。
+
