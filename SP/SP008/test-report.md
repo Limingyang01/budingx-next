@@ -152,6 +152,7 @@ T16 补齐第一组扩展用例未覆盖的八类场景，全部经真实 `budin
 | final2-run-1…3（复测 HEAD `abbdcb1`） | 每轮 **23/23** PASS，EXIT=0，26.9s / 26.2s / 26.2s | 同上，文档提交后在最终 HEAD 复跑，确认无回归 |
 | matrix-run-1…3（扩展矩阵 HEAD `9f7f00b`） | 每轮 **11/11** PASS，EXIT=0 | 扩展用例 3 例 + T16 矩阵 8 例（八事件、updatedInput、additionalContext、ask、多服务器、isError、崩溃、连接失败） |
 | t16-run-1…3（文档收口前定向全量） | 每轮 **66/66** PASS，EXIT=0 | SP008 定向 66 例全量复跑（宿主、传输、存储、三传输、归属、崩溃恢复、扩展、扩展矩阵） |
+| final-t16-run-1…3（最终 HEAD `562722b`） | 每轮 **11/11** PASS，EXIT=0 | 文档提交后在最终 HEAD 复跑扩展与矩阵用例，确认无回归 |
 
 每轮均重新创建临时 home、重新启动 serve 子进程、重新建立 HTTP fixture 与 MCP/hook 子进程；不共享上一轮磁盘状态。
 
@@ -163,6 +164,7 @@ T16 补齐第一组扩展用例未覆盖的八类场景，全部经真实 `budin
 - 复测门禁（T15 后）：`npm run merge:gate` → **GATE GREEN**（HEAD `abbdcb1`，outgoing 13 commits / 49 files，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T00-41-00-318Z.md`）：四项检查退出码全 0，禁带路径违规 0，报告 FAIL 行 0、UNVERIFIED 行 2（TB-07 SIGTERM 与既有 POSIX 权限用例），恢复条件节齐备。
 - 扩展矩阵门禁（T16 后）：`npm run merge:gate` → **GATE GREEN**（HEAD `9f7f00b`，outgoing 15 commits / 50 files，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T01-27-09-665Z.md`）：`npm test`/`spec:check`/`skills:check`/`pack-smoke` 四项检查全通过，禁带路径违规 0。
 - 文档收口门禁（T16 文档后）：`npm run merge:gate` → **GATE GREEN**（outgoing 15 commits / 50 files，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T01-41-12-691Z.md`）：四项检查退出码全 0，禁带路径违规 0，报告 FAIL 行 0、UNVERIFIED 行 3（TB-07 SIGTERM 与 2 项既有 POSIX 权限用例），恢复条件节齐备。
+- 最终 HEAD 门禁（文档提交 `562722b` 后）：`npm run merge:gate` → **GATE GREEN**（outgoing 16 commits，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T01-44-51-287Z.md`）：四项检查退出码全 0。
 
 ## 8. 偏差与实施期修订
 
@@ -207,4 +209,4 @@ npm run merge:gate
 
 扩展矩阵单独跑：`node --test src/tui/test/sp008-serve-extensions-matrix.test.mjs`（8 例，MCP/hooks 端到端矩阵）。
 
-多轮日志：`artifacts/quality-runs/SP008/host-contract/run-{1,2,3}.log`、`final-run-{1,2,3}.log`、`ext-run-{1,2,3}.log`、`final2-run-{1,2,3}.log`、`matrix-run-{1,2,3}.log`、`t16-run-{1,2,3}.log`（本地保留，不提交）。
+多轮日志：`artifacts/quality-runs/SP008/host-contract/run-{1,2,3}.log`、`final-run-{1,2,3}.log`、`ext-run-{1,2,3}.log`、`final2-run-{1,2,3}.log`、`matrix-run-{1,2,3}.log`、`t16-run-{1,2,3}.log`、`final-t16-run-{1,2,3}.log`（本地保留，不提交）。

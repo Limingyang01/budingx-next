@@ -17,7 +17,7 @@
 - [x] 计划：design/plan.zh.md（T1…T14）
 - [x] 实施：T1–T10（共享数据、会话归属、协议/服务端、进程内/stdio/WS、引擎适配）
 - [x] 测试收口：T11 定向 55/55 PASS；T15 复测后定向 58/58 PASS；T16 扩展矩阵后定向 66/66 PASS；全量 1188 项 / 1187 通过 / 1 跳过 / 0 失败
-- [x] 多轮端到端：交付 3 轮 × 20 例 + 复测 3 轮 × 23 例 + 最终 HEAD 再 3 轮 × 23 例 + 扩展矩阵 3 轮 × 11 例 + 定向全量 3 轮 × 66 例，全部 PASS（日志 `artifacts/quality-runs/SP008/host-contract/`）
+- [x] 多轮端到端：交付 3 轮 × 20 例 + 复测 3 轮 × 23 例 + 最终 HEAD 再 3 轮 × 23 例 + 扩展矩阵 3 轮 × 11 例 + 定向全量 3 轮 × 66 例 + 最终 HEAD 扩展 3 轮 × 11 例，全部 PASS（日志 `artifacts/quality-runs/SP008/host-contract/`）
 - [x] 扩展复测（T15，用户 m01288/m01304）：`serve` 装配 MCP/hooks，自模拟 MCP 服务器与 hook 子进程，3 例真实进程端到端 PASS
 - [x] 扩展矩阵（T16，用户 m01515）：MCP/hooks 端到端矩阵 8 例 PASS（八事件、updatedInput、additionalContext、ask、多服务器、isError、崩溃、连接失败）；扩展 3 轮 × 11/11 PASS
 - [x] AST 复核：17/17 文件映射，命中 0，PASS
