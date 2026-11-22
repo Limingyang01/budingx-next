@@ -226,7 +226,10 @@ function createTransport(socket: ReturnType<typeof connect>, initial: Buffer): H
     socket.destroy()
     finish()
   })
-  if (buffer.length > 0) pump()
+  // 握手响应与首批帧可能在同一个 TCP 块里到达；同步 pump 会在调用方
+  // await 之后注册 onLine/onClose 之前投递，导致帧丢失。推迟到宏任务，
+  // 让紧随 await 的同步监听器注册先完成。
+  if (buffer.length > 0) setTimeout(pump, 0)
 
   return {
     write(text: string): void {

@@ -110,6 +110,8 @@ export function createHostEngine(options: CreateHostEngineOptions): HostEngine {
       session.submit(text, workspacePromptOptions(text, runtime.workspace, runtime.policy))
     },
     interrupt(): boolean {
+      // interrupted 表示是否真的打断了活动回合；空闲会话没有可取消的回合。
+      if (!session.isBusy) return false
       session.interrupt('user')
       return true
     },

@@ -79,7 +79,8 @@ export function parseServeArgs(args: string[]): ServeOptions {
         break
       case '--port': {
         const raw = value()
-        const port = Number(raw)
+        // Number('') === 0：空白值必须显式拒绝，不能静默落到端口 0。
+        const port = raw.trim() === '' ? Number.NaN : Number(raw)
         if (!Number.isInteger(port) || port < 0 || port > 65535) {
           throw usageError('Invalid --port; expected 0-65535')
         }

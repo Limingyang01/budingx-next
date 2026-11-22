@@ -18,6 +18,7 @@ export const cli = fileURLToPath(new URL('../../dist/tui/cli.js', import.meta.ur
  *   'text' —— 普通文本回答
  *   'bash' —— 请求 Bash 工具（用于审批往返）
  *   'mcp'  —— 请求 MCP 工具 mcp__sim__echo
+ *   'slow' —— 首片段后保持流不结束（用于 interrupt 端到端）
  * options.toolCall 可覆盖工具名/参数/调用 id；options.requests 暴露收到的请求体，
  * 便于断言 additionalContext 是否进入模型上下文。
  */
@@ -28,6 +29,12 @@ export async function startFixtureServer(t, mode = 'text', options = {}) {
     for await (const chunk of req) parts.push(chunk)
     const body = parts.length > 0 ? JSON.parse(Buffer.concat(parts).toString('utf8')) : {}
     requests.push(body)
+    if (mode === 'slow') {
+      // 首片段后保持流不结束：回合停留在 streaming，直到宿主 interrupt。
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      res.write('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n')
+      return
+    }
     const hasToolResult = (body.messages ?? []).some((item) => item.role === 'tool')
     const toolCall = options.toolCall
       ? { id: options.toolCall.id ?? 'call-custom', ...options.toolCall }
