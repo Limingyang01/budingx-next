@@ -165,7 +165,7 @@ T16 补齐第一组扩展用例未覆盖的八类场景，全部经真实 `budin
 - 扩展矩阵门禁（T16 后）：`npm run merge:gate` → **GATE GREEN**（HEAD `9f7f00b`，outgoing 15 commits / 50 files，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T01-27-09-665Z.md`）：`npm test`/`spec:check`/`skills:check`/`pack-smoke` 四项检查全通过，禁带路径违规 0。
 - 文档收口门禁（T16 文档后）：`npm run merge:gate` → **GATE GREEN**（outgoing 15 commits / 50 files，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T01-41-12-691Z.md`）：四项检查退出码全 0，禁带路径违规 0，报告 FAIL 行 0、UNVERIFIED 行 3（TB-07 SIGTERM 与 2 项既有 POSIX 权限用例），恢复条件节齐备。
 - 最终 HEAD 门禁（文档提交 `562722b` 后）：`npm run merge:gate` → **GATE GREEN**（outgoing 16 commits，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T01-44-51-287Z.md`）：四项检查退出码全 0。
-- 收尾门禁（HEAD `95d7e3e`）：`npm run merge:gate` → **GATE GREEN**（outgoing 19 commits，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T01-55-47-853Z.md`）：四项检查退出码全 0，禁带路径违规 0。工作树干净，此为交付最终 HEAD。
+- 收尾门禁（HEAD `95d7e3e`）：`npm run merge:gate` → **GATE GREEN**（outgoing 19 commits，报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T01-55-47-853Z.md`）：四项检查退出码全 0，禁带路径违规 0。工作树干净，此为交付最终 HEAD `b417705`（报告 `artifacts/merge-gate/feature-SP008-host-contract-2026-11-22T01-59-01-605Z.md`）。
 
 ## 8. 偏差与实施期修订
 
