@@ -1,6 +1,6 @@
 # SP008 需求汇总 — 多端架构入口与共享边界
 
-状态：**已合入 master，0.8.0 已准备待发布**（2026-11-21 开轮；用户 m00001 授权开发，m00133 一度要求不合入 master，m02549 授权推送功能分支，m02815 解除不合入约束并授权合入 master 与发布前准备）。验收证据见 [test-report](test-report.md)。
+状态：**已合入 master，0.8.0 已准备待发布**（2026-11-21 开轮；用户 m00001 授权开发，m00133 一度要求不合入 master，m02549 授权推送功能分支，m02815 解除不合入约束并授权合入 master 与发布前准备）。首次发布（run 45003613733）在 ubuntu-24.04 因一处测试取样竞态失败，已修复（master `37a4cfd`）并 Linux 复验 GREEN，待维护者重新触发发布。验收证据见 [test-report](test-report.md)。
 
 ## 本轮目标与边界
 
@@ -23,6 +23,7 @@ shared-models-and-history、session-ownership、transport-boundaries。
   补齐证据并修复发现的实现缺陷（T17）；仍不合入 master。
 - m02815（2026-11-22）：**允许合入 master，做好发布前的工作，我进行发布即可** —— 解除 m00133 的不合入约束；
   授权合入 master、推送 master 与发布前准备（版本 bump、台账、发行说明、dry-run）；实际 npm 发布由维护者手动触发。
+- m03137（2026-11-22）：**我点击了，你更新下文档吧** —— 维护者已触发发布；发布在 Linux 验证失败后由 Agent 诊断修复并更新文档，待维护者重新触发。
 
 边界：
 - 不交付 Desktop/VS Code/远程/H5/IM 任何真实端；不做跨设备同步；不实现账号/云端 Gateway。
@@ -52,6 +53,7 @@ shared-models-and-history、session-ownership、transport-boundaries。
 - 交接输入（供 SP009/SP014/SP011）：宿主身份/事件/权限契约、`serve` 入口参数、共享更新错误码、
   归属/接管语义与已知限制（无跨进程实时事件、无事件重放）。
 - 合入与发布前准备（m02815）：合入 master（`1d1ec9f`，3 处冲突按用户决策解决，含删除误入仓库的 Windows 缓存二进制并加 `.gitignore`）；合入后全量 1243/1242 通过；按 minor 准备 0.8.0（台账 prepared、发行说明 `release-notes/v0.8.0.md`、入口文档版本同步）；dry-run GREEN（`artifacts/release/0.8.0-1795335507762/report.json`，制品 181 文件含 `dist/host/**` 与 `dist/tui/serve.js`）；master 门禁 GREEN（`artifacts/merge-gate/master-2026-11-22T08-21-33-109Z.md`）。dry-run 期间修复基线遗留错误链接（`docs/current-status.md` 指向 SP007 验收报告的 slug 路径 → 轮次根目录路径），skills integrity 5/5 通过。
+- 首次发布失败与修复（m03137）：维护者触发 run 45003613733，Verify(windows) 通过、Verify(ubuntu-24.04) 在 `src/tui/test/sp008-shared-history.test.mjs:74` 失败（`restore must not rewrite the transcript`），OIDC 发布跳过。经核实 `restore()` 纯只读，根因为**测试取样竞态**（只等 `"m2"` 即取样，写进程随即追加半行落在取样窗口内）；改为等半行落盘并进入暂停后再取样。诊断分支 ubuntu-24.04 + Node 24 复验全量 1242/1240 通过/0 失败/2 跳过，cherry-pick 到 master（`37a4cfd`），删除临时诊断分支，修复后 master 门禁 GREEN（`artifacts/merge-gate/master-2026-11-22T09-16-34-982Z.md`）。仅改测试、制品内容不变；详见 test-report §11.3。
 
 ## 变更记录
 
@@ -67,4 +69,6 @@ shared-models-and-history、session-ownership、transport-boundaries。
 | 2026-11-22 | 功能分支推送 origin（`a4690c4`，26 commits / 67 files，远端 SHA 核对一致）；master 未合入未改动 | 用户 m02549 |
 | 2026-11-22 | 合入 master（`1d1ec9f`，--no-ff，3 处冲突按用户决策解决：删除误入仓库的 Windows 缓存二进制并加 `.gitignore`、host-engine 取功能分支版本、PRODUCT.md 手工合并）；合入后全量 1243/1242 通过 | 用户 m02815 |
 | 2026-11-22 | 发布前准备：minor → 0.8.0（`src/tui/package.json`）、台账 prepared、发行说明 `release-notes/v0.8.0.md`、入口文档版本同步；dry-run GREEN；master 门禁 GREEN；实际 npm 发布待维护者触发 | 用户 m02815 |
-| 2026-11-22 | 推送 master（9ca499b → 93adeb2），远端 SHA 与本地一致 | 用户 m02815 |
+| 2026-11-22 | 推送 master（9ca499b → 93adeb2 → 63180eb → 9a34ede），远端 SHA 与本地一致 | 用户 m02815 |
+| 2026-11-22 | 维护者触发发布 run 45003613733；ubuntu-24.04 验证因共享历史只读恢复用例并发取样竞态失败、OIDC 发布跳过 | 用户 m03137 |
+| 2026-11-22 | 修复测试取样竞态（等半行落盘再取样），Linux 复验 1242/1240/0 失败/2 跳过，cherry-pick 到 master（`37a4cfd`）、删除诊断分支、门禁 GREEN、推送 master；待维护者重新触发发布 | 用户 m03137 |

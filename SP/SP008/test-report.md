@@ -288,3 +288,19 @@ dry-run 首次执行 RED：scripts/skills/integrity.test.mjs 报 docs/current-st
 
 - 在 Publish TUI to npm 工作流对 master 手动触发发布。
 - 发布成功后按 Actions 发布回执 导入 registry 版本、integrity 与 attestation 回执，把 release-ledger.json 的 0.8.0 置为 published，并把 release-notes/v0.8.0.md 状态改为已发布、补发布回执段。
+
+### 11.3 首次发布尝试失败与修复（Linux 测试取样竞态，2026-11-22）
+
+维护者首次手动触发 Publish TUI to npm（run 45003613733，HEAD 9a34ede）：Windows 验证作业通过，**ubuntu-24.04 验证作业失败**，Publish 作业被跳过，npm 未推送（registry latest 仍 0.7.0）。
+
+| 项 | 内容 |
+| --- | --- |
+| 失败用例 | src/tui/test/sp008-shared-history.test.mjs:74「并发追加期间只读恢复得到完整记录，半行跳过且原文件字节不变」，断言 restore must not rewrite the transcript（sha256 前后不一致） |
+| 根因 | **测试取样竞态，非产品缺陷**。restore() 经核实为纯只读（仅 transcript.read/summarize/needsReviewSteps，无任何写操作）。用例原先只等 "m2" 落盘即取样 before 哈希，而写子进程在 m2 之后无间隔地追加半行 m3，半行恰在取样与恢复后校验之间落盘，导致哈希变化被误判为回写。Windows 调度未暴露，Linux CI 暴露 |
+| 修复 | 将取样前的等待条件由 includes('"m2"') 改为 includes('"three')，即等写子进程把半行完整落盘并进入 700ms 暂停后再取样，消除测量窗口内的并发写入。仅改测试，不改产品代码 |
+| Linux 复验 | 在 ubuntu-24.04 + Node 24 的诊断工作流复跑全量单测：1242 项 / 1240 通过 / 0 失败 / 2 跳过，UNIT_EXIT=0（FAILED_COUNT=0） |
+| 本地复验 | 修复后该用例在 Windows 连续 12 次运行全部通过 |
+| 提交 | 修复提交 37a4cfd（cherry-pick 自诊断分支 258fb00），已推送 master；临时诊断分支 chore/diagnose-ubuntu-publish 及其工作流/脚本已删除，未进入 master |
+| 修复后门禁 | npm run merge:gate GATE GREEN（HEAD 37a4cfd），报告 artifacts/merge-gate/master-2026-11-22T09-16-34-982Z.md：四项检查退出码全 0，禁带路径违规 0，报告 FAIL 行 0、UNVERIFIED 行 5 |
+
+结论：0.8.0 制品内容不变（仅测试稳定化），发布前准备仍有效；维护者对 master（37a4cfd）**重新触发** Publish TUI to npm 即可。

@@ -42,7 +42,7 @@ SP007 功能分支 `feature/SP007/agent-quality-and-extensions`（及用户反�
 
 ## SP008 · 多端架构入口与共享边界（已合入 master，0.8.0 已准备待发布）
 
-SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已完成 T1–T17：通用宿主契约（进程内/stdio/WS）、活动会话归属与崩溃接管、共享配置/历史并发安全、`budingx serve` 入口与轻量测试客户端。按用户 2026-11-22 授权（m02815）**已合入 master**（合并提交 `1d1ec9f`，同时清理误入仓库的 Windows 缓存二进制并加入 `.gitignore`），并按 minor 规则准备 0.8.0（`src/tui/package.json` = 0.8.0，台账 prepared）；master 已推送远端（`93adeb2`，远端 SHA 核对一致）；**实际 npm 发布由维护者手动触发发布工作流**，发布前 npm `latest` 仍为 0.7.0。
+SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已完成 T1–T17：通用宿主契约（进程内/stdio/WS）、活动会话归属与崩溃接管、共享配置/历史并发安全、`budingx serve` 入口与轻量测试客户端。按用户 2026-11-22 授权（m02815）**已合入 master**（合并提交 `1d1ec9f`，同时清理误入仓库的 Windows 缓存二进制并加入 `.gitignore`），并按 minor 规则准备 0.8.0（`src/tui/package.json` = 0.8.0，台账 prepared）。维护者首次触发发布（run 45003613733）时 ubuntu-24.04 验证作业因一处**测试取样竞态**失败（`sp008-shared-history` 只读恢复用例，非产品缺陷），已修复（提交 `37a4cfd`）并在 ubuntu-24.04 + Node 24 复跑全量单测 **1242 项 / 1240 通过 / 0 失败 / 2 跳过**；修复后 master 门禁再次 GREEN，master 已推送远端（`37a4cfd`，远端 SHA 核对一致）。**实际 npm 发布由维护者对 master 重新触发发布工作流**，发布前 npm `latest` 仍为 0.7.0。
 
 ### 已完成
 
@@ -54,6 +54,7 @@ SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已
 - **扩展装配（复测）**：`serve` owner 与交互入口一致装配 `~/.budingx/mcp.json` 与 `hooks.json`；MCP 工具经审批执行、hooks 阻断/拒绝/放行生效；observer 不启动扩展；关闭时回收 MCP 子进程
 - **扩展矩阵**：hooks 八事件全覆盖、`updatedInput` 改写入参、`additionalContext` 注入模型上下文、hook `ask` 回到人工审批、多 MCP 服务器隔离、MCP 工具 `isError`、MCP 服务器崩溃、连接失败只告警 —— 全部经真实进程验证通过
 - **测试加固（T17）**：WS 服务端帧级分支、HostClient 错误分支、协议校验文案、serve 参数/退出码、owner 打断活动回合、history.limit 截断、ws-client 连接失败路径全部补齐；修复 interrupt 空闲语义、WS 客户端首帧竞争、空端口静默接受三处缺陷；`test:unit` 纳入 transport 测试
+- **发布链路修复**：首次发布在 ubuntu-24.04 因 `sp008-shared-history` 只读恢复用例的并发取样竞态失败（restore 经核实纯只读，竞态在测试取样窗口）；改为等半行落盘并进入暂停后再取样，Linux 复验全量单测 0 失败；仅改测试、制品内容不变（提交 `37a4cfd`）
 
 ### 验证结果
 
@@ -75,7 +76,7 @@ SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已
 
 ### 待办
 
-- 维护者触发 [Publish TUI to npm](github-actions-npm.md) 发布 0.8.0，并按 [Actions 发布回执](versioning.md#actions-发布回执) 导入 registry 回执、把台账置为 published
+- 维护者对 master（`37a4cfd`）**重新触发** [Publish TUI to npm](github-actions-npm.md) 发布 0.8.0（首次尝试因 Linux 测试竞态失败，已修复），并按 [Actions 发布回执](versioning.md#actions-发布回执) 导入 registry 回执、把台账置为 published
 - 如需补齐 SIGTERM 证据，在 Linux/macOS 运行 stdio serve 后发 SIGTERM
 
 ## 已有

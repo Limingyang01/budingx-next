@@ -27,10 +27,11 @@
 - [x] 交付记录：test-report、PRODUCT.md §5.9、docs/development.md、汇总索引
 - [x] 合入 master：已完成（用户 m02815 授权，2026-11-22，合并提交 `1d1ec9f`）；合入后全量 1243 项 / 1242 通过 / 0 失败 / 1 跳过
 - [x] 发布前准备：0.8.0（minor，台账 prepared）、`release-notes/v0.8.0.md`、入口文档版本同步、dry-run GREEN（`artifacts/release/0.8.0-1795335507762/report.json`）、master 门禁 GREEN（`artifacts/merge-gate/master-2026-11-22T08-30-26-648Z.md`，HEAD `63180eb`）
-- [x] 推送 master：已推送并核对远端 SHA（`93adeb2`）
-- [ ] npm 发布：待维护者在 GitHub 手动触发发布工作流（不在本轮授权内）
+- [x] 推送 master：已推送并核对远端 SHA（发布准备 `93adeb2` → 回执 `63180eb`/`9a34ede` → 发布链路修复 `37a4cfd`）
+- [x] 发布链路修复：首次发布（run 45003613733）ubuntu-24.04 验证因 `sp008-shared-history` 只读恢复用例并发取样竞态失败（restore 经核实纯只读，非产品缺陷）；改为等半行落盘再取样（提交 `37a4cfd`），Linux 复验全量 1242 项 / 1240 通过 / 0 失败 / 2 跳过，修复后 master 门禁再次 GREEN（`artifacts/merge-gate/master-2026-11-22T09-16-34-982Z.md`）
+- [ ] npm 发布：首次触发失败已修复，待维护者对 master（`37a4cfd`）**重新触发**发布工作流（不在本轮授权内）
 
-当前停点：SP008 已合入 master（`1d1ec9f`）并完成 0.8.0 发布前准备（版本 bump、发行说明、台账 prepared）；实际 npm 发布由维护者手动触发发布工作流。
+当前停点：SP008 已合入 master（`1d1ec9f`）并完成 0.8.0 发布前准备；首次发布在 Linux 因测试取样竞态失败，已修复（`37a4cfd`）并复验 GREEN；实际 npm 发布由维护者对 master 重新触发发布工作流。
 
 ## 3. 批准与来源
 
@@ -89,6 +90,7 @@
 - T16：`9f7f00b`（MCP/hooks 端到端矩阵 8 例 + 扩展夹具增强）；其后文档收口 `562722b`、最终复跑记录 `cb07bc8`、收尾门禁回执 `95d7e3e`
 - T17：`c47e224`（测试加固 43 新例 + 三处实现修复 + test:unit 纳入 transport）；`b876552`（崩溃接管 pid 判活竞态的测试侧修复）；文档收口 `27b5eae` 及本轮提交
 - 合并 master：**已执行**（用户 m02815，2026-11-22）：`git merge --no-ff feature/SP008/host-contract`，合并提交 `1d1ec9f`；冲突 3 处按用户决策解决（缓存二进制删除并加入 `.gitignore`，host-engine 取功能分支版本，PRODUCT.md 手工合并保留 0.7.0 已发布事实）
-- 推送 master：**已执行**（用户 m02815，2026-11-22）：`git push origin master`（9ca499b → 93adeb2）；`git ls-remote origin master` 核对 `93adeb2206d7a7808f25adfaec08e60fe33e55f2` 与本地一致
+- 推送 master：**已执行**（用户 m02815，2026-11-22）：`git push origin master`（9ca499b → 93adeb2 → 63180eb → 9a34ede → 37a4cfd）；`git ls-remote origin master` 核对最终 `37a4cfde72e507587ed4f046a9f5ef5aff8eac6c` 与本地一致
+- 发布链路修复：**已执行**（2026-11-22）：首次发布 run 45003613733 在 ubuntu-24.04 因 `src/tui/test/sp008-shared-history.test.mjs:74` 并发取样竞态失败；修复等待条件（等半行落盘再取样），诊断分支 Linux 复验 0 失败后 cherry-pick 到 master（`37a4cfd`），删除临时诊断分支，修复后门禁 GREEN；详见 test-report §11.3
 - 推送功能分支：**已执行**（用户 m02549，2026-11-22）：`git push -u origin feature/SP008/host-contract`，远端新建分支；`git ls-remote` 核对 `a4690c485139270ac410b4ce34cbdd824bfe162e` 与本地 HEAD 一致（26 commits / 67 files，master..HEAD）。远端 master 仍为 `56a161c`，未改动
-- 发布：**未执行**，不 bump 版本
+- 发布：**首次触发失败已修复，待重新触发**。维护者首次触发 run 45003613733，ubuntu-24.04 验证作业因测试取样竞态失败、OIDC 发布跳过；修复（`37a4cfd`）并 Linux 复验 GREEN 后，待维护者对 master 重新触发。版本仍 0.8.0、制品内容不变
