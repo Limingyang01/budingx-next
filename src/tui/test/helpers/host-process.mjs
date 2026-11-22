@@ -12,6 +12,29 @@ import { connectWebSocket } from '../../dist/host/transport/ws-client.js'
 export const cli = fileURLToPath(new URL('../../dist/tui/cli.js', import.meta.url))
 
 /**
+ * SIGKILL 后等待 pid 真正不可查询为活。Windows 上进程句柄释放可能滞后于
+ * close 事件，并行负载下 pid 也可能被短暂复用；writer.lock 的判活使用
+ * process.kill(pid, 0)，紧随崩溃的 takeover 会被保守拒绝。测试在此等待
+ * 判活结果落定，消除竞态；产品的保守语义（活 pid 拒绝接管）不变。
+ */
+export async function waitForPidDead(pid, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    let alive = true
+    try {
+      process.kill(pid, 0)
+    } catch (error) {
+      if (error.code === 'ESRCH') alive = false
+    }
+    if (!alive) return
+    if (Date.now() > deadline) {
+      throw new Error('pid ' + pid + ' still appears alive after ' + timeoutMs + 'ms')
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 50))
+  }
+}
+
+/**
  * Fake OpenAI-compatible SSE endpoint.
  *
  * mode selects the first-turn behaviour:

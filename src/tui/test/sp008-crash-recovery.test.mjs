@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { startFixtureServer, spawnServe } from './helpers/host-process.mjs'
+import { startFixtureServer, spawnServe, waitForPidDead } from './helpers/host-process.mjs'
 
 function workspaceId() {
   return createHash('sha256').update(resolve(process.cwd())).digest('hex')
@@ -134,6 +134,8 @@ test('SH-05/SO-03: a crashed owner leaves readable history, unknown steps are fl
   assert.equal(ownerHistory.messages.length, 2)
   owner.child.kill('SIGKILL')
   await owner.closed
+  // Windows 句柄释放/pid 复用可能滞后：等判活落定再接管，避免测试竞态。
+  await waitForPidDead(owner.child.pid)
   assert.ok(existsSync(artifacts.lock))
   assert.equal(sha256(artifacts.transcript), before)
 

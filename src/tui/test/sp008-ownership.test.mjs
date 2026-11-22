@@ -3,7 +3,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { startFixtureServer, spawnServe } from './helpers/host-process.mjs'
+import { startFixtureServer, spawnServe, waitForPidDead } from './helpers/host-process.mjs'
 
 function lockPath(home, sessionId) {
   return join(home, '.budingx', 'sessions', sessionId, 'writer.lock')
@@ -115,6 +115,8 @@ test('SO-03: process takeover refuses a live owner and succeeds after the owner 
 
   first.child.kill('SIGKILL')
   await first.closed
+  // Windows 句柄释放/pid 复用可能滞后：等判活落定再接管，避免测试竞态。
+  await waitForPidDead(first.child.pid)
   assert.ok(existsSync(lockPath(first.home, sessionId)))
 
   const second = spawnServe(t, {
