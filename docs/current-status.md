@@ -2,7 +2,7 @@
 
 截至 2026-11-21，**npm `latest` 为 0.7.0**（Agent 质量与扩展，SP007）。SP007 **已完成实施与验收，于 2026-11-21 经交叉验证门禁 GREEN 后合入 master（合并提交 `ee9118e`），并由 [GitHub Actions 运行 #27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352)（源码 `a8628b5`）完成 Windows、Linux 验证与 OIDC 发布**。本版补齐子代理执行、多模态上下文（图片附件）、第二供应商协议、运行时诊断面板与评估回归，并修复图片粘贴相关用户可见缺陷。0.6.0（TUI 对齐与扩展，SP006）此前已完成实施与验收并发布，见 [0.6.0 发行说明](../release-notes/v0.6.0.md)。
 
-[运行 #25–#27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352) 以源码 `a8628b5` 完成 Ubuntu、Windows 验证及 OIDC 发布 0.7.0。官方制品 SHA-512、来源证明（attestation）、签名与独立安装均已核对；CI 回执 artifact 需登录未取得，台账据此登记并标注证据缺口。见 [0.7.0 发行说明](../release-notes/v0.7.0.md)、[发布台账](../release-ledger.json)及 [SP007 验收报告](../SP/SP007/agent-quality-and-extensions/test-report.md)。可选本机 Langfuse 观测默认关闭。
+[运行 #25–#27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352) 以源码 `a8628b5` 完成 Ubuntu、Windows 验证及 OIDC 发布 0.7.0。官方制品 SHA-512、来源证明（attestation）、签名与独立安装均已核对；CI 回执 artifact 需登录未取得，台账据此登记并标注证据缺口。见 [0.7.0 发行说明](../release-notes/v0.7.0.md)、[发布台账](../release-ledger.json)及 [SP007 验收报告](../SP/SP007/test-report.md)。可选本机 Langfuse 观测默认关闭。
 ## SP007 · Agent 质量与扩展（交付完成，0.7.0 已发布）
 
 SP007 功能分支 `feature/SP007/agent-quality-and-extensions`（及用户反馈后的补丁分支 `feature/SP007/image-command`）已完成 19 个任务（含图片端到端补测与 `/image` 终端无关附件入口）并通过交叉验证门禁 GREEN；经用户 2026-11-21 授权（m02028）合入 master 并推送，源码 `a8628b5` 已由 [GitHub Actions 运行 #27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352) 完成 Windows、Linux 验证与 OIDC 发布，npm `latest` = 0.7.0。
@@ -40,9 +40,9 @@ SP007 功能分支 `feature/SP007/agent-quality-and-extensions`（及用户反�
 
 
 
-## SP008 · 多端架构入口与共享边界（功能分支交付完成，未合入 master）
+## SP008 · 多端架构入口与共享边界（已合入 master，0.8.0 已准备待发布）
 
-SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已完成 T1–T17：通用宿主契约（进程内/stdio/WS）、活动会话归属与崩溃接管、共享配置/历史并发安全、`budingx serve` 入口与轻量测试客户端。按用户 m00133 要求，**不合入 master、不发布**，产品版本保持 0.7.0；功能分支已按用户 m02549 授权于 2026-11-22 推送 origin（`a4690c4`，26 commits，远端 SHA 已核对；远端 master 未改动）。
+SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已完成 T1–T17：通用宿主契约（进程内/stdio/WS）、活动会话归属与崩溃接管、共享配置/历史并发安全、`budingx serve` 入口与轻量测试客户端。按用户 2026-11-22 授权（m02815）**已合入 master**（合并提交 `1d1ec9f`，同时清理误入仓库的 Windows 缓存二进制并加入 `.gitignore`），并按 minor 规则准备 0.8.0（`src/tui/package.json` = 0.8.0，台账 prepared）；**实际 npm 发布由维护者手动触发发布工作流**，发布前 npm `latest` 仍为 0.7.0。
 
 ### 已完成
 
@@ -75,7 +75,7 @@ SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已
 
 ### 待办
 
-- 用户验收功能分支；未获新授权前不合入 master、不发布
+- 维护者触发 [Publish TUI to npm](github-actions-npm.md) 发布 0.8.0，并按 [Actions 发布回执](versioning.md#actions-发布回执) 导入 registry 回执、把台账置为 published
 - 如需补齐 SIGTERM 证据，在 Linux/macOS 运行 stdio serve 后发 SIGTERM
 
 ## 已有

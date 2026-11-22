@@ -1,6 +1,6 @@
 # budingx-next
 
-独立开发 Coding Agent 的仓库。**当前 npm `latest` 为 0.7.0**（SP007 Agent 质量与扩展）：子代理执行（Agent/TaskOutput/TaskStop、`/agents` 面板与代理卡片）、多模态上下文（图片粘贴、`/image` 附件入口、PNG 缩放）、Anthropic 协议适配、ToolSearch 延迟加载、运行时诊断（`/status` `/stats` `/doctor`）与评估回归 runner；并延续 SP006 的四区终端骨架与帧级刷新、上下文键位、状态栏外部命令、项目指令、技能发现、MCP 客户端、受控 hooks、WebFetch、无头 stream-json 与命令注册表三型。**0.7.0 已由 [GitHub Actions 运行 #27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352) 发布至 npm `latest`。** 产品全貌见 [产品说明书](PRODUCT.md)，使用说明见 [TUI README](src/tui/README.md)。
+独立开发 Coding Agent 的仓库。**当前 npm `latest` 为 0.7.0**（SP007 Agent 质量与扩展）；**源码已准备 0.8.0**（SP008 多端架构入口与共享边界）：新增 `budingx serve` 宿主入口（进程内/stdio/WebSocket）、版本化 NDJSON 宿主契约、活动会话归属与崩溃接管、共享配置/历史并发安全，owner 进程与交互 TUI 共用同一份 MCP/hooks 配置。SP007 能力包括：子代理执行（Agent/TaskOutput/TaskStop、`/agents` 面板与代理卡片）、多模态上下文（图片粘贴、`/image` 附件入口、PNG 缩放）、Anthropic 协议适配、ToolSearch 延迟加载、运行时诊断（`/status` `/stats` `/doctor`）与评估回归 runner；并延续 SP006 的四区终端骨架与帧级刷新、上下文键位、状态栏外部命令、项目指令、技能发现、MCP 客户端、受控 hooks、WebFetch、无头 stream-json 与命令注册表三型。**0.7.0 已由 [GitHub Actions 运行 #27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352) 发布至 npm `latest`。** 产品全貌见 [产品说明书](PRODUCT.md)，使用说明见 [TUI README](src/tui/README.md)。
 
 默认主分支为 `master`；新项目统一使用 Node.js + TypeScript，不引入 Bun。
 
@@ -24,4 +24,4 @@
 
 推荐 TUI 发布方式现为 [GitHub Actions + npm Trusted Publishing](docs/github-actions-npm.md)：在 Actions 手动 Run workflow，无需 NPM_TOKEN secret。首次建包及账号授信仍需维护者在个人可信设备上验证，未配置前不宣称可发布。
 
-npm 已发布 [0.7.0](https://www.npmjs.com/package/budingx/v/0.7.0)（SP007 Agent 质量与扩展，由 [GitHub Actions 运行 #27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352) 从源码 `a8628b5` 发布），可用 `npm install -g budingx@latest` 安装或升级。详见 [0.7.0 发行说明与发布回执](release-notes/v0.7.0.md)、[0.6.0 发行说明](release-notes/v0.6.0.md)及 [0.5.4 发行说明](release-notes/v0.5.4.md)。
+npm 已发布 [0.7.0](https://www.npmjs.com/package/budingx/v/0.7.0)（SP007 Agent 质量与扩展，由 [GitHub Actions 运行 #27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352) 从源码 `a8628b5` 发布），可用 `npm install -g budingx@latest` 安装或升级。**0.8.0（SP008）已准备完毕、待维护者触发发布工作流**，发布前 npm `latest` 仍为 0.7.0；详见 [0.8.0 发行说明](release-notes/v0.8.0.md)、[0.7.0 发行说明与发布回执](release-notes/v0.7.0.md)、[0.6.0 发行说明](release-notes/v0.6.0.md)及 [0.5.4 发行说明](release-notes/v0.5.4.md)。

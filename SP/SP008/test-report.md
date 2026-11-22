@@ -1,6 +1,6 @@
 # SP008 验收报告 — 多端架构入口与共享边界
 
-状态：**功能分支完成，未合入 master**（用户 m00133）｜日期：2026-11-22（含当日扩展复测与 T17 测试加固）｜分支 `feature/SP008/host-contract`｜基线 master `a8628b5`｜产品版本 0.7.0（不 bump）
+状态：**已合入 master**（用户 m02815，2026-11-22 解除 m00133 的不合入约束），产品版本已按 minor 准备 0.8.0（待发布）｜日期：2026-11-22（含当日扩展复测与 T17 测试加固）｜分支 `feature/SP008/host-contract` → master（合并提交 `1d1ec9f`）｜基线 master `a8628b5`｜产品版本 0.8.0（prepared）
 
 ## 1. 方法与环境
 
@@ -265,3 +265,25 @@ npm run merge:gate
 T17 加固单独跑：`node --test src/host/test/client.test.mjs src/host/transport/test/ws-server.test.mjs src/host/transport/test/ws-client.test.mjs src/tui/test/sp008-serve-cli.test.mjs src/tui/test/sp008-interrupt-history.test.mjs`（43 例）。
 
 多轮日志：`artifacts/quality-runs/SP008/host-contract/run-{1,2,3}.log`、`final-run-{1,2,3}.log`、`ext-run-{1,2,3}.log`、`final2-run-{1,2,3}.log`、`matrix-run-{1,2,3}.log`、`t16-run-{1,2,3}.log`、`final-t16-run-{1,2,3}.log`、`t17-run-{1,2,3}.log`、`final-t17-run-{1,2,3}.log`（本地保留，不提交）。
+## 11. 合入 master 与 0.8.0 发布前准备（2026-11-22）
+
+用户 m02815 解除 m00133 的「不合入 master」约束，授权合入 master 并完成发布前准备；实际 npm 发布由维护者在 GitHub 手动触发。
+
+| 步骤 | 结果 | 证据 |
+| --- | --- | --- |
+| 合入 master | --no-ff 合并 feature/SP008/host-contract，合并提交 1d1ec9f；3 处冲突按用户决策解决 | 冲突：PRODUCT.md 内容冲突（手工合并，保留 0.7.0 已发布事实）、src/tui/host-engine.ts 与 src/tui/test/sp008-host-engine.test.mjs add/add（取功能分支版本）、master 侧误入的 Windows 缓存二进制（git rm --cached 并加入 .gitignore） |
+| 合入后回归 | 全量 npm run test:unit 1243 项 / 1242 通过 / 0 失败 / 1 跳过，EXIT=0；SP008 定向 113/113（--test-concurrency=4；默认并发 1 混跑时 2 例因资源竞争失败，判定为并发干扰非回归） | 合入后构建 npm run build EXIT=0 |
+| 版本准备 | minor 规则升到 0.8.0：src/tui/package.json = 0.8.0，release-ledger.json 追加 version 0.8.0 / iteration SP008 / status prepared | npm run version:prepare -- minor --iteration SP008 输出 Prepared 0.8.0 |
+| 发行说明 | release-notes/v0.8.0.md 已准备稿，含验证数据、兼容性与已知限制 | 文件已创建 |
+| 发布 dry-run | npm run publish -- --dry-run --expected-version 0.8.0 --tag latest 输出 Dry run passed; no publication；制品 181 个文件含 dist/host/**（10 个模块）与 dist/tui/serve.js；smoke 读到版本 0.8.0 | 报告 artifacts/release/0.8.0-1795335507762/report.json（state verified-local） |
+| 交叉验证门禁 | npm run merge:gate 输出 GATE GREEN（master 到 master，outgoing 0 commits） | 报告 artifacts/merge-gate/master-2026-11-22T08-21-33-109Z.md：四项检查退出码全 0，禁带路径违规 0，报告 FAIL 行 0、UNVERIFIED 行 4，恢复条件节齐备 |
+| 入口文档同步 | README、src/tui/README、docs/index、docs/versioning、docs/npm-release-plan、docs/github-actions-npm、docs/current-status、PRODUCT.md 与 SP008 三份文档均标注「源码已准备 0.8.0、npm latest 仍为 0.7.0」 | 逐文件核对 |
+
+### 11.1 dry-run 期间的基线缺陷修复
+
+dry-run 首次执行 RED：scripts/skills/integrity.test.mjs 报 docs/current-status.md 指向 ../SP/SP007/agent-quality-and-extensions/test-report.md 的链接不存在。根因是该链接为基线遗留错误（SP007 验收报告正本始终位于轮次根目录 SP/SP007/test-report.md，从未在 slug 目录），与 SP008 改动无关，但被发布检查链路触发。按 SP008 同一正本规则修正链接，复跑 node --test scripts/skills/integrity.test.mjs 得 5/5 通过，dry-run 随即 GREEN。
+
+### 11.2 待用户完成
+
+- 在 Publish TUI to npm 工作流对 master 手动触发发布。
+- 发布成功后按 Actions 发布回执 导入 registry 版本、integrity 与 attestation 回执，把 release-ledger.json 的 0.8.0 置为 published，并把 release-notes/v0.8.0.md 状态改为已发布、补发布回执段。

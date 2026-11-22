@@ -2,7 +2,9 @@
 
 本项目的推荐发布入口是 [Publish TUI to npm](https://github.com/Limingyang01/budingx-next/actions/workflows/publish-tui.yml)。配置文件见 [.github/workflows/publish-tui.yml](../.github/workflows/publish-tui.yml)。本指南说明仓库已实现的流程，以及账号端必须由维护者完成的设置；写入工作流不等于 npm 信任关系已建立或真实发布已验证。
 
-## 当前发布状态（2026-11-21）
+## 当前发布状态（2026-11-22）
+
+**0.8.0（SP008 多端架构入口与共享边界）已准备完毕、尚未发布。** 源码版本为 `src/tui/package.json` = 0.8.0，台账状态 prepared，发布前 npm `latest` 仍为 0.7.0；待维护者在 [Publish TUI to npm](https://github.com/Limingyang01/budingx-next/actions/workflows/publish-tui.yml) 手动触发工作流后，再按 [Actions 发布回执](versioning.md#actions-发布回执) 导入 registry 回执并把台账置为 published。发行说明见 [0.8.0 发行说明](../release-notes/v0.8.0.md)。
 
 **0.7.0（SP007）已发布，npm `latest` 指向 0.7.0。** [GitHub Actions #27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352) 使用源码 `a8628b5`，`Verify (ubuntu-24.04)`、`Verify (windows-latest)` 与 `Publish verified TUI using npm OIDC` 三个作业全部成功，publishedAt=2026-11-21T15:58:10.709Z。官方 registry integrity、attestation/provenance（GitHub Trusted Publisher）、本机隔离安装与签名核验均通过；CI 的 `tui-publication-receipt` artifact 下载需登录未取得，台账依据公开证据登记并标注 `ciArtifactDownloaded: false`。详见 [0.7.0 发行说明](../release-notes/v0.7.0.md)。
 
@@ -43,7 +45,7 @@ SP002 的 **0.2.0 已发布**，当时 npm latest=0.2.0，台账为 published。
 
 ## 从构建到发布：每轮操作清单
 
-本节适用于新版本交付，不需要重复配置已建立的账号信任。Agent 使用 [buding-npm-release](../skills/buding-npm-release/SKILL.md)，版本规则见 [版本规范](versioning.md)。执行目录是本仓根目录。0.7.0（SP007）的发布回执已登记，npm `latest` 指向 0.7.0，后续按实际修复或新 SP 准备下一版。
+本节适用于新版本交付，不需要重复配置已建立的账号信任。Agent 使用 [buding-npm-release](../skills/buding-npm-release/SKILL.md)，版本规则见 [版本规范](versioning.md)。执行目录是本仓根目录。0.7.0（SP007）的发布回执已登记，npm `latest` 指向 0.7.0；0.8.0（SP008）已按 minor 准备完毕、等待维护者触发本工作流，后续按实际修复或新 SP 准备下一版。
 
 ### 1. 准备版本与发行说明
 
