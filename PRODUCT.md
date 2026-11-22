@@ -391,7 +391,7 @@ SP007 在 0.6.0 的命令面之上补齐子代理执行、多模态上下文、�
 
 ### 5.9 SP008 · 通用宿主契约与 `serve`（功能分支，未合入 master）
 
-SP008 固定 TUI、headless 与未来各端共用的本地宿主契约，并用进程内、stdio、WebSocket 三种传输验证。实现位于功能分支 `feature/SP008/host-contract`，已完成 3 轮真实进程端到端验证（每轮 20/20）；按用户 m00133 要求，**保持功能分支、尚未合入 master、未进入 npm 制品**。以下命令在合入并发布后才对安装包可用。
+SP008 固定 TUI、headless 与未来各端共用的本地宿主契约，并用进程内、stdio、WebSocket 三种传输验证。实现位于功能分支 `feature/SP008/host-contract`，已完成多轮真实进程端到端验证（交付 3 轮 × 20/20，扩展复测 3 轮 × 23/23，含自模拟 MCP/hooks）；按用户 m00133 要求，**保持功能分支、尚未合入 master、未进入 npm 制品**。以下命令在合入并发布后才对安装包可用。
 
 #### 5.9.1 `budingx serve`
 
@@ -411,6 +411,7 @@ budingx serve --transport ws --session my-session --port 0
 - 归属：同一会话只有一个 writer（`~/.budingx/sessions/<id>/writer.lock`）。首个连接是 `owner`；同进程第二个连接、或另一进程在活 owner 存在时启动，都是 `observer`。observer 可读描述/历史、可收本进程实时事件，但 submit/interrupt/改权限/审批/接管均以 `HOST_SESSION_003` 拒绝；shutdown 仍可用。
 - 崩溃恢复：owner 被杀死后锁变陈旧，新进程需显式 `--takeover` 才成为 owner；活 owner 存在时 takeover 被拒绝且原锁不变。恢复只装载历史，不重放工具；结果未知的步骤列在 `needsReview`，并附 `warnings`。
 - 关闭：stdin EOF、`shutdown` 请求都会停止监听、释放锁并以 0 退出；POSIX 下 SIGINT/SIGTERM 走同一清理路径。Windows 无法向 Node 投递可捕获的 SIGTERM，强制终止会留下陈旧锁，需用 `--takeover` 恢复（属预期恢复路径）。WS 客户端断开不会中断正在进行的回合（默认策略，事件不缓存）。
+- 扩展：owner 进程装配 `~/.budingx/mcp.json` 与 `~/.budingx/hooks.json`（与交互 TUI 同一份配置）。MCP 工具名为 `mcp__<服务器>__<工具>`，默认需要审批；hook 返回 `allow` 可跳过审批，`deny` 或退出码 2 会阻断并记录原因。配置告警写 stderr，不进入协议帧。
 - 退出码：0 正常关闭；1 归属/运行时启动失败；2 参数、认证或绑定违规。
 
 #### 5.9.2 安全与限制
@@ -419,7 +420,7 @@ budingx serve --transport ws --session my-session --port 0
 - **令牌必须显式提供**：缺失或错误时 WS 拒绝启动/返回 401；令牌不会隐式生成、打印到 stderr 或进入帧与日志。
 - **凭据不外泄**：宿主不提供凭据读取接口；配置/描述只含 `apiKeyRef` 引用，三种传输的全部字节在测试中断言不含 key 或 `credentials.json` 内容。
 - **无事件重放/断线续传**：观察者断开再连只能重新 `describe`/`history`；跨进程 observer 只读持久化历史，看不到别进程的实时事件。
-- `serve` 当前未接 MCP 与 hooks（交互 TUI 不受影响）；宿主不改三档权限模式、provider 协议或既有 headless 输出。
+- **扩展装配与交互入口一致**：`serve` 的 owner 进程读取同一 `~/.budingx/mcp.json` 与 `~/.budingx/hooks.json`；MCP 工具照常经审批执行，hooks 的提示词阻断、工具拒绝/放行、改写入参与附加上下文同样生效；observer 只读历史，不启动任何扩展子进程。宿主关闭时先停会话再回收 MCP 子进程，不留孤儿进程。宿主不改三档权限模式、provider 协议或既有 headless 输出。
 
 ## 6. 数据与隐私
 

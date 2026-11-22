@@ -1,6 +1,6 @@
 # SP008 验收报告 — 多端架构入口与共享边界
 
-状态：**功能分支完成，未合入 master**（用户 m00133）｜日期：2026-11-22｜分支 `feature/SP008/host-contract`｜基线 master `a8628b5`｜产品版本 0.7.0（不 bump）
+状态：**功能分支完成，未合入 master**（用户 m00133）｜日期：2026-11-22（含当日扩展复测）｜分支 `feature/SP008/host-contract`｜基线 master `a8628b5`｜产品版本 0.7.0（不 bump）
 
 ## 1. 方法与环境
 
@@ -22,9 +22,10 @@
 | PARTIAL | **1**（TB-07 的 SIGTERM 子项，Windows 平台限制，见 §5） |
 | FAIL | **0** |
 | UNVERIFIED | **0** |
-| 全量回归 | **1177 项 / 1176 通过 / 0 失败 / 1 跳过**，EXIT=0（跳过项为既有 POSIX 权限用例） |
-| SP008 定向套件 | **55 / 55 通过 / 0 失败 / 0 跳过**，27.7s |
-| 多轮端到端 | **3 轮 × 20 例，全部 20/20 通过**（真实 stdio/WS 进程、并发、崩溃恢复） |
+| 全量回归 | **1180 项 / 1179 通过 / 0 失败 / 1 跳过**，EXIT=0（跳过项为既有 POSIX 权限用例） |
+| SP008 定向套件 | **58 / 58 通过 / 0 失败 / 0 跳过**，27.3s |
+| 多轮端到端 | **3 轮 × 23 例，全部 23/23 通过**（真实 stdio/WS 进程、并发、崩溃恢复、自模拟 MCP/hooks） |
+| 宿主扩展装配 | **PASS**（`serve` 接入 MCP/hooks；observer 不启动扩展；关闭回收 MCP 子进程） |
 | 模块边界 | **PASS**（`npm run test:checks`） |
 | AST 复核 | **PASS**（17/17 文件已映射；118 本仓单元 vs 15852 参考单元；18639 函数对；命中 0） |
 | 门禁 | 见 §7（`npm run merge:gate`） |
@@ -47,6 +48,7 @@
 | T12 | 边界脚本与构建范围（host 规则） | PASS | 本轮 |
 | T13 | AST 复核映射与处置 | PASS | 本轮 |
 | T14 | 文档与交付记录（PRODUCT/STATUS/test-report） | PASS | 本轮 |
+| T15 | 复测：`serve` 装配 MCP/hooks + 自模拟扩展端到端（用户 m01288/m01304） | PASS | 2b1b003 |
 
 ## 4. 新增验证资产
 
@@ -68,7 +70,9 @@
 | `src/tui/test/sp008-ownership.test.mjs` | SO-01/02/03/04 两进程归属、活 owner 拒绝、崩溃接管、WS 降级 | 3 |
 | `src/tui/test/sp008-crash-recovery.test.mjs` | SH-05/SO-03 崩溃后历史、needs_review、不重放、字节不变 | 1 |
 | `src/tui/test/sp008-transport-parity.test.mjs` | TB-01…07 三传输身份一致、边界帧、双 WS 事件、审批往返 | 4 |
-| `src/tui/test/helpers/host-process.mjs` | 共享 helper（fixture SSE、serve 子进程、WS 客户端、记录帧），非用例 | — |
+| `src/tui/test/sp008-serve-extensions.test.mjs` | 复测：MCP 审批执行、hooks 生命周期/阻断/拒绝/放行、observer 不启动扩展、关闭回收子进程 | 3 |
+| `src/tui/test/helpers/host-process.mjs` | 共享 helper（fixture SSE 含 `mcp` 工具调用模式、serve 子进程、WS 客户端、记录帧），非用例 | — |
+| `src/tui/test/helpers/sim-mcp-server.mjs` | 自模拟 stdio MCP 服务器（initialize/tools/list/tools/call，pid 与调用日志落盘），非用例 | — |
 
 ## 5. AC 验收明细
 
@@ -106,19 +110,31 @@
 | TB-07 | PARTIAL | `server.test.mjs`：shutdown 释放锁、关闭连接、dispose 引擎 | `sp008-host-stdio.test.mjs`：stdin EOF 后退出码 0、锁删除；`sp008-host-ws.test.mjs`：shutdown 后监听关闭、锁删除、退出码 0；observer 断开不影响 owner 回合。**SIGTERM 子项 UNVERIFIED**：Windows 下 Node 不支持投递可捕获的 SIGTERM（`child.kill('SIGTERM')` 为强制终止），无法在本机验证优雅退出；服务端已注册 `SIGINT/SIGTERM → server.shutdown()`，清理路径与 shutdown 相同（已测） |
 | TB-08 | PASS | `npm run test:checks`：`src/host` 规则禁止 import tui/provider/workspace/exec/git/plan/observability，禁止 UI 包；core/storage 也禁止 host 反向依赖 | `PRODUCT.md` §5.9：`scope=local`、仅回环、同机共享≠跨设备同步、无公网默认监听；`src/host` 全量源码无 tui import（脚本强制） |
 
+### R4 宿主扩展装配（2026-11-22 复测新增，用户 m01288/m01304）
+
+自模拟 MCP 服务器 `src/tui/test/helpers/sim-mcp-server.mjs`（真实 stdio 子进程，JSON-RPC initialize/tools/list/tools/call，pid 与调用日志落盘）；hooks 为真实 Node 子进程脚本，读 stdin JSON 后按语义输出。全部经真实 `budingx serve` 进程与真实 stdio/WS 传输。
+
+| 场景 | 结果 | 证据（`sp008-serve-extensions.test.mjs`） |
+| --- | --- | --- |
+| MCP 工具经审批执行（stdio） | PASS | 例1：`approval_requested name=mcp__sim__echo` → `approval allow` → `tool_result isError=false` 且含 `sim-echo:`；服务器侧调用日志恰 1 条 `{name:'echo',args:{text:'hello'}}`，证明工具真的执行 |
+| hooks 全生命周期（stdio） | PASS | 例1：日志精确等于 `SessionStart|`、`UserPromptSubmit|`、`PreToolUse|mcp__sim__echo`、`PostToolUse|mcp__sim__echo`、`Stop|`（Stop 旁路轮询落盘） |
+| 提示词阻断（WS） | PASS | 例2：`UserPromptSubmit` hook 退出码 2 → `turn_finalized outcome=error`、`error.code=BUDINGX_HOOK_BLOCKED`；fixture `requestCount=0`，被阻断的提示词未发给模型 |
+| 工具拒绝（WS） | PASS | 例2：`PreToolUse` matcher `mcp__sim__echo` 返回 `deny` → `denial_recorded` + `tool_result` 含 `Denied by hook: simulated deny`；MCP 调用日志 0 条（未执行），MCP 服务器仍保持连接 |
+| hook allow 跳过审批（WS） | PASS | 例3：全程无 `approval_requested`，`tool_result isError=false`，MCP 调用 1 条 |
+| observer 不启动扩展（WS） | PASS | 例3：同 home/session 第二进程为 observer，submit 拒 `HOST_SESSION_003`；其 MCP pid 文件不存在、调用日志 0 条；observer shutdown 后 owner 的 writer.lock 仍在 |
+| 关闭回收 MCP 子进程 | PASS | 例1：运行期间 MCP pid 存活；`shutdown` 后退出码 0、writer.lock 删除，轮询确认 MCP 子进程已退出（TB-07 清理路径扩展到扩展子进程） |
+
 ## 6. 多轮端到端
 
-`node --test src/tui/test/sp008-*.test.mjs` 连续 3 轮，每轮 20 例；日志保存在 `artifacts/quality-runs/SP008/host-contract/`（gitignore 忽略）：
+`node --test src/tui/test/sp008-*.test.mjs` 连续 3 轮；日志保存在 `artifacts/quality-runs/SP008/host-contract/`（gitignore 忽略）：
 
 | 轮次 | 结果 | 覆盖 |
 | --- | --- | --- |
-| run-1 | 20/20 PASS，EXIT=0 | stdio/WS 真实进程、owner/observer、崩溃接管、崩溃恢复、三传输、审批、配置并发、共享历史 |
-| run-2 | 20/20 PASS，EXIT=0 | 同 run-1，重复验证稳定性 |
-| run-3 | 20/20 PASS，EXIT=0 | 同 run-1，重复验证稳定性 |
+| run-1…3（交付前） | 每轮 20/20 PASS，EXIT=0 | stdio/WS 真实进程、owner/observer、崩溃接管、崩溃恢复、三传输、审批、配置并发、共享历史 |
+| final-run-1…3（交付 HEAD） | 每轮 20/20 PASS，EXIT=0 | 同上，提交后复跑 |
+| ext-run-1…3（扩展复测） | 每轮 **23/23** PASS，EXIT=0，约 26.2s/轮 | 上述 20 例 + 自模拟 MCP/hooks 3 例（审批执行、生命周期、阻断、拒绝、放行、observer 隔离、子进程回收） |
 
-每轮均重新创建临时 home、重新启动 serve 子进程并重新建立 HTTP fixture；不共享上一轮磁盘状态。
-
-提交后在最终 HEAD 上再复跑 3 轮（`final-run-{1,2,3}.log`），仍为每轮 20/20、EXIT=0。
+每轮均重新创建临时 home、重新启动 serve 子进程、重新建立 HTTP fixture 与 MCP/hook 子进程；不共享上一轮磁盘状态。
 
 ## 7. 模块边界、AST 与门禁
 
@@ -139,6 +155,7 @@
 | 审批 e2e 命令 | 计划用 Bash `echo hi` | 改用 `rm -rf sp008-approval-temp` | `echo` 属只读白名单自动放行，不触发审批；改用 execute 能力命令才能真实验证审批往返 |
 | 崩溃恢复测试命名 | 计划覆盖 SO-03 | 实际同时覆盖 SH-05 与 SO-03 | 同一场景（SIGKILL 后接管）自然覆盖两条 AC，避免重复造数据 |
 | 验收报告位置 | 计划：`SP/SP008/host-contract/test-report.md` | 正本：`SP/SP008/test-report.md`；slug 路径保留入口页 | `merge:gate` 的 master 复核按 `SP/SPnnn/test-report.md` 读取最新一轮报告（SP001–SP007 同此约定）；报告留在 slug 目录会使门禁判为缺少报告 |
+| serve 扩展装配 | 初版 `serve` 未传 `mcp`/`hooks`，作为已知限制记录 | 复测按用户 m01288「mcp 和 hooks 自己模拟」接入 `startMcp`/`startHooks`，并新增 3 例真实进程端到端 | 宿主入口应与交互入口能力一致；observer 仍不启动扩展。限制条目已从 §9 与 PRODUCT §5.9.2 移除，改为装配说明 |
 
 ## 9. 已知限制与恢复条件
 
@@ -146,7 +163,7 @@
 - **无事件重放/断线续传**：断线只保证不破坏会话、不越权；客户端需重新 hello/describe/history。
 - **SIGTERM 优雅退出未在 Windows 实测**：Node 在 Windows 不投递可捕获 SIGTERM；恢复条件：在 Linux/macOS 上执行 stdio serve，发 SIGTERM，断言退出码 0 且 writer.lock 删除。现有强制终止后由 `--takeover` 接管，已有 e2e 覆盖。
 - **WS 仅 `ws://` 回环**：不支持 `wss://`/TLS/反向代理；跨设备同步不在本轮范围。
-- **`serve` 未接 MCP/hooks**：宿主入口使用 `createAgentRuntime` 默认装配，未传 `mcp`/`hooks`；TUI 交互入口仍完整支持。该限制已写入 PRODUCT §5.9.2。
+- **扩展装配的边界**：`serve` 已与交互入口一致装配 MCP/hooks，但仍有三点限制：MCP 服务器连接失败只写 stderr 告警、不阻断宿主启动（与 TUI 相同）；宿主没有 `/mcp`、`/hooks` 交互面板，状态只能从 stderr 与工具行为观察；扩展配置在启动时读取一次，修改后需重启宿主。
 - **会话删除/导出/fork 隔离**：SP005 遗留，未改变产品行为。
 - **真实其他端**：Desktop/VS Code/远程/H5/IM 均未交付；本轮只交付通用契约与轻量测试客户端。
 - **真实模型**：本轮端到端全部使用本地 SSE fixture；真实模型链路已在 SP007 验收，本轮不重复消耗外部额度。
@@ -163,4 +180,6 @@ node scripts/review/sp004-ast.mjs --reference D:/my_project/budingWorkerSpace --
 npm run merge:gate
 ~~~
 
-多轮日志：`artifacts/quality-runs/SP008/host-contract/run-{1,2,3}.log`（本地保留，不提交）。
+扩展复测单独跑：`node --test src/tui/test/sp008-serve-extensions.test.mjs`（3 例，自模拟 MCP/hooks）。
+
+多轮日志：`artifacts/quality-runs/SP008/host-contract/run-{1,2,3}.log`、`final-run-{1,2,3}.log`、`ext-run-{1,2,3}.log`（本地保留，不提交）。

@@ -5,7 +5,7 @@
 - 需求：`SP/SP008/host-contract/requirements.md`（R1/R2/R3，SH-01…SH-05、SO-01…SO-04、TB-01…TB-08）
 - 设计：`design/design.zh.md`（v1.1，已自审；含令牌策略与传输 API 实施修订）
 - 计划：`design/plan.zh.md`（T1…T14，含 RED/GREEN 与命令）
-- 验收：`../test-report.md`（16 个新增测试文件 + 共享 helper；AC 逐条证据）
+- 验收：`../test-report.md`（17 个新增测试文件 + 共享 helper/自模拟 MCP 服务器；AC 逐条证据）
 - 基线：master `a8628b5`；功能分支 `feature/SP008/host-contract`；产品版本 0.7.0（不 bump）
 - 授权范围：设计、计划、实施、测试、交付记录、功能分支本地提交（中文说明）；
   **不含**合入 master / 推送 master（用户 m00133），不含打标签、npm 发布、远端设置、分支删除。
@@ -16,8 +16,9 @@
 - [x] 设计：design/design.zh.md + 自审记录（§6/§8）
 - [x] 计划：design/plan.zh.md（T1…T14）
 - [x] 实施：T1–T10（共享数据、会话归属、协议/服务端、进程内/stdio/WS、引擎适配）
-- [x] 测试收口：T11 定向 55/55 PASS；全量 1177 项 / 1176 通过 / 1 跳过 / 0 失败
-- [x] 多轮端到端：3 轮 × 20 例，全部 20/20 PASS（日志 `artifacts/quality-runs/SP008/host-contract/`）
+- [x] 测试收口：T11 定向 55/55 PASS；T15 复测后定向 58/58 PASS；全量 1180 项 / 1179 通过 / 1 跳过 / 0 失败
+- [x] 多轮端到端：交付 3 轮 × 20 例 + 复测 3 轮 × 23 例，全部 PASS（日志 `artifacts/quality-runs/SP008/host-contract/`）
+- [x] 扩展复测（T15，用户 m01288/m01304）：`serve` 装配 MCP/hooks，自模拟 MCP 服务器与 hook 子进程，3 例真实进程端到端 PASS
 - [x] AST 复核：17/17 文件映射，命中 0，PASS
 - [x] 交叉验证门禁：`npm run merge:gate` → **GATE GREEN**（2026-11-22，`npm test`/`spec:check`/`skills:check`/`pack-smoke` 全通过）
 - [x] 交付记录：test-report、PRODUCT.md §5.9、docs/development.md、汇总索引
@@ -32,6 +33,7 @@
 | SP008 开发 | 用户 m00001（2026-11-21） | 本轮全部内容，按 buding-sdd |
 | 不合入 master | 用户 m00133（2026-11-21） | 覆盖 AGENTS.md 默认「门禁 GREEN 后合入并推送」委托 |
 | 多轮端到端 + AST 检测 | 用户 m00133（2026-11-21） | 交付前必须完成 |
+| 再次全面测试，MCP/hooks 自己模拟 | 用户 m01288、m01304（2026-11-22） | serve 接入扩展并全面复测，仍不合入 master |
 | 参考实现对照 | AGENTS.md 工作边界；用户 m00133 | `D:\my_project\budingWorkerSpace` @ b5c9be8，只读，不抄代码 |
 
 ## 4. AC 与验证
@@ -56,6 +58,8 @@
 | TB-07 | PARTIAL | EOF/shutdown/客户端断开均 PASS；**SIGTERM 在 Windows 无法优雅投递，UNVERIFIED**（恢复条件见 test-report §9） |
 | TB-08 | PASS | 边界脚本禁 host→tui/UI；PRODUCT §5.9 写明 scope=local、仅回环、同机≠跨设备 |
 
+扩展复测（T15，非新增 AC）：`sp008-serve-extensions` 3 例 PASS —— MCP 工具经审批真实执行、hooks 五事件生命周期、提示词阻断（模型 0 调用）、PreToolUse deny 不执行工具、hook allow 跳过审批、observer 不启动扩展、shutdown 回收 MCP 子进程；加强 TB-03/TB-07 与 SO-02 的功能证据。
+
 ## 5. 提交与集成
 
 - 设计/需求/计划：`1c5102e`
@@ -67,6 +71,7 @@
 - T10：`1216475`（WebSocket/客户端）
 - T11：`ee9cbc2`（归属/崩溃恢复/三传输端到端）
 - T12/T13：`943591f`（host 边界、AST 映射）
-- T14：`4a638e9`（文档与验收报告；其后追加最终 HEAD 复跑记录）
+- T14：`4a638e9`（文档与验收报告；其后追加最终 HEAD 复跑记录 `10008e9`）
+- T15：`2b1b003`（serve 装配 MCP/hooks + 自模拟扩展端到端复测）
 - 合并/推送 master：**未执行**；用户 m00133 要求不合入 master
 - 发布：**未执行**，不 bump 版本

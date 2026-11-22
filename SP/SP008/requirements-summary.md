@@ -15,6 +15,8 @@ shared-models-and-history、session-ownership、transport-boundaries。
 - m00001（2026-11-21）：`/buding-sdd 开发SP008的内容` —— 按正式 SDD 开发 SP008 全部内容。
 - m00133（2026-11-21）：开发完成后**先别合入 master**；开发后需要**多次端到端检测**确保没问题；
   参考 `D:\my_project\budingWorkerSpace` 的 TUI，功能复刻但**不要复制代码**，注意 AST 检测。
+- m01288、m01304（2026-11-22）：**再次全面测试，MCP 和 hooks 自己模拟** —— `serve` 接入扩展装配，
+  用自模拟 MCP 服务器与 hook 子进程做真实进程验证，并全面复测；仍不合入 master。
 
 边界：
 - 不交付 Desktop/VS Code/远程/H5/IM 任何真实端；不做跨设备同步；不实现账号/云端 Gateway。
@@ -37,7 +39,8 @@ shared-models-and-history、session-ownership、transport-boundaries。
   存储、UI 证据分层记录；缺环境记 UNVERIFIED 并写恢复条件，不以 mock 冒充真实链路。
 - 用户额外要求（m00133）：多轮端到端复跑（stdio/WS 真实进程、并发、崩溃恢复），AST 复核 PASS。
 - 门禁：`npm run merge:gate` 用于证明分支可交付；**本轮不合入 master、不推送 master**（m00133）。
-- 验收结果：定向 55/55、全量 1177 项（1176 通过 / 1 跳过）、3 轮端到端各 20/20、模块边界 PASS、AST PASS；TB-07 的 SIGTERM 子项因 Windows 平台限制记 PARTIAL/UNVERIFIED，恢复条件见 test-report §9。
+- 验收结果：定向 58/58、全量 1180 项（1179 通过 / 1 跳过）、交付 3 轮端到端各 20/20 + 扩展复测 3 轮各 23/23、模块边界 PASS、AST PASS；TB-07 的 SIGTERM 子项因 Windows 平台限制记 PARTIAL/UNVERIFIED，恢复条件见 test-report §9。
+- 扩展复测（m01288/m01304）：`serve` owner 装配 MCP/hooks，自模拟 stdio MCP 服务器与真实 hook 子进程验证审批执行、五事件生命周期、提示词阻断、工具拒绝、hook 放行、observer 不启动扩展、关闭回收子进程（test-report §5 R4）。
 - 交接输入（供 SP009/SP014/SP011）：宿主身份/事件/权限契约、`serve` 入口参数、共享更新错误码、
   归属/接管语义与已知限制（无跨进程实时事件、无事件重放）。
 
@@ -48,3 +51,4 @@ shared-models-and-history、session-ownership、transport-boundaries。
 | 2026-11-21 | 开轮：建立汇总、需求与 STATUS 骨架；从 master a8628b5 建 `feature/SP008/host-contract` | 用户 m00001；路线图 SP008 |
 | 2026-11-21 | 记录用户新约束：不合入 master、多轮端到端、AST 检测 | 用户 m00133 |
 | 2026-11-22 | 完成 T1–T14：共享数据、归属、三传输、serve、测试与文档；功能分支交付完成，未合入 master | 用户 m00001/m00133 |
+| 2026-11-22 | T15 复测：`serve` 装配 MCP/hooks（`2b1b003`），新增自模拟 MCP 服务器与 3 例端到端；定向 58/58、全量 1180、3 轮 × 23 全通过；移除「serve 未接 MCP/hooks」限制 | 用户 m01288/m01304 |

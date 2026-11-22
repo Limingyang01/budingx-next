@@ -200,6 +200,10 @@ connectWebSocket({ url, token, timeoutMs? }): Promise<HostTransport>
   实际端口写到 stderr 的 `listening ws://127.0.0.1:<port>` 行）、`--session <id>`（缺省新建）、
   `--takeover`（陈旧锁显式接管）、`--home <dir>`（测试隔离，沿既有模式）。
 - 认证：WS 必须令牌；stdio 不额外认证（管道继承进程权限）。
+- 扩展装配（2026-11-22 复测修订）：owner 进程与交互入口一致地调用 `startMcp({ homeDir })` 与
+  `startHooks({ homeDir })`，把 `mcp: { tools, statuses }` 与 `hooks: runner` 传入 `createAgentRuntime`；
+  配置告警只写 stderr。observer 只读历史，不启动任何扩展子进程。关闭顺序为 `server.shutdown()`
+  （含 `engine.dispose()`）→ `mcp.close()`；runtime 创建失败时先关 MCP 再释放锁，避免孤儿进程。
 - 生命周期：POSIX 下 SIGINT/SIGTERM → 停止接受连接、`engine.dispose()`、释放锁、退出 0；
   `shutdown` 请求同样处理；stdio EOF 同 SIGTERM。Windows 无法投递可捕获的 SIGTERM，强制终止留下陈旧锁，由 `--takeover` 恢复（README/PRODUCT 如实声明）。
 - 不许把宿主协议帧写到 stdout 以外的通道；stdout 仅协议。
