@@ -63,7 +63,9 @@ test('并发追加期间只读恢复得到完整记录，半行跳过且原文�
   const exited = new Promise((resolveExit) => child.on('exit', (code) => resolveExit(code)))
 
   const file = join(home, '.budingx', 'sessions', sessionId, 'transcript.jsonl')
-  await waitFor(() => readFileSync(file, 'utf8').includes('"m2"'))
+  // 等到写进程把半行（m3 未闭合）完整落盘并进入 700ms 暂停后再取样。
+  // 若只等 "m2"，半行会在取样与恢复后校验之间落盘，导致哈希变化被误判为回写。
+  await waitFor(() => readFileSync(file, 'utf8').includes('"three'))
 
   const store = new SessionStore({ home, workspaceRoot })
   const before = hashFile(file)
