@@ -99,7 +99,25 @@ const COMMAND_DESCRIPTIONS: Record<string, { zh: string; en: string }> = {
   memory: { zh: '项目/会话记忆', en: 'project/session memory' },
   effort: { zh: '思考强度', en: 'reasoning effort' },
   exit: { zh: '退出', en: 'exit' },
-  quit: { zh: '退出', en: 'exit' }
+  quit: { zh: '退出', en: 'exit' },
+  // 验收期补全（用户 m02582）：菜单里每个注册命令与别名都要有中英文短描述。
+  config: { zh: '端点/模型/密钥掩码', en: 'endpoint, model & key mask' },
+  model: { zh: '查看或切换模型', en: 'view or switch model' },
+  permission: { zh: '查看或切换权限模式', en: 'view or switch permission mode' },
+  'allowed-tools': { zh: '权限白名单面板', en: 'permission rules panel' },
+  init: { zh: '生成项目指令骨架', en: 'generate AGENTS.md scaffold' },
+  btw: { zh: '旁路提问（不入上下文）', en: 'side question, keeps context' },
+  worktree: { zh: '管理隔离工作树', en: 'manage isolated worktrees' },
+  tasks: { zh: '后台任务与子代理', en: 'background tasks & subagents' },
+  mcp: { zh: 'MCP 服务器与工具', en: 'MCP servers & tools' },
+  skills: { zh: '查看已发现技能', en: 'list discovered skills' },
+  export: { zh: '导出会话记录', en: 'export session transcript' },
+  agents: { zh: '管理子代理', en: 'manage subagents' },
+  agent: { zh: '派发子代理任务', en: 'dispatch a subagent task' },
+  status: { zh: '会话状态与配置来源', en: 'session status & config sources' },
+  stats: { zh: '用量统计', en: 'usage statistics' },
+  doctor: { zh: '安装与配置诊断', en: 'installation & config diagnostics' },
+  image: { zh: '挂载图片附件', en: 'attach an image' }
 }
 
 export function commandDescription(name: string, lang: 'zh' | 'en'): string {

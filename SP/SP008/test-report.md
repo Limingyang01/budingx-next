@@ -172,6 +172,16 @@ T16 补齐第一组扩展用例未覆盖的八类场景，全部经真实 `budin
 
 **最终复跑暴露的测试竞态（b876552 修复）**：final-t17 第 2 轮崩溃恢复用例失败——`cannot take over session sh-crash-recovery; another process is still writing`。根因：SIGKILL 后 Windows 进程句柄释放可能滞后于 close 事件（并行负载下 pid 亦可能被短暂复用），`writer.lock` 判活（`process.kill(pid,0)`）短暂仍报活，紧随的 `--takeover` 被保守拒绝。这是判活机制的固有窗口，产品的保守语义（活 pid 拒绝接管）正确、不改；修复在测试侧：新增 `waitForPidDead` 夹具，崩溃恢复与 SO-03 在接管前等待 pid 真正不可查询（50ms 轮询、10s 上限）。两文件连跑 3 遍 4/4 稳定，随后 3 轮 × 42 全通过。
 
+### R7 补全菜单描述补齐（2026-11-22，用户 m02582「存在有一部分指令没有中文描述，补加上」）
+
+用户截图：`/init /btw /worktree /tasks /mcp /skills /export` 等在 `/` 补全菜单无描述。根因：`src/tui/render/completion.ts` 的 `COMMAND_DESCRIPTIONS` 静态表只覆盖早期 23 个命令/别名，SP006/SP007 新增的 17 个名字/别名（init、btw、worktree、tasks、mcp、skills、export、agents、agent、status、stats、doctor、image、config、model、permission、allowed-tools）缺失。属 TUI 补全面（SP003/SP006），随本分支一并修复。
+
+| 层 | 证据 | 结果 |
+| --- | --- | --- |
+| RED | `completion.test.mjs` 新增不变量用例：遍历注册表全部命令与别名，zh/en 描述均须非空 | 首跑列出 34 项缺失（17 名 × 2 语言），FAIL |
+| GREEN | `COMMAND_DESCRIPTIONS` 补齐 17 条中英文短描述 | `completion.test.mjs` 8/8；与 command-menu、agents-panel 合跑 26/26 |
+| 功能（伪 TTY） | `sp0054-command-menu.test.mjs` 新增用例：逐条键入 13 个曾空白命令，断言真实 Ink 帧含命令名＋中文描述 | 5/5 PASS |
+
 ## 6. 多轮端到端
 
 `node --test src/tui/test/sp008-*.test.mjs` 连续 3 轮；日志保存在 `artifacts/quality-runs/SP008/host-contract/`（gitignore 忽略）：
@@ -223,6 +233,7 @@ T16 补齐第一组扩展用例未覆盖的八类场景，全部经真实 `budin
 | 空端口静默接受 | `Number('')===0` 使 `--port ''` 落到端口 0 | 空白值显式拒绝，退出码 2 | 与「0=随机端口」语义混淆；用法错误用例 RED 暴露 |
 | test:unit 覆盖 | glob `src/*/test/*.test.mjs` 不含嵌套的 `src/host/transport/test` | glob 追加该目录 | WS 帧级测试此前只在定向命令中跑；纳入后全量与门禁覆盖一致 |
 | 崩溃接管 pid 判活竞态 | SIGKILL 后立即 takeover 偶发被拒（Windows 句柄释放滞后/pid 复用） | 测试侧 `waitForPidDead` 等待判活落定（b876552） | 产品保守语义正确不改；final-t17 第 2 轮 RED 暴露，修复后 3 轮 × 42 全通过 |
+| 补全菜单描述缺口 | 静态描述表漏 SP006/SP007 新增 17 个名字/别名，菜单留空白 | 补 17 条中英文描述＋注册表不变量用例＋帧级 e2e（R7） | 用户 m02582 验收期指出；RED 34 项缺失→GREEN |
 
 ## 9. 已知限制与恢复条件
 

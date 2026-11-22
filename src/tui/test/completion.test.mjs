@@ -8,8 +8,10 @@ import {
   activeToken,
   applyCompletion,
   commandCandidates,
+  commandDescription,
   fileCandidates
 } from '../dist/tui/render/completion.js'
+import { createCommandRegistry, registerBuiltinCommands } from '../dist/tui/commands/index.js'
 import { mountTty } from './helpers/mount-tty.mjs'
 import { agentFixture, scriptProvider } from './helpers/agent-fixture.mjs'
 
@@ -147,4 +149,17 @@ test('fuzzy candidates fill remaining slots within their directory', () => {
   const files = ['src/input-buffer.ts', 'src/ib.ts', 'other/input-buffer.ts']
   assert.deepEqual(fileCandidates('src/ib', files).map((candidate) => candidate.value),
     ['src/ib.ts', 'src/input-buffer.ts'])
+})
+
+test('每个注册命令与别名都有中英文补全描述（菜单不留空白）', () => {
+  const registry = registerBuiltinCommands(createCommandRegistry())
+  const missing = []
+  for (const definition of registry.list({ includeHidden: true })) {
+    for (const name of [definition.name, ...(definition.aliases ?? [])]) {
+      for (const lang of ['zh', 'en']) {
+        if (!commandDescription(name, lang).trim()) missing.push(name + '(' + lang + ')')
+      }
+    }
+  }
+  assert.deepEqual(missing, [])
 })
