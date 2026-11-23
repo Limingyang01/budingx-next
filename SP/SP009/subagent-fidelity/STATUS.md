@@ -9,5 +9,7 @@
 | D1 事件与透传 | ✅ |
 | D2 系统消息渲染 | ✅ |
 | D3 默认无预算 | ✅ |
-| D4 AST/收口 | ⏳ |
-| 端到端验证 | ⏳ |
+| D4 AST/收口 | ✅ |
+| 端到端验证 | ✅ |
+
+证据：sp009-agent-notify.test.mjs N-01/N-02（meta 系统行、无原始 XML、模型上下文仍含 XML）；agent-runtime.test.mjs「未显式设置 tokenLimit 不再中断」。提交 `b9457fb`。npm test 全绿；待门禁 GREEN 后合入 master。

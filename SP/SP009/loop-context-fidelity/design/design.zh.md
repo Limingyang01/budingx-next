@@ -61,13 +61,16 @@ cli.ts / runtime：**无论是否设置环境变量**，交互会话都携带解
 
 `src/core/context-budget.ts`：
 - 新常量 `AUTOCOMPACT_BUFFER_TOKENS = 13_000`（参考仓同名缓冲参数，机制事实）。
-- `triggerTokens({ maxTokens, ... })` 改为 `Math.max(1, maxTokens − AUTOCOMPACT_BUFFER_TOKENS)`；
-  保留 `COMPACT_TRIGGER_RATIO` 导出但标记废弃（避免外部引用断裂），内部不再使用。
-- 压缩目标预算 `normalizeBudget`（窗口 − 预留输出）与保留项机制不变；
-  `/context` 展示的 triggerTokens 同源更新。
+- `triggerTokens({ maxTokens, ... })` = `max(maxTokens − AUTOCOMPACT_BUFFER_TOKENS, compactFloor + 1)`。
+  真实大窗口下精确等于「窗口 − 13k」（对齐参考仓）；**安全不变量**：触发点恒高于压缩目标，
+  否则极小窗口下「已超触发点但仍高于压缩目标」会一回合都裁不掉（端到端测试暴露并修复）。
+  保留 `COMPACT_TRIGGER_RATIO` 导出但标记废弃，内部不再使用。
+- 压缩目标 `compactFloor`（0.6×可用预算）与保留项机制不变；`/context` 展示的 triggerTokens 同源更新。
 - 溢出恢复链（先压缩再重试一次）不变。
+- 回合边界约束：确定性裁剪只切「用户回合」边界；单提示词的多工具迭代属同一回合，无可裁剪边界
+  （`no_compactable_range`），此时不压缩是正确行为。多回合场景才触发裁剪 + 模型摘要。
 
-### 2.6 压缩手段差异（LC-06，登记）
+### 2.6 压缩手段对齐（LC-06）
 
 参考仓自动压缩调用模型生成摘要；本仓 0.9.1 对齐：`context/compact-summary.ts` 用独立撰写的提示词把被裁剪回合浓缩为续作摘要，`context-budget.compact` 以 `<compacted_summary>` 消息保留在压缩边界（`summaryText` 输入），同时保留 SP005 的约束/计划/工具状态保留项。模型摘要失败或中断时回退确定性裁剪。手动 `/compact` 同样走模型摘要。
 

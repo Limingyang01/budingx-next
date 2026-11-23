@@ -232,7 +232,10 @@ export function targetTokens(input: ContextBudgetInput): number {
  * 不再用 SP005 的 0.85×(窗口−预留) 旧公式。压缩目标预算仍由 compactFloor 决定。
  */
 export function triggerTokens(input: ContextBudgetInput): number {
-  return Math.max(1, input.maxTokens - AUTOCOMPACT_BUFFER_TOKENS)
+  const byBuffer = Math.max(1, input.maxTokens - AUTOCOMPACT_BUFFER_TOKENS)
+  // 安全不变量：触发点必须高于压缩目标，否则「已超触发点但仍高于压缩目标」时
+  // 一回合都裁不掉。真实大窗口下 window−13k 远高于目标，此兜底只影响极小窗口。
+  return Math.max(byBuffer, compactFloor(input) + 1)
 }
 
 /** 压缩目标上限。 */

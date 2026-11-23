@@ -40,11 +40,17 @@ function turns(count, size) {
 
 const manager = createContextBudgetManager()
 
-test('CB-05 阈值公式与常量一致（SP009 0.9.1：窗口 − 13k 缓冲）', () => {
+test('CB-05 阈值公式与常量一致（SP009 0.9.1：窗口 − 13k 缓冲，且恒高于压缩目标）', () => {
   const input = { messages: [], maxTokens: 1000, reservedOutputTokens: 200 }
   assert.equal(targetTokens(input), 800)
-  assert.equal(triggerTokens(input), Math.max(1, 1000 - AUTOCOMPACT_BUFFER_TOKENS))
   assert.equal(compactFloor(input), Math.floor(800 * COMPACT_FLOOR_RATIO))
+  // 极小窗口：window−13k 会低于压缩目标，兜底抬到「目标 + 1」保证可压缩。
+  assert.equal(triggerTokens(input), compactFloor(input) + 1)
+  assert.ok(triggerTokens(input) > compactFloor(input))
+  // 真实大窗口：精确等于 window − 13k（对齐参考仓）。
+  const large = { messages: [], maxTokens: 200000 }
+  assert.equal(triggerTokens(large), 200000 - AUTOCOMPACT_BUFFER_TOKENS)
+  assert.ok(triggerTokens(large) > compactFloor(large))
 })
 
 test('CB-05 未超触发阈值时不压缩', () => {
