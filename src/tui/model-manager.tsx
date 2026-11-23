@@ -9,13 +9,13 @@ import {
 } from './model-management.js'
 
 type View = 'list' | 'templates' | 'form' | 'models' | 'delete' | 'orphans'
-const fields = ['baseUrl', 'model', 'label', 'apiKey', 'tools', 'startupDefault',
+const fields = ['baseUrl', 'model', 'label', 'apiKey', 'contextWindow', 'tools', 'startupDefault',
   'discover', 'test', 'save', 'use'] as const
 type Field = (typeof fields)[number]
-type TextField = 'label' | 'baseUrl' | 'model' | 'apiKey'
+type TextField = 'label' | 'baseUrl' | 'model' | 'apiKey' | 'contextWindow'
 
 function textField(field: Field): field is TextField {
-  return field === 'label' || field === 'baseUrl' || field === 'model' || field === 'apiKey'
+  return field === 'label' || field === 'baseUrl' || field === 'model' || field === 'apiKey' || field === 'contextWindow'
 }
 
 export type ModelManagerInput = {
@@ -114,7 +114,8 @@ export function ModelManager({
     return {
       id: item?.id, updatedAt: item?.updatedAt, label: item?.label ?? '', baseUrl: item?.baseUrl ?? baseUrl,
       model: item?.model ?? '', apiKey: '', tools: item?.capabilities.tools ?? true,
-      startupDefault: item ? item.id === effectiveDefault : file.models.length === 0
+      startupDefault: item ? item.id === effectiveDefault : file.models.length === 0,
+      contextWindow: item?.contextWindow !== undefined ? String(item.contextWindow) : ''
     }
   }
 
@@ -131,7 +132,7 @@ export function ModelManager({
     const position = (next + fields.length) % fields.length
     const nextField = fields[position]
     setField(position)
-    setCaret(draft && textField(nextField) ? Array.from(draft[nextField]).length : 0)
+    setCaret(draft && textField(nextField) ? Array.from(draft[nextField] ?? '').length : 0)
   }
 
   function insert(text: string) {
@@ -148,7 +149,7 @@ export function ModelManager({
     }
     if (view !== 'form' || !draft || !textField(field)) return
     if (draft.attachTo && (field === 'baseUrl' || field === 'apiKey')) return
-    const chars = Array.from(draft[field])
+    const chars = Array.from(draft[field] ?? '')
     const added = Array.from(text).slice(0, Math.max(0, 4096 - chars.length))
     chars.splice(caret, 0, ...added)
     setDraft({ ...draft, [field]: chars.join('') })
@@ -168,6 +169,8 @@ export function ModelManager({
       setModelIds(models)
       setMarked((value.modelIds ?? []).filter((model) => models.includes(model)))
       setSuggested(result.suggested)
+      // SP009 0.9.1 LC-01：把服务端报告的上下文窗口随草稿保存，落盘时写入档案。
+      setDraft((current) => current ? { ...current, discoveredContextWindows: result.contextWindows } : current)
       setFilter('')
       setIndex(0)
       setNotice('')
@@ -343,7 +346,7 @@ export function ModelManager({
       return
     }
     if (!textField(field) || draft.attachTo && (field === 'baseUrl' || field === 'apiKey')) return
-    const chars = Array.from(draft[field])
+    const chars = Array.from(draft[field] ?? '')
     if (key.leftArrow || key.rightArrow || key.home || key.end) {
       setCaret(key.home ? 0 : key.end ? chars.length : Math.max(0,
         Math.min(chars.length, caret + (key.leftArrow ? -1 : 1))))
@@ -370,6 +373,7 @@ export function ModelManager({
   const label: Record<Field, string> = {
     baseUrl: pick('API 端点', 'API endpoint'), model: 'Model ID',
     label: pick('名称（可选）', 'Label (optional)'), apiKey: 'API Key',
+    contextWindow: pick('上下文窗口（留空=自动）', 'Context window (blank=auto)'),
     tools: pick('工具调用', 'Tool calls'), startupDefault: pick('启动默认', 'Startup default'),
     discover: pick('拉取模型列表', 'Fetch model list'), test: pick('测试连接', 'Test connection'),
     save: pick('保存', 'Save'), use: pick('保存并使用', 'Save and use')
@@ -391,7 +395,7 @@ export function ModelManager({
     if (fieldName === 'startupDefault' || fieldName === 'tools') {
       return draft[fieldName] ? pick('开启', 'On') : pick('关闭', 'Off')
     }
-    return textField(fieldName) ? draft[fieldName] : ''
+    return textField(fieldName) ? (draft[fieldName] ?? '') : ''
   }
 
   function choices(items: string[]) {

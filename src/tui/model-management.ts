@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { discoverModels, probe } from '../provider/openai.js'
+import { discoverModelMetadata, discoverModels, probe } from '../provider/openai.js'
 import {
   createProfile, normalizeBaseUrl, profileCredentialBinding, profileCredentialRef,
   startupProfile, updateProfile
@@ -38,6 +38,15 @@ export type ModelDraft = {
   apiKey: string
   tools: boolean
   startupDefault: boolean
+  /**
+   * SP009 0.9.1 LC-02：用户填写的自定义上下文窗口（token）。
+   * 空字符串＝自动解析（环境变量 → 档案 → 服务端元数据 → 默认）。
+   */
+  contextWindow?: string
+  /**
+   * SP009 0.9.1 LC-01：拉取模型列表时服务端报告的上下文窗口，按模型 id 索引。
+   */
+  discoveredContextWindows?: Record<string, number>
 }
 
 export function selectProfile(stores: Stores, profile: ModelProfile) {
@@ -58,6 +67,21 @@ function checkedKey(key: string): string {
     throw new Error('Invalid API key')
   }
   return trimmed
+}
+
+/**
+ * SP009 0.9.1 LC-02：解析用户填写的上下文窗口。
+ * undefined＝未触碰（沿用档案/自动）；空串＝清除（恢复自动）；否则必须为正整数。
+ */
+function parseContextWindowInput(value: string | undefined): number | null | undefined {
+  if (value === undefined) return undefined
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const parsed = Number(trimmed)
+  if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 10_000_000) {
+    throw new Error('Context window must be a positive integer (tokens)')
+  }
+  return parsed
 }
 
 export function draftConnection(stores: Stores, draft: ModelDraft) {
@@ -86,7 +110,14 @@ export async function loadModelIds(ctx: CommandContext, draft: ModelDraft, signa
   if (host === 'api.siliconflow.cn') url.searchParams.set('sub_type', 'chat')
   const request = ctx.discoverModels ?? discoverModels
   try {
-    return { models: await request(url.toString(), apiKey, { signal }), suggested: false }
+    const models = await request(url.toString(), apiKey, { signal })
+    // SP009 0.9.1 LC-01：同时拉取服务端报告的上下文窗口（大窗口模型据此调高预算）。
+    const contextWindows = await discoverContextWindows(ctx, url.toString(), apiKey, signal)
+    return {
+      models,
+      suggested: false,
+      ...(Object.keys(contextWindows).length > 0 ? { contextWindows } : {})
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : ''
     if (signal.aborted || !/^HTTP (404|405|501)$/.test(message)) throw error
@@ -95,6 +126,28 @@ export async function loadModelIds(ctx: CommandContext, draft: ModelDraft, signa
     )?.suggested
     if (!suggestions) throw error
     return { models: suggestions, suggested: true }
+  }
+}
+
+/**
+ * 读取服务端报告的上下文窗口。失败不影响模型列表本身（窗口只是增强信息）。
+ */
+async function discoverContextWindows(
+  ctx: CommandContext,
+  url: string,
+  apiKey: string,
+  signal: AbortSignal
+): Promise<Record<string, number>> {
+  const request = ctx.discoverModelMetadata ?? discoverModelMetadata
+  try {
+    const metadata = await request(url, apiKey, { signal })
+    const result: Record<string, number> = {}
+    for (const item of metadata) {
+      if (item.contextWindow !== undefined) result[item.id] = item.contextWindow
+    }
+    return result
+  } catch {
+    return {}
   }
 }
 
@@ -166,14 +219,23 @@ export function saveModel(stores: Stores, draft: ModelDraft, use: boolean): Mode
   const input = { baseUrl, model: primaryModel, label, tools: draft.tools }
   const existingPrimary = draft.attachTo ? alreadyExists : undefined
   if (!existingPrimary && names.has(label)) throw new Error('A profile with that label already exists')
-  const primary = old ? updateProfile(old, input) : existingPrimary ?? createProfile(input)
+  // SP009 0.9.1 LC-01/02：自定义窗口优先，其次服务端发现值，最后沿用档案现值。
+  const customWindow = parseContextWindowInput(draft.contextWindow)
+  const discovered = draft.discoveredContextWindows ?? {}
+  const primaryWindow = customWindow !== undefined
+    ? customWindow
+    : (discovered[primaryModel] ?? old?.contextWindow)
+  const primary = old
+    ? updateProfile(old, { ...input, contextWindow: primaryWindow })
+    : existingPrimary ?? createProfile({ ...input, contextWindow: primaryWindow ?? undefined })
   names.add(primary.label)
 
   const additions: ModelProfile[] = []
   for (const model of models) {
     if (model === primaryModel || sameModel.has(model)) continue
     const name = nextLabel(model, names)
-    additions.push(createProfile({ baseUrl, model, label: name, tools: draft.tools }))
+    const addWindow = typeof customWindow === 'number' ? customWindow : discovered[model]
+    additions.push(createProfile({ baseUrl, model, label: name, tools: draft.tools, contextWindow: addWindow }))
     names.add(name)
   }
 

@@ -98,14 +98,22 @@ test('CB-01/02/03/04 压缩后真实的模型请求仍保留约束、计划与�
     session.submit('继续完成剩余工作。')
     await finalized
 
-    assert.equal(requests.length, 1)
-    const sent = requests[0].messages
+    // SP009 0.9.1 LC-06：压缩前先发一次模型摘要请求，再发真实回合请求。
+    assert.equal(requests.length, 2, 'one summary request plus the real turn request')
+    const summaryRequest = requests[0]
+    assert.ok(
+      String(summaryRequest.messages?.[0]?.content ?? '').includes('<conversation>'),
+      'the summary request must carry the conversation to summarize'
+    )
+    const sent = requests[1].messages
     const wire = JSON.stringify(sent)
 
     // CB-02：两条用户约束都必须出现在真实请求里。
     assert.ok(wire.includes('不要修改 src/core 之外的任何文件'), 'constraint 1 must survive compaction')
     assert.ok(wire.includes('必须保留现有测试'), 'constraint 2 must survive compaction')
     assert.ok(wire.includes('<preserved_context>'), 'preserved items must be marked')
+    // SP009 0.9.1 LC-06：被裁剪回合以模型摘要保留在压缩边界。
+    assert.ok(wire.includes('<compacted_summary>'), 'the model summary must survive compaction')
     // CB-03：已批准计划仍然可读。
     assert.ok(wire.includes('context-budget.ts'), 'the approved plan must survive compaction')
     // CB-04：未完成的工具调用变成需要核对的结果，绝不伪装成功。

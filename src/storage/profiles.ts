@@ -94,6 +94,8 @@ export function createProfile(
     protocol?: ModelProtocol
     /** SP007 MM-08：undefined＝未知（错误驱动降级），false＝明确拒绝图片。 */
     vision?: boolean
+    /** SP009 0.9.1 LC-02：自定义上下文窗口（token）。 */
+    contextWindow?: number
   },
   now: Date = new Date()
 ): ModelProfile {
@@ -111,6 +113,7 @@ export function createProfile(
       ...(input.vision === undefined ? {} : { vision: input.vision })
     },
     ...(input.protocol === undefined ? {} : { protocol: input.protocol }),
+    ...(input.contextWindow === undefined ? {} : { contextWindow: input.contextWindow }),
     createdAt: stamp,
     updatedAt: stamp
   }
@@ -125,6 +128,8 @@ export function updateProfile(
     tools?: boolean
     protocol?: ModelProtocol
     vision?: boolean
+    /** SP009 0.9.1 LC-02：自定义上下文窗口（token）；null 表示清除。 */
+    contextWindow?: number | null
   },
   now: Date = new Date()
 ): ModelProfile {
@@ -135,7 +140,10 @@ export function updateProfile(
   })
   const vision = patch.vision ?? profile.capabilities.vision
   const protocol = patch.protocol ?? profile.protocol
-  return {
+  const contextWindow = patch.contextWindow === undefined
+    ? profile.contextWindow
+    : patch.contextWindow
+  const next: ModelProfile = {
     ...profile,
     label: (patch.label ?? profile.label).trim(),
     baseUrl: normalizeBaseUrl(patch.baseUrl ?? profile.baseUrl),
@@ -147,6 +155,10 @@ export function updateProfile(
     ...(protocol === undefined ? {} : { protocol }),
     updatedAt: now.toISOString()
   }
+  // null 明确表示「恢复自动解析」：档案里不留该字段。
+  if (contextWindow === null) delete next.contextWindow
+  else if (contextWindow !== undefined) next.contextWindow = contextWindow
+  return next
 }
 
 /** The host a key is bound to. A key is never reused for another host. */

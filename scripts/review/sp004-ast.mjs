@@ -121,7 +121,16 @@ const REFERENCE_ALLOWLIST = [
   { ours: 'src/storage/session-store.ts', theirs: ['src/utils/sessionStorage.ts', 'src/utils/concurrentSessions.ts'] },
   { ours: 'src/storage/session-transcript.ts', theirs: ['src/utils/sessionStorage.ts'] },
   { ours: 'src/tui/host-engine.ts', theirs: ['src/QueryEngine.ts', 'src/entrypoints/sdk'] },
-  { ours: 'src/tui/serve.ts', theirs: ['src/entrypoints/cli.tsx', 'src/entrypoints/init.ts', 'src/entrypoints/agentSdkTypes.ts'] }
+  { ours: 'src/tui/serve.ts', theirs: ['src/entrypoints/cli.tsx', 'src/entrypoints/init.ts', 'src/entrypoints/agentSdkTypes.ts'] },
+  // SP009 0.9.1：技能创作/多级别发现、模型窗口解析与模型摘要压缩（§D 映射）。
+  { ours: 'src/core/compact-summary.ts', theirs: ['src/services/compact/prompt.ts', 'src/services/compact/compact.ts'] },
+  { ours: 'src/core/context-window.ts', theirs: ['src/utils/context.ts'] },
+  { ours: 'src/core/context-budget.ts', theirs: ['src/services/compact/autoCompact.ts', 'src/utils/context.ts'] },
+  { ours: 'src/tui/skills-bundled.ts', theirs: ['src/utils/skills', 'src/tools/SkillTool'] },
+  { ours: 'src/provider/openai.ts', theirs: ['src/services/api'] },
+  { ours: 'src/storage/profiles.ts', theirs: ['src/utils/settings', 'src/utils/config.ts'] },
+  { ours: 'src/tui/model-management.ts', theirs: ['src/utils/config', 'src/components'] },
+  { ours: 'src/tui/model-manager.tsx', theirs: ['src/components', 'src/utils/config'] }
 ]
 
 // 人工处置：命中项的复核结论（按「本仓路径::单元名」）。

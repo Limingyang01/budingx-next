@@ -2,9 +2,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  AUTOCOMPACT_BUFFER_TOKENS,
   COMPACTED_TOOL_MARKER,
   COMPACT_FLOOR_RATIO,
-  COMPACT_TRIGGER_RATIO,
   MAX_PRESERVED_CONSTRAINTS,
   collectConstraintItems,
   compactFloor,
@@ -40,10 +40,10 @@ function turns(count, size) {
 
 const manager = createContextBudgetManager()
 
-test('CB-05 阈值公式与常量一致', () => {
+test('CB-05 阈值公式与常量一致（SP009 0.9.1：窗口 − 13k 缓冲）', () => {
   const input = { messages: [], maxTokens: 1000, reservedOutputTokens: 200 }
   assert.equal(targetTokens(input), 800)
-  assert.equal(triggerTokens(input), Math.floor(800 * COMPACT_TRIGGER_RATIO))
+  assert.equal(triggerTokens(input), Math.max(1, 1000 - AUTOCOMPACT_BUFFER_TOKENS))
   assert.equal(compactFloor(input), Math.floor(800 * COMPACT_FLOOR_RATIO))
 })
 

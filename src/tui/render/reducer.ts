@@ -132,7 +132,12 @@ export function reduceFrame(
       next.lastQuestion = event.userText
       next.lastAnswer = undefined
       next.suggestFollowUp = false
-      if (event.userText) {
+      if (event.notification) {
+        // SP009 0.9.1：子代理通知按系统消息渲染简洁文本，绝不把原始 XML 当用户输入展示。
+        if (event.display) {
+          next.transcript = [...next.transcript, { kind: 'meta', text: event.display }]
+        }
+      } else if (event.userText) {
         next.transcript = [...next.transcript, { kind: 'user', text: event.userText }]
       }
       next.liveText = ''
@@ -222,8 +227,15 @@ export function reduceFrame(
     }
     case 'input_injected': {
       if (event.boundary === 'intra_turn' && event.text) {
-        next.transcript = [...next.transcript, { kind: 'user', text: event.text }]
-        next.lastQuestion = event.text
+        if (event.notification) {
+          // SP009 0.9.1：通知按系统消息渲染，不污染用户输入转录。
+          if (event.display) {
+            next.transcript = [...next.transcript, { kind: 'meta', text: event.display }]
+          }
+        } else {
+          next.transcript = [...next.transcript, { kind: 'user', text: event.text }]
+          next.lastQuestion = event.text
+        }
       }
       next.queue = next.queue.filter((item) => item.id !== event.queueId)
       return next

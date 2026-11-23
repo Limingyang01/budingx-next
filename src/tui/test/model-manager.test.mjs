@@ -71,7 +71,7 @@ test('editing a single field keeps the key and deleting requires confirmation', 
   await ui.send('e')
   await ui.send('\x15')
   await ui.send('after')
-  for (let i = 0; i < 7; i++) await ui.send('\t')
+  for (let i = 0; i < 8; i++) await ui.send('\t')
   await ui.send('\r')
   await ui.waitFor((frame) => frame.includes('模型档案已保存'))
   assert.equal(ui.config().model, 'after')
@@ -99,12 +99,21 @@ test('unsupported discovery leaves manual model entry usable in Custom', async (
   await ui.send('\r')
   await ui.send('https://custom.invalid/v1')
   await ui.send('\r')
-  for (let i = 0; i < 5; i++) await ui.send('\t')
+  // 按标签导航：走到「拉取模型列表」触发一次会失败的服务端发现。
+  const discoverPattern = />\s*(拉取模型列表|Fetch model list)/
+  await ui.waitFor((frame) => />\s*Model ID/.test(frame))
+  for (let i = 0; i < 12 && !discoverPattern.test(ui.last()); i++) await ui.send('\t')
+  await ui.waitFor((frame) => discoverPattern.test(frame))
   await ui.send('\r')
   await ui.waitFor((frame) => frame.includes('手动输入模型 ID'))
-  for (let i = 0; i < 5; i++) await ui.send('\x1b[A')
+  // 回到 Model ID 手动填写，再按标签走到「保存」。
+  const modelPattern = />\s*Model ID/
+  for (let i = 0; i < 12 && !modelPattern.test(ui.last()); i++) await ui.send('\x1b[A')
+  await ui.waitFor((frame) => modelPattern.test(frame))
   await ui.send('manual-id')
-  for (let i = 0; i < 8; i++) await ui.send('\t')
+  const savePattern = />\s*(保存并使用|Save and use)/
+  for (let i = 0; i < 14 && !savePattern.test(ui.last()); i++) await ui.send('\t')
+  await ui.waitFor((frame) => savePattern.test(frame))
   await ui.send('\r')
   assert.equal(ui.config().model, 'manual-id')
 })

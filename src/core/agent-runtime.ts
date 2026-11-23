@@ -16,9 +16,9 @@ import type { SessionTranscript } from './transcript.js'
 
 /** Global concurrency gate for running subagents (reference default). */
 export const MAX_CONCURRENT_AGENTS = 10
-/** Default iteration cap for one subagent turn. */
+/** 旧版子代理默认迭代上限（0.9.1 起不再作为默认；保留导出兼容历史引用）。 */
 export const SUBAGENT_MAX_TURNS = 30
-/** Token budget per subagent (MODEL_PROPOSED D7); exceeding it aborts visibly. */
+/** 旧版子代理默认 token 预算（0.9.1 起不再作为默认；保留导出兼容历史引用）。 */
 export const SUBAGENT_TOKEN_LIMIT = 100_000
 /** Final-answer character cap; longer results are truncated with a note. */
 export const AGENT_RESULT_CHAR_LIMIT = 100_000
@@ -175,7 +175,9 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
   const internals = new Map<string, AgentInternal>()
   const byCallId = new Map<string, AgentRecord>()
   const maxConcurrent = options.maxConcurrent ?? MAX_CONCURRENT_AGENTS
-  const tokenLimit = options.tokenLimit ?? SUBAGENT_TOKEN_LIMIT
+  // SP009 0.9.1：对齐参考仓——子代理默认无 token 预算上限，不再因预算中断；
+  // 仅当显式传入 tokenLimit 时才设预算（保留可选能力）。
+  const tokenLimit = options.tokenLimit ?? Number.POSITIVE_INFINITY
   const resultLimit = options.resultCharLimit ?? AGENT_RESULT_CHAR_LIMIT
   let running = 0
   let disposed = false
@@ -303,7 +305,10 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
       tools: childTools,
       id: agentId,
       permissionPolicy: childPolicy,
-      maxIterations: spawnOptions.maxTurns ?? definition.maxTurns ?? SUBAGENT_MAX_TURNS,
+      // SP009 0.9.1 LF-03：对齐参考仓常规子代理 `maxTurns ?? definition.maxTurns`，
+      // 不再硬编码默认迭代上限；未显式设置时子代理与主循环一样无迭代上限，
+      // 由失败熔断 / token 预算 / 父信号中断承担安全网。
+      maxIterations: spawnOptions.maxTurns ?? definition.maxTurns,
       ...(transcript ? { transcript } : {}),
       ...(options.contextBudget ? { contextBudget: options.contextBudget } : {}),
       resolveSystemContext: () => systemContext,

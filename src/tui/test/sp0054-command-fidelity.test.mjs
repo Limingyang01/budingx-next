@@ -78,7 +78,7 @@ test('0.5.4 /context 交互打开网格面板', async () => {
   assert.equal((await runCommand('/context', baseCtx())).openContext, true)
 })
 
-test('0.5.4 真实 Session：compactNow 释放 token、rewindTo 回滚对话', () => {
+test('0.5.4 真实 Session：compactNow 释放 token、rewindTo 回滚对话', async () => {
   const session = new Session({
     provider: { async *stream() { yield { type: 'message_completed', finishReason: 'stop' } } },
     contextBudget: { maxTokens: 2000 }
@@ -89,7 +89,7 @@ test('0.5.4 真实 Session：compactNow 释放 token、rewindTo 回滚对话', (
     msgs.push({ id: 'a' + i, role: 'assistant', blocks: [{ type: 'text', text: '回答 ' + i + ' ' + 'y'.repeat(200) }] })
   }
   session.restoreHistory(msgs)
-  const compact = session.compactNow('保留架构约束')
+  const compact = await session.compactNow('保留架构约束')
   assert.equal(compact.ok, true)
   assert.ok(compact.after < compact.before)
   const checkpoints = session.rewindCheckpoints
