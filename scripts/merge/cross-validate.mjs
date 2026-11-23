@@ -156,7 +156,9 @@ export function crossValidate(options = {}) {
     run('npm', ['test']),
     run('npm', ['run', 'spec:check']),
     run('npm', ['run', 'skills:check']),
-    run('node', ['scripts/release/pack-smoke.mjs'])
+    run('npm', ['run', 'version:check']),
+    run('node', ['scripts/release/pack-smoke.mjs']),
+    run('npm', ['run', 'test:upgrade'])
   ]
   const base = git(['merge-base', target, 'HEAD'])
   const outgoing = git(['diff', '--name-only', `${base}..HEAD`]).split('\n').filter(Boolean)

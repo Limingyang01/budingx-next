@@ -1,3 +1,6 @@
+/** Option names accepted by the publishing entry point. */
+export const RELEASE_OPTION_NAMES = ['--tag', '--auth-mode', '--expected-version']
+
 export function parseReleaseOptions(args) {
   const options = {
     dryRun: false,

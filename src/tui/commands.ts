@@ -200,7 +200,12 @@ async function executeCommand(
   const body = text.slice(1)
   const separator = body.search(/\s/)
   const name = (separator < 0 ? body : body.slice(0, separator)).toLowerCase()
-  const skillBody = loadSkillBody(name)
+  const injectedSkill = context.skills ? findSkill(context.skills, name) : undefined
+  const skillBody = injectedSkill
+    ? injectedSkill.valid
+      ? injectedSkill.body
+      : undefined
+    : loadSkillBody(name)
   if (skillBody !== undefined) return { handled: true, skillPrompt: { name, body: skillBody } }
   return {
     handled: true,
@@ -774,7 +779,9 @@ export function planCommand(argument: string, context: CommandContext, pick: (zh
 
 /** 0.5.4 /help：附加已加载的自定义技能命令（.budingx/skills）。 */
 export function skillHelpSection(context: CommandContext, pick: (zh: string, en: string) => string): string {
-  const skills = discoverSkillCommands()
+  const skills = context.skills
+    ? context.skills.filter((skill) => skill.valid).map((skill) => ({ name: skill.name, description: skill.description }))
+    : discoverSkillCommands()
   if (skills.length === 0) return ''
   const lines = skills.map((skill) => `  /${skill.name}  ${skill.description}`)
   return '\n' + pick('自定义技能命令：', 'Custom skill commands:') + '\n' + lines.join('\n')

@@ -81,6 +81,33 @@ SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已
 - 0.8.0 已发布（运行 #45010118350，源码 `b71b3f5`），台账已置 published；registry/provenance/独立安装回执已核验登记，见 [0.8.0 发行说明](../release-notes/v0.8.0.md)
 - 如需补齐 SIGTERM 证据，在 Linux/macOS 运行 stdio serve 后发 SIGTERM
 
+## SP009 · TUI 独立交付和 npm 发布工程（实现完成，待门禁与合入）
+
+SP009 功能分支 `feature/SP009/tui-distribution-and-npm-release`（基线 master `39b8665`）已完成 T1–T11：发布编排抽为可注入 npm runner 的状态机，判定层集中到 `pipeline.mjs`，新增干净安装/升级/卸载/回退生命周期门禁、版本一致性检查与上传不确定判定命令。
+
+### 已完成
+
+- **发布编排**：`publish-core.mjs` 承载状态机（`checking → verified-local → upload-started → uploaded-awaiting-receipt → registry-confirmed → published-and-installed`），`publish.mjs` 瘦身为 CLI 入口；npm 调用统一注入独立缓存目录，不再依赖用户配置区缓存。
+- **判定层**：通道规则（预发布禁止 `latest`、稳定版非 latest 需发行说明声明 `dist-tag:`）、失败分类（gate/local/auth/permission/conflict/network/unknown）、发行说明五小节结构、上传结果判定（published/not-published/mismatch/unknown）。
+- **生命周期门禁**：`npm run test:install`（包白名单、依赖闭包、命令入口、fixture 核心链路）与 `npm run test:upgrade`（覆盖升级、旧数据 fixture 兼容、卸载保留数据、指定旧版回退）用真实 npm 进程执行，工作区在仓库外、用户数据根隔离。
+- **一致性检查**：`npm run version:check` 核对六个文件的版本一致性；已在真实仓库抓到 `PRODUCT.md` 头部「已发布版本 0.7.0」与台账 0.8.0 的漂移并修复。
+- **恢复命令**：`npm run release:resolve -- --version <版本>` 只读判定远端状态；跨验证门禁新增 `version:check` 与 `test:upgrade` 两步。
+
+### 验证结果
+
+| 指标 | 结果 |
+| --- | --- |
+| 发布工具单元测试 | 44 → 56 项全部通过（`scripts/release/*.test.mjs`，含 19 项判定层、8 项发布编排、9 项版本检查、5 项上传判定、3 项生命周期夹具、4 项工作流同源） |
+| 干净安装门禁 | PASS（真实 npm 打包→隔离安装→命令入口→fixture 流式回合） |
+| 升级/卸载/回退门禁 | PASS（真实 npm，覆盖升级、旧配置迁移保留未知字段、卸载保留数据、回退旧版可运行） |
+| 交叉验证门禁 | 待跑（`npm run merge:gate`） |
+
+### 已知限制
+
+- 覆盖升级使用「当前源码 + 旧版本号」构造的旧包验证安装与数据路径，不是重新构建的历史版本；旧版本数据兼容由真实旧格式 fixture 覆盖。
+- 真实 registry 上的回退安装与 dist-tag 移动未取证（需发布授权）。
+- macOS 未实测；Linux 的覆盖升级/卸载/回退场景尚未执行（CI `verify` 只做打包与安装 smoke）。
+
 ## 已有
 
 - 用户创建的 Git 仓库，主线 master；首个提交 f3c4675 已推送，GitHub API 已核对远端 SHA。

@@ -29,10 +29,13 @@ export function normalizeForApi(
           block.type === 'context'
       )
       const text = textOf(message.blocks)
+      // Skills arrive as context blocks so the body reaches the model without
+      // being rendered as something the user typed (SP009 skill display).
       const prefix = contextBlocks
-        .map(
-          (block) =>
-            `<file_context source="${block.source}">\n${block.content}\n</file_context>`
+        .map((block) =>
+          block.source.startsWith('skill:')
+            ? `<skill name="${block.source.slice('skill:'.length)}">\n${block.content}\n</skill>`
+            : `<file_context source="${block.source}">\n${block.content}\n</file_context>`
         )
         .join('\n\n')
       const combined = prefix ? `${prefix}\n\n${text}` : text

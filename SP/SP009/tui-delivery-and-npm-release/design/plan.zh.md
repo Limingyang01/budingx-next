@@ -186,7 +186,24 @@ scripts/release/
 - **验证命令**：cwd `$ROOT`；`npm test`（全量）；`node --test scripts/release/*.test.mjs`（发布子集）。
 - **完成事实**：待回填（实际用例数、通过数、失败数、跳过数）。
 
-### T12 交付与集成
+### T13 skill 提示词不进入可见会话（用户 2026-11-23 追加）
+
+- **设计段**：D-7；**AC**：SD-01、SD-02、SD-03。
+- **文件**：`src/core/normalize.ts`（`skill:` 上下文渲染为 `<skill>`）、`src/tui/app.tsx`（提交上下文块 + 短命令回显 + 提示文案）、`src/tui/commands/types.ts`（`skills` 注入点）、`src/tui/commands.ts`（技能解析与帮助段使用注入列表）；测试 `src/tui/test/sp009-skills-display.test.mjs`。
+- **Consumes**：`skillPrompt { name, body }`；**Produces**：用户消息 = 短文本 + `context{source:'skill:<name>'}`；请求侧 `<skill name="…">` 包装。
+- **验证命令**：cwd `$ROOT`；`npm run build && node --test src/tui/test/sp009-skills-display.test.mjs`。
+- **RED/GREEN**：先写用例断言请求含 `<skill>` 包装、真实 TUI 帧含短命令而不含正文标记；实现后全绿（3/3）。
+- **完成事实**：待回填。
+
+### T14 /export 选择会话（用户 2026-11-23 追加）
+
+- **设计段**：D-8；**AC**：EX-01、EX-02。
+- **文件**：`src/tui/commands/builtin-extended.ts`（`--session` 解析、`exportSelectedSession`、`openExport`）、`src/tui/commands/types.ts`（`openExport`、`sessions.read`）、`src/tui/runtime.ts`（只读 `read` 接线）、`src/tui/panels.tsx`（`ExportPicker`）、`src/tui/app.tsx`（面板挂载与互斥）；测试 `src/tui/test/sp009-export.test.mjs`。
+- **验证命令**：cwd `$ROOT`；`npm run build && node --test src/tui/test/sp009-export.test.mjs`。
+- **RED/GREEN**：先写「导出指定会话读的是该会话历史」「读取失败不写空文件」「TUI 面板可选择并导出」；实现后全绿（4/4）。
+- **完成事实**：待回填。
+
+### T15 交付与集成
 
 - **设计段**：§3、§6；**AC**：全部。
 - **文件**：`SP/SP009/test-report.md`、本 STATUS、`SP/SP009/requirements-summary.md`、`PRODUCT.md`（最终状态）。
@@ -220,6 +237,11 @@ scripts/release/
 | NP-08 | T1 + T8 | 单元 | 模块不存在 | 缺小节被拒、草稿含五小节 |
 | NP-09 | T2 | 受控 | 无测试文件 | 假 runner 覆盖五类分支 |
 | NP-10 | T9 | 单元 | 无断言 | 工作流参数在支持集合内 |
+| SD-01 | T13 | 单元+功能 | 正文出现在会话帧里 | 请求含 `<skill>`、会话帧不含正文 |
+| SD-02 | T13 | 单元 | 无恢复断言 | 恢复视图只显示上下文元信息 |
+| SD-03 | T13 | 功能 | /help 未列出注入技能 | /help 列出技能名与描述 |
+| EX-01 | T14 | 单元+功能 | 只导出当前会话 | 指定会话导出所选历史；面板可选 |
+| EX-02 | T14 | 单元 | 失败时仍写空文件 | 读取失败返回明确错误且不落盘 |
 
 ---
 

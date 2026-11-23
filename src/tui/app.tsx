@@ -54,7 +54,7 @@ import { TranscriptMessage } from './render/transcript.js'
 import { workspacePromptOptions } from './runtime.js'
 import { ModelManager } from './model-manager.js'
 import { RulesManager } from './rules-manager.js'
-import { ResumePicker, RewindPicker, ContextGrid } from './panels.js'
+import { ResumePicker, RewindPicker, ContextGrid, ExportPicker } from './panels.js'
 import { AgentsMenu } from './agents-menu.js'
 import { StatusDialog } from './diagnostics/status-dialog.js'
 import { StatsDialog } from './diagnostics/stats-dialog.js'
@@ -453,6 +453,7 @@ export function App({
   const [modelManagerOpen, setModelManagerOpen] = useState(false)
   const [rulesManagerOpen, setRulesManagerOpen] = useState(false)
   const [resumeOpen, setResumeOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
   const [rewindOpen, setRewindOpen] = useState(false)
   const [contextOpen, setContextOpen] = useState(false)
   const [agentsOpen, setAgentsOpen] = useState(false)
@@ -588,6 +589,10 @@ export function App({
         await new Promise<void>((resolve) => {
           managerDone.current = resolve
         })
+      } else if (result.openExport) {
+        setPosition(undefined)
+        setExportOpen(true)
+        await new Promise<void>((resolve) => { managerDone.current = resolve })
       } else if (result.openResume) {
         setPosition(undefined)
         setResumeOpen(true)
@@ -620,9 +625,11 @@ export function App({
         // SP007 MM-01 补：/image 把剪贴板/路径图片挂进输入区。
         attachPreparedImage(result.attachImage)
       } else if (result.skillPrompt) {
-        setHint(pick(`技能 /${result.skillPrompt.name} 已展开为提示`, `Skill /${result.skillPrompt.name} expanded to prompt`))
-        // SM-02：调用记录保留技能名，正文随下一轮提示注入。
-        session.submit(`# Skill /${result.skillPrompt.name}\n\n${result.skillPrompt.body}`)
+        // SP009：技能正文作为上下文块交给模型，不在会话里回显提示词。
+        setHint(pick(`技能 /${result.skillPrompt.name} 已加载`, `Skill /${result.skillPrompt.name} loaded`))
+        session.submit(`/${result.skillPrompt.name}`, {
+          context: [{ source: `skill:${result.skillPrompt.name}`, content: result.skillPrompt.body }]
+        })
       } else if (result.prompt) {
         setSideAnswer(undefined)
         if (result.prompt.progress) setHint(result.prompt.progress)
@@ -679,7 +686,7 @@ export function App({
   // 0.5.4：/ 补全包含内置命令 + 已加载技能命令（对齐参考）。
   const commandList = useMemo(() => [...COMMAND_NAMES, ...discoverSkillCommands().map((s) => s.name)], [context])
   const completion = useMemo(() => {
-    if (dialog || frame.approval || overlayDismissed || modelManagerOpen || rulesManagerOpen || resumeOpen || rewindOpen || contextOpen || agentsOpen || statusOpen || statsOpen || doctorOpen) return null
+    if (dialog || frame.approval || overlayDismissed || modelManagerOpen || rulesManagerOpen || resumeOpen || exportOpen || rewindOpen || contextOpen || agentsOpen || statusOpen || statsOpen || doctorOpen) return null
     const lineText = editor.lines[editor.cursor.line] ?? ''
     const token = activeToken(lineText, editor.cursor.col, commandList)
     if (!token) return null
@@ -979,7 +986,7 @@ export function App({
     }
     // 0.5.4 /rewind 快捷键 Esc+Esc：空闲且无覆盖层时双击 Esc 打开回滚面板。
     if (key.escape && !session.isBusy && editor.isEmpty && !dialog && !frame.approval &&
-      !modelManagerOpen && !rulesManagerOpen && !resumeOpen && !rewindOpen && !contextOpen && !agentsOpen && !statusOpen && !statsOpen && !doctorOpen && !transcriptMode && !search) {
+      !modelManagerOpen && !rulesManagerOpen && !resumeOpen && !exportOpen && !rewindOpen && !contextOpen && !agentsOpen && !statusOpen && !statsOpen && !doctorOpen && !transcriptMode && !search) {
       const now = Date.now()
       if (now - lastEscRef.current < 500) {
         lastEscRef.current = 0
@@ -1563,7 +1570,7 @@ export function App({
     if (text || key.backspace || key.delete) markTyping()
   })
   useWheel(fullScreen, (lines) => {
-    if (!modelManagerOpen && !rulesManagerOpen && !resumeOpen && !rewindOpen && !contextOpen && !agentsOpen && !statusOpen && !statsOpen && !doctorOpen && !dialog) scrollHistory(lines)
+    if (!modelManagerOpen && !rulesManagerOpen && !resumeOpen && !exportOpen && !rewindOpen && !contextOpen && !agentsOpen && !statusOpen && !statsOpen && !doctorOpen && !dialog) scrollHistory(lines)
   })
   const config = commandContext.getConfig()
   const footerHint = setupHint(config, strategy)
@@ -1573,6 +1580,11 @@ export function App({
       executeRef.current(`/resume ${id}`)
     }} close={(notice) => {
       const done = managerDone.current; setResumeOpen(false); setHint(notice ?? ''); managerDone.current = undefined; done?.()
+    }} />
+  }
+  if (exportOpen) {
+    return <ExportPicker context={{ ...context, session }} current={{ id: session.id, history: session.history }} input={managerInput} close={(notice) => {
+      const done = managerDone.current; setExportOpen(false); setHint(notice ?? ''); managerDone.current = undefined; done?.()
     }} />
   }
   if (rewindOpen) {

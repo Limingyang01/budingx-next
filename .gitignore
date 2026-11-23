@@ -35,3 +35,6 @@ Thumbs.db
 
 # Accidentally captured system caches (Windows app caches, literal %SystemDrive% dir)
 %SystemDrive%/
+
+# Local npm cache used by release gates outside the user profile
+.npm-cache/

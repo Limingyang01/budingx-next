@@ -195,6 +195,37 @@
 - 工作流继续调用 `npm run publish`（同入口同参数）；新增断言测试：工作流里出现的参数名必须与 `parseReleaseOptions` 支持的参数集合一致，且 `tag` 只允许 `latest`/`next`。
 - 不改工作流的发布语义（手动触发、dry 默认、environment 授权、action 钉版本）。
 
+### 3.8 D-7：skill 提示词不进入可见会话（用户 2026-11-23 追加）
+
+**问题**：`app.tsx` 触发技能时把整段技能正文拼成用户消息提交（`# Skill /name\n\n<body>`），导致技能提示词整段出现在用户会话里。
+
+**方案**：技能正文改走**上下文块**，而不是用户文本：
+
+- 提交文本只保留短命令回显 `/${name}`；
+- 技能正文作为 `context` 块（`source = skill:<name>`，`content = 正文`）随用户消息入史；
+- `normalize.ts` 对 `skill:` 来源单独渲染为 `<skill name="…">…</skill>`，与 `@` 文件上下文的 `<file_context>` 区分，模型仍完整收到正文；
+- 恢复会话时 `restoredTranscriptEntries` 把上下文块渲染成「上下文 · skill:<name>」，正文同样不回显；
+- 界面提示改为「技能 /name 已加载」。
+
+**为什么不新增 Skill 工具**：参考仓以工具结果送达技能正文；本仓没有工具框架下的 skill 通道，上下文块是既有机制（`@` 引用同源），改动面最小且模型语义等价。**有意偏离**，理由与行为锚点记录在此。
+
+**验证**：`normalizeForApi` 单测断言 `<skill>` 包装；真实 TUI 帧断言会话不出现正文标记、仍显示短命令；`/help` 列出技能名与描述。
+
+### 3.9 D-8：/export 可选择会话（用户 2026-11-23 追加）
+
+**问题**：`/export` 只导出当前会话，用户无法选择要导出哪个会话。
+
+**方案**：
+
+- 命令新增 `--session <id>`；`exportSelectedSession()` 决定数据来源：当前会话取 `session.history`，其他会话通过**只读** `sessions.read(id)`（新增宿主接口，内部只调用 `sessionStore.restore`，不切换身份、不写盘）读取历史；
+- 交互模式不带 `--session` 时返回 `openExport`，宿主挂 `ExportPicker` 面板列出「当前会话 + 已保存会话」，选中即导出；
+- 非交互模式不带 `--session` 明确报错，不静默导出错误对象；
+- 仍复用 `exportSession` 的路径约束（必须位于 `~/.budingx` 内、不覆盖已有文件）。
+
+**参考对照**：参考仓 `/export` 用对话框（剪贴板/文件）交互；本仓按同一交互形状提供会话选择面板，但保留本仓「导出到数据根内」的安全约束。
+
+**验证**：`exportSelectedSession` 单测（指定会话、当前会话、读取失败）；真实 TUI 帧断言面板列出会话并能导出到隔离 home。
+
 ### 3.7 状态归属与消费者一览
 
 | 状态 | 归属 | 消费者 |
@@ -207,7 +238,6 @@
 ---
 
 ## 4. 变更集
-
 ### 4.1 新增（拟新增）
 
 | 路径 | 责任 | 说明 |
@@ -275,6 +305,11 @@ AC 唯一来源见 [requirements.md §4](../requirements.md)。映射：
 | NP-08 | D-1 / D-5 | `validateReleaseNotes` + 草稿骨架 |
 | NP-09 | D-1 | publish.test.mjs |
 | NP-10 | D-6 | workflow 参数一致性断言 |
+| SD-01 | D-7 | app 提交上下文块 + normalize `<skill>` 包装 |
+| SD-02 | D-7 | 上下文块记录 + 恢复视图元信息 |
+| SD-03 | D-7 | 技能帮助段使用注入技能列表 |
+| EX-01 | D-8 | `/export --session` + ExportPicker |
+| EX-02 | D-8 | 只读 `sessions.read` + 读取失败明确报错 |
 
 ---
 
@@ -303,6 +338,7 @@ AC 唯一来源见 [requirements.md §4](../requirements.md)。映射：
 | `release --dry` 预览将要改动的文件 | 本仓 `version:prepare` 直接落盘，`publish --dry-run` 只做发布预演 | **差异**：本轮不新增 `version:prepare --dry`（超出 SP009 验收面），记录为后续可选；发布预演已有 |
 | `release.ts` 自动 `git commit` + `git tag` | 本仓打标签、发布触发**必须**由用户授权，Agent 不自动执行 | 有意偏离，遵守 AGENTS.md 授权边界 |
 | 多端制品（desktop/vsix/adapters）打包门禁 | 本轮只做 TUI 单端 | r8 范围外，Desktop/VSIX 已移出当前 SP |
+| Skill 以工具结果送达模型、`/export` 用对话框 | 本仓用上下文块 + `<skill>` 标签；`/export` 用会话选择面板 | 本仓没有 skill 工具通道；可见性效果等价，正文仍完整送达模型；面板保留「导出到数据根内」约束 |
 
 ---
 

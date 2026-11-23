@@ -84,6 +84,36 @@ test('iteration preparation requires minor bump and preserves unknown ledger fie
   assert.throws(() => prepareVersion(root, 'minor', 'SP002'), /prepared/)
 })
 
+test('the prepared release notes carry the five sections the publish gate requires', (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'budingx-notes-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  mkdirSync(path.join(root, 'src/tui'), { recursive: true })
+  writeFileSync(
+    path.join(root, 'src/tui/package.json'),
+    JSON.stringify({ name: 'budingx', version: '0.1.0' })
+  )
+  writeFileSync(
+    path.join(root, 'release-ledger.json'),
+    JSON.stringify({
+      schemaVersion: 1,
+      releases: [
+        { version: '0.1.0', iteration: 'bootstrap', status: 'published' }
+      ]
+    })
+  )
+  assert.equal(prepareVersion(root, 'minor', 'SP009'), '0.2.0')
+  const notes = readFileSync(
+    path.join(root, 'release-notes/v0.2.0.md'),
+    'utf8'
+  )
+  for (const section of ['变更', '兼容性', '升级', '已知限制', '验证'])
+    assert.ok(
+      notes.includes(`## ${section}`),
+      `the draft must contain the ${section} section`
+    )
+  assert.match(notes, /replace this draft/)
+})
+
 test('1.0.0 preparation is reserved for the renumbered final SP016', (t) => {
   const root = mkdtempSync(path.join(tmpdir(), 'budingx-final-version-'))
   t.after(() => rmSync(root, { recursive: true, force: true }))

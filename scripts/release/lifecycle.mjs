@@ -41,7 +41,7 @@ export function isolatedEnv(home) {
   }
 }
 
-function directoryBytes(directory) {
+export function directoryBytes(directory) {
   const snapshot = {}
   const walk = (current, prefix) => {
     for (const entry of readdirSync(current, { withFileTypes: true })) {

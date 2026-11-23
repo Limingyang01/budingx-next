@@ -62,7 +62,9 @@ npm run version:prepare -- minor --iteration SPnnn
 # npm run version:prepare -- patch --iteration bootstrap
 ```
 
-prepare 同步产品版本、台账和根发行说明草稿。填完 `release-notes/v<version>.md` 的真实变更、验收和限制，按实际影响更新 README、STATUS 和使用文档。不要把根 private 包的 0.0.0 当作产品版本，不手工复用已经公开的版本。
+prepare 同步产品版本、台账和根发行说明草稿。草稿已带 `## 变更`、`## 兼容性`、`## 升级`、`## 已知限制`、`## 验证` 五个小节；**发布门禁要求五个小节齐全**，缺任何一节或仍留有 `replace this draft` 都会在上传前失败。填完 `release-notes/v<version>.md` 的真实变更、验收和限制，按实际影响更新 README、STATUS 和使用文档。预发布版本禁止使用 `latest` 通道；稳定版若走 `next` 等其他通道，发行说明里必须写一行 `dist-tag: <通道>`。不要把根 private 包的 0.0.0 当作产品版本，不手工复用已经公开的版本。
+
+准备完成后运行 `npm run version:check`，它会核对包清单、发布台账、发行说明与 `PRODUCT.md`、`src/tui/README.md`、`docs/current-status.md` 的版本是否一致（并检查说明书声明的已发布版本等于台账里最新的已发布版本）。有不一致时先改文档，不要绕过检查。
 
 ### 2. 锁定安装、构建与发布预演
 
@@ -183,7 +185,9 @@ npm run release:sync -- --receipt C:/path/to/downloaded/report.json
 
 - 版本已经存在：停止上传，核对实际 registry 和原运行，不自动 bump 或覆盖版本。
 - 上传后回执/安装失败：先按精确版本查询，保留 report 状态；不要点击重新运行去盲重发。确认已公开但报告不完整时，由维护者核对制品/安装和台账，不能伪造成功报告解锁版本。
+- 上传结果不确定：用 `npm run release:resolve -- --version <版本>` 判定远端状态——`published`（已公开，只需补回执与台账）、`not-published`（可以按流程上传）、`mismatch`（远端内容与本地不同，停下人工核对）、`unknown`（查询失败，只重试查询）。该命令只读，永远不会上传、bump 或移动 dist-tag。
 - ENEEDAUTH/OIDC 失败：核对包是否存在、账号是否有写权限、trust 字段/允许操作/environment、runner、id-token 权限和 npm 版本；不要添加个人 token 作为静默 fallback。
+- 权限拒绝（E403）与登录失效（E401）会被分别分类并给出处置建议；不要为了绕过它们更换 registry、账号或通道。
 - staged 状态：不是公开成功，需要 npm 对应的审批；本项目默认 direct 模式不会自动批准 staged 包。
 - master 之外触发：工作流不执行发布；fork 和其他工作流上下文也会被发布脚本拒绝。
 

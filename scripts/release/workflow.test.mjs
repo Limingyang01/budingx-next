@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { parse } from 'yaml'
+import { RELEASE_OPTION_NAMES } from './options.mjs'
 const workflow = parse(
   readFileSync(
     new URL('../../.github/workflows/publish-tui.yml', import.meta.url),
@@ -37,4 +38,37 @@ test('the publishing identity is scoped to the named environment and master; act
     for (const step of job.steps)
       if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/)
   }
+})
+
+test('the workflow and the local entry use the same publishing command and options', () => {
+  const commands = Object.values(workflow.jobs).flatMap((job) =>
+    job.steps.map((step) => step.run).filter(Boolean)
+  )
+  const publishCommands = commands.filter((command) =>
+    command.includes('npm run publish')
+  )
+  assert.equal(publishCommands.length, 2, 'verify and publish both publish locally')
+  for (const command of publishCommands)
+    assert.match(command, /npm run publish --/)
+  const used = new Set()
+  for (const command of publishCommands)
+    for (const match of command.matchAll(/--[a-z-]+/g)) used.add(match[0])
+  for (const option of used)
+    assert.ok(
+      RELEASE_OPTION_NAMES.includes(option) || option === '--dry-run',
+      `${option} must be a supported release option`
+    )
+  const tagInput =
+    workflow.on.workflow_dispatch.inputs.tag
+  assert.deepEqual(tagInput.options, ['latest', 'next'])
+  assert.equal(tagInput.default, 'latest')
+})
+
+test('the publishing job only runs through the OIDC identity and the master branch', () => {
+  const publishStep = workflow.jobs.publish.steps.find((step) =>
+    step.run?.includes('npm run publish')
+  )
+  assert.match(publishStep.run, /--auth-mode oidc/)
+  assert.doesNotMatch(publishStep.run, /--dry-run/)
+  assert.match(workflow.jobs.publish.if, /!inputs\.dry_run/)
 })

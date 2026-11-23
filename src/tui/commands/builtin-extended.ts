@@ -2,6 +2,7 @@
 // 七个命令全部通过注册表三型契约实现，副作用由 CommandOutcome 交给宿主。
 import { homedir } from 'node:os'
 import type { CommandContext, CommandDefinition, CommandResult } from './types.js'
+import type { Message } from '../../core/events.js'
 import { exportSession } from '../export.js'
 import { planInit } from '../init.js'
 import { discoverSkills } from '../skills.js'
@@ -139,10 +140,16 @@ const skillsCommand: CommandDefinition = {
   }
 }
 
-function parseExportArgs(args: string): { format: 'jsonl' | 'text'; path?: string; error?: string } {
+function parseExportArgs(args: string): {
+  format: 'jsonl' | 'text'
+  path?: string
+  session?: string
+  error?: string
+} {
   const tokens = args.trim().split(/\s+/).filter(Boolean)
   let format: 'jsonl' | 'text' = 'jsonl'
   let path: string | undefined
+  let session: string | undefined
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index]
     if (token === '--format' || token === '-f') {
@@ -155,34 +162,82 @@ function parseExportArgs(args: string): { format: 'jsonl' | 'text'; path?: strin
       if (!value) return { format, error: '--path 缺少路径' }
       path = value
       index += 1
+    } else if (token === '--session' || token === '-s') {
+      const value = tokens[index + 1]
+      if (!value) return { format, error: '--session 缺少会话 id' }
+      session = value
+      index += 1
     } else if (token.startsWith('--format=')) {
       const value = token.slice('--format='.length)
       if (value !== 'jsonl' && value !== 'text') return { format, error: '--format 只能是 jsonl 或 text' }
       format = value
     } else if (token.startsWith('--path=')) {
       path = token.slice('--path='.length) || undefined
+    } else if (token.startsWith('--session=')) {
+      session = token.slice('--session='.length) || undefined
     } else {
       return { format, error: `未知参数：${token}` }
     }
   }
-  return { format, ...(path ? { path } : {}) }
+  return { format, ...(path ? { path } : {}), ...(session ? { session } : {}) }
+}
+
+/** SP009：导出会话（当前或指定）到数据根内；返回可读结果。 */
+export function exportSelectedSession(
+  context: CommandContext,
+  options: { sessionId: string; format: 'jsonl' | 'text'; path?: string }
+): { ok: boolean; message: string } {
+  let messages: readonly Message[]
+  let sessionId = options.sessionId
+  if (sessionId === context.session.id) {
+    messages = context.session.history
+  } else {
+    const read = context.sessions?.read
+    if (!read)
+      return {
+        ok: false,
+        message: '当前宿主不支持读取其他会话；请先 /resume 切到该会话再导出'
+      }
+    const loaded = read(sessionId)
+    if (!loaded.ok || !loaded.messages)
+      return { ok: false, message: loaded.message ?? `无法读取会话 ${sessionId}` }
+    messages = loaded.messages as unknown as Message[]
+  }
+  const result = exportSession(messages, {
+    sessionId,
+    format: options.format,
+    ...(options.path ? { path: options.path } : {}),
+    ...(context.home ? { home: context.home } : {})
+  })
+  return result.ok
+    ? { ok: true, message: `已导出 ${result.bytes} 字节：${result.path}` }
+    : { ok: false, message: result.error }
 }
 
 const exportCommand: CommandDefinition = {
   name: 'export',
   kind: 'local',
-  summary: '导出会话为 JSONL 或文本（默认写入 ~/.budingx/exports）',
+  summary: '导出会话为 JSONL 或文本（可选择会话，默认写入 ~/.budingx/exports）',
   async run(args, context) {
     const parsed = parseExportArgs(args)
     if (parsed.error) return text(parsed.error)
-    const result = exportSession(context.session.history, {
-      sessionId: context.session.id,
+    if (!parsed.session) {
+      if (context.interactive && context.sessions?.list)
+        return { kind: 'text', value: '', outcome: { handled: true, openExport: true } }
+      // 非交互宿主没有面板：保持旧行为，导出当前会话。
+      const current = exportSelectedSession(context, {
+        sessionId: context.session.id,
+        format: parsed.format,
+        ...(parsed.path ? { path: parsed.path } : {})
+      })
+      return text(current.message)
+    }
+    const result = exportSelectedSession(context, {
+      sessionId: parsed.session,
       format: parsed.format,
-      ...(parsed.path ? { path: parsed.path } : {}),
-      ...(context.home ? { home: context.home } : {})
+      ...(parsed.path ? { path: parsed.path } : {})
     })
-    if (!result.ok) return text(result.error)
-    return text(`已导出 ${result.bytes} 字节：${result.path}`)
+    return text(result.message)
   }
 }
 

@@ -2,6 +2,7 @@ import { Box, Text, type Key } from 'ink'
 import { useEffect, useMemo, useState, type RefObject } from 'react'
 import type { CommandContext } from './commands.js'
 import { formatTokens } from './commands.js'
+import { exportSelectedSession } from './commands/builtin-extended.js'
 
 export type PanelInput = { key: (text: string, key: Key) => void; paste: (text: string) => void }
 
@@ -38,6 +39,45 @@ export function ResumePicker({ context, close, input, onPick }: {
         </Text>
       ))}
       <Text dimColor>{pick('↑↓ 选择 · Enter 恢复 · Esc 关闭', 'up/down · Enter resume · Esc close')}</Text>
+    </Box>
+  )
+}
+
+/** SP009 /export：选择要导出的会话（当前会话 + 已保存会话）。 */
+export function ExportPicker({ context, current, close, input }: {
+  context: CommandContext
+  current: { id: string; history: readonly unknown[] }
+  close: (notice?: string) => void
+  input: RefObject<PanelInput | undefined>
+}) {
+  const pick = (zh: string, en: string) => (context.lang === 'zh' ? zh : en)
+  const entries = useMemo(() => {
+    const saved = (context.sessions?.list() ?? []).filter((entry) => entry.sessionId !== current.id)
+    return [
+      { sessionId: current.id, title: pick('当前会话', 'Current session'), updatedAt: '', turns: current.history.length },
+      ...saved
+    ]
+  }, [context.sessions, current.id, current.history.length])
+  const [index, setIndex] = useState(0)
+  const selected = Math.min(index, Math.max(0, entries.length - 1))
+  usePanelInput(input, (text, key) => {
+    if (key.escape) return close()
+    if (key.upArrow) return setIndex((v) => Math.max(0, v - 1))
+    if (key.downArrow) return setIndex((v) => Math.min(entries.length - 1, v + 1))
+    if (key.return && entries[selected])
+      close(exportSelectedSession(context, { sessionId: entries[selected].sessionId, format: 'jsonl' }).message)
+  }, [entries, selected])
+  return (
+    <Box flexDirection="column" borderStyle="round" borderColor="gray">
+      <Text bold>{pick('导出会话（JSONL）', 'Export session (JSONL)')}</Text>
+      {entries.map((entry, i) => (
+        <Text key={entry.sessionId} color={i === selected ? '#56b6c2' : undefined}>
+          {i === selected ? '❯ ' : '  '}{entry.title}
+          {entry.updatedAt ? `  ${entry.updatedAt}` : ''}
+          {entry.turns ? `  ${pick('条', 'msgs')} ${entry.turns}` : ''}
+        </Text>
+      ))}
+      <Text dimColor>{pick('↑↓ 选择 · Enter 导出 · Esc 关闭', 'up/down · Enter export · Esc close')}</Text>
     </Box>
   )
 }
