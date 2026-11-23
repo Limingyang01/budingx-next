@@ -3,7 +3,7 @@
 // The interactive edit fast path allows ordinary workspace writes. Legacy
 // non-interactive modes retain their original defaults. All callers apply the
 // same floor rules and deny-rule priority.
-import { basename, relative } from 'node:path'
+import { basename, isAbsolute, relative, resolve } from 'node:path'
 import type {
   PermissionMode,
   PermissionPolicy,
@@ -141,6 +141,13 @@ export function createPermissionPolicy(
     } catch (error) {
       // B-3/B-4/B-5: outside the workspace (including through links).
       if (error instanceof WorkspaceError && error.code === ERROR_CODES.workspacePathOutside) {
+        // 全自动档位（完全权限）允许工作区外目标；用户数据根与凭据地板仍然生效。
+        if (mode === 'full_access') {
+          const absolute = isAbsolute(request.path)
+            ? resolve(request.path)
+            : resolve(workspace.root, request.path)
+          return { real: workspace.realOf(absolute) ?? absolute }
+        }
         return {
           denied: {
             action: 'deny',

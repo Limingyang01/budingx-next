@@ -17,12 +17,20 @@ function makeEnv(mode = undefined, rules = undefined) {
   const userRoot = join(base, '.budingx')
   mkdirSync(root)
   mkdirSync(userRoot)
-  const workspace = createWorkspace(root)
+  // 边界判定跟随当前模式：完全权限允许工作区外目标（用户 2026-11-23 缺陷修复）。
+  let currentMode = mode
+  const workspace = createWorkspace(root, {
+    allowOutside: () => currentMode === 'full_access'
+  })
   const policy = createPermissionPolicy({
     workspace,
     ...(mode ? { mode } : {}),
     ...(rules ? { rules } : {}),
     dataRootOverride: userRoot
+  })
+  currentMode = policy.getMode()
+  policy.onModeChanged((next) => {
+    currentMode = next
   })
   return {
     base,
@@ -76,10 +84,15 @@ test('完全权限不能越过底线：凭据特征文件在任一模式都拒�
   rmSync(env.base, { recursive: true, force: true })
 })
 
-test('越界与用户数据目录拒绝，完全权限也不行（PC-08/PC-04）', () => {
+test('工作区外目标：完全权限放行，另外两档仍拒绝；数据根地板始终生效（用户 2026-11-23 修正）', () => {
   const env = makeEnv('full_access')
-  assert.equal(env.write('../outside/a.ts').ruleId, 'floor:outside')
-  assert.equal(env.read('../../secret').action, 'deny')
+  assert.equal(env.read('../outside/a.ts').action, 'allow')
+  assert.equal(env.write('../outside/a.ts').action, 'allow')
+  assert.equal(env.write('../../secret').action, 'allow')
+  const edit = makeEnv('workspace_edit')
+  assert.equal(edit.read('../outside/a.ts').ruleId, 'floor:outside')
+  const readOnly = makeEnv('read_only')
+  assert.equal(readOnly.read('../outside/a.ts').ruleId, 'floor:outside')
   // 一个覆盖 userRoot 的“工作区”：B-1 生效
   const wide = createWorkspace(env.base)
   const widePolicy = createPermissionPolicy({

@@ -2,10 +2,10 @@
 
 > **npm 已发布版本**：0.8.0（`latest`）。详见 [0.8.0 发行说明](release-notes/v0.8.0.md)。
 >
-> **已发布**：0.8.0（SP008 多端架构入口与共享边界），npm `latest` = 0.8.0，由 [GitHub Actions 运行 #45010118350](https://github.com/Limingyang01/budingx-next/actions/runs/45010118350) 从源码 `b71b3f5` 发布（publishedAt=2026-11-22T10:06:13.912Z）。详见 [0.8.0 发行说明与发布回执](release-notes/v0.8.0.md)。
+> **源码版本**：0.9.0（SP009 已合入 master 并完成发布前准备，等待维护者在 GitHub Actions 手动触发发布）。详见 [0.9.0 发行说明](release-notes/v0.9.0.md)。
 >
 > **上一版本**：0.6.0（SP006）。详见 [0.6.0 发行说明](release-notes/v0.6.0.md)。
-> **说明书版本**：v1.30（2026-11-23 增补 SP009 独立交付与 npm 发布工程：安装/升级/卸载/回退语义、版本一致性检查、发布失败分类与上传不确定判定；SP009 实现完成，门禁待跑）
+> **说明书版本**：v1.31（2026-11-23 增补 SP009：技能提示词不进会话、`/export` 选择会话、独立交付与发布工程；已合入 master `10704ab`，0.9.0 已准备待发布）
 > **更新日期**：2026-11-23
 > **产品形态**：独立 MIT 许可的终端 Coding Agent（Node.js ≥ 22.18 + TypeScript，不依赖 Bun）
 
@@ -53,7 +53,7 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 本轮实现完成并合入 master，0.6.0 已发布 |
 | SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | **已实现、通过回归并合入 master（`5dbfe3a` / `ee9118e`），并已发布 npm 0.7.0（运行 #27，源码 `a8628b5`）** |
 | SP008 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | **已实现并合入 master**（`feature/SP008/host-contract`）；宿主扩展（MCP/hooks）端到端矩阵已验证；`budingx serve` 提供进程内/stdio/WS 三种宿主入口；**0.8.0 已发布**（npm `latest` = 0.8.0） |
-| SP009 | TUI 独立交付与 npm 发布工程 | tui-distribution、upgrade-compatibility、npm-publish-pipeline                                              | **已实现**（`feature/SP009/tui-distribution-and-npm-release`）：干净安装/覆盖升级/旧数据兼容/卸载/回退的真实 npm 门禁（`npm run test:install`、`npm run test:upgrade`）、版本一致性检查（`npm run version:check`）、发布失败分类与上传不确定判定（`npm run release:resolve`）；待合入 master 并发布 |
+| SP009 | TUI 独立交付与 npm 发布工程 | tui-distribution、upgrade-compatibility、npm-publish-pipeline                                              | **已合入 master（`10704ab`），0.9.0 已准备待发布**：干净安装/覆盖升级/旧数据兼容/卸载/回退的真实 npm 门禁（`npm run test:install`、`npm run test:upgrade`）、版本一致性检查（`npm run version:check`）、发布失败分类与上传不确定判定（`npm run release:resolve`）、技能提示词不进会话、`/export` 可选择会话 |
 | SP010 | 中期编码效果检查        | coding-parity-checkpoint、core-reliability                                                                 | 规划中 |
 | SP011 | 多代理团队              | team-lifecycle、task-coordination、team-messaging、worktree-isolation                                      | 规划中 |
 | SP012 | 浏览器操作              | browser-session、page-actions、browser-artifacts                                                           | 规划中 |
@@ -433,6 +433,7 @@ budingx serve --transport ws --session my-session --port 0
 
 - **技能触发不展示提示词**：在 `.budingx/skills/<name>/SKILL.md` 放置技能后，输入 `/<name>` 会把技能正文**作为上下文送达模型**，但会话里只出现一条 `/<name>` 回显和「技能 /name 已加载」提示，不再把整段技能提示词打进对话；恢复会话时同样只显示「上下文 · skill:<name>」。`/skills` 与 `/help` 仍列出技能名与描述。模型请求中使用 `<skill name="…">` 包装，与 `@` 文件的 `<file_context>` 区分。
 - **`/export` 可以选择会话**：`/export` 在交互终端打开会话选择面板（当前会话 + 已保存会话，↑↓ 选择、Enter 导出）；脚本或无头场景不带参数仍导出**当前会话**，用 `/export --session <会话 id>` 导出其他会话。导出内容来自所选会话的历史，仍写入 `~/.budingx/exports/`，不覆盖已有文件；读取失败的会话给出明确错误，不写空文件。
+- **全自动档位不再被工作区边界拦截**：在「完全权限 / 全自动」档位下，读取与修改工作区外的文件（例如 `~/.budingx/mcp-wrappers/…`）不再被拒绝；仅可查看与工作区内修改两档仍按工作区边界拦截。**安全地板不变**：`~/.budingx` 用户数据目录与凭据形状文件在所有档位都不可读写，写 `.git` 仍需确认。
 - **独立交付与发布工程**：`npm run test:install`（干净安装）、`npm run test:upgrade`（覆盖升级/旧数据/卸载/回退）、`npm run version:check`（版本一致性）、`npm run release:resolve`（上传结果判定）均为维护者命令，不影响普通使用。
 
 #### 5.10.1 兼容性与升级
@@ -493,6 +494,7 @@ budingx serve --transport ws --session my-session --port 0
 | 0.5.2 | 2026-11-20 | 长会话渲染优化（流式增量不再每帧全文重排、虚拟列表渐进挂载与高度缓存、状态栏常驻）、上下文用量与推理强度显示、`/effort` 命令、交互式 TUI 默认开启会话持久化；见 [发行说明](release-notes/v0.5.2.md) | 已发布 |
 | 0.5.1 | 2026-11-20 | SP005 复审修复：写入锁排他互斥与释放归属、记忆正文往返与真实损坏备份、凭据误判收敛、压缩保留项裁剪与压缩转录重放、预算阈值统一、工具熔断按回合重置、恢复权限不升权、`/memory` 用法提示；见 [发行说明](release-notes/v0.5.1.md) | 已发布 |
 | 0.8.0（SP008） | 2026-11-22 | SP008 通用宿主契约：`budingx serve`（stdio/WS）、版本化 NDJSON 身份/事件/权限协议、owner/observer/takeover 与崩溃恢复、配置并发锁、转录尾行容错、凭据作用域与传输不泄密；宿主与交互入口一致装配 MCP/hooks 并经真实进程端到端验证；T17 测试加固补齐 WS 帧级/客户端错误/协议文案/serve 退出码/interrupt/history.limit 证据并修复三处实现缺陷；验收期补全菜单全部命令中英文短描述（m02582）；见 [发行说明](release-notes/v0.8.0.md)、[验收报告](SP/SP008/test-report.md)。 | 已发布 |
+| 0.9.0（SP009） | 2026-11-23 | SP009 独立交付与发布工程：技能触发不再回显提示词（正文以 `<skill>` 上下文送达模型）、`/export` 可选择会话、发布编排状态机与通道/失败判定、上传不确定只读判定命令、版本一致性检查、干净安装/升级/卸载/回退生命周期门禁；见 [发行说明](release-notes/v0.9.0.md)、[验收报告](SP/SP009/test-report.md)。 | 已准备，待发布 |
 | —（规划调整，无产品行为变化） | 2026-11-17 | 路线图 r6：TUI 单端优先；SP008/SP009/SP016–SP018 暂缓、多端架构入口保留；TUI 三权限模式固定；能力清单分母 53→47；说明书 v1.3 | 规划文档调整 |
 | —（规划调整） | 2026-11-18 | 路线图 r7：移出五个原暂缓 SP，保留通用宿主契约，必交能力仍为 47 | 规划文档调整 |
 | —（规划调整） | 2026-11-18 | 路线图 r8：现行 SP001–SP016 连续编号，能力与产品版本不变 | 规划文档调整 |

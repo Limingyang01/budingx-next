@@ -21,6 +21,7 @@
 | tui-delivery-and-npm-release §4.1（TD-01–TD-06） | 路线图 SP009；npm 方案「生产安装」「tarball 与运行依赖」 | 干净安装、包白名单、依赖闭包、入口与核心链路、版本一致性、engines 声明一致 | 发布编排、分发验证、文档 | 实施中 | [requirements](tui-delivery-and-npm-release/requirements.md) · [design](tui-delivery-and-npm-release/design/design.zh.md) · [plan](tui-delivery-and-npm-release/design/plan.zh.md) | 待验证 | 未合入 | T1/T2/T4/T7 |
 | tui-delivery-and-npm-release §4.2（UC-01–UC-05） | 路线图 SP009；npm 方案「升级、回退与卸载」 | 覆盖升级、旧数据 fixture、卸载保留数据、指定旧版回退、一条命令门禁 | 分发验证、文档 | 实施中 | 同上 | 待验证 | 未合入 | T4/T5 |
 | tui-delivery-and-npm-release §4.3（NP-01–NP-10） | 路线图 SP009；npm 方案「单条命令稳定发布」「dry-run/门禁失败」「版本与通道」「身份与政策」「上传结果不确定」 | 一条命令发布、dry-run 无副作用、门禁失败不上传、同版本拒绝、失败分类、通道规则、不确定上传判定、发行说明结构、发布流水线测试、CI 同源 | 发布编排 | 实施中 | 同上 | 待验证 | 未合入 | T1/T2/T6/T8/T9 |
+| tui-delivery-and-npm-release §4.6（BF-01–BF-03） | 用户 2026-11-23 报缺陷 | 全自动档位不受工作区边界拦截；另两档与安全地板不变 | 权限策略、工作区路径 | 已修复 | 同上 | 22/22 PASS（定向） | 待复跑门禁 | T16 |
 | tui-delivery-and-npm-release §4.4（SD-01–SD-03） | 用户 2026-11-23 追加指令 | 触发技能时正文不进入可见会话、仍完整送达模型；恢复视图不回显；/help 仍列出技能 | TUI 会话展示、normalize | 实施中 | 同上 | 3/3 PASS（定向） | 未合入 | T13 |
 | tui-delivery-and-npm-release §4.4（EX-01–EX-02） | 用户 2026-11-23 追加指令 | `/export` 可选择会话（面板或 `--session`）、导出所选历史、读取失败明确报错 | TUI 命令面、会话只读接口 | 实施中 | 同上 | 4/4 PASS（定向） | 未合入 | T14 |
 

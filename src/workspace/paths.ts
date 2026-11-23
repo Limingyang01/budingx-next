@@ -37,6 +37,8 @@ export type ResolvedPath = {
   existed: boolean
   /** Whether the existing target is a directory. */
   isDirectory: boolean
+  /** True when the path is outside the workspace root (full access only). */
+  outside?: boolean
 }
 
 export type Workspace = {
@@ -75,7 +77,10 @@ export function realPathOf(target: string): string | undefined {
   }
 }
 
-export function createWorkspace(root: string): Workspace {
+export function createWorkspace(
+  root: string,
+  options: { allowOutside?: () => boolean } = {}
+): Workspace {
   const rootAbsolute = resolve(root)
   const rootReal = realPathOf(rootAbsolute) ?? rootAbsolute
 
@@ -114,10 +119,22 @@ export function createWorkspace(root: string): Workspace {
         real = join(parentReal ?? parent, ...missing)
       }
       if (!workspace.isInside(real)) {
-        throw new WorkspaceError(
-          ERROR_CODES.workspacePathOutside,
-          `Path is outside the workspace: ${raw}`
-        )
+        // 全自动档位（完全权限）允许工作区外的目标；其余档位保持工作区边界。
+        // 边界判定是动态的：模式可以在会话中切换（Shift+Tab）。
+        if (!options.allowOutside?.()) {
+          throw new WorkspaceError(
+            ERROR_CODES.workspacePathOutside,
+            `Path is outside the workspace: ${raw}`
+          )
+        }
+        return {
+          absolute,
+          relative: relative(rootReal, real).split(sep).join('/'),
+          real,
+          existed,
+          isDirectory,
+          outside: true
+        }
       }
       const relativePath = relative(rootReal, real)
       return {

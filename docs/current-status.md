@@ -81,12 +81,13 @@ SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已
 - 0.8.0 已发布（运行 #45010118350，源码 `b71b3f5`），台账已置 published；registry/provenance/独立安装回执已核验登记，见 [0.8.0 发行说明](../release-notes/v0.8.0.md)
 - 如需补齐 SIGTERM 证据，在 Linux/macOS 运行 stdio serve 后发 SIGTERM
 
-## SP009 · TUI 独立交付和 npm 发布工程（实现完成，待门禁与合入）
+## SP009 · TUI 独立交付和 npm 发布工程（已合入 master，0.9.0 已准备待发布）
 
-SP009 功能分支 `feature/SP009/tui-distribution-and-npm-release`（基线 master `39b8665`）已完成 T1–T11：发布编排抽为可注入 npm runner 的状态机，判定层集中到 `pipeline.mjs`，新增干净安装/升级/卸载/回退生命周期门禁、版本一致性检查与上传不确定判定命令。
+SP009 功能分支 `feature/SP009/tui-distribution-and-npm-release`（基线 master `39b8665`）完成 T1–T14，**已由交叉验证门禁 GREEN 后合入 master（合并提交 `10704ab`）并推送**；`src/tui/package.json` = 0.9.0，台账 `prepared`。维护者可在 GitHub Actions 手动触发发布。
 
 ### 已完成
 
+- **技能与导出（用户追加）**：技能触发改为上下文块送达模型，会话只回显 `/<skill>` 与短提示；`/export` 交互模式打开会话选择面板，`--session` 选择其他会话，新增只读 `sessions.read`。
 - **发布编排**：`publish-core.mjs` 承载状态机（`checking → verified-local → upload-started → uploaded-awaiting-receipt → registry-confirmed → published-and-installed`），`publish.mjs` 瘦身为 CLI 入口；npm 调用统一注入独立缓存目录，不再依赖用户配置区缓存。
 - **判定层**：通道规则（预发布禁止 `latest`、稳定版非 latest 需发行说明声明 `dist-tag:`）、失败分类（gate/local/auth/permission/conflict/network/unknown）、发行说明五小节结构、上传结果判定（published/not-published/mismatch/unknown）。
 - **生命周期门禁**：`npm run test:install`（包白名单、依赖闭包、命令入口、fixture 核心链路）与 `npm run test:upgrade`（覆盖升级、旧数据 fixture 兼容、卸载保留数据、指定旧版回退）用真实 npm 进程执行，工作区在仓库外、用户数据根隔离。
@@ -100,7 +101,9 @@ SP009 功能分支 `feature/SP009/tui-distribution-and-npm-release`（基线 mas
 | 发布工具单元测试 | 44 → 56 项全部通过（`scripts/release/*.test.mjs`，含 19 项判定层、8 项发布编排、9 项版本检查、5 项上传判定、3 项生命周期夹具、4 项工作流同源） |
 | 干净安装门禁 | PASS（真实 npm 打包→隔离安装→命令入口→fixture 流式回合） |
 | 升级/卸载/回退门禁 | PASS（真实 npm，覆盖升级、旧配置迁移保留未知字段、卸载保留数据、回退旧版可运行） |
-| 交叉验证门禁 | 待跑（`npm run merge:gate`） |
+| 交叉验证门禁 | **GATE GREEN**（2026-11-23T02:02:15Z，npm test / spec:check / skills:check / version:check / pack-smoke / test:upgrade 全 0 退出） |
+| 合入与推送 | 已合入 master（`10704ab`）并推送，远端 SHA 一致 |
+| 发布准备 | 0.9.0 已准备（台账 prepared、发行说明已写），待维护者触发 |
 
 ### 已知限制
 

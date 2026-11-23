@@ -167,3 +167,24 @@ test('a missing file reports not found', () => {
     rmSync(tree.base, { recursive: true, force: true })
   }
 })
+
+test('全自动档位可以读取工作区外的文件，其他档位仍被边界拒绝（用户 2026-11-23 修正）', () => {
+  const base = mkdtempSync(join(tmpdir(), 'budingx-read-outside-'))
+  try {
+    const root = join(base, 'workspace')
+    const outside = join(base, 'outside')
+    mkdirSync(root)
+    mkdirSync(outside)
+    writeFileSync(join(outside, 'mcp-wrapper.json'), 'outside-content\n')
+    const closed = createWorkspace(root)
+    assert.throws(
+      () => readWorkspaceFile(closed, { path: join(outside, 'mcp-wrapper.json') }),
+      /outside the workspace/i
+    )
+    const open = createWorkspace(root, { allowOutside: () => true })
+    const result = readWorkspaceFile(open, { path: join(outside, 'mcp-wrapper.json') })
+    assert.match(result.text, /outside-content/)
+  } finally {
+    rmSync(base, { recursive: true, force: true })
+  }
+})

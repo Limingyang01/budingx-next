@@ -1,6 +1,6 @@
 {
   "name": "budingx",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "An independent Node.js terminal agent with OpenAI-compatible chat, workspace file tools, approval previews, and undo.",
   "type": "module",
   "license": "MIT",

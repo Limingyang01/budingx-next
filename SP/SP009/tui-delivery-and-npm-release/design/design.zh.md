@@ -226,6 +226,21 @@
 
 **验证**：`exportSelectedSession` 单测（指定会话、当前会话、读取失败）；真实 TUI 帧断言面板列出会话并能导出到隔离 home。
 
+### 3.10 D-9：全自动档位不再被工作区边界拦截（用户 2026-11-23 报缺陷）
+
+**问题**：`policy.ts:resolveTarget` 对工作区外路径一律返回 `floor:outside` 拒绝，与档位无关；`paths.ts:createWorkspace.resolve` 也会在解析阶段直接抛错。结果全自动档位读工作区外文件（如 `~/.budingx/mcp-wrappers/…`）仍被 `BUDINGX_PERMISSION_001` 拒绝。
+
+**方案**：
+
+- `createWorkspace(root, { allowOutside?: () => boolean })`：边界判定变为**动态谓词**；谓词为真时返回带 `outside: true` 的解析结果，不抛错。
+- `runtime.ts` 把谓词接到当前权限模式（`policy.onModeChanged` 同步），因此 Shift+Tab 切换档位立即生效。
+- `policy.ts:resolveTarget` 在 `full_access` 下不产生 `floor:outside`，改按绝对路径（含符号链接解析）继续后续判定。
+- 地板规则不变：用户数据根（`floor:data`）与凭据形状文件（`floor:credential`）在所有档位拒绝；`.git` 写入仍强制确认。
+
+**偏离说明**：SP003 原设计把「工作区边界」当作不可覆盖地板；用户 2026-11-23 明确全自动档位不应被拦截，故边界随档位放宽，安全地板保留。此为 USER_CONFIRMED 的行为变更，旧测试同步更新。
+
+**验证**：策略测试（三档矩阵）与 Read 工具测试（真实读取工作区外文件）各 1 例。
+
 ### 3.7 状态归属与消费者一览
 
 | 状态 | 归属 | 消费者 |
@@ -310,6 +325,9 @@ AC 唯一来源见 [requirements.md §4](../requirements.md)。映射：
 | SD-03 | D-7 | 技能帮助段使用注入技能列表 |
 | EX-01 | D-8 | `/export --session` + ExportPicker |
 | EX-02 | D-8 | 只读 `sessions.read` + 读取失败明确报错 |
+| BF-01 | D-9 | 动态边界谓词 + full_access 放行 |
+| BF-02 | D-9 | 另两档保持 floor:outside |
+| BF-03 | D-9 | 地板规则不变（数据根/凭据/.git） |
 
 ---
 
