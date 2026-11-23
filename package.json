@@ -25,11 +25,15 @@
     "langfuse:login": "node scripts/langfuse/login-check.mjs",
     "langfuse:ui": "node scripts/langfuse/build-ui.mjs",
     "test:release": "node --test scripts/release/*.test.mjs",
+    "test:install": "node scripts/release/lifecycle.mjs --stage install",
+    "test:upgrade": "node scripts/release/lifecycle.mjs --stage upgrade",
     "merge:test": "node --test scripts/merge/*.test.mjs",
     "merge:gate": "node scripts/merge/cross-validate.mjs",
     "test": "npm run skills:test && npm run spec:test && npm run test:unit && npm run test:checks && npm run test:langfuse && npm run test:release && npm run merge:test",
     "publish": "node scripts/release/publish.mjs",
     "version:prepare": "node scripts/release/version.mjs",
+    "version:check": "node scripts/release/version-check.mjs",
+    "release:resolve": "node scripts/release/resolve.mjs",
     "release:sync": "node scripts/release/receipt.mjs"
   },
   "devDependencies": {

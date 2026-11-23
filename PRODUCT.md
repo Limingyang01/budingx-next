@@ -1,12 +1,12 @@
 # budingx 产品说明书
 
-> **npm 已发布版本**：0.7.0（`latest`）。详见 [0.7.0 发行说明](release-notes/v0.7.0.md)。
+> **npm 已发布版本**：0.8.0（`latest`）。详见 [0.8.0 发行说明](release-notes/v0.8.0.md)。
 >
 > **已发布**：0.8.0（SP008 多端架构入口与共享边界），npm `latest` = 0.8.0，由 [GitHub Actions 运行 #45010118350](https://github.com/Limingyang01/budingx-next/actions/runs/45010118350) 从源码 `b71b3f5` 发布（publishedAt=2026-11-22T10:06:13.912Z）。详见 [0.8.0 发行说明与发布回执](release-notes/v0.8.0.md)。
 >
 > **上一版本**：0.6.0（SP006）。详见 [0.6.0 发行说明](release-notes/v0.6.0.md)。
-> **说明书版本**：v1.29（2026-11-22 增补 SP008 宿主契约、扩展装配矩阵与 T17 测试加固；已合入 master，0.8.0 已发布）
-> **更新日期**：2026-11-22
+> **说明书版本**：v1.30（2026-11-23 增补 SP009 独立交付与 npm 发布工程：安装/升级/卸载/回退语义、版本一致性检查、发布失败分类与上传不确定判定；SP009 实现完成，门禁待跑）
+> **更新日期**：2026-11-23
 > **产品形态**：独立 MIT 许可的终端 Coding Agent（Node.js ≥ 22.18 + TypeScript，不依赖 Bun）
 
 本文件是面向使用者的产品说明书，回答「这是什么、能做什么、怎么用、还差什么」。仓库协作约定见 [AGENTS.md](AGENTS.md)，开发命令见 [开发指南](docs/development.md)，迭代明细见 [SP 目录](SP/README.md)。
@@ -53,7 +53,7 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 本轮实现完成并合入 master，0.6.0 已发布 |
 | SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | **已实现、通过回归并合入 master（`5dbfe3a` / `ee9118e`），并已发布 npm 0.7.0（运行 #27，源码 `a8628b5`）** |
 | SP008 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | **已实现并合入 master**（`feature/SP008/host-contract`）；宿主扩展（MCP/hooks）端到端矩阵已验证；`budingx serve` 提供进程内/stdio/WS 三种宿主入口；**0.8.0 已发布**（npm `latest` = 0.8.0） |
-| SP009 | TUI 独立交付与 npm 发布工程 | tui-distribution、upgrade-compatibility、npm-publish-pipeline                                              | 规划中 |
+| SP009 | TUI 独立交付与 npm 发布工程 | tui-distribution、upgrade-compatibility、npm-publish-pipeline                                              | **已实现**（`feature/SP009/tui-distribution-and-npm-release`）：干净安装/覆盖升级/旧数据兼容/卸载/回退的真实 npm 门禁（`npm run test:install`、`npm run test:upgrade`）、版本一致性检查（`npm run version:check`）、发布失败分类与上传不确定判定（`npm run release:resolve`）；待合入 master 并发布 |
 | SP010 | 中期编码效果检查        | coding-parity-checkpoint、core-reliability                                                                 | 规划中 |
 | SP011 | 多代理团队              | team-lifecycle、task-coordination、team-messaging、worktree-isolation                                      | 规划中 |
 | SP012 | 浏览器操作              | browser-session、page-actions、browser-artifacts                                                           | 规划中 |
@@ -88,7 +88,11 @@ npm install -g budingx
 budingx --version
 ```
 
-升级 `npm install -g budingx@latest`，卸载 `npm uninstall -g budingx`。
+- **升级**：`npm install -g budingx@latest`。升级会覆盖程序文件，**不会动 `~/.budingx` 里的配置、凭据、会话与记忆**；旧版本写下的数据在升级后继续可读，配置结构过旧时按迁移规则就地升级并保留备份（`config.json.bak`），迁移不会丢弃未知字段。
+- **卸载**：`npm uninstall -g budingx`。卸载**只移除程序，默认保留 `~/.budingx`**；需要清理数据时由用户自己删除该目录，程序不会代为删除。
+- **回退**：可安装指定旧版本，例如 `npm install -g budingx@0.8.0`。兼容条件：Node.js 仍需 ≥ 22.18；数据格式向前兼容（旧版本读不了新版本写下的会话）。
+- **发布包内容**：npm 包只包含 `dist/`（编译产物）、`package.json`、`README.md`、`LICENSE`，不含源码目录、开发依赖或任何凭据；安装后无需本地编译 TypeScript 即可运行。
+- **平台**：Windows 与 Linux 已验证（见 [SP009 验收报告](SP/SP009/test-report.md)）；macOS 未实测，不承诺可用。
 
 ---
 
@@ -425,6 +429,16 @@ budingx serve --transport ws --session my-session --port 0
 - **扩展装配与交互入口一致**：`serve` 的 owner 进程读取同一 `~/.budingx/mcp.json` 与 `~/.budingx/hooks.json`；MCP 工具照常经审批执行，hooks 的提示词阻断、工具拒绝/放行/追问审批、改写入参与附加上下文同样生效；observer 只读历史，不启动任何扩展子进程。宿主关闭时先停会话再回收 MCP 子进程，不留孤儿进程。宿主不改三档权限模式、provider 协议或既有 headless 输出。
 - **扩展的失败面**：MCP 工具返回失败时宿主如实标记 `tool_result isError=true`；单个 MCP 服务器崩溃或连接失败只影响该服务器（连接失败写 stderr 告警，不阻断宿主启动），其余会话与回合照常进行。
 
+### 5.10 SP009 · 技能不刷屏、导出可选会话与独立交付（已实现，待发布）
+
+- **技能触发不展示提示词**：在 `.budingx/skills/<name>/SKILL.md` 放置技能后，输入 `/<name>` 会把技能正文**作为上下文送达模型**，但会话里只出现一条 `/<name>` 回显和「技能 /name 已加载」提示，不再把整段技能提示词打进对话；恢复会话时同样只显示「上下文 · skill:<name>」。`/skills` 与 `/help` 仍列出技能名与描述。模型请求中使用 `<skill name="…">` 包装，与 `@` 文件的 `<file_context>` 区分。
+- **`/export` 可以选择会话**：`/export` 在交互终端打开会话选择面板（当前会话 + 已保存会话，↑↓ 选择、Enter 导出）；脚本或无头场景不带参数仍导出**当前会话**，用 `/export --session <会话 id>` 导出其他会话。导出内容来自所选会话的历史，仍写入 `~/.budingx/exports/`，不覆盖已有文件；读取失败的会话给出明确错误，不写空文件。
+- **独立交付与发布工程**：`npm run test:install`（干净安装）、`npm run test:upgrade`（覆盖升级/旧数据/卸载/回退）、`npm run version:check`（版本一致性）、`npm run release:resolve`（上传结果判定）均为维护者命令，不影响普通使用。
+
+#### 5.10.1 兼容性与升级
+
+升级只替换程序文件，`~/.budingx` 的配置、凭据、会话与记忆保持不变；旧配置按迁移规则就地升级并保留 `.bak` 备份，未知字段不丢失。卸载保留数据；回退可安装指定旧版本，但旧版本读不了新版本写下的会话。
+
 ## 6. 数据与隐私
 
 - 产品数据统一落在 `~/.budingx`；不读取、不回退、不写入 `~/.claude`。
@@ -451,7 +465,8 @@ budingx serve --transport ws --session my-session --port 0
 | 真实服务 live 证据             | 已验证一个用户提供的服务：流式、工具审批回合、取消、鉴权错误；见 SP002 报告 §16 | 其他型号/服务仍未测   |
 | SP006 扩展能力 | 项目指令、技能、MCP、hooks、WebFetch、无头 CLI 与七条新命令已实现并通过本地回归；状态栏配置需重启生效；无头模式不加载 MCP 与交互面板；MCP 与 hooks 的真实第三方服务器/脚本兼容性未逐一验证；hooks 的 http/agent 处理器未实现 | 已随 0.6.0 发布；真实第三方兼容性后续补证 |
 | 真终端 CJK/IME 与 resize 体验  | 未验证（需 Windows Terminal + ConHost 人工 smoke）                              | 验收时补              |
-| macOS / Linux                  | 仅声明 Windows 已验证                                                           | SP009 后逐个平台验证  |
+| macOS / Linux                  | Windows 已由本地生命周期门禁验证（干净安装、覆盖升级、旧数据兼容、卸载、回退）；Linux 由 CI `verify` 作业覆盖打包与安装 smoke，**覆盖升级/卸载/回退场景尚未在 Linux 执行**；macOS 未实测 | SP009 后逐个平台补证 |
+| 独立交付与发布工程（SP009） | 干净安装、覆盖升级、旧数据兼容、卸载保留数据、指定旧版回退已有真实 npm 证据；版本一致性检查只覆盖清单内的六个文件，不检查正文语义；发布失败分类覆盖 auth/permission/conflict/network/unknown；**真实 registry 上的回退安装与 dist-tag 移动未取证**（需发布授权）；上传不确定只能用 `npm run release:resolve` 判定，不会自动重发 | 见 [SP009 验收报告](SP/SP009/test-report.md) |
 
 ---
 

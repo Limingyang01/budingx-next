@@ -24,6 +24,8 @@ export type CommandOutcome = {
   openRewind?: boolean
   openContext?: boolean
   skillPrompt?: { name: string; body: string }
+  /** SP009：/export 打开会话选择面板（local-jsx）。 */
+  openExport?: boolean
   /** Interactive hosts open the diff dialog on this instead of printing. */
   openDiffDialog?: boolean
   /** prompt 型命令：宿主把 text 作为下一次模型输入，progress 作为进度提示（CMD-04）。 */
@@ -85,7 +87,23 @@ export type CommandContext = {
       /** SP006：恢复后当前生效的会话 id（恢复会切换身份）。 */
       sessionId?: string
     }
+    /** SP009：只读读取某个会话的历史，不切换身份、不写盘（/export 选择会话用）。 */
+    read?: (sessionId: string) => {
+      ok: boolean
+      message?: string
+      messages?: { role: string; blocks: unknown[] }[]
+    }
   }
+  /** SP009：技能列表注入点；缺省时从用户/项目目录发现。 */
+  skills?: {
+    name: string
+    description: string
+    body: string
+    path: string
+    scope: 'user' | 'project'
+    valid: boolean
+    error?: string
+  }[]
   contextUsage?: {
     usage: () => {
       usedTokens?: number

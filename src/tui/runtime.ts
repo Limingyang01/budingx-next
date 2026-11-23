@@ -486,8 +486,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             updatedAt: entry.updatedAt,
             turns: entry.turns
           })),
-        resume: (target: string) => {
-          const restored = sessionStore!.restore(target)
+        resume: (target: string) => {          const restored = sessionStore!.restore(target)
           if (restored.status !== 'restored') {
             return { ok: false, message: restored.message ?? restored.status }
           }
@@ -526,6 +525,16 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               ...(step.detail ? { detail: step.detail } : {})
             })),
             warnings: [...restored.warnings, ...identityWarnings]
+          }
+        },
+        // SP009：只读读取某个会话，不切换身份、不写盘（/export 选择会话用）。
+        read: (target: string) => {
+          const restored = sessionStore!.restore(target)
+          if (restored.status !== 'restored')
+            return { ok: false, message: restored.message ?? restored.status }
+          return {
+            ok: true,
+            messages: restored.messages as { role: string; blocks: unknown[] }[]
           }
         }
       }

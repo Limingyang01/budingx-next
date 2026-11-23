@@ -84,7 +84,27 @@ export function prepareVersion(root, kind, iteration) {
   const outputs = [
     [
       notes,
-      `# v${version} · ${iteration}\n\nStatus: PREPARED — replace this draft with actual changes, verification and limitations.\n`
+      [
+        `# v${version} · ${iteration}`,
+        '',
+        'Status: PREPARED — replace this draft with actual changes, verification and limitations.',
+        '',
+        '## 变更',
+        '- （待填写）',
+        '',
+        '## 兼容性',
+        '- （待填写）',
+        '',
+        '## 升级',
+        '- （待填写）',
+        '',
+        '## 已知限制',
+        '- （待填写）',
+        '',
+        '## 验证',
+        '- （待填写）',
+        ''
+      ].join('\n')
     ],
     [pkgPath, JSON.stringify({ ...pkg, version }, null, 2) + '\n'],
     [

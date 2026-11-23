@@ -11,6 +11,8 @@ npm install -g budingx
 budingx --help
 ```
 
+Upgrading (`npm install -g budingx@latest`) replaces the program files only; the configuration, credentials, sessions and memory under `~/.budingx` stay untouched and remain readable, and an outdated configuration is migrated in place with a backup while unknown fields are preserved. Uninstalling (`npm uninstall -g budingx`) removes the program and keeps `~/.budingx`; remove that directory yourself if you want the data gone. A previous release can be installed again (`npm install -g budingx@0.8.0`); Node.js >= 22.18 is still required and the data format stays forward compatible.
+
 ## Configure and run
 
 For local source testing only, the repository's `npm run start` reads the optional root `.env.e2e.local` through Node's native env-file flag. Existing process variables take precedence. It does not persist profiles or print keys. The installed `budingx` command and build/release flows do not auto-load this file; configure real environments explicitly. E2E budget/request fields do not limit interactive chat usage.
@@ -99,7 +101,7 @@ Workspace text tools, session-local undo and session transcript persistence are 
 
 User data is stored under `~/.budingx` only. Session transcripts live in `~/.budingx/sessions/<session ID>/` and project/session memory in `~/.budingx/memory/`; both are written atomically and only readable and writable by the current user. The program never reads, falls back to or writes `~/.claude`.
 
-The release workflow verifies Windows and Linux tests plus real tarball installation. macOS installation is not yet certified. Update with npm install -g budingx@latest; uninstall with npm uninstall -g budingx.
+The release workflow verifies Windows and Linux tests plus real tarball installation. The distribution lifecycle gate additionally installs the tarball into an isolated prefix, upgrades over a previous release with real user data, uninstalls it and rolls back to the previous version. macOS installation is not yet certified.
 
 Source and roadmap: https://github.com/Limingyang01/budingx-next
 
