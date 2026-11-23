@@ -23,7 +23,7 @@ SP009 起，本机与 CI 共用同一组发布相关命令：
 
 失败被分类为 `gate`（本地门禁）、`local`（本地校验）、`auth`、`permission`、`conflict`、`network`、`unknown`；分类只用于给出处置建议，**不会**改 registry、换账号或换通道。上传之后发生失败时，报告状态停在 `uploaded-awaiting-receipt`，必须先用 `release:resolve` 判定远端状态，禁止重复上传。
 
-当前 npm `latest` 为 0.9.0（SP009），正式发布回执见 [0.9.0 发行说明](../release-notes/v0.9.0.md)；0.8.0（SP008）的回执见 [v0.8.0](../release-notes/v0.8.0.md)。0.7.0（SP007）的回执见 [0.7.0 发行说明](../release-notes/v0.7.0.md)、0.6.0（SP006）见 [0.6.0 发行说明](../release-notes/v0.6.0.md)。后续版本完成准备后，可按下面命令预演。
+当前 npm `latest` 为 0.9.0（SP009），正式发布回执见 [0.9.0 发行说明](../release-notes/v0.9.0.md)；[0.9.1 补丁](../release-notes/v0.9.1.md)已准备（台账 `prepared`），待维护者在 GitHub 手动触发；0.8.0（SP008）的回执见 [v0.8.0](../release-notes/v0.8.0.md)。0.7.0（SP007）的回执见 [0.7.0 发行说明](../release-notes/v0.7.0.md)、0.6.0（SP006）见 [0.6.0 发行说明](../release-notes/v0.6.0.md)。后续版本完成准备后，可按下面命令预演。
 
 ```powershell
 $releaseVersion = (Get-Content src/tui/package.json -Raw | ConvertFrom-Json).version

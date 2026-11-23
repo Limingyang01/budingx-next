@@ -17,7 +17,7 @@
 
 规范依据：[npm SemVer 说明](https://docs.npmjs.com/about-semantic-versioning/)。
 
-准备工具入口为 `npm run version:prepare -- kind --iteration SPnnn`，按已确定的类型与迭代替换参数。SP005 的同轮修复使用 patch，当前 npm `latest` 指向 [0.9.0](../release-notes/v0.9.0.md)（SP009），台账状态 published（发布运行 [#45100998785](https://github.com/Limingyang01/budingx-next/actions/runs/45100998785)，源码 `aecd8b7`）；SP008 的 [0.8.0](../release-notes/v0.8.0.md)、SP007 的 [0.7.0](../release-notes/v0.7.0.md)、SP006 的 [0.6.0](../release-notes/v0.6.0.md) 亦为 published。新 SP 首次交付使用 minor。准备前需要当前版本已有 published 回执且无未处理 prepared 版本。命令保留台账未知字段，根维护包版本沿用现有值。
+准备工具入口为 `npm run version:prepare -- kind --iteration SPnnn`，按已确定的类型与迭代替换参数。SP005 的同轮修复使用 patch，当前 npm `latest` 指向 [0.9.0](../release-notes/v0.9.0.md)（SP009），台账状态 published；同轮补丁 [0.9.1](../release-notes/v0.9.1.md) 已准备（`prepared`，待维护者发布）（发布运行 [#45100998785](https://github.com/Limingyang01/budingx-next/actions/runs/45100998785)，源码 `aecd8b7`）；SP008 的 [0.8.0](../release-notes/v0.8.0.md)、SP007 的 [0.7.0](../release-notes/v0.7.0.md)、SP006 的 [0.6.0](../release-notes/v0.6.0.md) 亦为 published。新 SP 首次交付使用 minor。准备前需要当前版本已有 published 回执且无未处理 prepared 版本。命令保留台账未知字段，根维护包版本沿用现有值。
 
 ## Actions 发布回执
 
