@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import path from 'node:path'
 
 export function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -26,8 +28,37 @@ export function run(command, args, options = {}) {
     if (options.input !== undefined) child.stdin?.end(options.input)
   })
 }
+
+/**
+ * Locate the npm CLI. `npm_execpath` is set for scripts started through
+ * `npm run`; the sibling lookup keeps the release scripts runnable as plain
+ * `node scripts/release/*.mjs` too.
+ */
+export function npmCli() {
+  if (process.env.npm_execpath) return process.env.npm_execpath
+  const candidate = path.join(
+    path.dirname(process.execPath),
+    'node_modules',
+    'npm',
+    'bin',
+    'npm-cli.js'
+  )
+  if (existsSync(candidate)) return candidate
+  throw new Error(
+    'Cannot locate the npm CLI entry; run this command through npm run'
+  )
+}
+
 export function npm(args, options = {}) {
-  if (!process.env.npm_execpath)
-    throw new Error('Run this command through npm run')
-  return run(process.execPath, [process.env.npm_execpath, ...args], options)
+  const { cache, ...rest } = options
+  if (!cache) return run(process.execPath, [npmCli(), ...args], rest)
+  // npm options must precede the `--` separator that starts the command.
+  const separator = args.indexOf('--')
+  const head = separator === -1 ? args : args.slice(0, separator)
+  const tail = separator === -1 ? [] : args.slice(separator)
+  return run(
+    process.execPath,
+    [npmCli(), ...head, '--cache', cache, ...tail],
+    rest
+  )
 }

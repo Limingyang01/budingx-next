@@ -5,13 +5,14 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { run } from './process.mjs'
 
-export async function smokeInstalled(packageDirectory, cwd) {
+export async function smokeInstalled(packageDirectory, cwd, extraEnv = {}) {
   const cli = path.join(packageDirectory, 'dist/tui/cli.js')
   const pkg = JSON.parse(
     await readFile(path.join(packageDirectory, 'package.json'), 'utf8')
   )
   const env = {
     ...process.env,
+    ...extraEnv,
     BUDINGX_API_KEY: '',
     BUDINGX_MODEL: '',
     BUDINGX_BASE_URL: ''
