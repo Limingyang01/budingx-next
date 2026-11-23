@@ -36,9 +36,22 @@
 | `SP/SP009/tui-delivery-and-npm-release/design/design.zh.md` | v1（本轮首版） | 唯一中文设计正本 |
 | `SP/SP009/tui-delivery-and-npm-release/design/plan.zh.md` | v1（本轮首版） | 唯一中文计划正本 |
 
-## 5. 任务与证据（实施后回填）
+## 5. 任务与证据
 
-> 尚未实施，本节保持空白；每完成一个任务即回填「任务 → 文件 → cwd/命令 → 实际数量与结果 → 证据」。
+| 任务 | 文件 | 实际结果 |
+| --- | --- | --- |
+| T1 发布判定层 | `scripts/release/pipeline.mjs` + `pipeline.test.mjs` | 19/19 通过（通道规则、失败分类、发行说明结构、上传结果判定） |
+| T2 发布编排 | `scripts/release/publish-core.mjs`、`publish.mjs` + `publish.test.mjs` | 8/8 通过（dry-run 无副作用、门禁失败、同版本拒绝、E403 分类、回执不确定、完整发布、说明缺小节、预发布 latest） |
+| T3 npm 调用注入 | `scripts/release/process.mjs` | 统一 `--cache`（置于 `--` 之前）、npm CLI 兜底定位；真实门禁验证 |
+| T4 生命周期门禁 | `scripts/release/lifecycle.mjs` + `lifecycle.test.mjs` | install/upgrade 真实执行 PASS；3/3 夹具单测 |
+| T5 生命周期入口 | `package.json` `test:install`/`test:upgrade` | 两条命令均 0 退出 |
+| T6 上传结果判定 | `scripts/release/resolve.mjs` + `resolve.test.mjs` | 5/5 通过（只读、四种结论与退出码） |
+| T7 版本一致性 | `scripts/release/version-check.mjs` + `version-check.test.mjs` + `version:check` | 9/9 通过；真实仓库抓到并修复 `PRODUCT.md` 0.7.0/0.8.0 漂移 |
+| T8 发行说明骨架 | `scripts/release/version.mjs` + `version.test.mjs` | 草稿含五小节；6/6 通过 |
+| T9 CI 同源 | `scripts/release/workflow.test.mjs`、`options.mjs` | 4/4 通过 |
+| T10 文档同步 | `PRODUCT.md`、`src/tui/README.md`、`docs/npm-release-plan.md`、`docs/github-actions-npm.md`、`docs/current-status.md`、`docs/iteration-plan.md`、`.gitignore` | 已完成；`version:check` PASS |
+| T11 测试收口 | 各 `*.test.mjs` | 全量 1250/1249/0/1；发布工具 56/56；定向 TUI 7/7 |
+| T12–T14（用户追加） | 技能显示与导出选择实现 + `sp009-*.test.mjs` | 技能 3/3、导出 4/4 通过；`/export` 非交互保持旧行为（回归修复 1 处） |
 
 ## 6. 提交、合并与推送记录
 

@@ -74,7 +74,7 @@ scripts/release/
 - **验证命令**：cwd `$ROOT`；`node --test scripts/release/pipeline.test.mjs`。
 - **RED**：先写测试断言四条规则（预发布+latest 被拒；稳定版+next 缺 `dist-tag:` 被拒；E401/E403/E409/网络错误分类正确；发行说明缺小节被拒；远端 404/一致/不一致/查询失败四种判定）。实现前运行必须失败（模块不存在）。
 - **GREEN**：测试全绿且用例数与断言数记录在案。
-- **完成事实**：待回填。
+- **完成事实**：见 STATUS §5 任务证据表。
 
 ### T2 发布编排层 `publish-core.mjs` + `publish.mjs` 瘦身
 
@@ -91,7 +91,7 @@ scripts/release/
   4. `publish` 抛 E403 → 报告 `failure.kind = 'permission'`，不调用 `view` 改 tag、不重试上传；
   5. 上传后回执超时 → `state = 'uploaded-awaiting-receipt'`，错误信息含「先判定远端状态」，不重发。
 - **GREEN**：以上全绿；`npm run publish -- --dry-run --expected-version <当前版本> --tag latest` 真实执行产出报告且不上传。
-- **完成事实**：待回填。
+- **完成事实**：见 STATUS §5 任务证据表。
 
 ### T3 npm 调用统一注入（`process.mjs`）
 
@@ -102,7 +102,7 @@ scripts/release/
 - **依赖**：无。
 - **验证命令**：cwd `$ROOT`；`node --test scripts/release/*.test.mjs`。
 - **RED/GREEN**：由 T4/T5 的真实 npm 用例覆盖（无缓存目录时会 EPERM 失败）。
-- **完成事实**：待回填。
+- **完成事实**：见 STATUS §5 任务证据表。
 
 ### T4 生命周期门禁 `lifecycle.mjs`（安装 + 升级 + 卸载 + 回退）
 
@@ -114,7 +114,7 @@ scripts/release/
 - **验证命令**：cwd `$ROOT`；`node --test scripts/release/lifecycle.test.mjs`（真实 npm，较慢）；单段调试 `node scripts/release/lifecycle.mjs --stage install|upgrade`。
 - **RED**：先写断言（包白名单、依赖闭包无 devDependency、入口与 shim 版本一致、fixture 请求 1 次、覆盖升级后版本切换且数据字节不变、卸载后包与 shim 消失而数据仍在、回退安装旧版版本号正确）。实现前因脚本不存在而失败。
 - **GREEN**：全绿；记录真实用例数与耗时。
-- **完成事实**：待回填。
+- **完成事实**：见 STATUS §5 任务证据表。
 
 ### T5 生命周期入口脚本（`test:install` / `test:upgrade`）
 
@@ -123,7 +123,7 @@ scripts/release/
 - **依赖**：T4。
 - **验证命令**：cwd `$ROOT`；`npm run test:install`、`npm run test:upgrade`。
 - **RED/GREEN**：脚本存在前执行失败（缺脚本）；补齐后两条命令均以 0 退出并打印证据摘要。
-- **完成事实**：待回填。
+- **完成事实**：见 STATUS §5 任务证据表。
 
 ### T6 上传结果判定命令 `resolve.mjs`
 
@@ -135,7 +135,7 @@ scripts/release/
 - **验证命令**：cwd `$ROOT`；`node --test scripts/release/resolve.test.mjs`。
 - **RED**：先写「命令只调用 `npm view`，不调用 `publish`/`dist-tag`/`install`」与四种结论的退出码断言。
 - **GREEN**：全绿。
-- **完成事实**：待回填。
+- **完成事实**：见 STATUS §5 任务证据表。
 
 ### T7 版本一致性检查 `version-check.mjs`
 
@@ -147,7 +147,7 @@ scripts/release/
 - **验证命令**：cwd `$ROOT`；`node --test scripts/release/version-check.test.mjs`；`npm run version:check`。
 - **RED**：先写临时目录夹具：一致 → 通过；版本号漂移 / 缺发行说明 / 草稿发行说明 / engines 不一致 → 各自被报出。
 - **GREEN**：全绿；仓库真实执行能抓到当前已知的 PRODUCT.md 0.7.0/0.8.0 漂移。
-- **完成事实**：待回填。
+- **完成事实**：见 STATUS §5 任务证据表。
 
 ### T8 发行说明结构校验与草稿骨架
 
@@ -157,7 +157,7 @@ scripts/release/
 - **验证命令**：cwd `$ROOT`；`node --test scripts/release/version.test.mjs`。
 - **RED**：先写断言「`prepareVersion` 生成的草稿包含五个小节标题」「缺小节的说明被拒绝」。
 - **GREEN**：全绿。
-- **完成事实**：待回填。
+- **完成事实**：见 STATUS §5 任务证据表。
 
 ### T9 CI 同源断言
 
@@ -167,7 +167,7 @@ scripts/release/
 - **验证命令**：cwd `$ROOT`；`node --test scripts/release/workflow.test.mjs`。
 - **RED**：先写断言「工作流使用的参数名都在 `parseReleaseOptions` 支持集合内」「工作流 tag 只允许 latest/next」「工作流与本地调用同一个 `npm run publish`」。
 - **GREEN**：全绿。
-- **完成事实**：待回填。
+- **完成事实**：见 STATUS §5 任务证据表。
 
 ### T10 文档同步
 
@@ -176,7 +176,7 @@ scripts/release/
 - **依赖**：T4–T8 的实际命令名。
 - **验证命令**：cwd `$ROOT`；`npm run version:check`；`npm run skills:check`；`npm run spec:check`。
 - **RED/GREEN**：文档漂移由 `version:check` 暴露（先记录冲突，修文档后转绿）。
-- **完成事实**：待回填。
+- **完成事实**：见 STATUS §5 任务证据表。
 
 ### T11 测试收口
 
@@ -193,7 +193,7 @@ scripts/release/
 - **Consumes**：`skillPrompt { name, body }`；**Produces**：用户消息 = 短文本 + `context{source:'skill:<name>'}`；请求侧 `<skill name="…">` 包装。
 - **验证命令**：cwd `$ROOT`；`npm run build && node --test src/tui/test/sp009-skills-display.test.mjs`。
 - **RED/GREEN**：先写用例断言请求含 `<skill>` 包装、真实 TUI 帧含短命令而不含正文标记；实现后全绿（3/3）。
-- **完成事实**：待回填。
+- **完成事实**：见 STATUS §5 任务证据表。
 
 ### T14 /export 选择会话（用户 2026-11-23 追加）
 
@@ -201,14 +201,14 @@ scripts/release/
 - **文件**：`src/tui/commands/builtin-extended.ts`（`--session` 解析、`exportSelectedSession`、`openExport`）、`src/tui/commands/types.ts`（`openExport`、`sessions.read`）、`src/tui/runtime.ts`（只读 `read` 接线）、`src/tui/panels.tsx`（`ExportPicker`）、`src/tui/app.tsx`（面板挂载与互斥）；测试 `src/tui/test/sp009-export.test.mjs`。
 - **验证命令**：cwd `$ROOT`；`npm run build && node --test src/tui/test/sp009-export.test.mjs`。
 - **RED/GREEN**：先写「导出指定会话读的是该会话历史」「读取失败不写空文件」「TUI 面板可选择并导出」；实现后全绿（4/4）。
-- **完成事实**：待回填。
+- **完成事实**：见 STATUS §5 任务证据表。
 
 ### T15 交付与集成
 
 - **设计段**：§3、§6；**AC**：全部。
 - **文件**：`SP/SP009/test-report.md`、本 STATUS、`SP/SP009/requirements-summary.md`、`PRODUCT.md`（最终状态）。
 - **验证命令**：cwd `$ROOT`；`npm run merge:gate`（必须 GREEN）；随后按 buding-merge 规程合入 master 并推送，记录远端 SHA。
-- **完成事实**：待回填。
+- **完成事实**：见 STATUS §5 任务证据表。
 
 ---
 
