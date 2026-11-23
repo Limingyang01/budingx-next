@@ -3,7 +3,15 @@
 export const CANCEL_BUDGET_MS = 5000
 export const QUEUE_AUTOSTART_MS = 400
 export const TOOL_OUTPUT_CAP = 32768
+/**
+ * 旧版主循环默认迭代上限（SP009 0.9.1 起不再作为会话默认值；保留导出兼容历史引用）。
+ */
 export const MAX_ITERATIONS = 32
+/**
+ * SP009 0.9.1：完成声明连续缺证据时的有界重试次数（主循环已无固定回合上限，
+ * 这里防止模型持续给出无证据的「完成」声明导致无限循环）。
+ */
+export const MAX_COMPLETION_CLAIM_REJECTIONS = 3
 
 /**
  * SP005 FR-05：同一个工具以相同参数连续失败达到该次数后停止再试。

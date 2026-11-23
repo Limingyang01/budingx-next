@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import {
   CANCEL_BUDGET_MS,
   ERROR_CODES,
-  MAX_ITERATIONS,
+  MAX_COMPLETION_CLAIM_REJECTIONS,
   MAX_REPEATED_TOOL_FAILURES,
   MAX_TOOL_FAILURE_STREAK,
   QUEUE_AUTOSTART_MS,
@@ -33,6 +33,11 @@ import {
   type ContextBudgetManager,
   type PreservedItem
 } from './context-budget.js'
+import {
+  buildSummaryPrompt,
+  extractSummary,
+  renderMessagesForSummary
+} from './compact-summary.js'
 import type { HookRunResult, SessionHookEvent, SessionHooks } from './hooks.js'
 import type { SessionTranscript, TranscriptRecord } from './transcript.js'
 import { appendTranscript } from './session-persistence.js'
@@ -152,7 +157,7 @@ export type SubmitOptions = {
   images?: { id: number; mediaType: string; data: string; width?: number; height?: number }[]
 }
 
-type QueuedInput = { id: string; text: string; options?: SubmitOptions; notification?: boolean }
+type QueuedInput = { id: string; text: string; options?: SubmitOptions; notification?: boolean; notice?: string }
 
 type ActiveTurn = {
   provider: ModelProvider
@@ -437,7 +442,7 @@ export class Session {
    * 0.5.4 /compact：手动压缩（忽略触发阈值），可附自定义摘要指令。
    * 复用 SP005 确定性压缩核心，指令作为保留约束写入，压缩后仍保留。
    */
-  compactNow(instruction?: string): { ok: boolean; before: number; after: number; message?: string } {
+  async compactNow(instruction?: string): Promise<{ ok: boolean; before: number; after: number; message?: string }> {
     const budget = this.budget
     if (!budget) return { ok: false, before: 0, after: 0, message: '上下文预算未接入' }
     const shape = normalizeBudget(
@@ -449,7 +454,27 @@ export class Session {
     if (instruction && instruction.trim()) {
       preserved.push({ kind: 'constraint', id: 'compact-instruction', text: instruction.trim(), reason: '用户自定义压缩指令' })
     }
-    const result = budget.compact({ messages: this.messages, ...shape, force: true }, preserved)
+    // SP009 0.9.1 LC-06：手动 /compact 同样走模型摘要（对齐参考仓）。
+    // 无真实预算 / 无快照解析器时不发摘要请求，直接做确定性裁剪。
+    const probe = budget.compact({ messages: this.messages, ...shape, force: true }, preserved)
+    let summaryText: string | undefined
+    if (shape.maxTokens > 0 && probe.compacted && probe.replacedRange && this.options.resolveSnapshot) {
+      const dropped = this.messages.slice(probe.replacedRange.from, probe.replacedRange.to + 1)
+      const provider = this.options.resolveProvider?.() ?? this.options.provider
+      const snapshot = this.options.resolveSnapshot()
+      summaryText = await this.generateCompactionSummary({
+        provider,
+        model: snapshot.model,
+        dropped,
+        signal: new AbortController().signal,
+        instruction,
+        turnId: `manual-${Date.now()}`
+      })
+    }
+    const result = budget.compact(
+      { messages: this.messages, ...shape, force: true, ...(summaryText ? { summaryText } : {}) },
+      preserved
+    )
     if (!result.compacted) {
       return { ok: false, before, after: before, message: result.overflowReason ?? '没有可压缩的历史' }
     }
@@ -548,9 +573,10 @@ export class Session {
   enqueueNotification(text: string, notice?: string): void {
     const trimmed = text.trim()
     if (!trimmed) return
-    const item: QueuedInput = { id: randomUUID(), text: trimmed, notification: true }
+    const item: QueuedInput = { id: randomUUID(), text: trimmed, notification: true, ...(notice ? { notice } : {}) }
     this.queue.push(item)
-    this.emit({ type: 'input_queued', queueId: item.id, preview: previewOf(trimmed), notification: true })
+    // SP009 0.9.1：队列预览用简洁通知文本，不把原始 XML 首行展示给用户。
+    this.emit({ type: 'input_queued', queueId: item.id, preview: notice ?? previewOf(trimmed), notification: true })
     if (notice) this.emit({ type: 'notice', level: 'info', code: 'agent_notification', text: notice })
     this.scheduleQueueDrain()
   }
@@ -1201,7 +1227,8 @@ export class Session {
         queueId: queued.id,
         text: userText,
         boundary: 'inter_turn',
-        ...(queued.notification ? { notification: true } : {})
+        ...(queued.notification ? { notification: true } : {}),
+        ...(queued.notice ? { display: queued.notice } : {})
       })
     }
     const snapshot = this.options.resolveSnapshot()
@@ -1219,7 +1246,15 @@ export class Session {
       this.activeTurn = undefined
       return
     }
-    this.emit({ type: 'turn_started', turnId: turn.id, snapshot, userText, startedAt: Date.now() })
+    this.emit({
+      type: 'turn_started',
+      turnId: turn.id,
+      snapshot,
+      userText,
+      startedAt: Date.now(),
+      ...(queued?.notification ? { notification: true } : {}),
+      ...(queued?.notice ? { display: queued.notice } : {})
+    })
     this.setState('requesting')
     const userMessage = this.userMessage(userText, options)
     turn.messageIds.push(userMessage.id)
@@ -1343,19 +1378,27 @@ export class Session {
    * 压缩保留用户约束、已批准计划与未完成工具状态；连续失败达到熔断上限
    * 时停止压缩并交给调用方明确报错（CB-06）。
    */
-  private compactIfNeeded(turn: ActiveTurn): { messages: Message[]; compacted: boolean } {
+  /**
+   * SP009 0.9.1 LC-06：自动压缩对齐参考仓「模型摘要」手段。
+   * 超过触发阈值时，先探测将被裁剪的回合，调用模型把这些回合浓缩成摘要，
+   * 再带着摘要执行压缩（摘要作为一条消息保留在压缩边界）。模型摘要失败时
+   * 回退到确定性裁剪，保证绝不卡死。压缩仍保留约束/计划/工具状态。
+   */
+  private async autoCompact(turn: ActiveTurn, snapshot: TurnSnapshot): Promise<void> {
     const budget = this.budget
-    if (!budget) return { messages: this.messages, compacted: false }
+    if (!budget) return
     const shape = normalizeBudget(
       this.options.contextBudget?.maxTokens ?? 0,
       this.options.contextBudget?.reservedOutputTokens
     )
+    // 没有真实预算（宿主未接入窗口）时不压缩：此时阈值恒为 1，任何历史都会
+    // 触发一次「压缩」，既无意义又会反复消耗模型摘要请求。
+    if (!(shape.maxTokens > 0)) return
     const estimate = budget.estimate({ messages: this.messages, ...shape })
-    // 触发阈值取自 context-budget 的单一常量，避免与 /context 展示的数字不一致。
     const trigger = triggerTokens({ messages: this.messages, ...shape })
     if (estimate <= trigger) {
       this.compactionFailures = 0
-      return { messages: this.messages, compacted: false }
+      return
     }
     if (this.compactionFailures >= COMPACTION_CIRCUIT_LIMIT) {
       this.emit({
@@ -1364,10 +1407,27 @@ export class Session {
         code: 'context_overflow',
         text: `context compaction stopped after ${this.compactionFailures} consecutive failures`
       })
-      return { messages: this.messages, compacted: false }
+      return
     }
     const preserved = this.preservedItems()
-    const result = budget.compact({ messages: this.messages, ...shape }, preserved)
+    // 探测将被裁剪的区间，交给模型生成摘要（对齐参考仓先摘要后压缩）。
+    const probe = budget.compact({ messages: this.messages, ...shape }, preserved)
+    let summaryText: string | undefined
+    if (probe.compacted && probe.replacedRange) {
+      const dropped = this.messages.slice(probe.replacedRange.from, probe.replacedRange.to + 1)
+      summaryText = await this.generateCompactionSummary({
+        provider: turn.provider,
+        model: snapshot.model,
+        dropped,
+        signal: turn.controller.signal,
+        traceParent: turn.traceRoot,
+        turnId: turn.id
+      })
+    }
+    const result = budget.compact(
+      { messages: this.messages, ...shape, ...(summaryText ? { summaryText } : {}) },
+      preserved
+    )
     if (!result.compacted) {
       this.compactionFailures++
       this.emit({
@@ -1376,11 +1436,10 @@ export class Session {
         code: 'context_overflow',
         text: `context is over the budget and cannot be compacted (${result.overflowReason ?? 'unknown'})`
       })
-      return { messages: this.messages, compacted: false }
+      return
     }
     this.compactionFailures = 0
     if (!result.withinBudget) {
-      // 压缩后仍然超预算时明确报出，不静默把超限请求发出去。
       this.emit({
         type: 'notice',
         level: 'error',
@@ -1389,7 +1448,57 @@ export class Session {
       })
     }
     this.applyCompaction(turn.id, result, estimate)
-    return { messages: result.messages, compacted: true }
+  }
+
+  /**
+   * 调用模型把被裁剪的回合浓缩成续作摘要。独立撰写的提示词（compact-summary），
+   * 机制对齐参考仓。失败 / 中断返回 undefined，由调用方回退确定性裁剪。
+   * 以 Langfuse generation 观测，便于回查压缩质量。
+   */
+  private async generateCompactionSummary(opts: {
+    provider: ModelProvider
+    model: string
+    dropped: Message[]
+    signal: AbortSignal
+    instruction?: string
+    traceParent?: TraceHandle
+    turnId: string
+  }): Promise<string | undefined> {
+    const transcript = renderMessagesForSummary(opts.dropped)
+    if (!transcript.trim()) return undefined
+    const trace = this.traceBegin(
+      'context.compact',
+      {
+        'langfuse.observation.type': 'generation',
+        'gen_ai.request.model': opts.model,
+        'session.id': this.id,
+        'turn.id': opts.turnId
+      },
+      opts.traceParent
+    )
+    this.tracePayload(trace, 'input', [{ role: 'user', content: transcript }])
+    try {
+      const request: ChatRequest = {
+        model: opts.model,
+        messages: [{ role: 'user', content: buildSummaryPrompt(transcript, opts.instruction) }],
+        signal: opts.signal
+      }
+      let raw = ''
+      for await (const event of opts.provider.stream(request)) {
+        if (opts.signal.aborted) {
+          this.traceEnd(trace, 'cancelled')
+          return undefined
+        }
+        if (event.type === 'text_delta') raw += event.text
+      }
+      const summary = extractSummary(raw)
+      this.tracePayload(trace, 'output', summary)
+      this.traceEnd(trace, summary ? 'success' : 'error')
+      return summary || undefined
+    } catch (error) {
+      this.traceEnd(trace, 'error', error)
+      return undefined
+    }
   }
 
   /**
@@ -1449,8 +1558,9 @@ export class Session {
   }
 
   private buildRequest(snapshot: TurnSnapshot, turn: ActiveTurn): ChatRequest {
-    const budgeted = this.compactIfNeeded(turn)
-    const source = budgeted.messages
+    // SP009 0.9.1：压缩已在 runTurn 里以异步 autoCompact 完成（模型摘要），
+    // 这里直接取当前消息，不再做同步压缩。
+    const source = this.messages
     const effort = this.options.resolveReasoningEffort?.()
     const request: ChatRequest = {
       model: snapshot.model,
@@ -1524,11 +1634,17 @@ export class Session {
   }
 
   private async runTurn(turn: ActiveTurn, snapshot: TurnSnapshot): Promise<void> {
-    const maxIterations = this.options.maxIterations ?? MAX_ITERATIONS
+    // SP009 0.9.1 LF-01：交互主循环默认无回合上限（对齐参考仓交互模式不传
+    // maxTurns）。只要模型持续返回工具调用就继续；显式传入 maxIterations
+    // （无头 --max-turns / 子代理预算）时才设上限。安全网由失败熔断、上下文
+    // 溢出恢复与用户中断承担，而不是一个固定的迭代计数。
+    const maxIterations = this.options.maxIterations ?? Number.POSITIVE_INFINITY
     let outcome: TurnOutcome = 'unknown'
     let error: ErrorInfo | undefined
     let usage: Usage | undefined
     let iteration = 0
+    // SP009 0.9.1：完成声明缺证据的有界重试计数（工具真正执行后清零）。
+    let completionRejections = 0
     // SP005 FR-08：上下文溢出后最多再试一次（先压缩再重试）。
     let overflowRetried = false
     // SP007 MM-08：图片不支持错误降级后最多再试一次（剥离图片重试）。
@@ -1561,6 +1677,12 @@ export class Session {
         break
       }
       if (iteration > 1) this.injectQueued(turn)
+      // SP009 0.9.1：请求前按需自动压缩（模型摘要，对齐参考仓）。
+      await this.autoCompact(turn, snapshot)
+      if (turn.controller.signal.aborted) {
+        outcome = 'cancelled'
+        break
+      }
       this.setState('requesting')
 
       const assistant: Message = {
@@ -1770,9 +1892,22 @@ export class Session {
           break
         }
         // CT-07：完成声明必须附带真实证据；无证据时回喂原因并继续迭代。
+        // SP009 0.9.1：主循环不再有固定回合上限，因此这里必须有有界重试，
+        // 否则模型持续给出无证据的「完成」声明会无限循环。
         const claim = this.options.codingTask?.canClaimDone()
         if (claim && !claim.ok && this.options.codingTask?.get()) {
+          completionRejections++
           const reason = claim.reason ?? '未运行测试'
+          if (completionRejections > MAX_COMPLETION_CLAIM_REJECTIONS) {
+            this.emit({
+              type: 'notice',
+              level: 'warning',
+              code: 'coding_task',
+              text: `完成声明连续 ${completionRejections} 次缺少证据（${reason}），已停止追问；任务仍未验证。`
+            })
+            outcome = 'completed'
+            break
+          }
           this.emit({
             type: 'notice',
             level: 'warning',
@@ -1805,6 +1940,8 @@ export class Session {
         error = dispatched.error
         break
       }
+      // 真正执行了工具（无论成败）就代表还在推进，完成声明的重试计数清零。
+      completionRejections = 0
     }
 
     if (outcome === 'unknown') {
@@ -2381,7 +2518,8 @@ export class Session {
         queueId: item.id,
         text: item.text,
         boundary: 'intra_turn',
-        ...(item.notification ? { notification: true } : {})
+        ...(item.notification ? { notification: true } : {}),
+        ...(item.notice ? { display: item.notice } : {})
       })
     }
   }

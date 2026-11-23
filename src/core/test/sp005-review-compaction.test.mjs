@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  AUTOCOMPACT_BUFFER_TOKENS,
   compactFloor,
   createContextBudgetManager,
   estimateTokens,
@@ -102,7 +103,8 @@ test('CB-05 预算默认值与阈值由同一处计算（会话与 /context 不�
   assert.equal(reservedOutputFor(400, 0), 0)
   const input = { messages: [], maxTokens: 100000, reservedOutputTokens: 25000 }
   assert.equal(targetTokens(input), 75000)
-  assert.equal(triggerTokens(input), Math.floor(75000 * 0.85))
+  // SP009 0.9.1：触发阈值改为「窗口 − 13k 缓冲」（对齐参考仓），不再是 0.85 比例。
+  assert.equal(triggerTokens(input), 100000 - AUTOCOMPACT_BUFFER_TOKENS)
 })
 
 test('SR-10 恢复权限沿用会话原模式，且绝不升权', () => {

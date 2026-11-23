@@ -111,6 +111,7 @@ const COMMAND_DESCRIPTIONS: Record<string, { zh: string; en: string }> = {
   tasks: { zh: '后台任务与子代理', en: 'background tasks & subagents' },
   mcp: { zh: 'MCP 服务器与工具', en: 'MCP servers & tools' },
   skills: { zh: '查看已发现技能', en: 'list discovered skills' },
+  'reload-skills': { zh: '重新发现技能（新建/修改后刷新）', en: 'rediscover skills after changes' },
   export: { zh: '导出会话记录', en: 'export session transcript' },
   agents: { zh: '管理子代理', en: 'manage subagents' },
   agent: { zh: '派发子代理任务', en: 'dispatch a subagent task' },

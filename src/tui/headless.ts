@@ -24,6 +24,8 @@ export type HeadlessOptions = {
   inputFile?: string
   session?: string
   verbose: boolean
+  /** SP009 0.9.1 LF-02：可选回合上限（仅无头生效，对齐参考仓 --max-turns）。 */
+  maxTurns?: number
 }
 
 export type ParsedCli = {
@@ -89,6 +91,15 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     if (arg === '--session') {
       explicit = true
       options.session = requireValue(argv, ++i, arg)
+      continue
+    }
+    if (arg === '--max-turns') {
+      explicit = true
+      const value = requireValue(argv, ++i, arg)
+      const parsed = Number(value)
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10000)
+        throw new UsageError(`Invalid --max-turns: ${value} (expected a positive integer)`)
+      options.maxTurns = parsed
       continue
     }
     if (arg.startsWith('-') && !PASSTHROUGH_FLAGS.includes(arg))
@@ -304,6 +315,7 @@ export async function runHeadless(
     mcp: { tools: mcp.tools, statuses: mcp.statuses },
     hooks: hooks.runner,
     ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+    ...(options.maxTurns === undefined ? {} : { maxIterations: options.maxTurns }),
     ...(io.home === undefined ? {} : { home: io.home }),
     ...(options.session === undefined
       ? {}

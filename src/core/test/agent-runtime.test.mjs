@@ -330,6 +330,18 @@ test('token 预算终止 → AGENT_BUDGET', async () => {
   assert.equal(result.code, 'AGENT_BUDGET')
 })
 
+test('SP009 0.9.1：未显式设置 tokenLimit 时不再因 token 预算中断', async () => {
+  const provider = makeProvider([
+    (request) => request.messages.some((message) => message.role === 'tool')
+      ? textEvents('done')
+      : toolCallEvents('r1', 'Read', '{}', { inputTokens: 120000, outputTokens: 50000 })
+  ])
+  const { registry } = makeRegistry({ provider })
+  const result = await registry.spawn(spawnOptions())
+  assert.equal(result.status, 'completed', '默认无 token 预算，应对齐参考仓')
+  assert.ok(result.tokens > SUBAGENT_TOKEN_LIMIT, '累计 token 已超过旧默认预算')
+})
+
 test('父取消中止 sync 子；background 子存活', async () => {
   {
     const provider = makeProvider([{ __delay: 300 }, ...textEvents('done')])

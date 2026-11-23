@@ -309,6 +309,11 @@
       "attestations": "https://registry.npmjs.org/-/npm/v1/attestations/budingx@0.9.0",
       "verificationSource": "public-registry-provenance-and-independent-install",
       "ciArtifactDownloaded": false
+    },
+    {
+      "version": "0.9.1",
+      "iteration": "SP009",
+      "status": "prepared"
     }
   ]
 }

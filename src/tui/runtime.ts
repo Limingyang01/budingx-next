@@ -39,6 +39,7 @@ import {
   type MemoryScope
 } from '../storage/project-memory.js'
 import { estimateTokens, normalizeBudget, triggerTokens } from '../core/context-budget.js'
+import { resolveContextWindow } from '../core/context-window.js'
 import type { McpServerStatus } from './mcp/types.js'
 import type { SessionHooks } from '../core/hooks.js'
 import type { ReasoningEffort } from '../core/provider.js'
@@ -236,8 +237,10 @@ export type AgentRuntimeOptions = {
   home?: string
   /** SP005: reuse an existing session id instead of generating a new one. */
   sessionId?: string
-  /** SP005: context budget in tokens; disabled when omitted. */
+  /** SP005: explicit context budget override; otherwise resolved per model. */
   contextBudget?: { maxTokens: number; reservedOutputTokens?: number }
+  /** SP009 0.9.1 LF-02：显式回合上限（无头 --max-turns）；缺省无上限。 */
+  maxIterations?: number
   /** SP005: enable the session transcript (persistence) and project memory. */
   persistence?: boolean
   /** 0.5.2: initial reasoning effort; /effort changes it at runtime. */
@@ -340,8 +343,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   // 未显式设置时不发送该参数：不少兼容端点遇到未知字段会直接 400。
   // 状态栏仍显示默认值，避免“没设置”看起来像功能缺失。
   const DEFAULT_EFFORT: ReasoningEffort = 'medium'
-  // 状态栏上下文占比的默认窗口（可用 BUDINGX_CONTEXT_WINDOW 覆盖）。
-  const DEFAULT_CONTEXT_WINDOW = 200000
   let reasoningEffort: ReasoningEffort | undefined = options.reasoningEffort
   const persistence = options.persistence ?? false
   let sessionStore: SessionStore | undefined
@@ -382,10 +383,25 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
   }
   const disposers: (() => void)[] = [() => runner.dispose?.()]
+  // SP009 0.9.1 LC-03/04：上下文窗口按模型动态解析，交互默认接入预算（自动压缩常开）。
+  // 用 getter 让会话/状态栏每次读取都拿到当前模型的最新窗口，切换模型即生效。
+  // 优先级：宿主显式预算 > 环境变量 > 档案 contextWindow（含服务端发现值）> 默认。
+  const contextBudgetLive = {
+    get maxTokens(): number {
+      if (options.contextBudget?.maxTokens !== undefined) return options.contextBudget.maxTokens
+      const config = options.getConfig()
+      const profile = options.configStore.load().models.find((p) => p.id === config.profileId)
+      return resolveContextWindow({
+        envWindow: Number(process.env.BUDINGX_CONTEXT_WINDOW),
+        profileWindow: typeof profile?.contextWindow === 'number' ? profile.contextWindow : undefined
+      })
+    },
+    ...(options.contextBudget?.reservedOutputTokens !== undefined
+      ? { reservedOutputTokens: options.contextBudget.reservedOutputTokens }
+      : {})
+  }
   // SP007 RD-12：ToolSearch 延迟加载门控（MCP 工具恒延迟，核心工具恒加载）。
-  const contextWindow =
-    options.contextBudget?.maxTokens ??
-    (Number(process.env.BUDINGX_CONTEXT_WINDOW) || DEFAULT_CONTEXT_WINDOW)
+  const contextWindow = contextBudgetLive.maxTokens
   const toolSearch = createToolSearch({
     tools,
     contextWindow,
@@ -416,16 +432,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     ...(toolSearch.enabled ? { toolSearch } : {}),
     ...(tracing.tracer ? { tracer: tracing.tracer } : {}),
     ...(transcript ? { transcript } : {}),
-    ...(options.contextBudget
-      ? {
-          contextBudget: {
-            maxTokens: options.contextBudget.maxTokens,
-            ...(options.contextBudget.reservedOutputTokens !== undefined
-              ? { reservedOutputTokens: options.contextBudget.reservedOutputTokens }
-              : {})
-          }
-        }
-      : {}),
+    // SP009 0.9.1 LC-04：始终接入活预算，交互默认启用自动压缩。
+    contextBudget: contextBudgetLive,
+    ...(options.maxIterations !== undefined ? { maxIterations: options.maxIterations } : {}),
     resolveSnapshot
   })
   // 追问与计划模式工具需要 Session 实例本身，因此在构造后追加（数组引用共享）。
@@ -461,7 +470,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             })
         }
       : {}),
-    ...(options.contextBudget ? { contextBudget: options.contextBudget } : {})
+    contextBudget: contextBudgetLive
   })
   tools.push(...createAgentTools(registry, agentDefinitions))
   disposers.push(() => registry.dispose())
@@ -548,31 +557,30 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       }
     : undefined
   // SP005 §4：/context 的预算构成（网格视图归 SP006）。
-  const contextSurface = options.contextBudget
-    ? {
-        budget: () => {
-          const history = session.history
-          // 与会话循环使用同一个归一化预算与阈值工厂，
-          // 避免 /context 展示的预留额与实际行为不一致（SP005 review M3）。
-          const shape = normalizeBudget(
-            options.contextBudget!.maxTokens,
-            options.contextBudget!.reservedOutputTokens
-          )
-          const breakdown = history.map((message, index) => ({
-            kind: `${index + 1}.${message.role}`,
-            tokens: estimateTokens([message])
-          }))
-          return {
-            estimatedTokens: estimateTokens(history),
-            maxTokens: shape.maxTokens,
-            reservedOutputTokens: shape.reservedOutputTokens,
-            triggerTokens: triggerTokens({ messages: [...history], ...shape }),
-            messages: history.length,
-            breakdown
-          }
-        }
+  // SP009 0.9.1 LC-04：预算常开，/context 始终可用，窗口取活预算。
+  const contextSurface = {
+    budget: () => {
+      const history = session.history
+      // 与会话循环使用同一个归一化预算与阈值工厂，
+      // 避免 /context 展示的预留额与实际行为不一致（SP005 review M3）。
+      const shape = normalizeBudget(
+        contextBudgetLive.maxTokens,
+        contextBudgetLive.reservedOutputTokens
+      )
+      const breakdown = history.map((message, index) => ({
+        kind: `${index + 1}.${message.role}`,
+        tokens: estimateTokens([message])
+      }))
+      return {
+        estimatedTokens: estimateTokens(history),
+        maxTokens: shape.maxTokens,
+        reservedOutputTokens: shape.reservedOutputTokens,
+        triggerTokens: triggerTokens({ messages: [...history], ...shape }),
+        messages: history.length,
+        breakdown
       }
-    : undefined
+    }
+  }
   // SP005 §7：/memory 的宿主实现。项目记忆按工作区根隔离，会话记忆按会话隔离。
   const memorySurface = persistence
     ? {
@@ -616,25 +624,17 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     usage: () => {
       // 0.5.4：状态栏上下文占比只用 Provider 真实上报的 inputTokens，
       // 不再用本地估算代替百分比（用户明确要求「不需要估算」）。
-      // 未拿到真实用量前不显示占比；窗口缺省按 200k 计算，可用
-      // BUDINGX_CONTEXT_WINDOW 覆盖。
+      // SP009 0.9.1：窗口取活预算（按模型动态解析），阈值与会话循环同源。
       const providerUsage = session.usage
       const usedTokens = providerUsage?.inputTokens
-      const window = options.contextBudget?.maxTokens ?? DEFAULT_CONTEXT_WINDOW
-      const reserved = window === undefined
-        ? undefined
-        : normalizeBudget(window, options.contextBudget?.reservedOutputTokens).reservedOutputTokens
-      const target = window === undefined || reserved === undefined
-        ? undefined
-        : Math.max(1, window - reserved)
+      const window = contextBudgetLive.maxTokens
+      const reserved = normalizeBudget(window, contextBudgetLive.reservedOutputTokens).reservedOutputTokens
       return {
         ...(usedTokens === undefined ? {} : { usedTokens }),
-        ...(window === undefined ? {} : { maxTokens: window }),
-        ...(reserved === undefined ? {} : { reservedOutputTokens: reserved }),
-        ...(target === undefined
-          ? {}
-          : { triggerTokens: Math.floor(target * 0.85) }),
-        ...(usedTokens === undefined || window === undefined || window <= 0
+        maxTokens: window,
+        reservedOutputTokens: reserved,
+        triggerTokens: triggerTokens({ messages: [], maxTokens: window, reservedOutputTokens: reserved }),
+        ...(usedTokens === undefined || window <= 0
           ? {}
           : { percentUsed: Math.min(100, Math.round((usedTokens / window) * 1000) / 10) }),
         source: usedTokens === undefined ? 'none' as const : 'provider' as const

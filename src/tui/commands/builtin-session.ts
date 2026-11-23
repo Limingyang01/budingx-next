@@ -95,7 +95,7 @@ export function registerSessionCommands(registry: CommandRegistry): void {
     supportsNonInteractive: true,
     async run(args, context) {
       const pick = pickFor(context)
-      const result = context.session.compactNow(args || undefined)
+      const result = await context.session.compactNow(args || undefined)
       if (!result.ok) {
         return outcomeResult({
           handled: true,

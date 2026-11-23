@@ -185,7 +185,9 @@ export type SessionEvent =
       type: 'conversation_restored'
       messages: Message[]
     }
-  | { type: 'turn_started'; turnId: string; snapshot: TurnSnapshot; userText: string; startedAt: number }
+  | { type: 'turn_started'; turnId: string; snapshot: TurnSnapshot; userText: string; startedAt: number;
+      /** SP009 0.9.1：子代理终态通知触发的回合（非用户输入），宿主按系统消息渲染。 */
+      notification?: boolean; display?: string }
   | { type: 'text_delta'; turnId: string; messageId: string; text: string }
   | { type: 'thinking_delta'; turnId: string; messageId: string; text: string }
   | {
@@ -239,6 +241,8 @@ export type SessionEvent =
       boundary: 'intra_turn' | 'inter_turn'
       /** SP007 §4.1：子代理终态通知（非用户输入），宿主按系统消息渲染。 */
       notification?: boolean
+      /** SP009 0.9.1：通知的简洁展示文本（不含原始 XML），宿主据此渲染系统消息。 */
+      display?: string
     }
   | { type: 'status'; state: SessionState; note?: string }
   | {

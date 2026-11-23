@@ -128,3 +128,26 @@
 | 会话恢复视图对技能条目的实机渲染 | 机制覆盖 | 由 `restoredTranscriptEntries` 的上下文分支覆盖；如需像素级证据补 TTY 用例 |
 | CI 回执 artifact | UNVERIFIED | 需登录 GitHub 下载 `tui-publication-receipt`；台账依据公开运行、provenance、registry integrity 与独立安装登记并标注缺口 |
 | 真实外部模型 live 回合 | UNVERIFIED | 发布包的核心链路验证使用本地 fixture Provider；需真实端点凭据后补证 |
+
+## 7. 0.9.1 补丁迭代验证（SP009 追加：技能创作 / 主循环与上下文 / 子代理保真）
+
+来源：用户 2026-11-23 截图与指令（32 回合硬停、子代理预算中断与通知原样展示、上下文固定、技能创建/级别/刷新），要求「完全参考修复」「压缩手段也对齐」「必须端到端验证后才算完成」。分支 `feature/SP009/fix-0.9.1`（基线 master `0af9249`）。
+
+| 检查 | 结果 |
+| --- | --- |
+| 主循环去固定上限（LF-01） | `sp009-loop-context` LF-01（40 次工具迭代完成）；E2E 真实无头子进程 40 迭代不再硬停 |
+| 无头 `--max-turns`（LF-02） | E2E `--max-turns 2` → `error_max_turns`、非法值退出码 2 |
+| 子代理默认无预算（LF-03/SF） | `agent-runtime.test` 新用例：未显式 `tokenLimit` 不再中断；显式 `tokenLimit:50` 仍生效 |
+| 子代理通知系统化（SF-01…05） | `sp009-agent-notify` N-01/N-02：meta 系统行、无原始 XML、模型上下文仍含 XML |
+| 窗口动态解析（LC-01…03） | `context-window` 优先级用例；`discoverModelMetadata` 解析 `context_length`；`/models` 面板自定义字段 |
+| 默认启用自动压缩（LC-04） | runtime `contextBudgetLive` getter；E2E 小窗口多回合触发 |
+| 阈值对齐 + 小窗口兜底（LC-05） | CB-05/LC-05；**端到端暴露并修复**「极小窗口触发点低于压缩目标导致无法裁剪」，触发点现恒高于压缩目标 |
+| 压缩改模型摘要（LC-06） | `context-budget.e2e`（真实 HTTP + Session，2 请求含摘要）；E2E 多回合摘要请求 ≥1 且回合完成 |
+| 技能多级别/创建/刷新（SA-01…08） | `sp009-skill-authoring` 7/7（含帧级：新建技能后 `/reload-skills` 补全立即出现，无需重启、不轮询） |
+| 全量单元测试（`npm test`） | 1273 项 / 1272 通过 / 0 失败 / 1 跳过（既有 POSIX 专属用例） |
+| 独立来源 AST 复核 | `sp004-ast.mjs` 结论 PASS（唯一命中为 Ink 列表布局样板，31/3824 节点，已处置） |
+| 版本一致性（0.9.1 prepared） | `version:check` PASS；npm `latest` 仍 0.9.0 |
+| 发布 dry-run（0.9.1） | PASS（`dry-run-complete`，未发布） |
+| 交叉验证门禁 | GATE GREEN（npm test / spec / skills / version / pack-smoke / test:upgrade） |
+
+端到端方法：真实无头子进程 + 本地 OpenAI 兼容 SSE fixture（`sp009-e2e.test.mjs`，4/4）；真实 Ink 帧级（mountTty）验证技能刷新。模型摘要压缩已接 Langfuse `context.compact` generation 观测；真实外部模型 live 回合仍 UNVERIFIED（见 §6，需真实端点凭据）。

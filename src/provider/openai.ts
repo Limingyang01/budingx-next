@@ -587,6 +587,80 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
   }
 }
 
+export type ModelMetadata = {
+  id: string
+  /** Context window in tokens when the endpoint reports one. */
+  contextWindow?: number
+}
+
+/** Largest context window we trust from a provider payload. */
+const MAX_TRUSTED_CONTEXT_WINDOW = 10_000_000
+
+/**
+ * Read the context window a provider advertises for one model. Several
+ * OpenAI-compatible gateways use different field names for the same fact, so
+ * the common ones are accepted. Non-integer or out-of-range values are ignored
+ * rather than clamped, because a wrong window silently breaks budgeting.
+ */
+function contextWindowOf(model: unknown): number | undefined {
+  if (!model || typeof model !== 'object') return undefined
+  const record = model as Record<string, unknown>
+  const candidates = [
+    record.context_length,
+    record.context_window,
+    record.max_input_tokens,
+    record.max_context_length
+  ]
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'number') continue
+    if (!Number.isInteger(candidate) || candidate <= 0) continue
+    if (candidate > MAX_TRUSTED_CONTEXT_WINDOW) continue
+    return candidate
+  }
+  return undefined
+}
+
+/**
+ * Fetch the model list together with the context window each model reports.
+ * Same endpoint and credentials as {@link discoverModels}; kept separate so the
+ * plain id list keeps its existing shape for every other consumer.
+ */
+export async function discoverModelMetadata(
+  endpoint: string,
+  apiKey: string,
+  options: Pick<ProbeOptions, 'signal' | 'timeoutMs' | 'fetchImpl'> = {}
+): Promise<ModelMetadata[]> {
+  const timeout = AbortSignal.timeout(options.timeoutMs ?? 10000)
+  const signal = options.signal ? AbortSignal.any([timeout, options.signal]) : timeout
+  const response = await (options.fetchImpl ?? fetch)(endpoint, {
+    method: 'GET',
+    redirect: 'error',
+    signal,
+    headers: apiKey ? { Authorization: 'Bearer ' + apiKey } : {}
+  })
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {})
+    throw new Error(`HTTP ${response.status}`)
+  }
+  const payload = await readJsonLimited(response, signal, 4 * 1024 * 1024)
+  const models = Array.isArray(payload?.data)
+    ? payload.data
+    : payload?.data?.models ?? payload?.output?.models
+  if (!Array.isArray(models)) throw new Error('Invalid model list')
+  const result: ModelMetadata[] = []
+  const seen = new Set<string>()
+  for (const model of models) {
+    const id = model?.id ?? model?.model_id ?? model?.modelId ?? model?.model
+    if (typeof id !== 'string' || !id.trim() || id.length > 256) continue
+    if (/[\x00-\x1f\x7f]/.test(id)) continue
+    if (seen.has(id)) continue
+    seen.add(id)
+    const contextWindow = contextWindowOf(model)
+    result.push(contextWindow === undefined ? { id } : { id, contextWindow })
+  }
+  return result
+}
+
 export async function discoverModels(
   endpoint: string,
   apiKey: string,

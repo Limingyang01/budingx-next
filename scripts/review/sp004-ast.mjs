@@ -121,7 +121,18 @@ const REFERENCE_ALLOWLIST = [
   { ours: 'src/storage/session-store.ts', theirs: ['src/utils/sessionStorage.ts', 'src/utils/concurrentSessions.ts'] },
   { ours: 'src/storage/session-transcript.ts', theirs: ['src/utils/sessionStorage.ts'] },
   { ours: 'src/tui/host-engine.ts', theirs: ['src/QueryEngine.ts', 'src/entrypoints/sdk'] },
-  { ours: 'src/tui/serve.ts', theirs: ['src/entrypoints/cli.tsx', 'src/entrypoints/init.ts', 'src/entrypoints/agentSdkTypes.ts'] }
+  { ours: 'src/tui/serve.ts', theirs: ['src/entrypoints/cli.tsx', 'src/entrypoints/init.ts', 'src/entrypoints/agentSdkTypes.ts'] },
+  // SP009 0.9.1：技能创作/多级别发现、模型窗口解析与模型摘要压缩（§D 映射）。
+  { ours: 'src/core/compact-summary.ts', theirs: ['src/services/compact/prompt.ts', 'src/services/compact/compact.ts'] },
+  { ours: 'src/core/context-window.ts', theirs: ['src/utils/context.ts'] },
+  { ours: 'src/core/context-budget.ts', theirs: ['src/services/compact/autoCompact.ts', 'src/utils/context.ts'] },
+  { ours: 'src/tui/skills-bundled.ts', theirs: ['src/utils/skills', 'src/tools/SkillTool'] },
+  { ours: 'src/provider/openai.ts', theirs: ['src/services/api'] },
+  { ours: 'src/storage/profiles.ts', theirs: ['src/utils/settings', 'src/utils/config.ts'] },
+  { ours: 'src/tui/model-management.ts', theirs: ['src/utils/config', 'src/components'] },
+  { ours: 'src/tui/model-manager.tsx', theirs: ['src/components', 'src/utils/config'] },
+  { ours: 'src/core/agent-runtime.ts', theirs: ['src/tools/AgentTool'] },
+  { ours: 'src/tui/render/completion.ts', theirs: [], note: '令牌解析/补全候选为纯函数工具，参考仓对应逻辑分散在 Ink 输入组件内部，无可直接比较的独立模块' }
 ]
 
 // 人工处置：命中项的复核结论（按「本仓路径::单元名」）。
@@ -131,7 +142,11 @@ const DISPOSITIONS = new Map([
     '与参考 QueryEngine 同属「会话对象持有 provider/审批/工具表」的公共协议形状（字段由 SP004 设计 §4/§6 规定），实现为独立编写'
   ],
   ['src/git/status.ts::readGitStatus', 'Git 只读状态字段是 §7.1 规定的公共协议；恢复逻辑按本仓 porcelain 解析器独立实现'],
-  ['src/exec/runner.ts::run', '进程启动/超时/截断为 §4.3 行为规格的惯用样板（spawn + 事件），无逐字借用']
+  ['src/exec/runner.ts::run', '进程启动/超时/截断为 §4.3 行为规格的惯用样板（spawn + 事件），无逐字借用'],
+  [
+    'src/tui/model-manager.tsx::ModelManager',
+    'Ink 表单/列表布局样板：共享子树仅 31 节点（占 3824 节点组件的 0.8%），为列表选择面板的通用 JSX 结构；字段、校验、保存流程均按本仓模型档案独立实现'
+  ]
 ])
 
 function parseArgs(argv) {

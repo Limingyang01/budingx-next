@@ -19,6 +19,12 @@ export type ModelProfile = {
   apiKeyRef: string
   capabilities: { tools: boolean; vision?: boolean }
   protocol?: ModelProtocol
+  /**
+   * Context window in tokens (SP009 0.9.1 LC-02). Custom models can declare
+   * their own window; absent means "resolve automatically" (env override →
+   * this field → discovered provider metadata → default).
+   */
+  contextWindow?: number
   createdAt: string
   updatedAt: string
   [key: string]: unknown

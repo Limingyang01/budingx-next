@@ -3,8 +3,13 @@
 // 不用文本摘要替代，保证压缩后约束、计划与工具状态不丢。
 import type { Message, MessageBlock } from './events.js'
 
-/** 触发压缩的比例：估算长度超过目标预算的这个比例即触发。 */
+/** 触发压缩的比例（SP005 旧公式，0.9.1 起弃用，保留导出避免外部引用断裂）。 */
 export const COMPACT_TRIGGER_RATIO = 0.85
+/**
+ * 自动压缩缓冲（SP009 0.9.1 LC-05，对齐参考仓 AUTOCOMPACT_BUFFER_TOKENS）。
+ * 触发点 = 上下文窗口 − 缓冲：接近真实窗口才压缩，而不是早早按固定比例裁掉。
+ */
+export const AUTOCOMPACT_BUFFER_TOKENS = 13_000
 /** 压缩目标比例：压缩后压到目标预算的这个比例以内。 */
 export const COMPACT_FLOOR_RATIO = 0.6
 /** 最多保留的约束条数（超出取最近）。 */
@@ -32,6 +37,11 @@ export type ContextBudgetInput = {
    * （真实分词器与本地启发式不一致）。
    */
   force?: boolean
+  /**
+   * 模型生成的历史摘要（SP009 0.9.1 LC-06）。提供时，被裁剪回合的信息以一条
+   * 摘要消息保留在压缩边界处，而不是静默丢弃——对齐参考仓「模型摘要压缩」手段。
+   */
+  summaryText?: string
 }
 
 /** 单条保留项：压缩后必须仍在上下文中的结构化事实。 */
@@ -216,9 +226,16 @@ export function targetTokens(input: ContextBudgetInput): number {
   return Math.max(0, input.maxTokens - (input.reservedOutputTokens ?? 0))
 }
 
-/** 触发阈值。 */
+/**
+ * 触发阈值（SP009 0.9.1 LC-05）：上下文窗口 − 缓冲。
+ * 对齐参考仓「有效窗口 − AUTOCOMPACT_BUFFER_TOKENS」的自动压缩触发机制；
+ * 不再用 SP005 的 0.85×(窗口−预留) 旧公式。压缩目标预算仍由 compactFloor 决定。
+ */
 export function triggerTokens(input: ContextBudgetInput): number {
-  return Math.floor(targetTokens(input) * COMPACT_TRIGGER_RATIO)
+  const byBuffer = Math.max(1, input.maxTokens - AUTOCOMPACT_BUFFER_TOKENS)
+  // 安全不变量：触发点必须高于压缩目标，否则「已超触发点但仍高于压缩目标」时
+  // 一回合都裁不掉。真实大窗口下 window−13k 远高于目标，此兜底只影响极小窗口。
+  return Math.max(byBuffer, compactFloor(input) + 1)
 }
 
 /** 压缩目标上限。 */
@@ -399,6 +416,21 @@ export function createContextBudgetManager(): ContextBudgetManager {
     }
 
     const preservedEntry = preservedMessage(effectivePreserved)
+    // SP009 0.9.1 LC-06：模型摘要作为一条 user 消息保留在压缩边界，
+    // 承载被裁剪回合的关键信息（对齐参考仓模型摘要压缩手段）。
+    const summaryEntry: Message | undefined =
+      input.summaryText && input.summaryText.trim()
+        ? {
+            id: `compaction-summary-${estimateText(input.summaryText)}`,
+            role: 'user',
+            blocks: [
+              {
+                type: 'text',
+                text: `<compacted_summary>\n以下是早期对话的摘要（历史已被压缩，据此继续工作）：\n${input.summaryText.trim()}\n</compacted_summary>`
+              }
+            ]
+          }
+        : undefined
     const tail = messages.slice(lastUserIndex)
 
     // 从最旧的回合开始整体丢弃，直到估算长度进入 floor 以内。
@@ -413,6 +445,7 @@ export function createContextBudgetManager(): ContextBudgetManager {
       const remaining = messages.slice(end, lastUserIndex)
       const candidate = [
         ...carriedTools,
+        ...(summaryEntry ? [summaryEntry] : []),
         ...(preservedEntry ? [preservedEntry] : []),
         ...segment,
         ...remaining,
@@ -463,6 +496,7 @@ export function createContextBudgetManager(): ContextBudgetManager {
       (_message, index) => index < droppedFrom || index > droppedTo
     )
     const result: Message[] = [...carriedTools]
+    if (summaryEntry) result.push(summaryEntry)
     if (preservedEntry) result.push(preservedEntry)
     result.push(...survivors)
     const estimatedAfter = estimateOf({ ...input, messages: result })
@@ -477,7 +511,7 @@ export function createContextBudgetManager(): ContextBudgetManager {
       withinBudget: estimatedAfter <= target,
       artifacts: {
         order: result.map((message) => message.id),
-        synthetic: [...carriedTools, ...(preservedEntry ? [preservedEntry] : [])],
+        synthetic: [...carriedTools, ...(summaryEntry ? [summaryEntry] : []), ...(preservedEntry ? [preservedEntry] : [])],
         droppedIds: messages
           .slice(droppedFrom, droppedTo + 1)
           .map((message) => message.id)

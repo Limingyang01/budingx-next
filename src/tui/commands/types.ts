@@ -7,7 +7,7 @@ import type { ConfigStore } from '../../storage/config-store.js'
 import type { CredentialStore } from '../../storage/credentials.js'
 import type { ResolvedConfig } from '../../storage/profiles.js'
 import type { PermissionsStore } from '../../storage/permissions.js'
-import type { discoverModels, probe } from '../../provider/openai.js'
+import type { discoverModelMetadata, discoverModels, probe } from '../../provider/openai.js'
 import type { BudingPermissionPolicy, PermissionRule } from '../../workspace/policy.js'
 import type { ChangeRecord, UndoOutcome } from '../../workspace/checkpoint.js'
 import type { Workspace } from '../../workspace/paths.js'
@@ -26,6 +26,8 @@ export type CommandOutcome = {
   skillPrompt?: { name: string; body: string }
   /** SP009：/export 打开会话选择面板（local-jsx）。 */
   openExport?: boolean
+  /** SP009 0.9.1 SA-07：/reload-skills 重新发现技能后，宿主刷新补全与帮助。 */
+  skillsReloaded?: number
   /** Interactive hosts open the diff dialog on this instead of printing. */
   openDiffDialog?: boolean
   /** prompt 型命令：宿主把 text 作为下一次模型输入，progress 作为进度提示（CMD-04）。 */
@@ -62,6 +64,8 @@ export type CommandContext = {
   exit: () => void
   probe?: typeof probe
   discoverModels?: typeof discoverModels
+  /** SP009 0.9.1 LC-01：拉取模型列表时一并读取服务端报告的上下文窗口。 */
+  discoverModelMetadata?: typeof discoverModelMetadata
   interactive?: boolean
   lang?: 'zh' | 'en'
   /** SP003: present once the workspace runtime is wired. */
