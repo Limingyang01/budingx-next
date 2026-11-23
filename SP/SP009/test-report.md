@@ -73,6 +73,15 @@
 | EX-01 选择会话导出 | `builtin-extended.ts:exportSelectedSession` + `--session`；交互模式 `openExport` → `ExportPicker` | `sp009-export.test.mjs`：指定会话导出所选历史（不含当前会话内容）、当前会话仍可导出、TUI 面板选择后导出 | PASS 4/4 |
 | EX-02 读取失败不写空文件 | `sessions.read` 只读接口 + 明确错误 | 同上第 3 例 | PASS |
 
+### 2.6 permission-boundary（用户 2026-11-23 报缺陷）
+
+| AC | 实现 | 用例 | 结果 |
+| --- | --- | --- | --- |
+| BF-01 全自动可读工作区外 | `workspace/paths.ts` 动态 `allowOutside` + `policy.ts` full_access 放行 | `policy.test.mjs`「完全权限放行、另两档拒绝」+ `read.test.mjs`「全自动档位读取工作区外文件」 | PASS（真实文件读取） |
+| BF-02 另两档仍拒绝 | 策略保持 `floor:outside` | `policy.test.mjs` 同上 | PASS |
+| BF-03 地板不变 | 数据根/凭据/`.git` 规则未改 | 既有 `floor:data`、`floor:credential`、mandatory 用例保持通过 | PASS |
+| BF-04 同类工具排查 | 全仓仅 `workspace/paths.ts` 与 `policy.ts` 两处边界判定（`git/worktree.ts` 属独立策略） | `sp009-full-access.test.mjs` 4/4：Read/Write/Edit/Glob/Grep 全部可访问工作区外、受限档位仍拒绝、地板不变、档位切换即时生效 | PASS |
+
 ## 3. 真实执行记录
 
 | 命令 | cwd | 实际结果 |
@@ -91,6 +100,7 @@
 | 发布工具测试（`scripts/release/*.test.mjs`） | 56/56 通过（pipeline 19、publish 8、resolve 5、version-check 9、lifecycle 3、version 6、options/receipt/registry/workflow 其余） |
 | 全量单元测试（`npm run test:unit`） | 1250 项 / 1249 通过 / 0 失败 / 1 跳过（既有的 POSIX 专属权限用例） |
 | SP009 定向 TUI 用例 | skills 显示 3/3、export 选择 4/4 通过 |
+| 权限边界回归 | `policy.test.mjs` 11/11、`read.test.mjs` 11/11、`sp009-full-access.test.mjs` 4/4 通过（含全自动读写工作区外与地板保持） |
 | 生命周期门禁 | install PASS、upgrade PASS |
 | 版本一致性 | PASS（修复说明书漂移后） |
 

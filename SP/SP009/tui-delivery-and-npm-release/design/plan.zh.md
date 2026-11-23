@@ -203,6 +203,22 @@ scripts/release/
 - **RED/GREEN**：先写「导出指定会话读的是该会话历史」「读取失败不写空文件」「TUI 面板可选择并导出」；实现后全绿（4/4）。
 - **完成事实**：见 STATUS §5 任务证据表。
 
+### T16 全自动档位不被工作区边界拦截（用户 2026-11-23 报缺陷）
+
+- **设计段**：D-9；**AC**：BF-01、BF-02、BF-03。
+- **文件**：`src/workspace/paths.ts`（`allowOutside` 谓词与 `outside` 标记）、`src/workspace/policy.ts`（full_access 放行工作区外目标）、`src/tui/runtime.ts`（谓词跟随当前模式）；测试 `src/workspace/test/policy.test.mjs`、`src/workspace/test/read.test.mjs`。
+- **验证命令**：cwd `$ROOT`；`npm run build && node --test src/workspace/test/policy.test.mjs src/workspace/test/read.test.mjs`。
+- **RED/GREEN**：先改测试断言「completely full_access 读工作区外文件成功、另两档拒绝、数据根仍拒绝」，旧实现下失败；实现后两文件 22/22 通过。
+- **完成事实**：见 STATUS §5 任务证据表。
+
+### T17 同类内置工具排查（用户 2026-11-23）
+
+- **设计段**：D-9；**AC**：BF-04。
+- **排查方法**：全仓 grep `isInside(` / `workspacePathOutside` / `outside the workspace`，只命中 `workspace/paths.ts`、`workspace/policy.ts` 与 `git/worktree.ts`；前两处是同一判定点（已修），`git/worktree.ts` 是「worktree 必须建在仓库内」的独立策略，不属于权限拦截。
+- **文件**：新增 `src/workspace/test/sp009-full-access.test.mjs`（4 例覆盖 Read/Write/Edit/Glob/Grep 工作区外访问、受限档位拒绝、地板、档位切换）。
+- **验证命令**：`npm run build && node --test src/workspace/test/sp009-full-access.test.mjs`。
+- **结果**：4/4 PASS。
+
 ### T15 交付与集成
 
 - **设计段**：§3、§6；**AC**：全部。
@@ -242,6 +258,9 @@ scripts/release/
 | SD-03 | T13 | 功能 | /help 未列出注入技能 | /help 列出技能名与描述 |
 | EX-01 | T14 | 单元+功能 | 只导出当前会话 | 指定会话导出所选历史；面板可选 |
 | EX-02 | T14 | 单元 | 失败时仍写空文件 | 读取失败返回明确错误且不落盘 |
+| BF-01 | T16 | 单元+功能 | 全自动读工作区外被拒 | 策略 allow 且真实读到内容 |
+| BF-02 | T16 | 单元 | 另两档被放宽 | 仍返回 floor:outside |
+| BF-03 | T16 | 单元 | 地板被放宽 | 数据根/凭据/.git 规则不变 |
 
 ---
 

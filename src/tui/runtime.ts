@@ -266,7 +266,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
     return createOpenAiProvider({ baseUrl: config.baseUrl, apiKey: config.apiKey, limits })
   }
-  const workspace = createWorkspace(options.cwd)
+  // 全自动档位允许工作区外目标（用户 2026-11-23 缺陷）：边界判定跟随当前模式。
+  let currentPermissionMode: PermissionMode | undefined
+  const workspace = createWorkspace(options.cwd, {
+    allowOutside: () => currentPermissionMode === 'full_access'
+  })
   const permissionStore = new PermissionsStore(
     options.home ? permissionsPath(options.home) : undefined
   )
@@ -280,6 +284,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       ? readPermissionMode(options.home)
       : 'read_only'),
     ...(options.home ? { dataRootOverride: dataRoot(options.home) } : {})
+  })
+  currentPermissionMode = policy.getMode()
+  policy.onModeChanged?.((next) => {
+    currentPermissionMode = next
   })
   // Search results honour Read deny rules (SP003 T18i): a file the policy
   // refuses to read must not leak through Glob/Grep listings either.
