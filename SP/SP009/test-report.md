@@ -106,7 +106,15 @@
 
 ## 5. 交付回填
 
-（门禁与合入结果在 STATUS 与本文件末尾回填。）
+| 动作 | 结果 | SHA / 证据 |
+| --- | --- | --- |
+| 交叉验证门禁（功能分支） | GATE GREEN | `2026-11-23T02:02:15Z`，2 commits / 42 files，禁带路径违规 0 |
+| 合入 master | 已执行 | `10704ab`（--no-ff） |
+| 缺陷修复门禁 | GATE GREEN | `2026-11-23T02:13:49Z`，含 `version:check` 与 `test:upgrade` |
+| 缺陷修复合入 | 已执行 | `2a918b3`（--no-ff，21 files） |
+| 推送远端 | 已执行 | `origin/master` = `2a918b3`，`ls-remote` 与本地一致 |
+| 发布 dry-run（0.9.0） | PASS | `artifacts/release/0.9.0-1795400498179/report.json`：`dry-run-complete`、183 文件、integrity `sha512-7gL4…`、安装 smoke fixture 1 次请求 |
+| 实际 npm 发布 | 未执行 | 由维护者在 GitHub Actions 手动触发，不在 Agent 委托内 |
 
 ## 6. 未验证项与恢复条件
 

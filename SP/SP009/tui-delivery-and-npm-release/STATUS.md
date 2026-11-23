@@ -60,6 +60,13 @@
 | 动作 | 结果 | SHA / 说明 |
 | --- | --- | --- |
 | 功能分支创建 | 已执行 | `feature/SP009/tui-distribution-and-npm-release`，基线 master `39b8665` |
-| 阶段本地提交 | 待执行 | 提交说明使用中文 |
-| 合入 master | 待执行 | 需 `npm run merge:gate` GREEN |
-| 推送远端 | 待执行 | 合入后自主推送并记录远端 SHA |
+| 阶段本地提交 | 已执行 | `496d0b9`（设计/判定层/生命周期）、`c4aa976`（技能/导出/恢复命令）、`1133cdc`（门禁登记） |
+| 交叉验证门禁 | **GATE GREEN** | `2026-11-23T02:02:15Z`（npm test / spec:check / skills:check / version:check / pack-smoke / test:upgrade 全 0） |
+| 合入 master | 已执行 | `--no-ff` 合并提交 `10704ab`（2 commits / 42 files） |
+| 推送远端 | 已执行 | `origin/master` `39b8665..10704ab`；功能分支新分支，`ls-remote` 一致 |
+| 缺陷修复分支 | 已执行 | `feature/SP009/fix-full-access-boundary`：`9e8cdf0`（边界修复 + 0.9.0 准备）、`7144577`（同类工具排查） |
+| 修复门禁 | **GATE GREEN** | `2026-11-23T02:13:49Z`（同六步全 0，含 0.9.0 的 version:check 与升级门禁） |
+| 修复合入 master | 已执行 | `--no-ff` 合并提交 `2a918b3`（21 files） |
+| 推送远端 | 已执行 | `origin/master` `10704ab..2a918b3`、修复分支新分支；`ls-remote` 与本地一致 |
+| 发布 dry-run（0.9.0） | PASS | `artifacts/release/0.9.0-1795400498179/report.json`：`dry-run-complete`、183 文件、integrity `sha512-7gL4…`、安装 smoke 1 次请求 |
+| 实际 npm 发布 | **未执行（不在委托内）** | 由维护者在 GitHub Actions 手动触发 |
