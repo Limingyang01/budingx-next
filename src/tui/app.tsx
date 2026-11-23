@@ -122,6 +122,7 @@ export const COMMAND_NAMES = [
   'tasks',
   'mcp',
   'skills',
+  'reload-skills',
   'export',
   'agents',
   'agent',

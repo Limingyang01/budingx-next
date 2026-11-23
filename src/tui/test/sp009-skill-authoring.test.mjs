@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { discoverSkills, parseFrontmatter, projectSkillRoots } from '../dist/tui/skills.js'
 import { runCommand } from '../dist/tui/commands.js'
+import { mountTty } from './helpers/mount-tty.mjs'
 
 function skill(dir, name, text) {
   const target = join(dir, '.budingx', 'skills', name)
@@ -183,4 +184,28 @@ test('SA-07/08 /reload-skills 命令即时发现新技能', async () => {
   } finally {
     cleanup()
   }
+})
+
+test('SA-07 帧级：新建技能后 /reload-skills 让补全列表立即出现该技能（无需重启）', async (t) => {
+  const workspace = mkdtempSync(join(tmpdir(), 'budingx-sa-tty-'))
+  const prevCwd = process.cwd()
+  process.chdir(workspace)
+  t.after(() => {
+    process.chdir(prevCwd)
+    rmSync(workspace, { recursive: true, force: true })
+  })
+  const ui = await mountTty(t, {
+    config: { model: 'fixture' },
+    commandOverrides: { cwd: workspace },
+    provider: { async *stream() { yield { type: 'message_completed', finishReason: 'stop' } } }
+  })
+  // 挂载后再写入新技能：初始补全备忘录不含它，刷新后才应出现。
+  skill(workspace, 'zzzreload', '---\nname: zzzreload\ndescription: 刷新验证\n---\nbody')
+  await ui.send('/reload-skills')
+  await ui.send('\r')
+  await ui.waitFor((frame) => frame.includes('已刷新'), 4000)
+  // 触发 / 补全并按前缀过滤，新技能命令应出现在候选里。
+  await ui.send('/zzz')
+  await ui.waitFor((frame) => frame.includes('zzzreload'), 4000)
+  assert.match(ui.last(), /zzzreload/)
 })
