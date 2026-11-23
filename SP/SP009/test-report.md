@@ -171,3 +171,9 @@
 - **回车执行契约 PASS（L1）**：`sp0054-enter-command.test.mjs` 在 Windows、`CI=true` 下定向运行 1/1 通过。90×30 伪 TTY 注入一条固定技能，按回车后核对该技能的帮助行，并检查没有「未知命令」。同一用例跳过回车的负向验证在帮助断言处超时。
 - **范围自审**：仅调整该帧级测试和本验收记录，无产品行为、依赖、存储、版本或发布流程变更。产品说明书无需更新。
 - **发布复核**：本机交叉验证门禁和 0.9.1 dry-run 的结果以本次生成的报告为准。新提交的 GitHub-hosted 双平台验证与正式发布待维护者重新触发工作流后取证。
+
+### 7.3 0.9.1 公开发布与复验
+
+- [运行 #32](https://github.com/Limingyang01/budingx-next/actions/runs/45149813230) 基于 `68e2c1c`，Windows 与 Ubuntu 验证均通过。OIDC 上传已接受，发布作业在 `uploaded-awaiting-receipt` 耗尽可见性重试后退出 1。 [作业日志](https://github.com/Limingyang01/budingx-next/actions/runs/45149813230/job/137610154150#step:6:1833)
+- npm 官方源于 `2026-11-23T09:57:31.967Z` 公开 `budingx@0.9.1` 并将 `latest` 指向该版本。制品摘要与发布及来源证明、独立安装锁一致。
+- 独立安装复验通过（L2）：CLI 返回 `0.9.1`，fixture 流式请求命中 1 次，npm 验证 53 个 registry 签名及 7 份 attestation。正式发布使用的 run 与源码 SHA 由 npm provenance 核对；真实外部 Provider UNVERIFIED，按 §6 恢复条件补测。 [0.9.1 发布回执](../../release-notes/v0.9.1.md)

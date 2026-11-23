@@ -1,6 +1,6 @@
 # SP009 需求汇总 — TUI 独立交付和 npm 发布工程
 
-状态：**已合入 master 并发布 0.9.0**（2026-11-23 开轮；用户 `/buding-sdd 开始SP009` 授权开发，继承 AGENTS.md 审查与集成委托）。设计已由 Agent 自审通过，计划沿用同版结论；合并提交 `10704ab`／`2a918b3`，发布运行 [#45100998785](https://github.com/Limingyang01/budingx-next/actions/runs/45100998785)（源码 `aecd8b7`），npm `latest` = 0.9.0。
+状态：**已合入 master 并发布 0.9.0 与 0.9.1**（2026-11-23 开轮；用户 `/buding-sdd 开始SP009` 授权开发，继承 AGENTS.md 审查与集成委托）。设计已由 Agent 自审通过，计划沿用同版结论；合并提交 `10704ab`／`2a918b3`，发布运行 [#45100998785](https://github.com/Limingyang01/budingx-next/actions/runs/45100998785)（源码 `aecd8b7`），该运行为 0.9.0 的历史回执。当前 npm `latest` 为 0.9.1，详见 [发布回执](../../release-notes/v0.9.1.md)。
 
 ## 本轮目标与边界
 

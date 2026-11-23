@@ -71,3 +71,7 @@
 | 发布 dry-run（0.9.0） | PASS | `artifacts/release/0.9.0-1795400498179/report.json`：`dry-run-complete`、183 文件、integrity `sha512-7gL4…`、安装 smoke 1 次请求 |
 | 实际 npm 发布 | **已发布** | 维护者触发 [运行 #45100998785](https://github.com/Limingyang01/budingx-next/actions/runs/45100998785)（run #30，head SHA `aecd8b7`，success），publishedAt=2026-11-23T02:43:37.613Z，npm `latest` = 0.9.0 |
 | 发布后核验 | 已完成 | registry integrity `sha512-BKXdjZ…`、Trusted Publisher 身份、attestation subject digest 逐位一致、dist-tag、隔离安装（53 依赖）、命令入口 0.9.0、本地 fixture 流式回合 1 次命中；CI 回执 artifact 需登录未取得（`ciArtifactDownloaded: false`） |
+
+## 0.9.1 发布回执
+
+[运行 #32](https://github.com/Limingyang01/budingx-next/actions/runs/45149813230)（源码 `68e2c1c`）的 Windows 与 Ubuntu 验证通过。npm 已接受 OIDC 上传，runner 等待公开可见性超时。官方源随后发布 0.9.1，`latest` 已更新，独立安装及来源核验通过。详见 [发行说明与回执](../../../release-notes/v0.9.1.md)。
