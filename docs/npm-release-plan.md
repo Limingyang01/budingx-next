@@ -23,7 +23,7 @@ SP009 起，本机与 CI 共用同一组发布相关命令：
 
 失败被分类为 `gate`（本地门禁）、`local`（本地校验）、`auth`、`permission`、`conflict`、`network`、`unknown`；分类只用于给出处置建议，**不会**改 registry、换账号或换通道。上传之后发生失败时，报告状态停在 `uploaded-awaiting-receipt`，必须先用 `release:resolve` 判定远端状态，禁止重复上传。
 
-当前 npm `latest` 为 0.8.0，正式发布回执见 [0.8.0 发行说明](../release-notes/v0.8.0.md)；**0.9.0（SP009）已准备待发布**，发行说明见 [v0.9.0](../release-notes/v0.9.0.md)。0.7.0（SP007）的回执见 [0.7.0 发行说明](../release-notes/v0.7.0.md)、0.6.0（SP006）见 [0.6.0 发行说明](../release-notes/v0.6.0.md)。后续版本完成准备后，可按下面命令预演。
+当前 npm `latest` 为 0.9.0（SP009），正式发布回执见 [0.9.0 发行说明](../release-notes/v0.9.0.md)；0.8.0（SP008）的回执见 [v0.8.0](../release-notes/v0.8.0.md)。0.7.0（SP007）的回执见 [0.7.0 发行说明](../release-notes/v0.7.0.md)、0.6.0（SP006）见 [0.6.0 发行说明](../release-notes/v0.6.0.md)。后续版本完成准备后，可按下面命令预演。
 
 ```powershell
 $releaseVersion = (Get-Content src/tui/package.json -Raw | ConvertFrom-Json).version
@@ -42,7 +42,7 @@ npm run publish -- --dry-run --expected-version $releaseVersion --tag latest
 | SP002                 | 产品开始时确定可构建产物、bin、运行资源和宿主依赖的边界；不把内部源码路径当可发布入口。                                                                                             |
 | SP006                 | 形成真实 npm tarball，隔离 prefix 安装和 npm exec/npx 路径验证；验证无需源码/tsx/开发依赖/其他端/Bun；先形成发布 dry-run 流程，不进行公开发包。                                     |
 | SP007                 | 固定制品符合性、依赖/来源和秘密扫描、稳定/预发布版本规则及 CI 的非发布验证；消除原生工具与平台资源隐式缺失。                                                                        |
-| SP009                 | 实现一键发布入口、账号/registry/版本/权限检查、候选与稳定通道、同一 tarball 发布、回执/失败恢复、安装升级卸载和发布说明。**2026-11-23 已实现**：发布编排抽为可注入 npm runner 的状态机（`publish-core.mjs`），判定层集中在 `pipeline.mjs`（通道规则、失败分类、发行说明结构、上传结果判定），新增 `npm run test:install` / `npm run test:upgrade` 生命周期门禁、`npm run version:check` 版本一致性检查与 `npm run release:resolve` 上传不确定判定命令；实际上传仍由维护者在 GitHub 手动触发。 |
+| SP009                 | 实现一键发布入口、账号/registry/版本/权限检查、候选与稳定通道、同一 tarball 发布、回执/失败恢复、安装升级卸载和发布说明。**2026-11-23 已实现**：发布编排抽为可注入 npm runner 的状态机（`publish-core.mjs`），判定层集中在 `pipeline.mjs`（通道规则、失败分类、发行说明结构、上传结果判定），新增 `npm run test:install` / `npm run test:upgrade` 生命周期门禁、`npm run version:check` 版本一致性检查与 `npm run release:resolve` 上传不确定判定命令；实际上传仍由维护者在 GitHub 手动触发（0.9.0 已于 2026-11-23 由运行 #45100998785 发布）。 |
 | SP010 / SP015 / SP016 | 中期编码检查、TUI 全能力制品（当前范围）及最终替代验收分别验证公开链路与安装后的任务；真实公开发布只在届时已获明确授权且许可等条件满足时执行，否则将该项标为 UNVERIFIED，不能称正式发布链路已验收。 |
 
 此前用户偏好公开无 scope 包名 budingx、命令 budingx；新产品沿此作为目标，但名称可用性、账号所有权、版本历史本次未查询。不得因为偏好已确认就宣称包名可用或有写权限；冲突时保留结果并请求命名决定，不擅自换名字/覆盖他人包。根维护版本 0.0.0 和旧产品 0.5.0 均不自动成为新产品版本。

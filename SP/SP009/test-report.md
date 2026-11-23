@@ -41,7 +41,7 @@
 | UC-04 指定旧版回退 | 同上 | 重新安装旧 tarball → `--version` 为旧版本 | 同上 | PASS |
 | UC-05 一条命令门禁 | `package.json` `test:upgrade` | 上述四段在同一脚本内顺序执行，任一失败非零退出 | 同上 | PASS |
 
-> 说明：本轮基线版本仍为 0.8.0（未 prepare 0.9.0），升级门禁的「旧版本」取最近一个不同于源码版本的已发布版本；在当前基线下两者同为 0.8.0，证据会记录 `previousIsCurrent: true`。发布前准备完成 0.9.0 后应复跑一次，使 `from/to` 变为 0.8.0 → 0.9.0。
+> 说明：升级门禁的「旧版本」取最近一个不同于源码版本的已发布版本。0.9.0 发布后在台账 published 状态下复跑一次，结果为 **0.8.0 → 0.9.0**，并再次验证回退到 0.8.0 可运行（证据 `artifacts/release-lifecycle/2026-11-23T02-50-14-049Z/evidence.json`）。
 
 ### 2.3 npm-publish-pipeline
 
@@ -114,7 +114,8 @@
 | 缺陷修复合入 | 已执行 | `2a918b3`（--no-ff，21 files） |
 | 推送远端 | 已执行 | `origin/master` = `2a918b3`，`ls-remote` 与本地一致 |
 | 发布 dry-run（0.9.0） | PASS | `artifacts/release/0.9.0-1795400498179/report.json`：`dry-run-complete`、183 文件、integrity `sha512-7gL4…`、安装 smoke fixture 1 次请求 |
-| 实际 npm 发布 | 未执行 | 由维护者在 GitHub Actions 手动触发，不在 Agent 委托内 |
+| 实际 npm 发布 | **已发布** | 维护者触发运行 #45100998785（源码 `aecd8b7`），npm `latest` = 0.9.0，publishedAt=2026-11-23T02:43:37.613Z |
+| 发布后核验 | PASS | registry integrity、Trusted Publisher、attestation subject digest、dist-tag、隔离安装与入口、流式 smoke |
 
 ## 6. 未验证项与恢复条件
 
@@ -125,4 +126,5 @@
 | 真实 registry 回退安装与 dist-tag 移动 | UNVERIFIED | 获得发布授权后，用 `npm install -g budingx@<旧版本>` 与 dist-tag 查询核对 |
 | 覆盖升级用「当前源码 + 旧版本号」构造旧包 | 有限证据 | 需重新构建历史版本时按 tag 源码打包复验 |
 | 会话恢复视图对技能条目的实机渲染 | 机制覆盖 | 由 `restoredTranscriptEntries` 的上下文分支覆盖；如需像素级证据补 TTY 用例 |
-| 真实 npm 发布（0.9.0） | 待用户触发 | 发布前准备完成后由维护者在 GitHub Actions 手动触发 |
+| CI 回执 artifact | UNVERIFIED | 需登录 GitHub 下载 `tui-publication-receipt`；台账依据公开运行、provenance、registry integrity 与独立安装登记并标注缺口 |
+| 真实外部模型 live 回合 | UNVERIFIED | 发布包的核心链路验证使用本地 fixture Provider；需真实端点凭据后补证 |

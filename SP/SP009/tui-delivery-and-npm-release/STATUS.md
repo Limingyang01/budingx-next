@@ -18,7 +18,7 @@
 | 实施计划 | ✅ 完成（同版自审结论沿用） | [design/plan.zh.md](design/plan.zh.md) |
 | 实施 | ✅ 完成 | T1–T14 全部落地（发布编排/判定/生命周期/版本检查/恢复命令/技能显示/导出选择） |
 | 测试收口 | ✅ 完成 | 全量单测 1250 / 1249 通过 / 0 失败 / 1 跳过；发布工具 56/56；定向 TUI 7/7 |
-| 交付与恢复 | ⏳ 进行中 | 门禁 GREEN → 合入 master → 推送 → 发布前准备 |
+| 交付与恢复 | ✅ 完成 | 门禁 GREEN → 合入 master（`10704ab`、`2a918b3`）→ 推送 → 0.9.0 发布并核验回执 |
 
 ## 3. 授权与边界（批准来源）
 
@@ -44,7 +44,7 @@
 | T2 发布编排 | `scripts/release/publish-core.mjs`、`publish.mjs` + `publish.test.mjs` | 8/8 通过（dry-run 无副作用、门禁失败、同版本拒绝、E403 分类、回执不确定、完整发布、说明缺小节、预发布 latest） |
 | T3 npm 调用注入 | `scripts/release/process.mjs` | 统一 `--cache`（置于 `--` 之前）、npm CLI 兜底定位；真实门禁验证 |
 | T4 生命周期门禁 | `scripts/release/lifecycle.mjs` + `lifecycle.test.mjs` | install/upgrade 真实执行 PASS；3/3 夹具单测 |
-| T5 生命周期入口 | `package.json` `test:install`/`test:upgrade` | 两条命令均 0 退出 |
+| T5 生命周期入口 | `package.json` `test:install`/`test:upgrade` | 两条命令均 0 退出；0.9.0 发布后复跑升级门禁为 0.8.0 → 0.9.0 并回退 0.8.0 可运行 |
 | T6 上传结果判定 | `scripts/release/resolve.mjs` + `resolve.test.mjs` | 5/5 通过（只读、四种结论与退出码） |
 | T7 版本一致性 | `scripts/release/version-check.mjs` + `version-check.test.mjs` + `version:check` | 9/9 通过；真实仓库抓到并修复 `PRODUCT.md` 0.7.0/0.8.0 漂移 |
 | T8 发行说明骨架 | `scripts/release/version.mjs` + `version.test.mjs` | 草稿含五小节；6/6 通过 |
@@ -69,4 +69,5 @@
 | 修复合入 master | 已执行 | `--no-ff` 合并提交 `2a918b3`（21 files） |
 | 推送远端 | 已执行 | `origin/master` `10704ab..2a918b3`、修复分支新分支；`ls-remote` 与本地一致 |
 | 发布 dry-run（0.9.0） | PASS | `artifacts/release/0.9.0-1795400498179/report.json`：`dry-run-complete`、183 文件、integrity `sha512-7gL4…`、安装 smoke 1 次请求 |
-| 实际 npm 发布 | **未执行（不在委托内）** | 由维护者在 GitHub Actions 手动触发 |
+| 实际 npm 发布 | **已发布** | 维护者触发 [运行 #45100998785](https://github.com/Limingyang01/budingx-next/actions/runs/45100998785)（run #30，head SHA `aecd8b7`，success），publishedAt=2026-11-23T02:43:37.613Z，npm `latest` = 0.9.0 |
+| 发布后核验 | 已完成 | registry integrity `sha512-BKXdjZ…`、Trusted Publisher 身份、attestation subject digest 逐位一致、dist-tag、隔离安装（53 依赖）、命令入口 0.9.0、本地 fixture 流式回合 1 次命中；CI 回执 artifact 需登录未取得（`ciArtifactDownloaded: false`） |

@@ -38,3 +38,6 @@ Thumbs.db
 
 # Local npm cache used by release gates outside the user profile
 .npm-cache/
+
+# Temporary isolation prefix for release verification
+.verify-tmp/

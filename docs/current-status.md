@@ -1,6 +1,6 @@
 # 当前状态
 
-截至 2026-11-22，**npm `latest` 为 0.8.0**（多端架构入口与共享边界，SP008）。SP008 **已完成实施与验收，合入 master 后由 [GitHub Actions 运行 #45010118350](https://github.com/Limingyang01/budingx-next/actions/runs/45010118350)（源码 `b71b3f5`）完成 Windows、Linux 验证与 OIDC 发布**。本版新增通用宿主契约（进程内/stdio/WS）、活动会话归属与崩溃接管、共享配置/历史并发安全与 `budingx serve` 入口。0.7.0（Agent 质量与扩展，SP007）此前已于 2026-11-21 经门禁 GREEN 合入 master（合并提交 `ee9118e`）并由运行 #27（源码 `a8628b5`）发布，见 [0.7.0 发行说明](../release-notes/v0.7.0.md)；0.6.0（TUI 对齐与扩展，SP006）更早已发布，见 [0.6.0 发行说明](../release-notes/v0.6.0.md)。
+截至 2026-11-23，**npm `latest` 为 0.9.0**（TUI 独立交付和 npm 发布工程，SP009）。SP009 **已完成实施与验收，合入 master 后由 [GitHub Actions 运行 #45100998785](https://github.com/Limingyang01/budingx-next/actions/runs/45100998785)（源码 `aecd8b7`）完成 Windows、Linux 验证与 OIDC 发布**。本版新增技能提示词不进会话、`/export` 可选择会话、全自动档位不再被工作区边界拦截，以及干净安装/升级/卸载/回退门禁与发布判定工具链。0.8.0（多端架构入口与共享边界，SP008）此前由 [运行 #45010118350](https://github.com/Limingyang01/budingx-next/actions/runs/45010118350)（源码 `b71b3f5`）发布，本版新增通用宿主契约（进程内/stdio/WS）、活动会话归属与崩溃接管、共享配置/历史并发安全与 `budingx serve` 入口。0.7.0（Agent 质量与扩展，SP007）此前已于 2026-11-21 经门禁 GREEN 合入 master（合并提交 `ee9118e`）并由运行 #27（源码 `a8628b5`）发布，见 [0.7.0 发行说明](../release-notes/v0.7.0.md)；0.6.0（TUI 对齐与扩展，SP006）更早已发布，见 [0.6.0 发行说明](../release-notes/v0.6.0.md)。
 
 [运行 #45010118350](https://github.com/Limingyang01/budingx-next/actions/runs/45010118350) 以源码 `b71b3f5` 完成 Ubuntu、Windows 验证及 OIDC 发布 0.8.0。官方制品 SHA-1/SHA-512、来源证明（attestation/provenance）、签名与独立安装均已核对；CI 回执 artifact 需登录未取得，台账据此登记并标注证据缺口。见 [0.8.0 发行说明](../release-notes/v0.8.0.md)、[发布台账](../release-ledger.json)及 [SP008 验收报告](../SP/SP008/test-report.md)。首次发布尝试（run 45003613733）曾在 ubuntu-24.04 因一处测试取样竞态失败，已修复（`37a4cfd`）后重新触发成功。
 
@@ -81,9 +81,9 @@ SP008 功能分支 `feature/SP008/host-contract`（基线 master `a8628b5`）已
 - 0.8.0 已发布（运行 #45010118350，源码 `b71b3f5`），台账已置 published；registry/provenance/独立安装回执已核验登记，见 [0.8.0 发行说明](../release-notes/v0.8.0.md)
 - 如需补齐 SIGTERM 证据，在 Linux/macOS 运行 stdio serve 后发 SIGTERM
 
-## SP009 · TUI 独立交付和 npm 发布工程（已合入 master，0.9.0 已准备待发布）
+## SP009 · TUI 独立交付和 npm 发布工程（已合入 master，0.9.0 已发布）
 
-SP009 功能分支 `feature/SP009/tui-distribution-and-npm-release`（基线 master `39b8665`）完成 T1–T14，**已由交叉验证门禁 GREEN 后合入 master（合并提交 `10704ab`）并推送**；`src/tui/package.json` = 0.9.0，台账 `prepared`。维护者可在 GitHub Actions 手动触发发布。
+SP009 功能分支 `feature/SP009/tui-distribution-and-npm-release`（基线 master `39b8665`）完成 T1–T14，**已由交叉验证门禁 GREEN 后合入 master（合并提交 `10704ab`，缺陷修复 `2a918b3`）并推送**；维护者触发 [GitHub Actions 运行 #45100998785](https://github.com/Limingyang01/budingx-next/actions/runs/45100998785)（源码 `aecd8b7`）三作业全 success，**0.9.0 已发布，npm `latest` = 0.9.0**（publishedAt=2026-11-23T02:43:37.613Z），台账 published。官方制品 SHA-512、Trusted Publisher 发布身份、attestation subject digest 与独立安装复验均已核对；CI 回执 artifact 需登录未取得，台账据此登记并标注证据缺口。见 [0.9.0 发行说明](../release-notes/v0.9.0.md)、[发布台账](../release-ledger.json)与 [SP009 验收报告](../SP/SP009/test-report.md)。
 
 ### 已完成
 
@@ -103,7 +103,8 @@ SP009 功能分支 `feature/SP009/tui-distribution-and-npm-release`（基线 mas
 | 升级/卸载/回退门禁 | PASS（真实 npm，覆盖升级、旧配置迁移保留未知字段、卸载保留数据、回退旧版可运行） |
 | 交叉验证门禁 | **GATE GREEN**（2026-11-23T02:02:15Z，npm test / spec:check / skills:check / version:check / pack-smoke / test:upgrade 全 0 退出） |
 | 合入与推送 | 已合入 master（`10704ab`）并推送，远端 SHA 一致 |
-| 发布准备 | 0.9.0 已准备（台账 prepared、发行说明已写），待维护者触发 |
+| 发布准备 | 0.9.0 已准备（台账 prepared、发行说明五小节、版本文档同步、dry-run PASS） |
+| 正式发布 | **已发布**（运行 #45100998785，源码 `aecd8b7`），台账 published |
 
 ### 已知限制
 
