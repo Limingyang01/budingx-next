@@ -151,3 +151,15 @@
 | 交叉验证门禁 | GATE GREEN（npm test / spec / skills / version / pack-smoke / test:upgrade） |
 
 端到端方法：真实无头子进程 + 本地 OpenAI 兼容 SSE fixture（`sp009-e2e.test.mjs`，4/4）；真实 Ink 帧级（mountTty）验证技能刷新。模型摘要压缩已接 Langfuse `context.compact` generation 观测；真实外部模型 live 回合仍 UNVERIFIED（见 §6，需真实端点凭据）。
+
+### 7.1 交付回填（0.9.1）
+
+| 动作 | 结果 | SHA / 证据 |
+| --- | --- | --- |
+| 交叉验证门禁（功能分支，两次） | GATE GREEN | `2026-11-23T08-19-32Z`、`2026-11-23T08-28-13Z`（npm test/spec/skills/version/pack-smoke/test:upgrade 全 ok） |
+| merge-tree 预演 | 退出码 0，无冲突 | master `0af9249` × 源 `4abdc7c` |
+| 合入 master | 已执行（--no-ff） | 合并提交 `ab65450`，源 `4abdc7c` 为祖先 |
+| 推送远端 | 已执行 | `origin/master` = `ab65450`，`ls-remote` 与本地一致 |
+| 版本准备（0.9.1） | prepared | 台账 `prepared`、发行说明五小节、版本文档同步、`version:check` PASS |
+| 发布 dry-run（0.9.1） | PASS | `artifacts/release/0.9.1-1795420727943/report.json`，`dry-run-complete`，未发布 |
+| 实际 npm 发布 | 待维护者触发 | GitHub Actions 手动：version=0.9.1、tag=latest、dry_run 不勾选 |
