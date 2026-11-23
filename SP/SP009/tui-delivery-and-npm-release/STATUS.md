@@ -52,6 +52,7 @@
 | T10 文档同步 | `PRODUCT.md`、`src/tui/README.md`、`docs/npm-release-plan.md`、`docs/github-actions-npm.md`、`docs/current-status.md`、`docs/iteration-plan.md`、`.gitignore` | 已完成；`version:check` PASS |
 | T11 测试收口 | 各 `*.test.mjs` | 全量 1250/1249/0/1；发布工具 56/56；定向 TUI 7/7 |
 | T16（用户报缺陷） | `src/workspace/paths.ts`、`src/workspace/policy.ts`、`src/tui/runtime.ts` + 两个测试 | 全自动档位不再被工作区边界拦截；另两档与地板规则不变；策略 11/11、读取 11/11 |
+| T17（同类排查） | `src/workspace/test/sp009-full-access.test.mjs` | 全仓边界判定只有 2 处；Write/Edit/Glob/Grep/`@` 同源，4/4 通过；`git/worktree.ts` 独立策略不放宽 |
 | T12–T14（用户追加） | 技能显示与导出选择实现 + `sp009-*.test.mjs` | 技能 3/3、导出 4/4 通过；`/export` 非交互保持旧行为（回归修复 1 处） |
 
 ## 6. 提交、合并与推送记录

@@ -211,6 +211,14 @@ scripts/release/
 - **RED/GREEN**：先改测试断言「completely full_access 读工作区外文件成功、另两档拒绝、数据根仍拒绝」，旧实现下失败；实现后两文件 22/22 通过。
 - **完成事实**：见 STATUS §5 任务证据表。
 
+### T17 同类内置工具排查（用户 2026-11-23）
+
+- **设计段**：D-9；**AC**：BF-04。
+- **排查方法**：全仓 grep `isInside(` / `workspacePathOutside` / `outside the workspace`，只命中 `workspace/paths.ts`、`workspace/policy.ts` 与 `git/worktree.ts`；前两处是同一判定点（已修），`git/worktree.ts` 是「worktree 必须建在仓库内」的独立策略，不属于权限拦截。
+- **文件**：新增 `src/workspace/test/sp009-full-access.test.mjs`（4 例覆盖 Read/Write/Edit/Glob/Grep 工作区外访问、受限档位拒绝、地板、档位切换）。
+- **验证命令**：`npm run build && node --test src/workspace/test/sp009-full-access.test.mjs`。
+- **结果**：4/4 PASS。
+
 ### T15 交付与集成
 
 - **设计段**：§3、§6；**AC**：全部。
