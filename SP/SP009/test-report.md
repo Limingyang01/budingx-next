@@ -163,3 +163,11 @@
 | 版本准备（0.9.1） | prepared | 台账 `prepared`、发行说明五小节、版本文档同步、`version:check` PASS |
 | 发布 dry-run（0.9.1） | PASS | `artifacts/release/0.9.1-1795420727943/report.json`，`dry-run-complete`，未发布 |
 | 实际 npm 发布 | 待维护者触发 | GitHub Actions 手动：version=0.9.1、tag=latest、dry_run 不勾选 |
+
+### 7.2 0.9.1 发布门禁回归自审
+
+[Actions #31](https://github.com/Limingyang01/budingx-next/actions/runs/45143954524) 的 Windows 和 Ubuntu 验证均在 `sp0054-enter-command.test.mjs` 超时。最后一帧已显示帮助末尾的技能列表，旧断言等待的顶部标题超出可见区域。
+
+- **回车执行契约 PASS（L1）**：`sp0054-enter-command.test.mjs` 在 Windows、`CI=true` 下定向运行 1/1 通过。90×30 伪 TTY 注入一条固定技能，按回车后核对该技能的帮助行，并检查没有「未知命令」。同一用例跳过回车的负向验证在帮助断言处超时。
+- **范围自审**：仅调整该帧级测试和本验收记录，无产品行为、依赖、存储、版本或发布流程变更。产品说明书无需更新。
+- **发布复核**：本机交叉验证门禁和 0.9.1 dry-run 的结果以本次生成的报告为准。新提交的 GitHub-hosted 双平台验证与正式发布待维护者重新触发工作流后取证。
