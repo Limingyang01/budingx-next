@@ -317,6 +317,8 @@ export function App({
     return () => clearInterval(timer)
   }, [frame.startedAt])
   const [hint, setHint] = useState('')
+  // SP009 0.9.1：/reload-skills 递增该修订号，触发补全与帮助重新发现技能。
+  const [skillsRevision, setSkillsRevision] = useState(0)
   const [dialog, setDialog] = useState<DiffDialog | null>(null)
   const [gitAvailable, setGitAvailable] = useState(false)
   const [detailScroll, setDetailScroll] = useState(0)
@@ -593,6 +595,10 @@ export function App({
         setPosition(undefined)
         setExportOpen(true)
         await new Promise<void>((resolve) => { managerDone.current = resolve })
+      } else if (result.skillsReloaded !== undefined) {
+        // SP009 0.9.1 SA-07：刷新补全列表、帮助与 /skills 面板，不重启。
+        setSkillsRevision((revision) => revision + 1)
+        setHint(result.message ?? result.error ?? '')
       } else if (result.openResume) {
         setPosition(undefined)
         setResumeOpen(true)
@@ -684,7 +690,11 @@ export function App({
       )
     : [])
   // 0.5.4：/ 补全包含内置命令 + 已加载技能命令（对齐参考）。
-  const commandList = useMemo(() => [...COMMAND_NAMES, ...discoverSkillCommands().map((s) => s.name)], [context])
+  const commandList = useMemo(
+    () => [...COMMAND_NAMES, ...discoverSkillCommands().map((s) => s.name)],
+    // skillsRevision：/reload-skills 后重新纳入新技能命令。
+    [context, skillsRevision]
+  )
   const completion = useMemo(() => {
     if (dialog || frame.approval || overlayDismissed || modelManagerOpen || rulesManagerOpen || resumeOpen || exportOpen || rewindOpen || contextOpen || agentsOpen || statusOpen || statsOpen || doctorOpen) return null
     const lineText = editor.lines[editor.cursor.line] ?? ''

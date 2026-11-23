@@ -121,7 +121,7 @@ function skillLines(context: CommandContext): string[] {
     return [lang(context) === 'en' ? 'No skills discovered.' : '未发现技能。']
   }
   return skills.map((skill) => {
-    const scope = skill.scope === 'project' ? '项目' : '用户'
+    const scope = skill.scope === 'project' ? '项目' : skill.scope === 'bundled' ? '内置' : '用户'
     const state = skill.valid ? '' : ` · 不可用（${skill.error ?? '未知原因'}）`
     return `/${skill.name} · ${scope}${state}\n  ${skill.description || '（无描述）'}\n  ${skill.path}`
   })
@@ -137,6 +137,36 @@ const skillsCommand: CommandDefinition = {
       handled: true,
       ...(context.interactive ? { openList: { title: '技能', lines } } : {})
     })
+  }
+}
+
+/**
+ * SP009 0.9.1 SA-07：命令式技能刷新（用户明确要求「加一个命令，不轮询」）。
+ * 重新发现全部级别的技能并回报数量；宿主据此刷新补全、帮助与 /skills 面板。
+ */
+const reloadSkillsCommand: CommandDefinition = {
+  name: 'reload-skills',
+  kind: 'local',
+  summary: '重新发现技能（新建/修改 SKILL.md 后刷新）',
+  supportsNonInteractive: true,
+  async run(_args, context) {
+    const skills = discoverSkills({
+      homeDir: context.home ?? homedir(),
+      workspaceDir: context.cwd ?? process.cwd()
+    })
+    const count = (scope: 'user' | 'project' | 'bundled') =>
+      skills.filter((skill) => skill.scope === scope && skill.valid).length
+    const summary = {
+      user: count('user'),
+      project: count('project'),
+      bundled: count('bundled')
+    }
+    const total = summary.user + summary.project + summary.bundled
+    const message = lang(context) === 'en'
+      ? `Reloaded: ${total} ${total === 1 ? 'skill' : 'skills'} ` +
+        `(user ${summary.user} · project ${summary.project} · bundled ${summary.bundled})`
+      : `已刷新：${total} 个技能（用户 ${summary.user} · 项目 ${summary.project} · 内置 ${summary.bundled}）`
+    return text(message, { handled: true, message, skillsReloaded: total })
   }
 }
 
@@ -248,5 +278,6 @@ export const EXTENDED_COMMANDS: CommandDefinition[] = [
   tasksCommand,
   mcpCommand,
   skillsCommand,
+  reloadSkillsCommand,
   exportCommand
 ]

@@ -81,6 +81,7 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
   /image [路径]         把剪贴板或指定路径的图片挂为附件（alt+v 被终端吞掉时用它）
   /mcp                  查看 MCP 服务器与工具
   /skills               查看已发现技能
+  /reload-skills        重新发现技能（新建/修改 SKILL.md 后刷新）
   /export [--format jsonl|text] [--path <路径>]  导出会话
   /clear                清空会话（别名 /new /reset，保留项目规则）
   /exit                 退出 budingx`
@@ -118,6 +119,7 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
   /image [path]         attach a clipboard or path image (use when alt+v is swallowed)
   /mcp                  show MCP servers and tools
   /skills               show discovered skills
+  /reload-skills        rediscover skills after adding/editing SKILL.md
   /export [--format jsonl|text] [--path <path>]  export the session
   /clear                clear the conversation (aliases /new /reset, keeps project rules)
   /exit                 leave budingx`
