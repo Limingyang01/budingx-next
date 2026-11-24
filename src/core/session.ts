@@ -50,6 +50,7 @@ import type {
 } from './provider.js'
 import { assembleToolCalls, parseToolArguments } from './tool-calls.js'
 import type { ToolSearchController } from './tool-search.js'
+import { sliceToolOutput } from './tools.js'
 import type {
   ApprovalDecision,
   ApprovalGateway,
@@ -349,7 +350,7 @@ export class Session {
    */
   private readonly repeatedToolFailures = new Map<string, number>()
   /** SP005 FR-05：同一工具 + 同一错误码的连续失败计数（捕捉换参数瞎试）。 */
-  private readonly toolFailureStreaks = new Map<string, number>()
+  private readonly toolFailureStreaks = new Map<string, { code: string | undefined; count: number }>()
   /** SP006 §9：hook 注入的附加上下文，只作用于下一次请求。 */
   private readonly hookContext: string[] = []
   private sessionStartHooked = false
@@ -2325,14 +2326,8 @@ export class Session {
       tool_response: { content, is_error: isError }
     })
     if (content.length > TOOL_OUTPUT_CAP) {
-      // SP005 FR-03：截断必须带显式标记，模型与人都能看出结果不完整，
-      // 不能把一段被砍掉的内容当成完整结果。
-      const omitted = content.length - TOOL_OUTPUT_CAP
-      content = content.slice(0, TOOL_OUTPUT_CAP) +
-        `\n[truncated] ${omitted} characters were omitted because the tool output exceeded ` +
-        `${TOOL_OUTPUT_CAP} characters (${ERROR_CODES.coreToolOutputTooLong})`
-      isError = true
-      errorCode = errorCode ?? ERROR_CODES.coreToolOutputTooLong
+      const notice = `\n[truncated] Tool output exceeded ${TOOL_OUTPUT_CAP} characters.`
+      content = sliceToolOutput(content, TOOL_OUTPUT_CAP - notice.length) + notice
     }
     if (startedAt !== undefined) {
       this.lastToolElapsed = { turnId: turn.id, callId: call.id, ms: performance.now() - startedAt }
@@ -2343,41 +2338,41 @@ export class Session {
     //       参数签名变了但错误类型没变，同样不会带来新信息。
     // 两种情况都只会让长任务空转到最大迭代次数，因此必须显式停下并给出稳定原因。
     const signature = this.toolSignature(call.name, call.arguments)
-    const streakKey = `${call.name}:${errorCode ?? 'unknown'}`
     if (isError) {
       const count = (this.repeatedToolFailures.get(signature) ?? 0) + 1
       this.repeatedToolFailures.set(signature, count)
-      const streak = (this.toolFailureStreaks.get(streakKey) ?? 0) + 1
-      this.toolFailureStreaks.set(streakKey, streak)
-      const tripped =
-        count >= MAX_REPEATED_TOOL_FAILURES
-          ? `failed ${count} times with the same arguments`
+      const previous = this.toolFailureStreaks.get(call.name)
+      const streak = previous && previous.code === errorCode ? previous.count + 1 : 1
+      this.toolFailureStreaks.set(call.name, { code: errorCode, count: streak })
+      const sameArguments = count >= MAX_REPEATED_TOOL_FAILURES
+      const failure =
+        sameArguments
+          ? `failed ${count} times with the same arguments (${errorCode ?? 'unknown'})`
           : streak >= MAX_TOOL_FAILURE_STREAK
             ? `failed ${streak} times in a row with the same error (${errorCode ?? 'unknown'})`
             : undefined
-      if (tripped) {
+      if (failure) {
         this.repeatedToolFailures.delete(signature)
-        this.toolFailureStreaks.delete(streakKey)
-        this.traceEnd(toolTrace, 'error')
-        pushResult(`Tool "${call.name}" ${tripped}; retrying it again cannot add information. ` +
-            `Stop and report the reason instead. (${ERROR_CODES.coreToolLoopDetected})`,
-          true,
-          ERROR_CODES.coreToolLoopDetected
-        )
+        this.toolFailureStreaks.delete(call.name)
+        const advice = sameArguments
+          ? 'Stop retrying the same arguments and check the failure reason.'
+          : 'Switch to a different tool or strategy.'
+        const message = `Tool "${call.name}" ${failure}. ${advice} (${ERROR_CODES.coreToolLoopDetected})`
+        pushResult(message, true, ERROR_CODES.coreToolLoopDetected, toolTrace)
+        this.lastToolElapsed = undefined
         return {
           error: {
             class: 'unknown',
             code: ERROR_CODES.coreToolLoopDetected,
-            message:
-              `Tool "${call.name}" ${tripped} ` +
-              `(${ERROR_CODES.coreToolLoopDetected})`,
-            retryable: false
+            message,
+            retryable: false,
+            toolFailure: { callId: call.id, code: errorCode ?? ERROR_CODES.coreToolFailed }
           }
         }
       }
     } else {
       this.repeatedToolFailures.delete(signature)
-      this.toolFailureStreaks.delete(streakKey)
+      this.toolFailureStreaks.delete(call.name)
     }
     try {
       pushResult(content, isError, errorCode, toolTrace)
@@ -2437,7 +2432,8 @@ export class Session {
       turnId: turn.id,
       callId,
       content: code ? `${content} (${code})` : content,
-      isError
+      isError,
+      ...(code ? { errorCode: code } : {})
     })
   }
 

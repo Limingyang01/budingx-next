@@ -4,6 +4,11 @@ import type { ChangeRecordSummary, SessionEvent } from './events.js'
 import type { CommandResult } from './exec.js'
 import type { ToolCapability } from './permissions.js'
 
+export function sliceToolOutput(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text
+  return text.slice(0, maxLength).replace(/[\uD800-\uDBFF]$/, '')
+}
+
 export type ToolContext = {
   signal: AbortSignal
   onUpdate?(text: string): void

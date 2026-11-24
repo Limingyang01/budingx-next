@@ -436,6 +436,26 @@ test('后台终态 → task-notification 注入父队列且防重', async () => 
   assert.equal(parentSession.queuedInputs.length, 1)
 })
 
+test('AC-SUBAGENT-02 后台子代理通知和 TaskOutput 保留实际失败原因', async () => {
+  const provider = makeProvider([{
+    type: 'failed',
+    error: { class: 'network', code: 'BUDINGX_PROVIDER_005', message: 'fixture upstream unavailable', retryable: true }
+  }])
+  const { registry, parentSession } = makeRegistry({ provider })
+  try {
+    const launched = await registry.spawn(spawnOptions({ runInBackground: true }))
+    await waitFor(() => parentSession.queuedInputs.length > 0)
+    assert.match(parentSession.queuedInputs[0].text, /<status>failed<\/status>/)
+    assert.match(parentSession.queuedInputs[0].text, /fixture upstream unavailable/)
+    const result = await registry.taskOutput(launched.agentId)
+    assert.equal(result.status, 'failed')
+    assert.match(result.text, /fixture upstream unavailable/)
+  } finally {
+    registry.dispose()
+    parentSession.dispose()
+  }
+})
+
 test('background(callId) 即返 async_launched，子继续跑并通知', async () => {
   const provider = makeProvider([{ __delay: 150 }, ...textEvents('late answer')])
   const { registry, parentSession } = makeRegistry({ provider })

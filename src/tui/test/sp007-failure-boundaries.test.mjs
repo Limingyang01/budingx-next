@@ -512,12 +512,12 @@ test('FB-03 MCP 输出上限：超限输出被截断并带显式标记', async (
   })
   const results = toolResults(turn.events)
   assert.equal(results.length, 1)
-  assert.equal(results[0].isError, true, '超限输出必须标记为错误')
+  assert.equal(results[0].isError, false, 'MCP 调用成功，截断内容仍可用')
   assert.match(results[0].content, /\[truncated\]/, '截断必须带显式标记')
-  assert.match(results[0].content, /BUDINGX_CORE_003/)
+  assert.doesNotMatch(results[0].content, /BUDINGX_CORE_003/)
   assert.ok(
-    results[0].content.length <= 32768 + 200,
-    '截断后的内容不得超过上限加标记长度：' + results[0].content.length
+    results[0].content.length <= 32768,
+    '截断后的内容连同标记不得超过上限：' + results[0].content.length
   )
 })
 

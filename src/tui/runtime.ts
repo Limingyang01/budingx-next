@@ -55,6 +55,7 @@ import type { Tracer } from '../core/observability.js'
 import {
   loadTracingEnvironment,
   isValidBaseUrl,
+  redactValue,
   TracingRuntime,
   type ReceiptReporter
 } from '../observability/index.js'
@@ -452,6 +453,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     resolveSnapshot,
     approval: options.approval,
     policy,
+    redactDiagnostic: (value) => JSON.parse(redactValue(value, [options.getConfig().apiKey])),
     // 子政策＝min(父,定义)：宿主以父规则快照＋目标档位重建（core 禁 import workspace，D14）。
     createChildPolicy: (mode) =>
       createPermissionPolicy({

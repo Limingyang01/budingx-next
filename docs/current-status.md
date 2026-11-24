@@ -1,6 +1,6 @@
 # 当前状态
 
-2026-11-24 已登记 [SP009 0.9.2 的 12 项 TUI 差距优化与缺陷修复](../SP/SP009/tui-gap-optimizations/requirements.md)及[正式路线图补排](iteration-plan.md#tui-差距补排2026-11-24)，同日完成逐项事实复核并把[差距盘点](requirements/tui-gap-inventory-2026-11-24/requirements.md)固化进仓库（原盘点全表待补录，见该文件 OPEN-1）。0.9.2 处于 PLANNED，产品 AC 为 UNVERIFIED（12 项、28 条 AC，含用户现场报告的 #42 子代理失败缺陷修复）；版本按用户 2026-11-24 决定保持 0.9.2。团队交接及 P1 新入口分别进入 [SP011](../SP/SP011/requirements-summary.md)和 [SP015](../SP/SP015/requirements-summary.md)。
+2026-11-24 启动 [SP009 0.9.2 的 12 项 TUI 差距优化与缺陷修复](../SP/SP009/tui-gap-optimizations/requirements.md)，共 28 条 AC。首批 #42 已完成定向回归和 3 次真实 Provider 子代理验证，分批进度见 [0.9.2 状态](../SP/SP009/tui-gap-optimizations/STATUS.md)。版本按用户决定保持 0.9.2。团队交接及 P1 新入口分别进入 [SP011](../SP/SP011/requirements-summary.md)和 [SP015](../SP/SP015/requirements-summary.md)。范围出处见[正式路线图补排](iteration-plan.md#tui-差距补排2026-11-24)和[差距盘点](requirements/tui-gap-inventory-2026-11-24/requirements.md)。
 
 截至 2026-11-23，**npm `latest` 为 0.9.1**（SP009 补丁）：主循环去固定回合上限、上下文窗口按模型动态解析并支持自定义、自动压缩默认开启且改模型摘要、子代理默认无 token 预算且通知按系统消息渲染、技能多级别与 `/skillify` `/reload-skills`；台账已登记。 [0.9.1 发布回执](../release-notes/v0.9.1.md)
 
