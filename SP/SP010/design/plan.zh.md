@@ -1,6 +1,6 @@
 # SP010 · 中期编码效果检查实施计划
 
-版本 v1.0｜2026-11-24｜基线 master `9be7753`｜分支 `feature/SP010/mid-term-coding-checkpoint`
+版本 v1.0｜2026-11-24｜基线 master `74c5156`｜分支 `feature/SP010/mid-term-coding-checkpoint`
 
 目标：交付[需求正本](../coding-parity-checkpoint/requirements.md)的 CP-01…CP-10 与[core-reliability 需求](../core-reliability/requirements.md)的 CR-01…CR-06。设计依据为[设计 v1.0](design.zh.md)；进度记录在[迭代汇总](../requirements-summary.md)与两项 STATUS。本计划直接沿用设计自审结论，不另行请求批准。
 
@@ -12,7 +12,7 @@
 
 | 任务 | 改动路径与责任 | Consumes → Produces | 单元 RED → GREEN | 功能 RED → GREEN |
 | --- | --- | --- | --- | --- |
-| T0 基线与分支冻结（前置，无 AC） | Git 与文档；`SP/SP010/requirements-summary.md` | master `9be7753` + SP009 短路径补丁 `50e558f` → 冻结的 SP010 基线 SHA | — | `git log`/`git status` 核对基线与工作区干净；补丁来源（合入或 cherry-pick）写入 STATUS；`.env.e2e.local` 存在且不入库 |
+| T0 基线与分支冻结（前置，无 AC） | Git 与文档；`SP/SP010/requirements-summary.md` | master `74c5156`（已含 SP009 短路径兼容修复 `50e558f`／`03ad128`）→ 冻结的 SP010 基线 SHA | — | `git log`/`git status` 核对基线与工作区干净；复核实时 refs（并发会话可能再次推进 master）；`.env.e2e.local` 存在且不入库 |
 | T1 任务集 v1 与快照（AC-CP-01、AC-CP-02） | `scripts/eval/tasks/set-cp-v1.json`（拟新增）、`scripts/eval/fixtures/CP-*/`（拟新增）、`scripts/eval/validate.mjs`（拟新增）、`scripts/eval/lib/tasks.mjs` | SP001 题库规格 → 30 条可执行任务（18 基本 + 12 保护）、B1 十条盲测、版本化快照与 SHA-256 登记 | 校验器用例：字段缺失、类别分布不符、盲测数量不足、保护用例缺失、快照哈希不符 → 逐条失败；修复后全通过 | `node scripts/eval/validate.mjs --set cp-v1` 退出码 0；报告条目中盲测无失败细节；B1/B2 登记写入 STATUS |
 | T2 预算与回合上限对齐（AC-CP-03、AC-CR-03） | `scripts/eval/lib/tasks.mjs`、`scripts/eval/lib/runner-core.mjs` | SP001 §7 预算档 + 产品无固定上限 → 版本化预算档、评估预算标注、终止分类 `BUDGET` | 预算用例：超请求/超 token/超时分别以 `BUDGET` 终止；预算档取值与 SP001 §7 一致；不再注入固定 8 轮 | 构造 30 轮档任务与超限任务各跑一次，报告分别显示通过与 `BUDGET` 失败并标注「评估预算」 |
 | T3 真实执行、权限与审批路径（AC-CP-04、AC-CR-05） | `scripts/eval/lib/runner-core.mjs`（live 装配）、`src/exec/*` 复用 | 任务声明（权限档、审批策略）→ 真实执行工具装配、隔离 cwd、按声明注入的审批网关 | 装配用例：read_only 下写入被拒、workspace_edit 下允许、越界改动被 `scope` 断言判失败；执行工具受只读与破坏性命令规则约束 | 真实 Provider 跑「跑测试→读失败→修复→重跑」任务，断言为测试通过 + 差异比对；审批「先拒绝后允许」场景证明拒绝后会话继续 |

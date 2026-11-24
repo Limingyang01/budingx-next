@@ -1,6 +1,6 @@
 # SP010 · Core 可靠性与高级能力接入前置需求（core-reliability）
 
-状态：设计已自审通过，待实施｜更新：2026-11-24｜输入基线：master `9be7753`，TUI 0.9.2（prepared）｜迭代：SP010
+状态：设计已自审通过，待实施｜更新：2026-11-24｜输入基线：master `74c5156`，TUI 0.9.2（prepared）｜迭代：SP010
 
 配套：[迭代汇总](../requirements-summary.md)｜[设计正本](../design/design.zh.md)｜[实施计划](../design/plan.zh.md)｜[状态](STATUS.md)｜[中期检查需求](../coding-parity-checkpoint/requirements.md)
 
@@ -79,7 +79,7 @@ readiness 结论、已修缺陷清单（含红绿证据）、未修缺陷与归�
 - 风险：readiness 核查易滑向「顺手实现」。控制方式是归属三分法与「本轮只修缺陷」的硬边界；发现新能力一律记录并交回。
 - 风险：改动 Core 会影响 TUI、无头与 serve 三个入口；每项修复必须跑全量 `npm test` 并核对三个入口的行为未变。
 - **OPEN-1**：子代理预算与熔断阈值在「父任务 + 多成员」场景下是否需要分计量，需 SP011 的真实形态确定；本轮只记录，不预设新阈值。
-- **OPEN-2**：SP009 短路径补丁 `50e558f` 未合入 master，本轮分支若含该修复须在 STATUS 标注来源。
+- **OPEN-2（已解决）**：SP009 短路径补丁 `50e558f`／`03ad128` 已合入 master `74c5156` 并推送，本轮基线包含该修复；实施前仍需复核实时 refs。
 - **OPEN-3**：本轮不修改 `~/.budingx` schema；若修复需要持久化字段变更，须先在设计中说明迁移与旧 fixture 兼容。
 
 ## 参考对照与偏离声明

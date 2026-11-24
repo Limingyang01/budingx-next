@@ -1,6 +1,6 @@
 # SP010 · 中期编码效果检查需求（coding-parity-checkpoint）
 
-状态：设计已自审通过，待实施｜更新：2026-11-24｜输入基线：master `9be7753`，TUI 0.9.2（prepared）｜迭代：SP010
+状态：设计已自审通过，待实施｜更新：2026-11-24｜输入基线：master `74c5156`，TUI 0.9.2（prepared）｜迭代：SP010
 
 配套：[迭代汇总](../requirements-summary.md)｜[设计正本](../design/design.zh.md)｜[实施计划](../design/plan.zh.md)｜[状态](STATUS.md)
 
@@ -90,12 +90,12 @@
 
 ## 依赖、风险与开放问题
 
-- 依赖：SP009 0.9.2 已合入 master（`4252808`、`9be7753`）；`npm run build` 产物；真实 Provider 凭据（`.env.e2e.local`，不入库）；`scripts/spec/check-spec.mjs` 的题库一致性检查继续有效。
+- 依赖：SP009 0.9.2 已合入 master（`4252808`、`9be7753`，短路径兼容修复 `74c5156`）；`npm run build` 产物；真实 Provider 凭据（`.env.e2e.local`，不入库）；`scripts/spec/check-spec.mjs` 的题库一致性检查继续有效。
 - 成本与时长：30 题 × 3 次 = 90 次真实运行，按 SP001 预算档最坏约 15 小时墙钟与真实计费。设计要求**按类别分批、可中断续跑**，并受 `.env.e2e.local` 的请求/费用上限约束；上限耗尽即停止并标 UNVERIFIED，不用无限重试提高通过率。
 - 风险：测量口径与产品行为变更耦合（评估器改错会误判产品）。控制方式是评估器单测 + 题目断言基于可观察事实 + 盲测与失败分析分离。
 - **OPEN-1**：headless 入口当前未暴露隔离 home 参数（`src/tui/headless.ts` 参数解析仅 `--verbose/--output-format/--input-format/--input-file/--session/--max-turns`）。制品核对若无法隔离用户数据根，改用既有程序化入口或记录 UNVERIFIED，**不在本轮扩参数**（属产品行为变更，另行授权）。
 - **OPEN-2**：高级组合任务与高级盲测配额依赖 SP015 的 inventory v2，本轮只登记缺口与 B2 预留位置。
-- **OPEN-3**：SP009 短路径补丁 `50e558f` 未合入 master；评估工作区建在临时目录（Windows 上可能是 8.3 短路径），该补丁与本轮测量环境相关，合入方式见[迭代汇总的前置条件](../requirements-summary.md#前置条件与已识别风险)。
+- **OPEN-3（已解决）**：SP009 短路径补丁 `50e558f`／`03ad128` 已合入 master `74c5156` 并推送；评估工作区建在临时目录（Windows 上可能是 8.3 短路径），本轮基线已含该修复，实施前复核实时 refs 即可。
 
 ## 参考对照与偏离声明
 

@@ -1,6 +1,6 @@
 # SP010 · 中期编码效果检查设计
 
-版本 v1.0（自审通过）｜2026-11-24｜设计基线 master `9be7753`｜需求正本 [coding-parity-checkpoint](../coding-parity-checkpoint/requirements.md) 与 [core-reliability](../core-reliability/requirements.md)
+版本 v1.0（自审通过）｜2026-11-24｜设计基线 master `74c5156`｜需求正本 [coding-parity-checkpoint](../coding-parity-checkpoint/requirements.md) 与 [core-reliability](../core-reliability/requirements.md)
 
 ## 1. 范围与实现依据
 
@@ -110,7 +110,7 @@ AC 以[需求正本](../coding-parity-checkpoint/requirements.md#验收条件)�
 - **盲测纪律风险**：中期结果易被当成调优目标。控制：B1 失败细节脱敏且不进修复依据；B2 另立批次供 SP016。
 - **OPEN-1**：headless 入口未暴露隔离 home 参数（`src/tui/headless.ts` 参数解析仅 `--verbose/--output-format/--input-format/--input-file/--session/--max-turns`）。设计采用环境变量重定向并以实测确认；不为此新增产品参数。
 - **OPEN-2**：高级组合任务与高级盲测配额依赖 SP015 的 inventory v2，本轮只登记缺口与 B2 预留位。
-- **OPEN-3**：SP009 短路径补丁 `50e558f` 未合入 master；评估工作区建在临时目录（Windows 上可能是 8.3 短路径），与该补丁相关。实施前先取得合入，或在本轮分支 cherry-pick 并在 STATUS 标注来源。
+- **OPEN-3（已解决）**：SP009 短路径补丁 `50e558f`／`03ad128` 已合入 master `74c5156` 并推送；评估工作区建在临时目录（Windows 上可能是 8.3 短路径），本轮基线已含该修复。实施前仍需复核实时 refs（并发会话可能再次推进 master）。
 - **OPEN-4**：Core 持久化 schema 变更需迁移与旧 fixture 兼容；若缺陷修复需要新字段，先补设计与迁移路径再改代码。
 
 ## 8. 与参考仓的对照点
