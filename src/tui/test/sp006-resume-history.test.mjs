@@ -165,6 +165,11 @@ test('SP006：运行时恢复后历史进入上下文、身份切换，续写落
   assert.equal(await send(first, '第一次提问'), 'completed')
 
   const second = open('session-two')
+  const rejected = second.sessions.resume('session-one')
+  assert.equal(rejected.ok, false)
+  assert.equal(second.session.id, 'session-two')
+  assert.equal(second.session.history.length, 0)
+  first.session.dispose()
   const restored = []
   const off = second.session.on((event) => {
     if (event.type === 'conversation_restored') restored.push(event)
@@ -242,6 +247,7 @@ test('SP006：TUI 用真实 /resume 命令与真实会话存储恢复出历史',
   // 1) 先用一个真实运行时写入旧会话。
   const writer = open('sess-existing')
   assert.equal(await send(writer, '旧会话里的问题'), 'completed')
+  writer.session.dispose()
 
   // 2) 当前会话的 TUI 用真实命令与真实会话存储恢复旧会话。
   const current = open('sess-current')
@@ -268,7 +274,7 @@ test('SP006 波次 F：旧转录里的碎片文本块在恢复时合并为一条
       blocks: [
         { type: 'text', text: '我调整' },
         { type: 'text', text: '颗粒度' },
-        { type: 'thinking', text: '内部思考不显示' },
+        { type: 'thinking', text: '可显示的思考' },
         { type: 'text', text: '（比如深挖某一板块）' },
         { type: 'tool_use', id: 'call-1', name: 'Read', input: { path: 'a.txt' } }
       ]
@@ -284,12 +290,14 @@ test('SP006 波次 F：旧转录里的碎片文本块在恢复时合并为一条
     entries.map((entry) => [entry.kind, entry.text]),
     [
       ['user', '调整一下'],
-      ['assistant', '我调整颗粒度（比如深挖某一板块）'],
+      ['assistant', '我调整颗粒度'],
+      ['thinking', '可显示的思考'],
+      ['assistant', '（比如深挖某一板块）'],
       ['tool', 'Read(a.txt)']
     ],
-    '同一条消息里的连续文本块必须合并，思考块不打断合并也不进入转录'
+    '同一条消息里的连续文本块必须合并，思考段保留原来的相对位置'
   )
-  assert.equal(entries[2].status, 'success')
+  assert.equal(entries[4].status, 'success')
 })
 
 test('SP006 波次 F：多增量流式回答落盘为单块，恢复后整段显示', async (t) => {
@@ -346,6 +354,7 @@ test('SP006 波次 F：多增量流式回答落盘为单块，恢复后整段显
   const textBlocks = assistant.blocks.filter((block) => block.type === 'text')
   assert.equal(textBlocks.length, 1, '一条助手消息只应保留一个文本块')
   assert.equal(textBlocks[0].text, sentence)
+  writer.session.dispose()
 
   const current = open('sess-current')
   const ui = await mountTty(t, {

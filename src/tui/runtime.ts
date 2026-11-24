@@ -1,16 +1,21 @@
 import { randomUUID } from 'node:crypto'
+import { closeSync, fstatSync, openSync, readSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
+import { basename, dirname, join, relative } from 'node:path'
 import { createAskUserQuestionTool } from '../core/questions.js'
 import { createWebSearchTool } from '../provider/web-search.js'
 import { createWebFetchTool } from '../provider/web-fetch.js'
-import { Session, type SubmitOptions } from '../core/session.js'
+import { Session, type SessionOptions, type SubmitOptions } from '../core/session.js'
 import type { ApprovalGateway, ToolHandler } from '../core/tools.js'
 import type { DenialRecord, TurnSnapshot } from '../core/events.js'
 import type { PermissionMode } from '../core/permissions.js'
+import type { SessionWorktreeBinding } from '../core/transcript.js'
 import { createCommandRunner } from '../exec/runner.js'
 import { createSandboxPolicy } from '../exec/sandbox-policy.js'
 import { createExecTools } from '../exec/tools.js'
+import { resolveTaskOutputPath } from '../exec/persist.js'
 import { createPlanModeHost } from '../plan/host.js'
+import { getWorktreeBranch, verifyWorktreeSessionSync } from '../git/worktree.js'
 import { createPlanModeTools, routePlanDraftTools } from '../plan/tools.js'
 import { createOpenAiProvider } from '../provider/openai.js'
 import { createAnthropicProvider } from '../provider/anthropic.js'
@@ -23,6 +28,7 @@ import { loadAgentDefinitions } from './agents.js'
 import { createSubagentTranscript } from '../storage/session-transcript.js'
 import { createImageCache, type ImageCache } from '../storage/image-cache.js'
 import { loadProjectInstructionsSync } from './project-instructions.js'
+import { activateSkill, discoverSkills, findSkill, type SkillEntry } from './skills.js'
 import { generatePromptSuggestion } from './suggestion.js'
 import { ConfigStore } from '../storage/config-store.js'
 import { dataRoot, permissionsPath } from '../storage/paths.js'
@@ -30,6 +36,9 @@ import { PermissionsStore, readPermissionMode, savePermissionMode } from '../sto
 import {
   createSessionStore,
   startSession,
+  type SessionChangeResult,
+  type SessionSearchEntry,
+  type SessionWriterLock,
   type SessionStore
 } from '../storage/session-store.js'
 import {
@@ -41,6 +50,7 @@ import {
 import { estimateTokens, normalizeBudget, triggerTokens } from '../core/context-budget.js'
 import { resolveContextWindow } from '../core/context-window.js'
 import type { McpServerStatus } from './mcp/types.js'
+import type { ConnectedMcp } from './mcp/index.js'
 import type { SessionHooks } from '../core/hooks.js'
 import type { ReasoningEffort } from '../core/provider.js'
 import type { ResolvedConfig } from '../storage/profiles.js'
@@ -51,10 +61,12 @@ import {
 } from '../workspace/policy.js'
 import { createWorkspaceTools, resolveFileReferences, type CheckpointStore } from '../workspace/index.js'
 import { createWorkspace, type Workspace } from '../workspace/paths.js'
+import type { TasksPanelPort } from './tasks-panel.js'
 import type { Tracer } from '../core/observability.js'
 import {
   loadTracingEnvironment,
   isValidBaseUrl,
+  redactValue,
   TracingRuntime,
   type ReceiptReporter
 } from '../observability/index.js'
@@ -101,8 +113,20 @@ export type AgentRuntime = {
   toolNames: string[]
   /** SP006 CMD-08：后台任务快照（来自 exec runner 的后台任务表）。 */
   tasks?: { list: () => import('./tasks.js').TaskRecord[] }
+  taskPanel?: TasksPanelPort
+  skillCatalog?: {
+    list: () => SkillEntry[]
+    reload: () => SkillEntry[]
+    activate: typeof activateSkill
+  }
+  worktree?: {
+    origin: () => Promise<{ cwd: string; branch: string }>
+    enter: (binding: SessionWorktreeBinding) => Promise<void>
+    exit: () => Promise<void>
+    idle: () => boolean
+  }
   /** SP006 §8.2：MCP 服务器连接状态（/mcp 与诊断用）。 */
-  mcp?: { statuses: McpServerStatus[] }
+  mcp?: Pick<ConnectedMcp, 'statuses'> & Partial<Pick<ConnectedMcp, 'start' | 'stop' | 'reconnect' | 'subscribe'>>
   /** SP007 T9：子代理 registry（卡片、ctrl+b 后台化、/tasks Agents 分组、TaskOutput/TaskStop）。 */
   agents?: AgentRegistry
   /** SP007 RD-12：ToolSearch 控制器（门控状态与诊断用）。 */
@@ -121,6 +145,9 @@ export type AgentRuntime = {
       /** SP006：恢复后当前生效的会话 id（恢复会切换身份）。 */
       sessionId?: string
     }
+    fork?: (sessionId?: string) => SessionChangeResult & { warnings?: string[] }
+    rename?: (title: string) => SessionChangeResult
+    searchIndex?: () => SessionSearchEntry[]
   }
   /** 0.5.2：上下文用量（provider 真实 usage 优先，缺失时本地估算）。 */
   contextUsage?: {
@@ -243,10 +270,12 @@ export type AgentRuntimeOptions = {
   maxIterations?: number
   /** SP005: enable the session transcript (persistence) and project memory. */
   persistence?: boolean
+  /** serve owns its writer lock through the host ownership role. */
+  sessionWriterOwnedExternally?: boolean
   /** 0.5.2: initial reasoning effort; /effort changes it at runtime. */
   reasoningEffort?: ReasoningEffort
   /** SP006 §8.2：已连接的 MCP 服务器提供的工具与状态。 */
-  mcp?: { tools: ToolHandler[]; statuses: McpServerStatus[] }
+  mcp?: Pick<ConnectedMcp, 'tools'> & NonNullable<AgentRuntime['mcp']>
   /** SP006 §9：hooks 运行器；未提供时不触发任何 hook。 */
   hooks?: SessionHooks
 }
@@ -271,9 +300,19 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   }
   // 全自动档位允许工作区外目标（用户 2026-11-23 缺陷）：边界判定跟随当前模式。
   let currentPermissionMode: PermissionMode | undefined
-  const workspace = createWorkspace(options.cwd, {
+  const makeWorkspace = (cwd: string) => createWorkspace(cwd, {
     allowOutside: () => currentPermissionMode === 'full_access'
   })
+  const originWorkspace = makeWorkspace(options.cwd)
+  let activeWorkspace = originWorkspace
+  let activeWorktree: SessionWorktreeBinding | undefined
+  let originBranch: string | undefined
+  const workspace: Workspace = {
+    get root() { return activeWorkspace.root },
+    resolve: (path) => activeWorkspace.resolve(path),
+    isInside: (path) => activeWorkspace.isInside(path),
+    realOf: (path) => activeWorkspace.realOf(path)
+  }
   const permissionStore = new PermissionsStore(
     options.home ? permissionsPath(options.home) : undefined
   )
@@ -283,6 +322,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     workspace,
     rules: load.file.rules as PermissionRule[],
     autoAcceptWorkspaceEdits: options.persistPermissionMode,
+    managedWorkspaceRoot: () => activeWorktree ? activeWorkspace.root : undefined,
     mode: options.mode ?? (options.persistPermissionMode && !load.corrupt
       ? readPermissionMode(options.home)
       : 'read_only'),
@@ -294,11 +334,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   })
   // Search results honour Read deny rules (SP003 T18i): a file the policy
   // refuses to read must not leak through Glob/Grep listings either.
-  const { tools: workspaceTools, checkpoint } = createWorkspaceTools(workspace, {
-    readDenied: (relativePath) =>
-      policy.decide({ tool: 'Read', capability: 'read', path: relativePath })
-        .action === 'deny'
+  const workspaceToolsFor = (target: Workspace) => createWorkspaceTools(target, {
+    readDenied: (relativePath) => policy.decide({ tool: 'Read', capability: 'read', path: relativePath }).action === 'deny'
   })
+  let workspaceTools = workspaceToolsFor(activeWorkspace)
   // SP004 §4.4/§6.1：会话标识隔离后台输出目录与会话计划文件。
   const sessionId = options.sessionId ?? randomUUID()
   const tracing = setupTracing({
@@ -316,19 +355,21 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   // 0.5.4：对齐参考实现——权限审批是安全控制，沙箱为可选加固。未配置隔离后端时
   // 采用宿主信任执行：只读命令免审、其余按权限档位审批，命令可用而非一律拒绝。
   const sandboxPolicy = createSandboxPolicy({ hostTrusted: true })
-  const runner = createCommandRunner({
-    defaultCwd: workspace.root,
+  const runnerFor = (id: string, cwd: string) => createCommandRunner({
+    defaultCwd: cwd,
     sandboxPolicy,
-    sessionId,
+    sessionId: id,
     ...(options.home ? { home: options.home } : {})
   })
+  let runner = runnerFor(sessionId, workspace.root)
+  const runners = new Map([[sessionId, runner]])
   const execTools = createExecTools({
     runner,
     defaultCwd: workspace.root,
     sandboxPolicy
   })
   const tools: ToolHandler[] = [
-    ...workspaceTools,
+    ...workspaceTools.tools,
     ...execTools,
     createWebSearchTool(process.env.BUDINGX_TAVILY_API_KEY),
     createWebFetchTool(
@@ -336,6 +377,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     ),
     ...(options.mcp?.tools ?? [])
   ]
+  let workspaceToolCount = workspaceTools.tools.length + execTools.length
   const denials: DenialRecord[] = []
   // SP005 §5：会话转录与索引。持久化是可选的，未开启时行为与 SP004 一致。
   // 0.5.2：推理强度在运行时可变；会话每次请求读取一次。
@@ -346,6 +388,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   let reasoningEffort: ReasoningEffort | undefined = options.reasoningEffort
   const persistence = options.persistence ?? false
   let sessionStore: SessionStore | undefined
+  let writer: SessionWriterLock | undefined
   let transcript: ReturnType<typeof startSession>['transcript'] | undefined
   if (persistence) {
     sessionStore = createSessionStore({
@@ -353,20 +396,62 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       ...(options.home ? { home: options.home } : {})
     })
     try {
+      if (!options.sessionWriterOwnedExternally) {
+        const claim = sessionStore.acquire(sessionId)
+        if (!claim.acquired) throw new Error(`Session ${sessionId} is locked: ${claim.reason}`)
+        writer = claim.lock
+      }
       transcript = startSession({
         sessionId,
         workspaceRoot: workspace.root,
         ...(options.home ? { home: options.home } : {})
       }).transcript
     } catch (error) {
-      warnings.push(
-        `session transcript could not be created: ${error instanceof Error ? error.message : String(error)}`
-      )
+      writer?.release()
+      throw error
     }
   }
   // SP006 §7：每个请求前重读项目指令，文件改动下一回合生效；读取失败只告警不中断。
   const instructionHome = options.home ?? homedir()
-  let instructionWarningsSeen = 0
+  const seenInstructionWarnings = new Set<string>()
+  function keepInstructionWarnings(messages: string[]): void {
+    for (const message of messages) {
+      if (seenInstructionWarnings.has(message)) continue
+      seenInstructionWarnings.add(message)
+      warnings.push(message)
+    }
+  }
+  let availableSkills: SkillEntry[] | undefined
+  function allowProjectFile(path: string): boolean {
+    const target = workspace.isInside(path) ? relative(workspace.root, path).replaceAll('\\', '/') : path
+    return policy.decide({ tool: 'Read', capability: 'read', path: target }).action === 'allow'
+  }
+  const skillCatalog = {
+    list: () => availableSkills ??= discoverSkills({ homeDir: instructionHome, workspaceDir: workspace.root }),
+    reload: () => availableSkills = discoverSkills({ homeDir: instructionHome, workspaceDir: workspace.root }),
+    activate: (skill: SkillEntry, invocation: 'manual' | 'model') => activateSkill(skill, invocation, (path) =>
+      skill.scope === 'user' || allowProjectFile(path)
+    )
+  }
+  tools.push({
+    name: 'Skill',
+    summary: 'Activate an available local skill by name for the current turn.',
+    parameters: {
+      type: 'object', properties: { name: { type: 'string' } },
+      required: ['name'], additionalProperties: false
+    },
+    describe: () => 'Activate a local skill',
+    async execute(input, context) {
+      const name = (input as { name?: unknown })?.name
+      const skill = typeof name === 'string' ? findSkill(skillCatalog.list(), name) : undefined
+      if (!skill) throw new Error('Unknown skill')
+      const activation = skillCatalog.activate(skill, 'model')
+      if (!activation.ok) throw new Error(activation.error)
+      if (!context.activateSkill) throw new Error('Skill activation is unavailable')
+      context.activateSkill({ name: skill.name, ...activation })
+      return `Skill "${skill.name}" activated.`
+    }
+  })
   // SP007：快照解析器供主会话与子代理 registry 复用（协议/能力一致）。
   const resolveSnapshot = (): TurnSnapshot => {
     const config = options.getConfig()
@@ -382,7 +467,15 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       }
     }
   }
-  const disposers: (() => void)[] = [() => runner.dispose?.()]
+  const disposers: (() => void)[] = [() => { for (const item of runners.values()) item.dispose?.() }]
+  const unsubscribeMcp = options.mcp?.subscribe?.(() => {
+    for (let index = tools.length - 1; index >= 0; index--) {
+      if (tools[index].name.startsWith('mcp__')) tools.splice(index, 1)
+    }
+    tools.push(...(options.mcp?.tools ?? []))
+  })
+  if (unsubscribeMcp) disposers.push(unsubscribeMcp)
+  if (sessionStore) disposers.push(() => writer?.release())
   // SP009 0.9.1 LC-03/04：上下文窗口按模型动态解析，交互默认接入预算（自动压缩常开）。
   // 用 getter 让会话/状态栏每次读取都拿到当前模型的最新窗口，切换模型即生效。
   // 优先级：宿主显式预算 > 环境变量 > 档案 contextWindow（含服务端发现值）> 默认。
@@ -409,18 +502,44 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     mcpPending: options.mcp?.statuses?.some((s) => !s.connected && !s.error) ?? false
   })
   if (toolSearch.tool) tools.push(toolSearch.tool)
+  function readInstructions(targetDir?: string) {
+    const rules = loadProjectInstructionsSync({
+      workspaceDir: workspace.root, homeDir: instructionHome, targetDir,
+      allowImport: (path, fromUserConfig) => {
+        if (!fromUserConfig) return allowProjectFile(path)
+        const parts = relative(dataRoot(instructionHome), path).split(/[\\/]/)
+        // User rule documents may import nearby Markdown or text, separate from product state.
+        return /\.(?:md|txt)$/i.test(path) && (parts.length === 1 || parts[0] === 'rules')
+      }
+    })
+    keepInstructionWarnings(rules.warnings)
+    return rules
+  }
+  function resolveProjectContext(): string | undefined {
+    const instructions = readInstructions()
+    const modelSkills = skillCatalog.list()
+      .filter((skill) => skill.valid && skill.meta?.disableModelInvocation !== true)
+      .slice(0, 100)
+      .map((skill) => `- ${skill.name}: ${skill.description.replace(/\s+/g, ' ').slice(0, 240)}`)
+    const catalog = modelSkills.length ? 'Available skills (use the Skill tool by name):\n' + modelSkills.join('\n') : ''
+    return [instructions.content, catalog].filter(Boolean).join('\n\n') || undefined
+  }
+  const resolveLocalInstructions: NonNullable<SessionOptions['resolveLocalInstructions']> = (target) => {
+    try {
+      const resolved = workspace.resolve(target.path)
+      const directory = target.kind === 'directory' || resolved.isDirectory ? resolved.real : dirname(resolved.real)
+      if (directory === workspace.root || !workspace.isInside(directory)) return undefined
+      const rules = readInstructions(directory)
+      return rules.scopedContent ? { key: relative(workspace.root, directory), content: rules.scopedContent } : undefined
+    } catch {
+      return undefined
+    }
+  }
   const session = new Session({
     id: sessionId,
     resolveReasoningEffort: () => reasoningEffort,
-    resolveSystemContext: () => {
-      const instructions = loadProjectInstructionsSync({
-        workspaceDir: workspace.root,
-        homeDir: instructionHome
-      })
-      for (const line of instructions.warnings.slice(instructionWarningsSeen)) warnings.push(line)
-      instructionWarningsSeen = instructions.warnings.length
-      return instructions.content || undefined
-    },
+    resolveSystemContext: resolveProjectContext,
+    resolveLocalInstructions,
     provider: provider(),
     resolveProvider: provider,
     approval: options.approval,
@@ -452,19 +571,23 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     resolveSnapshot,
     approval: options.approval,
     policy,
+    redactDiagnostic: (value) => JSON.parse(redactValue(value, [options.getConfig().apiKey])),
+    resolveProjectContext,
+    resolveLocalInstructions,
     // 子政策＝min(父,定义)：宿主以父规则快照＋目标档位重建（core 禁 import workspace，D14）。
     createChildPolicy: (mode) =>
       createPermissionPolicy({
         workspace,
-        rules: load.file.rules as PermissionRule[],
+        rules: policy.listRules(),
         mode,
+        managedWorkspaceRoot: () => activeWorktree ? activeWorkspace.root : undefined,
         ...(options.home ? { dataRootOverride: dataRoot(options.home) } : {})
       }),
     ...(persistence
       ? {
           createTranscript: (agentId: string) =>
             createSubagentTranscript({
-              parentSessionId: sessionId,
+              parentSessionId: session.id,
               agentId,
               ...(options.home ? { home: options.home } : {})
             })
@@ -474,26 +597,128 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   })
   tools.push(...createAgentTools(registry, agentDefinitions))
   disposers.push(() => registry.dispose())
-  const imageCache = createImageCache({
-    sessionId,
-    ...(options.home ? { home: options.home } : {})
-  })
+  let cacheId = session.id
+  let activeImageCache = createImageCache({ sessionId: cacheId, home: options.home })
+  function currentImageCache(): ImageCache {
+    if (cacheId !== session.id) {
+      cacheId = session.id
+      activeImageCache = createImageCache({ sessionId: cacheId, home: options.home })
+    }
+    return activeImageCache
+  }
+  const imageCache: ImageCache = {
+    get directory() { return currentImageCache().directory },
+    get size() { return currentImageCache().size },
+    put: (...args) => currentImageCache().put(...args),
+    get: (id) => currentImageCache().get(id),
+    nextId: () => currentImageCache().nextId?.() ?? 1
+  }
   session.on((event) => {
     if (event.type === 'denial_recorded') denials.push(event.denial)
   })
   function setPermissionMode(mode: PermissionMode): boolean {
     policy.setMode(mode)
-    if (!options.persistPermissionMode) return true
     try {
-      savePermissionMode(mode, options.home)
+      transcript?.append({ type: 'permission_mode', ts: new Date().toISOString(), mode })
+      if (options.persistPermissionMode) savePermissionMode(mode, options.home)
       return true
     } catch {
       return false
     }
   }
 
-  // SP005 §5/§7：/sessions 与 /resume 的宿主实现。恢复只装载历史，
-  // 绝不重放工具调用；未知结果标记为需核对。
+  function canSwitchSession(): boolean {
+    return !session.isBusy && session.queuedInputs.length === 0 && !session.planMode.active &&
+      !registry.list().some((agent) => agent.state === 'running' || agent.state === 'backgrounded') &&
+      !runner.list().some((task) => task.outcome === 'running')
+  }
+
+  function prepareWorkspace(targetId: string, binding: SessionWorktreeBinding | undefined) {
+    const targetWorkspace = binding ? makeWorkspace(verifyWorktreeSessionSync(binding, originWorkspace.root)) : originWorkspace
+    const targetRunner = runners.get(targetId) ?? runnerFor(targetId, targetWorkspace.root)
+    const targetTools = workspaceToolsFor(targetWorkspace)
+    const exec = createExecTools({ runner: targetRunner, defaultCwd: targetWorkspace.root, sandboxPolicy })
+    const plan = createPlanModeHost({ sessionId: targetId, workspace: targetWorkspace, home: options.home })
+    const replacements = [...targetTools.tools, ...exec]
+    routePlanDraftTools(replacements, session, plan.draftPath, plan.draftWorkspace)
+    return () => {
+      policy.clearRemembered()
+      activeWorkspace = targetWorkspace
+      activeWorktree = binding
+      runner = targetRunner
+      runners.set(targetId, targetRunner)
+      workspaceTools = targetTools
+      availableSkills = undefined
+      session.replacePlanModeHost(plan)
+      tools.splice(0, workspaceToolCount, ...replacements)
+      workspaceToolCount = replacements.length
+      for (const planTool of createPlanModeTools(session, plan.draftPath)) {
+        const index = tools.findIndex((entry) => entry.name === planTool.name)
+        if (index >= 0) tools[index] = planTool
+      }
+    }
+  }
+
+  async function getWorktreeOrigin() {
+    originBranch ??= await getWorktreeBranch(originWorkspace.root)
+    if (!originBranch) throw new Error('Worktree operations require a named origin branch')
+    return { cwd: originWorkspace.root, branch: originBranch }
+  }
+  async function bindWorktree(binding?: SessionWorktreeBinding): Promise<void> {
+    if (!writer || !transcript) throw new Error('An owned saved session is required')
+    if (!canSwitchSession()) throw new Error('Wait for the active plan, turn, or task before changing worktrees')
+    const origin = await getWorktreeOrigin()
+    if (!canSwitchSession()) throw new Error('A plan, turn, or task started during the worktree change')
+    if (binding && binding.baseBranch !== origin.branch) throw new Error('The worktree uses a different origin branch')
+    const apply = prepareWorkspace(session.id, binding)
+    transcript.append({ type: 'worktree_binding', ts: new Date().toISOString(), binding, originBranch: origin.branch })
+    apply()
+  }
+
+  function resumeSession(target: string): ReturnType<NonNullable<AgentRuntime['sessions']>['resume']> {
+    if (!sessionStore) return { ok: false, message: 'Session storage is unavailable' }
+    if (!canSwitchSession()) return { ok: false, message: 'Wait for the active plan, turn, or task before switching sessions' }
+    const switching = target !== session.id
+    if (switching && !writer) return { ok: false, message: 'This host owns a fixed session ID' }
+    // A read-only first pass rejects unknown or foreign sessions without creating their directories.
+    let restored = sessionStore.restore(target)
+    if (restored.status !== 'restored') return { ok: false, message: restored.message ?? restored.status }
+    let acquired: SessionWriterLock | undefined
+    if (switching) {
+      const claim = sessionStore.acquire(target)
+      if (!claim.acquired) return { ok: false, message: claim.reason }
+      try {
+        restored = sessionStore.restore(target)
+        if (restored.status !== 'restored' || !restored.transcript) {
+          claim.lock.release()
+          return { ok: false, message: restored.message ?? restored.status }
+        }
+      } catch (error) {
+        claim.lock.release()
+        throw error
+      }
+      acquired = claim.lock
+    }
+    try {
+      if (switching || restored.worktree || activeWorktree) prepareWorkspace(target, restored.worktree)()
+    } catch (error) {
+      acquired?.release()
+      return { ok: false, message: error instanceof Error ? error.message : 'Cannot restore the saved worktree' }
+    }
+    originBranch = restored.worktreeOriginBranch
+    if (acquired && restored.transcript) {
+      const previous = writer
+      writer = acquired
+      transcript = restored.transcript
+      session.adoptIdentity({ id: target, transcript })
+      previous?.release()
+    }
+    session.restorePermissionMode(restored.summary?.permissionMode)
+    const messages = restored.messages as unknown as Parameters<typeof session.restoreHistory>[0]
+    session.restoreHistory(messages)
+    return { ok: true, messages: [...messages], sessionId: session.id, needsReview: restored.needsReview, warnings: restored.warnings }
+  }
+
   const sessionsSurface = sessionStore
     ? {
         list: () =>
@@ -503,47 +728,24 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             updatedAt: entry.updatedAt,
             turns: entry.turns
           })),
-        resume: (target: string) => {          const restored = sessionStore!.restore(target)
-          if (restored.status !== 'restored') {
-            return { ok: false, message: restored.message ?? restored.status }
+        resume: resumeSession,
+        searchIndex: () => sessionStore!.searchIndex(),
+        fork: (target = session.id) => {
+          if (!writer || !canSwitchSession()) return { ok: false as const, message: 'Wait for the active session work before branching' }
+          const branch = sessionStore!.fork(target, {
+            permissionMode: policy.getMode(),
+            ...(target === session.id ? { messages: session.history } : {})
+          })
+          if (!branch.ok) return branch
+          const resumed = resumeSession(branch.sessionId)
+          if (!resumed.ok) {
+            return { ok: false as const, message: `Created branch ${branch.sessionId}, but could not switch: ${resumed.message}` }
           }
-          const restoredMessages = restored.messages as { id: string; role: string; blocks: unknown[] }[]
-          // SP006：恢复出的历史既进入模型上下文，也进入可见转录
-          // （restoreHistory 会发出 conversation_restored 事件）。
-          session.restoreHistory(restoredMessages as unknown as Parameters<typeof session.restoreHistory>[0])
-          // SR-10：沿用会话记录的权限模式，且绝不因恢复而升权。
-          session.restorePermissionMode(restored.summary?.permissionMode)
-          // SP006：切换会话身份与转录端口，让续写继续落在被恢复会话里
-          // （对齐参考实现的 switchSession）。失败时保持原身份，可见性不受影响。
-          const identityWarnings: string[] = []
-          let activeSessionId = session.id
-          try {
-            const started = startSession({
-              sessionId: target,
-              workspaceRoot: workspace.root,
-              ...(options.home ? { home: options.home } : {})
-            })
-            session.adoptIdentity({ id: target, transcript: started.transcript })
-            activeSessionId = target
-          } catch (error) {
-            const detail = error instanceof Error ? error.message : String(error)
-            identityWarnings.push(
-              `resumed session identity could not be switched: ${detail}`
-            )
-            warnings.push(identityWarnings[identityWarnings.length - 1])
-          }
-          return {
-            ok: true,
-            messages: restoredMessages,
-            sessionId: activeSessionId,
-            needsReview: restored.needsReview.map((step) => ({
-              name: step.name,
-              callId: step.callId,
-              ...(step.detail ? { detail: step.detail } : {})
-            })),
-            warnings: [...restored.warnings, ...identityWarnings]
-          }
+          return { ...branch, warnings: resumed.warnings }
         },
+        rename: (title: string) => writer
+          ? sessionStore!.rename(session.id, title, writer)
+          : { ok: false as const, message: 'This host does not own the session writer' },
         // SP009：只读读取某个会话，不切换身份、不写盘（/export 选择会话用）。
         read: (target: string) => {
           const restored = sessionStore!.restore(target)
@@ -551,7 +753,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             return { ok: false, message: restored.message ?? restored.status }
           return {
             ok: true,
-            messages: restored.messages as { role: string; blocks: unknown[] }[]
+            messages: restored.messages,
+            title: restored.summary?.title,
+            changes: restored.changes
           }
         }
       }
@@ -591,7 +795,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                 ...(options.home ? { home: options.home } : {})
               })
             : createSessionMemory({
-                sessionId,
+                sessionId: session.id,
                 ...(options.home ? { home: options.home } : {})
               })
           const read = memory.read()
@@ -607,7 +811,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                 ...(options.home ? { home: options.home } : {})
               })
             : createSessionMemory({
-                sessionId,
+                sessionId: session.id,
                 ...(options.home ? { home: options.home } : {})
               })
           const written = memory.write(title, text)
@@ -658,9 +862,79 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         }
       }
 
+  const taskPanel: TasksPanelPort = {
+    list: () => [
+      ...runner.list().flatMap((result) => result.taskId ? [{
+        kind: 'shell' as const, id: result.taskId,
+        title: result.command ?? result.taskId,
+        status: result.outcome,
+        exitCode: result.exitCode,
+        exitReason: result.reason
+      }] : []),
+      ...registry.list().filter((agent) => agent.parentSessionId === session.id).map((agent) => ({
+        kind: 'agent' as const, id: agent.agentId, title: agent.description,
+        status: agent.state, exitReason: agent.error
+      }))
+    ],
+    stop(row) {
+      if (row.kind === 'shell') {
+        const task = runner.status(row.id)
+        if (!task) return { result: 'unavailable' }
+        return { result: runner.cancel(row.id) ? 'requested' : 'already-finished' }
+      }
+      const agent = registry.get(row.id)
+      if (agent?.parentSessionId !== session.id) return { result: 'unavailable' }
+      return { result: registry.stop(row.id).ok ? 'requested' : 'already-finished' }
+    },
+    readLog(row) {
+      const cap = 32 * 1024
+      function preview(text: string) {
+        const bytes = Buffer.from(text)
+        return { text: bytes.subarray(Math.max(0, bytes.length - cap)).toString(), truncated: bytes.length > cap }
+      }
+      let logPath: string | undefined
+      let fallback: string | undefined
+      if (row.kind === 'shell') {
+        const task = runner.status(row.id)
+        if (!task) return { reason: 'unavailable' }
+        const expected = resolveTaskOutputPath(session.id, row.id, options.home)
+        if (task.persistedOutputPath === expected) logPath = expected
+        fallback = task.output
+      } else {
+        const agent = registry.get(row.id)
+        if (agent?.parentSessionId !== session.id) return { reason: 'unavailable' }
+        fallback = agent.result ?? agent.error
+      }
+      if (logPath) {
+        try {
+          const canonical = realpathSync(logPath)
+          const privateRoot = realpathSync(dataRoot(options.home))
+          if (relative(join(privateRoot, 'sessions', session.id, 'tasks', basename(logPath)), canonical) !== '') {
+            return { reason: 'unavailable' }
+          }
+          const descriptor = openSync(canonical, 'r')
+          try {
+            const info = fstatSync(descriptor)
+            if (!info.isFile()) return { reason: 'unavailable' }
+            const buffer = Buffer.alloc(Math.min(cap, info.size))
+            const length = readSync(descriptor, buffer, 0, buffer.length, info.size - buffer.length)
+            return { text: buffer.toString('utf8', 0, length), truncated: info.size > cap }
+          } finally {
+            closeSync(descriptor)
+          }
+        } catch {
+          return fallback ? preview(fallback) : { reason: 'unavailable' }
+        }
+      }
+      return fallback ? preview(fallback) : { reason: 'no-log' }
+    }
+  }
+
   return {
-    session, workspace, policy, setPermissionMode, permissionStore, checkpoint, denials, warnings,
-    toolNames: tools.map((tool) => tool.name),
+    session, workspace, policy, setPermissionMode, permissionStore, denials, warnings, taskPanel, skillCatalog,
+    get checkpoint() { return workspaceTools.checkpoint },
+    worktree: { origin: getWorktreeOrigin, enter: bindWorktree, exit: () => bindWorktree(), idle: canSwitchSession },
+    get toolNames() { return tools.map((tool) => tool.name) },
     tasks: {
       list: () =>
         runner.list().map((result) => ({
@@ -693,7 +967,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     ...(contextSurface ? { context: contextSurface } : {}),
     ...(memorySurface ? { memory: memorySurface } : {}),
     ...(suggestionsSurface ? { suggestions: suggestionsSurface } : {}),
-    ...(options.mcp ? { mcp: { statuses: options.mcp.statuses } } : {}),
+    ...(options.mcp ? { mcp: options.mcp } : {}),
     agents: registry,
     toolSearch,
     imageCache

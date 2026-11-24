@@ -35,12 +35,15 @@ export type PermissionPolicyOptions = {
   autoAcceptWorkspaceEdits?: boolean
   /** Only for tests: replaces the home-derived user data root. */
   dataRootOverride?: string
+  /** Only a verified linked checkout currently assigned to this session may use the worktrees subtree. */
+  managedWorkspaceRoot?: () => string | undefined
 }
 
 export type BudingPermissionPolicy = PermissionPolicy & {
   listRules(): PermissionRule[]
   setRules(rules: PermissionRule[]): void
   shadowed(): ShadowedRule[]
+  clearRemembered(): void
 }
 
 const CREDENTIAL_SUFFIXES = ['.pem', '.key', '.p12', '.pfx']
@@ -164,9 +167,13 @@ export function createPermissionPolicy(
   }
 
   function floorVerdict(request: PermissionRequest, real: string): PermissionVerdict | undefined {
-    // B-1: the product user data root is never a tool target.
+    // B-1: user data is private. A verified linked checkout remains project data.
     if (isInsideRoot(userRoot, real)) {
-      return { action: 'deny', reason: 'The budingx user data directory is off-limits', ruleId: 'floor:data' }
+      const managed = options.managedWorkspaceRoot?.()
+      const worktrees = resolve(userRoot, 'worktrees')
+      if (!managed || relative(worktrees, managed) === '' || !isInsideRoot(worktrees, managed) || !isInsideRoot(managed, real)) {
+        return { action: 'deny', reason: 'The budingx user data directory is off-limits', ruleId: 'floor:data' }
+      }
     }
     // B-2: credential-shaped file names.
     if (isCredentialLike(basename(request.path ?? '')) || isCredentialLike(basename(real))) {
@@ -282,6 +289,7 @@ export function createPermissionPolicy(
     remember(request: PermissionRequest): void {
       if (canRemember(request)) memory.add(memoryKey(request))
     },
+    clearRemembered: () => memory.clear(),
     getMode: () => mode,
     setMode(next: PermissionMode): void {
       if (next === mode) return

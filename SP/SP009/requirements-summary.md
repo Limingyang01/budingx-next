@@ -2,7 +2,7 @@
 
 状态：**已合入 master 并发布 0.9.0 与 0.9.1**（2026-11-23 开轮；用户 `/buding-sdd 开始SP009` 授权开发，继承 AGENTS.md 审查与集成委托）。设计已由 Agent 自审通过，计划沿用同版结论；合并提交 `10704ab`／`2a918b3`，发布运行 [#45100998785](https://github.com/Limingyang01/budingx-next/actions/runs/45100998785)（源码 `aecd8b7`），该运行为 0.9.0 的历史回执。当前 npm `latest` 为 0.9.1，详见 [发布回执](../../release-notes/v0.9.1.md)。
 
-0.9.2 优化已按 2026-11-24 用户指令登记为 **PLANNED**，详见 [TUI 差距优化需求](tui-gap-optimizations/requirements.md)及[状态](tui-gap-optimizations/STATUS.md)。该子需求使 SP009 在 0.9.0/0.9.1 交付后**重开为新一轮补丁（0.9.2，PLANNED）**；轮次状态在本文件按 PLANNED 记录，后续阶段进度随该子需求的 STATUS 推进。
+0.9.2 优化已按 2026-11-24 用户指令**开始开发（IN_PROGRESS）**，详见 [TUI 差距优化需求](tui-gap-optimizations/requirements.md)及[状态](tui-gap-optimizations/STATUS.md)。后续阶段进度随该子需求的 STATUS 推进。
 
 0.9.2 出口验收：12 项产品 AC 逐条 PASS（无参考对照的自研扩展项另附自有判据与实测结果；#42 的端到端证据必须来自真实 Provider 的真实子代理任务）；既有命令面、三档权限、工作区边界与制品入口无回归；npm 发布回执按发布台账取得。版本口径：**USER_CONFIRMED（2026-11-24 用户决定）保持 0.9.2**，不按 minor 处理；与版本规范的语义张力记入[路线图版本记录](../../docs/iteration-plan.md#版本记录)。
 
@@ -31,7 +31,7 @@
 | subagent-fidelity（SF-01–05） | 用户 2026-11-23 截图追加，随 0.9.1 | 子代理通知按系统消息渲染、不把 XML 当用户输入、XML 仍进模型上下文、默认无第预算 | core 事件/会话、render reducer、agent-runtime | 已交付（门禁 GREEN） | [requirements](subagent-fidelity/requirements.md) · [design](subagent-fidelity/design/design.zh.md) · [plan](subagent-fidelity/design/plan.zh.md) | N-01/N-02 PASS | 已合入 master `ab65450` | D1–D4 |
 | tui-delivery-and-npm-release §4.4（SD-01–SD-03） | 用户 2026-11-23 追加指令 | 触发技能时正文不进入可见会话、仍完整送达模型；恢复视图不回显；/help 仍列出技能 | TUI 会话展示、normalize | 已交付 | 同上 | 3/3 PASS（定向） | 已合入 master（`10704ab`／`2a918b3`，随 0.9.0） | T13 |
 | tui-delivery-and-npm-release §4.4（EX-01–EX-02） | 用户 2026-11-23 追加指令 | `/export` 可选择会话（面板或 `--session`）、导出所选历史、读取失败明确报错 | TUI 命令面、会话只读接口 | 已交付 | 同上 | 4/4 PASS（定向） | 已合入 master（`10704ab`／`2a918b3`，随 0.9.0） | T14 |
-| tui-gap-optimizations（0.9.2，12 项、28 条 AC） | 用户 2026-11-24 指令与 [TUI 差距补排](../../docs/iteration-plan.md#tui-差距补排2026-11-24)；#42 来自用户 2026-11-24 现场报告 | 补 7 项未排期；优化输入、转录、通用后台任务和通用 Worktree；修复子代理因 WebFetch 连续失败而整体失败 | TUI / Core / Storage / Git / MCP 现有入口；provider 抓取与 core 工具熔断 | PLANNED · 需求已登记 | [需求](tui-gap-optimizations/requirements.md) · [STATUS](tui-gap-optimizations/STATUS.md) | UNVERIFIED | 无本次提交 | 开始 0.9.2 设计时按 AC 核对；团队部分归 [SP011](../SP011/requirements-summary.md)，直接 Shell 和统一设置归 [SP015](../SP015/requirements-summary.md) |
+| tui-gap-optimizations（0.9.2，12 项、28 条 AC） | 用户 2026-11-24 指令与 [TUI 差距补排](../../docs/iteration-plan.md#tui-差距补排2026-11-24)；#42 来自用户 2026-11-24 现场报告 | 会话与导出、输入和转录、规则及技能、后台任务与工作树、MCP，以及 WebFetch 子代理失败兜底 | TUI / Core / Storage / Git / MCP / Provider | 实施与定向验收通过 | [需求](tui-gap-optimizations/requirements.md) · [设计](tui-gap-optimizations/design/design.zh.md) · [计划](tui-gap-optimizations/design/plan.zh.md) · [STATUS](tui-gap-optimizations/STATUS.md) | [验证记录](tui-gap-optimizations/test-report.md) | 待交叉验证和集成 | T8 门禁与版本准备 |
 
 ## 阶段进度（0.9.0 / 0.9.1 已交付记录）
 

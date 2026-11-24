@@ -1,6 +1,7 @@
 // SP006 §10：网页正文抓取。只读、只接受 url，抓取前必须已获授权。
 import { isIP } from 'node:net'
-import type { ToolContext, ToolHandler } from '../core/tools.js'
+import { TOOL_OUTPUT_CAP } from '../core/constants.js'
+import { sliceToolOutput, type ToolContext, type ToolHandler } from '../core/tools.js'
 
 export interface WebFetchOptions {
   maxBytes?: number
@@ -27,6 +28,7 @@ export type WebFetchErrorCode =
   | 'BUDINGX_WEB_INVALID_URL'
   | 'BUDINGX_WEB_PRIVATE_HOST'
   | 'BUDINGX_WEB_TIMEOUT'
+  | 'BUDINGX_WEB_NETWORK'
   | 'BUDINGX_WEB_HTTP_ERROR'
   | 'BUDINGX_WEB_REDIRECT_LIMIT'
 
@@ -217,6 +219,13 @@ export async function fetchWebPage(
   const initial = normalizeFetchUrl(rawUrl)
   let current = initial
   const signal = AbortSignal.any([context.signal, AbortSignal.timeout(timeoutMs)])
+  function requestFailed(): never {
+    context.signal.throwIfAborted()
+    if (signal.aborted) {
+      throw new WebFetchError('BUDINGX_WEB_TIMEOUT', `WebFetch 超时（${timeoutMs}ms）：${current.href}`)
+    }
+    throw new WebFetchError('BUDINGX_WEB_NETWORK', `WebFetch 网络请求失败：${current.href}`)
+  }
   for (let redirects = 0; ; redirects++) {
     const host = current.hostname
     if (!options.allowPrivateHosts && isPrivateHost(host)) {
@@ -226,19 +235,11 @@ export async function fetchWebPage(
       )
     }
     context.signal.throwIfAborted()
-    let response: Response
-    try {
-      response = await fetch(current.href, {
-        redirect: 'manual',
-        headers: { Accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5' },
-        signal
-      })
-    } catch (error) {
-      if (signal.aborted && !context.signal.aborted) {
-        throw new WebFetchError('BUDINGX_WEB_TIMEOUT', `WebFetch 超时（${timeoutMs}ms）：${current.href}`)
-      }
-      throw error
-    }
+    const response = await fetch(current.href, {
+      redirect: 'manual',
+      headers: { Accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5' },
+      signal
+    }).catch(requestFailed)
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.get('location')
       await response.body?.cancel()
@@ -263,14 +264,21 @@ export async function fetchWebPage(
       current = next
       continue
     }
-    const { bytes, tooLarge } = await readCapped(response, maxBytes)
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined)
+      throw new WebFetchError(
+        'BUDINGX_WEB_HTTP_ERROR',
+        `WebFetch 抓取失败（HTTP ${response.status}）：${current.href}`
+      )
+    }
+    const { bytes, tooLarge } = await readCapped(response, maxBytes).catch(requestFailed)
     const contentType = (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()
     const decoder = new TextDecoder('utf-8', { fatal: false })
     const rawText = decoder.decode(bytes)
     const isHtml = contentType === 'text/html' || contentType === 'application/xhtml+xml' ||
       /^\s*<!doctype html/i.test(rawText) || /^\s*<html/i.test(rawText)
     const text = isHtml ? extractReadableText(rawText) : rawText
-    const result: WebFetchResult = {
+    return {
       url: initial.href,
       finalUrl: current.href,
       status: response.status,
@@ -279,13 +287,6 @@ export async function fetchWebPage(
       truncated: tooLarge,
       bytes: bytes.byteLength
     }
-    if (!response.ok) {
-      throw new WebFetchError(
-        'BUDINGX_WEB_HTTP_ERROR',
-        `WebFetch 抓取失败（HTTP ${response.status}）：${current.href}`
-      )
-    }
-    return result
   }
 }
 
@@ -321,11 +322,17 @@ export function createWebFetchTool(options: WebFetchOptions = {}): ToolHandler {
         ? (input as { url: string }).url
         : ''
       const result = await fetchWebPage(url, context, options)
-      const header = `[WebFetch] ${result.finalUrl} · HTTP ${result.status} · ${result.contentType} · ${result.bytes} bytes`
-      const tail = result.truncated
-        ? `\n[truncated] 响应超过 ${maxBytes} 字节，已截断；以上内容不完整。`
-        : ''
-      return `${header}\n\n${result.text}${tail}`
+      const address = sliceToolOutput(result.finalUrl, 2048)
+      const contentType = sliceToolOutput(result.contentType, 160)
+      const header = `[WebFetch] ${address} · HTTP ${result.status} · ${contentType} · ${result.bytes}/${maxBytes} bytes · ${TOOL_OUTPUT_CAP} 字符上限\n\n`
+      if (!result.truncated && header.length + result.text.length <= TOOL_OUTPUT_CAP) {
+        return header + result.text
+      }
+      const reason = result.truncated
+        ? `响应超过 ${maxBytes} 字节或输出字符上限 ${TOOL_OUTPUT_CAP}`
+        : `输出超过 ${TOOL_OUTPUT_CAP} 字符`
+      const tail = `\n[truncated] ${reason}，已截断。需要更多内容时，请尝试更具体的页面、章节或其他来源。`
+      return header + sliceToolOutput(result.text, TOOL_OUTPUT_CAP - header.length - tail.length) + tail
     }
   }
   return tool

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 import { test } from 'node:test'
+import { TOOL_OUTPUT_CAP } from '../dist/core/constants.js'
+import { Session } from '../dist/core/session.js'
 import {
   createWebFetchTool,
   extractReadableText,
@@ -109,6 +111,87 @@ test('WR-03 未获审批时不发起请求', async () => {
     assert.equal(requests, 0, '审批拒绝必须发生在请求之前')
     const preview = tool.prepareApproval({ url: base + '/page' })
     assert.deepEqual(preview.preview, [base + '/page'])
+  })
+})
+
+test('AC-SUBAGENT-01 WebFetch 将长正文与截断提示限制在 Core 输出预算内', async () => {
+  await withServer((req, res) => {
+    res.setHeader('content-type', 'text/plain; charset=utf-8')
+    res.end(req.url === '/long' ? '🌏'.repeat(TOOL_OUTPUT_CAP) : '短页面')
+  }, async (base) => {
+    const tool = createWebFetchTool({ allowPrivateHosts: true })
+    const long = await tool.execute({ url: base + '/long' }, context())
+    assert.ok(long.length <= TOOL_OUTPUT_CAP, 'WebFetch 输出超过 Core 上限')
+    assert.match(long, /\[truncated\].*32768/)
+    assert.match(long, /🌏/)
+    assert.doesNotMatch(long, /[\uD800-\uDFFF]/u, '截断不能留下不完整的 Unicode 字符')
+    const short = await tool.execute({ url: base + '/short' }, context())
+    assert.match(short, /短页面/)
+    assert.doesNotMatch(short, /\[truncated\]/)
+    assert.match(short, /32768/)
+  })
+})
+
+test('AC-SUBAGENT-01 WebFetch 区分正文读取超时与网络连接失败', async () => {
+  await withServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'text/plain' })
+    res.write('headers and an incomplete body')
+  }, async (base) => {
+    await assert.rejects(
+      () => fetchWebPage(base, context(), { allowPrivateHosts: true, timeoutMs: 120 }),
+      (error) => error.code === 'BUDINGX_WEB_TIMEOUT'
+    )
+  })
+  await withServer((req) => { req.socket.destroy() }, async (base) => {
+    await assert.rejects(
+      () => fetchWebPage(base, context(), { allowPrivateHosts: true }),
+      (error) => error.code === 'BUDINGX_WEB_NETWORK' && /网络/.test(error.message)
+    )
+  })
+})
+
+test('AC-SUBAGENT-01 六次长页面抓取通过生产工具派发并正常结束回合', async () => {
+  await withServer((_req, res) => {
+    res.setHeader('content-type', 'text/plain')
+    res.end('page content '.repeat(4000))
+  }, async (base) => {
+    let calls = 0
+    const session = new Session({
+      provider: {
+        async *stream() {
+          if (++calls > 6) {
+            yield { type: 'text_delta', text: 'obtained partial results' }
+            yield { type: 'message_completed', finishReason: 'stop' }
+            return
+          }
+          yield {
+            type: 'tool_call_delta', index: 0, callId: 'web-' + calls, nameDelta: 'WebFetch',
+            argsDelta: JSON.stringify({ url: base + '/page-' + calls })
+          }
+          yield { type: 'message_completed', finishReason: 'tool_calls' }
+        }
+      },
+      tools: [createWebFetchTool({ allowPrivateHosts: true })],
+      approval: { request: async () => ({ outcome: 'allow', via: 'user' }) },
+      resolveSnapshot: () => ({ modelId: 'fixture', model: 'fixture', baseUrlHost: 'fixture', capabilities: { tools: true } })
+    })
+    try {
+      const results = []
+      const finalized = new Promise((resolve) => session.on((event) => {
+        if (event.type === 'tool_result') results.push(event)
+        if (event.type === 'turn_finalized') resolve(event)
+      }))
+      session.submit('Read the fixture pages')
+      assert.equal((await finalized).outcome, 'completed')
+      assert.equal(results.length, 6)
+      for (const result of results) {
+        assert.equal(result.isError, false)
+        assert.match(result.content, /\[truncated\]/)
+        assert.doesNotMatch(result.content, /BUDINGX_CORE_003/)
+      }
+    } finally {
+      session.dispose()
+    }
   })
 })
 

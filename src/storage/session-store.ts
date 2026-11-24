@@ -4,24 +4,32 @@
 // The store never re-executes anything. Restoring a session gives back the
 // transcript contents, the recorded permission mode and the list of tool
 // steps whose outcome is unknown; the caller decides what to do next.
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   existsSync,
+  mkdtempSync,
   readdirSync,
-  rmSync
+  renameSync,
+  rmSync,
+  rmdirSync
 } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
+import type { ChangeRecordSummary, Message as CoreMessage } from '../core/events.js'
 import type { PermissionMode } from '../core/permissions.js'
+import { unfinishedToolCalls } from '../core/context-budget.js'
+import type { SessionWorktreeBinding } from '../core/transcript.js'
 import { writeJsonAtomic } from './atomic.js'
 import {
   createPrivateFileExclusive,
   ensurePrivateDirectory,
   isRegularFile,
   readPrivateFile,
-  sessionDirectory
+  sessionDirectory,
+  writePrivateFile
 } from './private-file.js'
 import {
+  TRANSCRIPT_FILE,
   TRANSCRIPT_VERSION,
   createSessionTranscript,
   messagesFromRecords,
@@ -36,6 +44,8 @@ export const SESSION_INDEX_FILE = 'sessions.json'
 export const SESSION_META_FILE = 'meta.json'
 /** Name of the writer lock file. */
 export const WRITER_LOCK_FILE = 'writer.lock'
+const SESSION_SEARCH_LIMIT = 200
+const SESSION_SEARCH_TEXT_BYTES = 256 * 1024
 
 export type SessionSummary = {
   sessionId: string
@@ -54,7 +64,12 @@ export type SessionMeta = {
   updatedAt: string
   turns: number
   permissionMode?: PermissionMode
+  userTitle?: string
+  forkedFrom?: { sessionId: string; messageId?: string }
 }
+
+export type SessionChangeResult = { ok: true; sessionId: string } | { ok: false; message: string }
+export type SessionSearchEntry = SessionSummary & { body: string }
 
 export type RestoreStatus = 'restored' | 'not_found' | 'unsupported_schema' | 'corrupt' | 'locked' | 'workspace_mismatch'
 
@@ -63,6 +78,9 @@ export type RestoreResult = {
   summary?: SessionSummary
   messages: Message[]
   transcript?: SessionTranscript
+  changes?: ChangeRecordSummary[]
+  worktree?: SessionWorktreeBinding
+  worktreeOriginBranch?: string
   /** Tool steps whose outcome is unknown; must be checked, never replayed. */
   needsReview: { name: string; callId: string; detail?: string }[]
   /** Non-fatal problems found while reading (e.g. skipped corrupt lines). */
@@ -295,23 +313,34 @@ export class SessionStore {
   /** Summary of one session, or undefined when there is none. */
   summary(sessionId: string): SessionSummary | undefined {
     if (!validSessionId(sessionId)) return undefined
-    if (this.options.workspaceRoot === undefined) {
-      const meta = this.readMeta(sessionId)
-      if (meta) return this.metadataSummary(meta)
-    }
     const transcript = createSessionTranscript({ sessionId, home: this.options.home })
     return this.summarize(sessionId, transcript.read().records)
   }
 
-  private metadataSummary(meta: SessionMeta): SessionSummary {
-    return {
-      sessionId: meta.sessionId,
-      title: meta.title,
-      createdAt: meta.createdAt,
-      updatedAt: meta.updatedAt,
-      turns: meta.turns,
-      ...(meta.permissionMode ? { permissionMode: meta.permissionMode } : {})
+  searchIndex(): SessionSearchEntry[] {
+    const entries: SessionSearchEntry[] = []
+    for (const summary of this.list().slice(0, SESSION_SEARCH_LIMIT)) {
+      const read = createSessionTranscript({ sessionId: summary.sessionId, home: this.options.home }).read()
+      if (read.unsupported || read.corruptLines || !read.records.length || !this.ownsTranscript(read.records)) continue
+      const messages = messagesFromRecords(read.records)
+      const chunks: string[] = []
+      let remaining = SESSION_SEARCH_TEXT_BYTES
+      for (let index = messages.length - 1; index >= 0 && remaining > 0; index--) {
+        const message = messages[index]
+        if (message.role === 'tool' || message.notificationDisplay) continue
+        const text = message.blocks.flatMap((block) => block.type === 'text' ? [block.text] : []).join('')
+        if (!text) continue
+        const bytes = Buffer.from(text + '\n')
+        const firstByte = Math.max(0, bytes.length - remaining)
+        // If the boundary falls inside a UTF-8 character, start from the next character.
+        let start = firstByte
+        while (start < bytes.length && (bytes[start] & 0xc0) === 0x80) start++
+        chunks.unshift(bytes.toString('utf8', start))
+        remaining -= bytes.length - firstByte
+      }
+      entries.push({ ...summary, body: chunks.join('') })
     }
+    return entries
   }
 
   private ownsTranscript(records: TranscriptRecord[]): boolean {
@@ -324,29 +353,28 @@ export class SessionStore {
   private summarize(sessionId: string, records: TranscriptRecord[]): SessionSummary | undefined {
     if (!this.ownsTranscript(records)) return undefined
     const meta = this.readMeta(sessionId)
-    if (meta) return this.metadataSummary(meta)
-    // Fall back to the transcript when meta.json is missing but a transcript
-    // exists (for example after a crash between the two writes).
-    if (records.length === 0) return undefined
+    if (!meta && records.length === 0) return undefined
     const started = records.find((record) => record.type === 'session_started')
     const turns = records.filter((record) => record.type === 'turn').length
     const firstUser = records.find(
-      (record) => record.type === 'message' && record.role === 'user'
+      (record): record is Extract<TranscriptRecord, { type: 'message' }> => record.type === 'message' && record.role === 'user'
     )
-    const title =
-      started && started.type === 'session_started' && started.title
-        ? started.title
-        : firstUser && firstUser.type === 'message'
-          ? sanitizeTitle(firstUser.blocks.map((block) => (block as { text?: string }).text ?? '').join(' '))
-          : 'Untitled session'
-    const createdAt =
-      started && started.type === 'session_started' ? started.ts : this.now()
+    const derivedTitle = meta?.title ?? started?.title ??
+      (firstUser ? sanitizeTitle(firstUser.blocks.map((block) => (block as { text?: string }).text ?? '').join(' ')) : 'Untitled session')
+    const createdAt = meta?.createdAt ?? started?.ts ?? this.now()
+    const permission = records.findLast((record) => record.type === 'permission_mode' && isPermissionMode(record.mode))
+    const permissionMode = permission?.type === 'permission_mode' ? permission.mode : meta?.permissionMode
+    const updatedAt = records.reduce(
+      (latest, record) => record.type !== 'session_started' && typeof record.ts === 'string' && record.ts > latest ? record.ts : latest,
+      meta?.updatedAt ?? createdAt
+    )
     return {
       sessionId,
-      title,
+      title: typeof meta?.userTitle === 'string' && meta.userTitle ? meta.userTitle : derivedTitle,
       createdAt,
-      updatedAt: createdAt,
-      turns
+      updatedAt,
+      turns: Math.max(meta?.turns ?? 0, turns),
+      ...(permissionMode ? { permissionMode } : {})
     }
   }
 
@@ -378,6 +406,97 @@ export class SessionStore {
       ...meta,
       schemaVersion: TRANSCRIPT_VERSION
     })
+  }
+
+  rename(sessionId: string, title: string, writer: SessionWriterLock): SessionChangeResult {
+    if (!validSessionId(sessionId) || !writer.isOwned || writer.path !== join(this.directory(sessionId), WRITER_LOCK_FILE)) {
+      return { ok: false, message: 'Session is not owned by this writer' }
+    }
+    const userTitle = title.trim()
+    if (!userTitle || /\p{Cc}/u.test(userTitle) || Array.from(userTitle).length > 80) {
+      return { ok: false, message: 'Provide a single-line title of 1–80 characters' }
+    }
+    try {
+      const summary = this.summary(sessionId)
+      if (!summary) return { ok: false, message: 'Session has no readable metadata or transcript' }
+      const existing = this.readMeta(sessionId)
+      this.writeMeta({
+        ...summary,
+        ...existing,
+        schemaVersion: TRANSCRIPT_VERSION,
+        sessionId,
+        userTitle,
+        updatedAt: this.now()
+      })
+      return { ok: true, sessionId }
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : 'Session rename failed' }
+    }
+  }
+
+  fork(sourceId: string, options: { permissionMode?: PermissionMode; messages?: readonly CoreMessage[] } = {}): SessionChangeResult {
+    if (!validSessionId(sourceId)) return { ok: false, message: 'Invalid source session ID' }
+    const transcript = createSessionTranscript({ sessionId: sourceId, home: this.options.home })
+    const read = transcript.read()
+    const started = read.records.find((record) => record.type === 'session_started')
+    const source = this.summarize(sourceId, read.records)
+    if (read.unsupported || read.corruptLines || !started || !source) {
+      return { ok: false, message: 'Source session is missing, damaged, or belongs to a different workspace' }
+    }
+    const at = this.now()
+    const sessionId = randomUUID()
+    const title = sanitizeTitle(`分支 · ${source.title}`)
+    const messages = options.messages ? [...options.messages] : messagesFromRecords(read.records)
+    const messageId = messages.at(-1)?.id
+    const known = new Set(read.records.flatMap((record) => record.type === 'tool_step' ? [record.callId] : []))
+    const review: TranscriptRecord[] = unfinishedToolCalls(messages)
+      .filter(({ callId }) => !known.has(callId))
+      .map(({ callId, name }) => ({
+        type: 'tool_step', ts: at, turnId: sessionId, callId, name,
+        status: 'needs_review', detail: 'Copied from a source session with an unfinished tool call'
+      }))
+    const rank: Record<PermissionMode, number> = { read_only: 0, workspace_edit: 1, full_access: 2 }
+    const permissionMode = source.permissionMode && options.permissionMode &&
+      rank[options.permissionMode] < rank[source.permissionMode] ? options.permissionMode :
+      source.permissionMode ?? options.permissionMode
+    const previousMessages = new Map(read.records.flatMap((record) =>
+      record.type === 'message' ? [[record.id, record] as const] : []
+    ))
+    const records: TranscriptRecord[] = [
+      { type: 'session_started', ts: at, schemaVersion: TRANSCRIPT_VERSION, sessionId, title, workspaceId: started.workspaceId },
+      ...messages.map((message) => ({
+        ...previousMessages.get(message.id),
+        ...message,
+        ts: previousMessages.get(message.id)?.ts ?? at,
+        type: 'message' as const
+      })),
+      ...read.records.filter((record) =>
+        record.type === 'turn' || record.type === 'tool_step' || record.type === 'permission_mode'
+      ),
+      ...review,
+      ...(permissionMode ? [{ type: 'permission_mode' as const, ts: at, mode: permissionMode }] : [])
+    ]
+    const meta: SessionMeta = {
+      schemaVersion: TRANSCRIPT_VERSION, sessionId, title, createdAt: at, updatedAt: at, turns: source.turns,
+      ...(permissionMode ? { permissionMode } : {}),
+      forkedFrom: { sessionId: sourceId, ...(messageId ? { messageId } : {}) }
+    }
+    let stage: string | undefined
+    try {
+      stage = mkdtempSync(join(ensurePrivateDirectory(this.root), '.fork-'))
+      writePrivateFile(join(stage, TRANSCRIPT_FILE), records.map((record) => JSON.stringify(record)).join('\n') + '\n')
+      writeJsonAtomic(join(stage, SESSION_META_FILE), meta)
+      renameSync(stage, this.directory(sessionId))
+      return { ok: true, sessionId }
+    } catch (error) {
+      if (stage) {
+        for (const file of [TRANSCRIPT_FILE, SESSION_META_FILE]) {
+          try { rmSync(join(stage, file), { force: true }) } catch {}
+        }
+        try { rmdirSync(stage) } catch {}
+      }
+      return { ok: false, message: error instanceof Error ? error.message : 'Session fork failed' }
+    }
   }
 
   /**
@@ -444,11 +563,16 @@ export class SessionStore {
         `${review.length} tool step(s) have an unknown outcome and were not replayed; check their result before continuing`
       )
     }
+    const worktree = records.findLast((record) => record.type === 'worktree_binding')
     return {
       status: 'restored',
       summary,
       messages: messagesFromRecords(records) as unknown as Message[],
       transcript,
+      changes: records.flatMap((record) => record.type === 'change_set' && Array.isArray(record.changes) ? record.changes : []),
+      ...(worktree?.type === 'worktree_binding'
+        ? { worktree: worktree.binding, worktreeOriginBranch: worktree.originBranch }
+        : {}),
       needsReview: review,
       warnings
     }

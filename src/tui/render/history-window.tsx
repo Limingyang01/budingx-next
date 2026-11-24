@@ -1,7 +1,9 @@
+import { stripVTControlCharacters } from 'node:util'
 import { Box, measureElement, type DOMElement } from 'ink'
 import { Fragment, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import stringWidth from 'string-width'
 import { TranscriptMessage } from './transcript.js'
+import { displayThinkingText, thinkingBody } from './thinking.js'
 import type { ToolTranscriptEntry, TranscriptEntry } from './types.js'
 
 const virtualThreshold = 64
@@ -76,33 +78,55 @@ export function visibleHistoryRange(
   return { start, end }
 }
 
-function estimate(entry: TranscriptEntry, width: number): number {
-  const columns = Math.max(1, width - 4)
-  if (entry.kind === 'tool') return entry.result ? 3 : 2
-  const rows = entry.text.split('\n').reduce((total, line) =>
+function textRows(text: string, columns: number): number {
+  return text.split('\n').reduce((total, line) =>
     total + Math.max(1, Math.ceil(stringWidth(line) / columns)), 0)
-  return rows + (entry.kind === 'plain' ? 0 : 1)
+}
+
+function estimate(entry: TranscriptEntry, width: number, expanded: boolean, ascii: boolean): number {
+  const columns = Math.max(1, width - 4)
+  if (entry.kind === 'tool') {
+    const result = expanded ? stripVTControlCharacters(entry.result ?? '').trim() : ''
+    return 2 + (result ? textRows(result, Math.max(1, columns - 2)) : Number(Boolean(entry.result) || entry.status === 'interrupted'))
+  }
+  if (entry.kind === 'thinking') {
+    const text = expanded ? displayThinkingText(entry) : ''
+    return 2 + (text ? textRows(thinkingBody(entry, text, ascii), columns) : 0)
+  }
+  return textRows(entry.text, columns) + (entry.kind === 'plain' ? 0 : 1)
+}
+
+type HistoryVariant = 'collapsed' | 'expanded'
+type HistoryRows = { width: number; heights: WeakMap<TranscriptEntry, Partial<Record<HistoryVariant, number>>> }
+
+function historyVariant(entry: TranscriptEntry, expanded: boolean, toggledIds?: ReadonlySet<string>): HistoryVariant {
+  const detail = entry.kind === 'thinking'
+    ? expanded !== (toggledIds?.has(entry.id) ?? false)
+    : entry.kind === 'tool' && expanded
+  return detail ? 'expanded' : 'collapsed'
 }
 
 function MeasuredMessage({
-  entry, index, node, measure
+  entry, index, variant, node, measure
 }: {
   entry: TranscriptEntry
   index: number
+  variant: HistoryVariant
   node: ReactNode
-  measure(entry: TranscriptEntry, index: number, height: number): void
+  measure(entry: TranscriptEntry, index: number, variant: HistoryVariant, height: number): void
 }) {
   const box = useRef<DOMElement>(null)
-  const reported = useRef(-1)
+  const reported = useRef<{ entry: TranscriptEntry; variant: HistoryVariant; rows: number }>(undefined)
   // 0.5.4：只测高度，高度不变就不上报。Ink 的 useBoxMetrics 每帧都会上报
   // left/top，虚拟列表间距一抖就触发「测量 → setState → 重渲染 → 再测量」的
   // 链，长会话下抛 React「Maximum update depth exceeded」。
   useLayoutEffect(() => {
     if (!box.current) return
     const rows = measureElement(box.current).height
-    if (rows === reported.current) return
-    reported.current = rows
-    measure(entry, index, rows)
+    const previous = reported.current
+    if (previous?.entry === entry && previous.variant === variant && previous.rows === rows) return
+    reported.current = { entry, variant, rows }
+    measure(entry, index, variant, rows)
   })
   return <Box flexShrink={0} flexDirection="column" ref={box}>{node}</Box>
 }
@@ -121,7 +145,7 @@ export function resetFreezeCacheStats(): void {
 }
 
 export function HistoryWindow({
-  entries, width, offset, height, ascii, fullScreen, expanded, targetIndex, onTargetOffset, onPriorRowsChanged
+  entries, width, offset, height, ascii, fullScreen, expanded, thinkingView, targetIndex, onTargetOffset, onPriorRowsChanged
 }: {
   entries: readonly TranscriptEntry[]
   width: number
@@ -130,6 +154,7 @@ export function HistoryWindow({
   ascii: boolean
   fullScreen: boolean
   expanded: boolean
+  thinkingView?: { toggledIds: ReadonlySet<string>; selectedId?: string }
   targetIndex?: number
   onTargetOffset(rows: number): void
   onPriorRowsChanged(delta: number): void
@@ -141,47 +166,39 @@ export function HistoryWindow({
   const frozenElements = useRef(new WeakMap<TranscriptEntry, {
     width: number
     ascii: boolean
-    expanded: boolean
+    variant: HistoryVariant
+    selected: boolean
     node: ReactNode
   }>())
-  const messageNode = (entry: TranscriptEntry): ReactNode => {
+  const toggledIds = thinkingView?.toggledIds
+  const messageNode = (entry: TranscriptEntry, variant: HistoryVariant): ReactNode => {
     const cache = frozenElements.current
     const hit = cache.get(entry)
-    if (hit && hit.width === width && hit.ascii === ascii && hit.expanded === expanded) {
+    const selected = entry.kind === 'thinking' && entry.id === thinkingView?.selectedId
+    if (hit && hit.width === width && hit.ascii === ascii && hit.variant === variant && hit.selected === selected) {
       frozenHits += 1
       return hit.node
     }
     frozenMisses += 1
-    const node = <TranscriptMessage entry={entry} ascii={ascii} expanded={expanded} />
-    cache.set(entry, { width, ascii, expanded, node })
+    const node = <TranscriptMessage entry={entry} ascii={ascii} expanded={variant === 'expanded'} selected={selected} />
+    cache.set(entry, { width, ascii, variant, selected, node })
     return node
   }
-  const measuredRef = useRef<Map<TranscriptEntry, number> | undefined>(undefined)
-  const measuredWidthRef = useRef(0)
-  // Measured heights are kept across a width change and scaled by the
-  // width ratio instead of being dropped. Dropping them makes every entry
-  // fall back to a guess, which forces a fresh mount of the whole visible
-  // range right after a resize (SP005 review, 0.5.2 lag fix).
-  const measured = useMemo(() => {
-    const previous = measuredRef.current
-    const previousWidth = measuredWidthRef.current
-    const ratio = previousWidth > 0 ? width / previousWidth : 1
-    const next = new Map<TranscriptEntry, number>()
-    if (previous) {
-      for (const [entry, rows] of previous) {
-        next.set(entry, previousWidth === width ? rows : Math.max(1, Math.round(rows * ratio)))
-      }
-    }
-    measuredWidthRef.current = width
-    measuredRef.current = next
-    return next
-  }, [width, expanded])
+  const measuredRef = useRef<HistoryRows>(undefined)
+  // Retain estimates from the previous width while visible entries are remeasured.
+  // Weak keys let replaced streaming entries be released immediately.
+  const { measured, previousWidth } = useMemo(() => {
+    const previousWidth = measuredRef.current
+    const current: HistoryRows = { width, heights: new WeakMap() }
+    measuredRef.current = current
+    return { measured: current.heights, previousWidth }
+  }, [width])
   // Bumped only when a measured height actually changed, so the offsets
   // array is not rebuilt on every frame.
   const [measuredRevision, setMeasuredRevision] = useState(0)
   // 把一批测量的重排合并为一次，杜绝同一次提交里层层嵌套 setState。
   const revisionScheduled = useRef(false)
-  const estimates = useMemo(() => new WeakMap<TranscriptEntry, number>(), [width])
+  const estimates = useMemo(() => new WeakMap<TranscriptEntry, Partial<Record<HistoryVariant, number>>>(), [width, ascii])
   // Range of messages that were mounted last time. The mounted range slides
   // towards the wanted range in bounded steps so a single commit never
   // mounts an unbounded number of fresh messages (SP005 review, 0.5.2 lag fix).
@@ -189,11 +206,11 @@ export function HistoryWindow({
   const adjustBeforeViewport = useEffectEvent((index: number, delta: number) => {
     if (virtual && delta !== 0 && offsets[index + 1] <= offset) onPriorRowsChanged(delta)
   })
-  const measure = useCallback((entry: TranscriptEntry, index: number, rows: number) => {
-    const previous = measured.get(entry)
+  const measure = useCallback((entry: TranscriptEntry, index: number, variant: HistoryVariant, rows: number) => {
+    const previous = measured.get(entry)?.[variant]
     if (previous === rows) return
-    measured.set(entry, rows)
-    const estimated = previous ?? estimates.get(entry)
+    measured.set(entry, { ...measured.get(entry), [variant]: rows })
+    const estimated = previous ?? estimates.get(entry)?.[variant]
     if (estimated !== undefined) adjustBeforeViewport(index, rows - estimated)
     // Only a real height change needs a new layout pass. Revising on every
     // measurement made the whole window re-render on each frame
@@ -211,15 +228,19 @@ export function HistoryWindow({
     if (!virtual && targetIndex === undefined) return [0]
     const positions = [0]
     for (const entry of entries) {
-      let rows = measured.get(entry)
+      const variant = historyVariant(entry, expanded, toggledIds)
+      let rows = measured.get(entry)?.[variant]
       if (rows === undefined) {
-        rows = estimates.get(entry) ?? estimate(entry, width)
-        estimates.set(entry, rows)
+        const prior = previousWidth?.heights.get(entry)?.[variant]
+        rows = estimates.get(entry)?.[variant] ?? (prior === undefined
+          ? estimate(entry, width, variant === 'expanded', ascii)
+          : Math.max(1, Math.round(prior * previousWidth!.width / width)))
+        estimates.set(entry, { ...estimates.get(entry), [variant]: rows })
       }
       positions.push(positions.at(-1)! + rows)
     }
     return positions
-  }, [entries, width, measured, estimates, virtual, measuredRevision, targetIndex])
+  }, [entries, width, ascii, expanded, toggledIds, measured, previousWidth, estimates, virtual, measuredRevision, targetIndex])
   useEffect(() => {
     if (targetIndex !== undefined && offsets[targetIndex] !== undefined) {
       onTargetOffset(offsets[targetIndex])
@@ -237,7 +258,12 @@ export function HistoryWindow({
   if (virtual) {
     const previous = mountedRange.current
     const pendingNew = Math.max(0, end - previous.end) + Math.max(0, previous.start - start)
-    if (pendingNew > SLIDE_STEP) {
+    if (previous.end <= start || previous.start >= end) {
+      // A restored position or search can jump beyond the mounted range.
+      // Seed the visible rows first, then fill the overscan on later frames.
+      start = visibleHistoryRange(offsets, offset, height, 0).start
+      end = Math.min(end, start + SLIDE_STEP)
+    } else if (pendingNew > SLIDE_STEP) {
       // Slide towards the wanted range instead of mounting everything now.
       if (previous.start > start) {
         start = Math.max(start, previous.start - SLIDE_STEP)
@@ -252,12 +278,15 @@ export function HistoryWindow({
     <>
       {virtual && offsets[start] > 0 && <Box height={offsets[start]} flexShrink={0} />}
       {!fullScreen && entries.map((entry, index) => (
-        <Fragment key={index}>{messageNode(entry)}</Fragment>
+        <Fragment key={entry.kind === 'thinking' ? entry.id : index}>
+          {messageNode(entry, historyVariant(entry, expanded, toggledIds))}
+        </Fragment>
       ))}
-      {fullScreen && entries.slice(start, end).map((entry, index) => (
-        <MeasuredMessage key={start + index} index={start + index} entry={entry}
-          node={messageNode(entry)} measure={measure} />
-      ))}
+      {fullScreen && entries.slice(start, end).map((entry, index) => {
+        const variant = historyVariant(entry, expanded, toggledIds)
+        return <MeasuredMessage key={entry.kind === 'thinking' ? entry.id : start + index}
+          index={start + index} entry={entry} variant={variant} node={messageNode(entry, variant)} measure={measure} />
+      })}
       {virtual && end < entries.length && (
         <Box height={offsets.at(-1)! - offsets[end]} flexShrink={0} />
       )}

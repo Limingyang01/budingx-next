@@ -1,12 +1,13 @@
-// SP006 §6.3 /export：把当前会话导出为 JSONL 或纯文本（CMD-11）。
+// /export：把当前或已保存会话导出为 JSONL、纯文本或 Markdown。
 // 路径必须显式且在 ~/.budingx 内，避免命令面变成任意路径写入通道。
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
-import type { Message } from '../core/events.js'
+import type { ChangeRecordSummary, Message } from '../core/events.js'
+import { redactContent } from '../observability/redact.js'
 import { dataRoot, exportsDir } from '../storage/paths.js'
 
-export type ExportFormat = 'jsonl' | 'text'
+export type ExportFormat = 'jsonl' | 'text' | 'markdown'
 
 export type ExportOptions = {
   sessionId: string
@@ -15,23 +16,46 @@ export type ExportOptions = {
   path?: string
   home?: string
   now?: Date
+  title?: string
+  changes?: readonly ChangeRecordSummary[]
+  knownSecrets?: readonly string[]
 }
 
 export type ExportResult =
   | { ok: true; path: string; bytes: number }
   | { ok: false; error: string }
 
-export function serializeSession(messages: readonly Message[], format: ExportFormat): string {
+function markdownInline(text: string): string {
+  return text.replace(/[\r\n\p{Cc}]+/gu, ' ').replace(/[\\`*_{}\[\]()#+.!<>|]/g, '\\$&')
+}
+
+export function serializeSession(
+  messages: readonly Message[],
+  format: ExportFormat,
+  options: Pick<ExportOptions, 'title' | 'changes' | 'knownSecrets'> = {}
+): string {
+  const clean = messages.map((message) => redactContent({
+    ...message,
+    blocks: message.notificationDisplay
+      ? [{ type: 'text', text: message.notificationDisplay }]
+      : message.blocks.filter((block) => block.type !== 'context' || !block.source.startsWith('skill:'))
+  }, options.knownSecrets) as Message)
   if (format === 'jsonl') {
-    return messages.map((message) => JSON.stringify(message)).join('\n') + (messages.length ? '\n' : '')
+    return clean.map((message) => JSON.stringify(message)).join('\n') + (clean.length ? '\n' : '')
   }
   const lines: string[] = []
-  for (const message of messages) {
+  if (format === 'markdown') {
+    const title = String(redactContent(options.title ?? '会话导出', options.knownSecrets))
+    lines.push('# ' + markdownInline(title), '')
+  }
+  for (const message of clean) {
     const texts = message.blocks
       .filter((block): block is Extract<Message['blocks'][number], { type: 'text' }> => block.type === 'text')
       .map((block) => block.text)
     const body = texts.join('').trim()
-    if (message.role === 'user') {
+    if (message.notificationDisplay) {
+      lines.push('> ' + markdownInline(message.notificationDisplay), '')
+    } else if (message.role === 'user') {
       if (body) lines.push('## 用户\n\n' + body, '')
     } else if (message.role === 'assistant') {
       if (body) lines.push('## 助手\n\n' + body, '')
@@ -46,7 +70,23 @@ export function serializeSession(messages: readonly Message[], format: ExportFor
       }
     }
   }
+  if (format === 'markdown') {
+    lines.push('## 会话代码改动', '')
+    if (!options.changes?.length) {
+      lines.push('没有可归属到此会话的已保存文件改动证据。', '')
+    } else {
+      for (const change of options.changes) {
+        const path = markdownInline(String(redactContent(change.path, options.knownSecrets)))
+        lines.push(`- ${path} · ${change.operation === 'create' ? '创建' : '修改'}（+${change.additions} / −${change.removals}）`)
+      }
+    }
+  }
   return lines.join('\n').trimEnd() + '\n'
+}
+
+function within(root: string, target: string): boolean {
+  const rel = relative(root, target)
+  return rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel)
 }
 
 function resolveExportPath(options: ExportOptions): ExportResult | string {
@@ -57,10 +97,10 @@ function resolveExportPath(options: ExportOptions): ExportResult | string {
     target = isAbsolute(raw) ? resolve(raw) : resolve(join(root, raw))
   } else {
     const stamp = (options.now ?? new Date()).toISOString().replace(/[:.]/g, '-')
-    target = join(exportsDir(options.home), `${options.sessionId}-${stamp}.${options.format === 'jsonl' ? 'jsonl' : 'txt'}`)
+    const extension = { jsonl: 'jsonl', text: 'txt', markdown: 'md' }[options.format]
+    target = join(exportsDir(options.home), `${options.sessionId}-${stamp}.${extension}`)
   }
-  const rel = relative(root, target)
-  if (rel.startsWith('..') || isAbsolute(rel)) {
+  if (root === target || !within(root, target)) {
     return { ok: false, error: `导出路径必须位于 ${root} 内：${target}` }
   }
   return target
@@ -71,8 +111,19 @@ export function exportSession(messages: readonly Message[], options: ExportOptio
   if (typeof target !== 'string') return target
   if (existsSync(target)) return { ok: false, error: `导出目标已存在，未覆盖：${target}` }
   try {
+    const root = resolve(dataRoot(options.home))
+    mkdirSync(root, { recursive: true, mode: 0o700 })
+    const physicalRoot = realpathSync(root)
+    let existingParent = dirname(target)
+    while (!existsSync(existingParent) && existingParent !== root) existingParent = dirname(existingParent)
+    if (!within(physicalRoot, realpathSync(existingParent))) {
+      return { ok: false, error: '导出目录链接指向数据根之外' }
+    }
     mkdirSync(dirname(target), { recursive: true })
-    const content = serializeSession(messages, options.format)
+    if (!within(physicalRoot, realpathSync(dirname(target)))) {
+      return { ok: false, error: '导出目录链接指向数据根之外' }
+    }
+    const content = serializeSession(messages, options.format, options)
     writeFileSync(target, content, { encoding: 'utf8', mode: 0o600, flag: 'wx' })
     return { ok: true, path: target, bytes: Buffer.byteLength(content) }
   } catch (error) {

@@ -8,10 +8,12 @@
 //   completed   - the side effect finished successfully
 //   failed      - the tool reported a failure
 //   needs_review - the outcome is unknown (interrupted); a human must check
-import type { ErrorInfo, Message, MessageBlock, TurnOutcome, Usage } from './events.js'
+import type { ChangeRecordSummary, ErrorInfo, Message, MessageBlock, TurnOutcome, Usage } from './events.js'
+import type { PermissionMode } from './permissions.js'
 
 /** Tool step outcome recorded in the transcript. */
 export type ToolStepStatus = 'completed' | 'failed' | 'needs_review'
+export type SessionWorktreeBinding = { path: string; branch: string; baseBranch: string; originalCwd?: string }
 
 export type TranscriptRecord =
   | {
@@ -29,6 +31,7 @@ export type TranscriptRecord =
       parentId?: string
       role: Message['role']
       blocks: MessageBlock[]
+      notificationDisplay?: string
       /** SP007 RD-16：assistant 消息所属模型（/stats 按模型聚合；旧转录缺省 unknown 桶）。 */
       model?: string
       /** SP007 RD-04：assistant 消息本次请求用量（/stats 按模型按日累加；旧转录缺省不计）。 */
@@ -63,6 +66,9 @@ export type TranscriptRecord =
       synthetic: { id: string; role: Message['role']; blocks: MessageBlock[] }[]
     }
   | { type: 'note'; ts: string; text: string }
+  | { type: 'permission_mode'; ts: string; mode: PermissionMode }
+  | { type: 'change_set'; ts: string; changes: ChangeRecordSummary[] }
+  | { type: 'worktree_binding'; ts: string; binding?: SessionWorktreeBinding; originBranch: string }
 
 export type TranscriptRead = {
   records: TranscriptRecord[]

@@ -1,5 +1,17 @@
-import { existsSync, realpathSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import {
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readdirSync,
+  readSync,
+  realpathSync,
+  statSync
+} from 'node:fs'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { isCredentialLike } from '../workspace/policy.js'
 import { bundledSkillEntries } from './skills-bundled.js'
 
 /** SP006 §8.1 / SP009 addendum SA-01：技能条目；无效条目保留以便 /skills 面板解释原因。 */
@@ -11,7 +23,9 @@ export interface SkillEntry {
   scope: 'user' | 'project' | 'bundled'
   valid: boolean
   error?: string
-  /** SP009 SA-03：扩展 frontmatter 键，先解析保存（本轮不强制约束）。 */
+  bodyStartLine?: number
+  /** Real directory of the skill at discovery, used to reject retargeted resource roots. */
+  resourceRoot?: string
   meta?: SkillMeta
 }
 
@@ -22,6 +36,7 @@ export interface SkillMeta {
   arguments?: string
   context?: string
   userInvocable?: boolean
+  disableModelInvocation?: boolean
 }
 
 export interface DiscoverSkillsOptions {
@@ -34,11 +49,29 @@ export interface ParsedFrontmatter {
   present: boolean
   data: Record<string, string>
   body: string
+  bodyStartLine?: number
   error?: string
 }
 
 const FRONTMATTER_LINE = /^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/
-const LEGACY_KEYS = new Set(['name', 'description', 'license', 'allowed-tools', 'version'])
+const LEGACY_KEYS = new Set([
+  'name',
+  'description',
+  'license',
+  'allowed-tools',
+  'version',
+  'user-invocable',
+  'disable-model-invocation'
+])
+const RESOURCE_REFERENCE =
+  /^ {0,3}@(?:"([^"\n]+)"|'([^'\n]+)'|((?:\.{1,2}[\\/]|[\\/]|[A-Za-z]:)\S+))[ \t]*$/
+const MARKDOWN_FENCE = /^ {0,3}(\x60{3,}|~{3,})(.*)$/
+const MAX_RESOURCE_BYTES = 64 * 1024
+const MAX_SKILL_BYTES = 128 * 1024
+const MAX_RESOURCE_DEPTH = 5
+const MAX_RESOURCE_REFERENCES = 32
+const RESOURCE_OPEN_FLAGS =
+  constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0)
 
 function unquote(value: string): string {
   const trimmed = value.trim()
@@ -50,6 +83,15 @@ function unquote(value: string): string {
     return trimmed.slice(1, -1)
   }
   return trimmed
+}
+
+function parseBody(lines: string[], start: number): { body: string; bodyStartLine: number } {
+  const remainder = lines.slice(start)
+  const firstNonempty = remainder.findIndex((line) => line.trim())
+  return {
+    body: remainder.join('\n').trim(),
+    bodyStartLine: start + Math.max(0, firstNonempty) + 1
+  }
 }
 
 /**
@@ -75,7 +117,7 @@ export function parseFrontmatter(text: string): ParsedFrontmatter {
       const match = FRONTMATTER_LINE.exec(line)
       if (match) data[match[1]!] = unquote(match[2] ?? '')
     }
-    return { present: true, data, body: lines.slice(end + 1).join('\n').trim() }
+    return { present: true, data, ...parseBody(lines, end + 1) }
   }
   let legacyEnd = 0
   while (legacyEnd < lines.length) {
@@ -84,12 +126,7 @@ export function parseFrontmatter(text: string): ParsedFrontmatter {
     data[match[1]!] = unquote(match[2] ?? '')
     legacyEnd++
   }
-  if (legacyEnd === 0) return { present: false, data, body: normalized.trim() }
-  return {
-    present: true,
-    data,
-    body: lines.slice(legacyEnd).join('\n').trim()
-  }
+  return { present: legacyEnd > 0, data, ...parseBody(lines, legacyEnd) }
 }
 
 function readDir(root: string): string[] {
@@ -136,7 +173,7 @@ export function projectSkillRoots(workspaceDir: string, homeDir: string): string
 function metaOf(data: Record<string, string>): SkillMeta | undefined {
   const meta: SkillMeta = {}
   const allowedTools = data['allowed-tools']?.trim()
-  if (allowedTools) meta.allowedTools = allowedTools
+  if (allowedTools !== undefined) meta.allowedTools = allowedTools
   const whenToUse = (data.when_to_use ?? data['when-to-use'])?.trim()
   if (whenToUse) meta.whenToUse = whenToUse
   const argumentHint = (data['argument-hint'] ?? data.argument_hint)?.trim()
@@ -145,8 +182,10 @@ function metaOf(data: Record<string, string>): SkillMeta | undefined {
   if (args) meta.arguments = args
   const context = data.context?.trim()
   if (context) meta.context = context
-  const userInvocable = data['user-invocable']?.trim()
+  const userInvocable = data['user-invocable']?.trim().toLowerCase()
   if (userInvocable) meta.userInvocable = userInvocable !== 'false'
+  const disableModelInvocation = data['disable-model-invocation']?.trim().toLowerCase()
+  if (disableModelInvocation) meta.disableModelInvocation = disableModelInvocation === 'true'
   return Object.keys(meta).length > 0 ? meta : undefined
 }
 
@@ -157,11 +196,22 @@ function legalName(name: string): boolean {
 
 function loadDir(skillsDir: string, scope: 'user' | 'project'): SkillEntry[] {
   const entries: SkillEntry[] = []
+  let trustedBase: string
+  try {
+    trustedBase = realpathSync.native(dirname(dirname(skillsDir)))
+    if (!lstatSync(dirname(skillsDir)).isDirectory() || !lstatSync(skillsDir).isDirectory()) return entries
+    if (relative(join(trustedBase, '.budingx', 'skills'), realpathSync.native(skillsDir))) return entries
+  } catch {
+    return entries
+  }
   for (const dir of readDir(skillsDir)) {
     const path = join(skillsDir, dir, 'SKILL.md')
     let text: string
+    let resourceRoot: string
     try {
-      text = readFileSync(path, 'utf8')
+      resourceRoot = realpathSync.native(dirname(path))
+      if (relative(join(trustedBase, '.budingx', 'skills', dir), resourceRoot)) continue
+      text = readResource(join(resourceRoot, 'SKILL.md'), MAX_SKILL_BYTES).text
     } catch {
       continue
     }
@@ -173,7 +223,7 @@ function loadDir(skillsDir: string, scope: 'user' | 'project'): SkillEntry[] {
       ? '缺少 frontmatter'
       : !legalName(name)
         ? '名称非法'
-        : parsed.error ?? (body.length === 0 ? '正文为空' : undefined)
+        : (parsed.error ?? (body.length === 0 ? '正文为空' : undefined))
     const meta = metaOf(parsed.data)
     entries.push({
       name,
@@ -181,6 +231,8 @@ function loadDir(skillsDir: string, scope: 'user' | 'project'): SkillEntry[] {
       body,
       path,
       scope,
+      resourceRoot,
+      ...(parsed.bodyStartLine !== undefined ? { bodyStartLine: parsed.bodyStartLine } : {}),
       valid: error === undefined,
       ...(error ? { error } : {}),
       ...(meta ? { meta } : {})
@@ -229,4 +281,152 @@ export function discoverSkills(options: DiscoverSkillsOptions): SkillEntry[] {
 export function findSkill(skills: SkillEntry[], name: string): SkillEntry | undefined {
   const key = name.toLowerCase()
   return skills.find((skill) => skill.name.toLowerCase() === key)
+}
+
+export type SkillActivation =
+  | { ok: true; body: string; allowedTools?: readonly string[] }
+  | { ok: false; error: string }
+
+class SkillResourceError extends Error {
+  constructor(source: string, line: number, reference: string, reason: string) {
+    const location = (source + ':' + line + ' @' + reference).replace(/\p{Cc}/gu, '�')
+    super('[SKILL_RESOURCE] ' + location + '：' + reason)
+  }
+}
+
+function isWithin(root: string, path: string): boolean {
+  const rel = relative(root, path)
+  return rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel)
+}
+
+function readResource(path: string, limit = MAX_RESOURCE_BYTES): { text: string; bytes: number } {
+  const before = lstatSync(path)
+  if (!before.isFile()) throw new Error('目标不是常规文件')
+  if (before.size > limit) throw new Error(`资源超过 ${limit / 1024} KiB 上限`)
+  const fd = openSync(path, RESOURCE_OPEN_FLAGS)
+  try {
+    const opened = fstatSync(fd)
+    if (
+      !opened.isFile() ||
+      opened.ino !== before.ino ||
+      opened.dev !== before.dev ||
+      relative(path, realpathSync.native(path))
+    ) {
+      throw new Error('读取期间资源路径发生变化')
+    }
+    const buffer = Buffer.alloc(limit + 1)
+    let bytes = 0
+    while (bytes < buffer.length) {
+      const count = readSync(fd, buffer, bytes, buffer.length - bytes, null)
+      if (count === 0) break
+      bytes += count
+    }
+    if (bytes > limit) throw new Error(`资源超过 ${limit / 1024} KiB 上限`)
+    try {
+      const text = new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, bytes))
+      if (text.includes('\0')) throw new Error('NUL')
+      return { text: text.replace(/\r\n?/g, '\n').replace(/\n$/, ''), bytes }
+    } catch {
+      throw new Error('资源不是有效的 UTF-8 文本')
+    }
+  } finally {
+    closeSync(fd)
+  }
+}
+
+function expandResources(skill: SkillEntry, allowResource?: (path: string) => boolean): string {
+  let totalBytes = Buffer.byteLength(skill.body)
+  if (totalBytes > MAX_SKILL_BYTES) throw new Error('技能及资源总量超过 128 KiB 上限')
+  if (!skill.body.includes('@')) return skill.body
+  const stack: string[] = []
+  let count = 0
+  let root: string | undefined
+
+  function expand(text: string, source: string, startLine: number, depth: number): string {
+    let fence: string | undefined
+    return text
+      .split('\n')
+      .map((line, index) => {
+        const marker = MARKDOWN_FENCE.exec(line)
+        if (fence) {
+          const close = marker?.[1]
+          if (close?.[0] === fence[0] && close.length >= fence.length && !marker?.[2]?.trim()) {
+            fence = undefined
+          }
+          return line
+        }
+        const open = marker?.[1]
+        if (open) {
+          fence = open
+          return line
+        }
+        const match = RESOURCE_REFERENCE.exec(line)
+        if (!match) return line
+        const reference = (match[1] ?? match[2] ?? match[3])!
+        try {
+          if (skill.scope === 'bundled') throw new Error('内置技能没有磁盘资源目录')
+          if (depth >= MAX_RESOURCE_DEPTH) throw new Error('资源引用深度超过 5 层上限')
+          if (++count > MAX_RESOURCE_REFERENCES) throw new Error('资源引用超过 32 个上限')
+          const segments = reference.replaceAll('\\', '/').split('/')
+          if (!segments[0] || segments.includes('..') || /[<>:"|?*\p{Cc}]/u.test(reference)) {
+            throw new Error('资源路径必须位于技能根内')
+          }
+          if (!root) {
+            const current = realpathSync.native(dirname(skill.path))
+            if (skill.resourceRoot && relative(skill.resourceRoot, current)) {
+              throw new Error('技能根路径在发现后发生变化')
+            }
+            root = current
+            stack.push(realpathSync.native(skill.path))
+          }
+          const path = realpathSync.native(resolve(root, ...segments))
+          if (!isWithin(root, path)) throw new Error('符号链接指向技能根外')
+          if (isCredentialLike(basename(path)) || allowResource?.(path) === false) {
+            throw new Error('资源被读取权限拒绝')
+          }
+          if (stack.some((ancestor) => !relative(ancestor, path))) throw new Error('循环引用')
+          const resource = readResource(path)
+          totalBytes += resource.bytes
+          if (totalBytes > MAX_SKILL_BYTES) throw new Error('技能及资源总量超过 128 KiB 上限')
+          stack.push(path)
+          try {
+            return expand(resource.text, path, 1, depth + 1)
+          } finally {
+            stack.pop()
+          }
+        } catch (error) {
+          if (error instanceof SkillResourceError) throw error
+          const reason =
+            error instanceof Error && !('code' in error) ? error.message : '无法读取资源'
+          throw new SkillResourceError(source, startLine + index, reference, reason)
+        }
+      })
+      .join('\n')
+  }
+
+  return expand(skill.body, skill.path, skill.bodyStartLine ?? 1, 0)
+}
+
+/** Resolves both invocation paths against the same discovered skill and resource boundaries. */
+export function activateSkill(skill: SkillEntry, invocation: 'manual' | 'model', allowResource?: (path: string) => boolean): SkillActivation {
+  if (!skill.valid) return { ok: false, error: skill.error ?? '技能无效' }
+  if (invocation === 'manual' && skill.meta?.userInvocable === false) {
+    return { ok: false, error: '此技能已禁止用户手动调用' }
+  }
+  if (invocation === 'model' && skill.meta?.disableModelInvocation === true) {
+    return { ok: false, error: '此技能已禁止模型调用' }
+  }
+  try {
+    const body = expandResources(skill, allowResource)
+    const tools = skill.meta?.allowedTools
+    if (tools === undefined) return { ok: true, body }
+    const names = tools
+      .replace(/^\[(.*)\]$/, '$1')
+      .split(/[\s,]+/)
+      .map(unquote)
+      .filter(Boolean)
+    return { ok: true, body, allowedTools: [...new Set(names)] }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : '技能资源读取失败' }
+  }
 }

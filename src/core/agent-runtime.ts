@@ -6,11 +6,12 @@
 // are host-injected ports (D14). The registry is deliberately separate from
 // the background-command TaskRegistry (SA-14).
 import { randomUUID } from 'node:crypto'
-import { Session } from './session.js'
+import { Session, type SessionOptions } from './session.js'
 import type { AgentDefinition } from './agent-definitions.js'
 import type { ErrorInfo, TurnOutcome, TurnSnapshot } from './events.js'
 import type { ModelProvider } from './provider.js'
 import type { PermissionMode, PermissionPolicy } from './permissions.js'
+import { sliceToolOutput } from './tools.js'
 import type { ApprovalDecision, ApprovalGateway, ApprovalRequest, ToolHandler } from './tools.js'
 import type { SessionTranscript } from './transcript.js'
 
@@ -29,11 +30,21 @@ const ALWAYS_DENY = ['Agent', 'TaskOutput', 'TaskStop', 'AskUserQuestion', 'Ente
 const BACKGROUND_ALLOWED = ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'Bash', 'PowerShell', 'Write', 'Edit', 'TodoWrite', 'Skill']
 
 const MODE_RANK: Record<PermissionMode, number> = { read_only: 0, workspace_edit: 1, full_access: 2 }
+const DIAGNOSTIC_TOOL_LIMIT = 3
+const DIAGNOSTIC_TEXT_LIMIT = 800
+
+type ToolDiagnostic = {
+  name: string
+  arguments: string
+  output: string
+  errorCode?: string
+}
 
 export type AgentState = 'running' | 'completed' | 'failed' | 'cancelled' | 'backgrounded'
 
 export interface AgentRecord {
   agentId: string
+  parentSessionId: string
   agentType: string
   description: string
   color?: string
@@ -86,6 +97,7 @@ export interface SpawnAgentOptions {
   runInBackground?: boolean
   /** Sync agents abort with the parent turn; background agents survive it. */
   parentSignal?: AbortSignal
+  allowedToolNames?: readonly string[]
 }
 
 export interface AgentRegistryOptions {
@@ -107,6 +119,9 @@ export interface AgentRegistryOptions {
   maxConcurrent?: number
   tokenLimit?: number
   resultCharLimit?: number
+  redactDiagnostic?: (value: unknown) => unknown
+  resolveProjectContext?: () => string | undefined
+  resolveLocalInstructions?: SessionOptions['resolveLocalInstructions']
 }
 
 export interface TaskOutputResult {
@@ -170,6 +185,10 @@ function finalTextOf(session: Session): string {
   return ''
 }
 
+function escapeXmlText(text: string): string {
+  return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+}
+
 export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistry {
   const records = new Map<string, AgentRecord>()
   const internals = new Map<string, AgentInternal>()
@@ -182,6 +201,16 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
   let running = 0
   let disposed = false
   const waiters: { resolve: () => void; reject: (error: Error) => void; signal?: AbortSignal; onAbort?: () => void }[] = []
+
+  function diagnosticText(value: unknown): string {
+    try {
+      const safe = options.redactDiagnostic ? options.redactDiagnostic(value) : value
+      const text = typeof safe === 'string' ? safe : (JSON.stringify(safe) ?? '')
+      return sliceToolOutput(text, DIAGNOSTIC_TEXT_LIMIT)
+    } catch {
+      return '(diagnostic unavailable)'
+    }
+  }
 
   // Sync agents share the parent approval gateway, but only one approval may
   // be on screen at a time: parallel agents queue behind each other.
@@ -240,7 +269,9 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
 
     const modelOverride =
       spawnOptions.model ?? (definition.model && definition.model !== 'inherit' ? definition.model : undefined)
-    const childTools = trimTools(options.tools, definition, background)
+    const childTools = trimTools(options.tools, definition, background).filter(
+      (tool) => !spawnOptions.allowedToolNames || spawnOptions.allowedToolNames.includes(tool.name)
+    )
     const parentMode = options.policy.getMode()
     const childPolicy = options.createChildPolicy(minMode(parentMode, definition.permissionMode ?? parentMode))
     const transcript = options.createTranscript?.(agentId)
@@ -252,6 +283,7 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
 
     const record: AgentRecord = {
       agentId,
+      parentSessionId: options.parentSession.id,
       agentType: definition.name,
       description,
       ...(definition.color ? { color: definition.color } : {}),
@@ -311,7 +343,8 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
       maxIterations: spawnOptions.maxTurns ?? definition.maxTurns,
       ...(transcript ? { transcript } : {}),
       ...(options.contextBudget ? { contextBudget: options.contextBudget } : {}),
-      resolveSystemContext: () => systemContext,
+      resolveSystemContext: () => [systemContext, options.resolveProjectContext?.()].filter(Boolean).join('\n\n'),
+      resolveLocalInstructions: options.resolveLocalInstructions,
       disposers: [() => { internal.detachParentSignal(); unsubscribe() }]
     })
     record.session = child
@@ -330,6 +363,10 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
         state: record.state === 'backgrounded' ? 'backgrounded' : 'running'
       })
     }
+
+    const pendingTools = new Map<string, { name: string; input: unknown }>()
+    const completedTools: ToolDiagnostic[] = []
+    const failedTools = new Map<string, ToolDiagnostic>()
 
     function finish(outcome: TurnOutcome, errorInfo?: ErrorInfo): void {
       if (internal.finished) return
@@ -359,8 +396,21 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
         result = { status: 'cancelled', agentId, text: 'Subagent was cancelled.', code: 'AGENT_CANCELLED', toolUses: record.toolUses, tokens: record.tokens, durationMs }
       } else {
         record.state = 'failed'
-        record.error = errorInfo?.message ?? outcome
-        result = { status: 'failed', agentId, text: `Subagent failed: ${errorInfo?.message ?? outcome}`, code: 'AGENT_FAILED', toolUses: record.toolUses, tokens: record.tokens, durationMs }
+        record.error = diagnosticText(errorInfo?.message ?? outcome)
+        const failureCause = errorInfo?.toolFailure
+        const failedTool = failureCause
+          ? failedTools.get(failureCause.callId)
+          : Array.from(failedTools.values()).at(-1)
+        const failure = {
+          agentId,
+          code: errorInfo?.code ?? 'AGENT_FAILED',
+          message: record.error,
+          ...(failedTool ? { failedTool: { ...failedTool, errorCode: failureCause?.code ?? failedTool.errorCode } } : {}),
+          completedTools,
+          ...(plain ? { partialAnswer: diagnosticText(plain) } : {}),
+          suggestion: 'Use the available partial results and try a different tool, source, or approach before delegating again.'
+        }
+        result = { status: 'failed', agentId, text: `Subagent failed: ${record.error}\n${JSON.stringify(failure)}`, code: 'AGENT_FAILED', toolUses: record.toolUses, tokens: record.tokens, durationMs }
       }
       const footer = `\n\n<usage>total_tokens: ${record.tokens}\ntool_uses: ${record.toolUses}\nduration_ms: ${durationMs}</usage>`
       result = { ...result, text: result.text + footer } as AgentSpawnResult
@@ -378,10 +428,15 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
         record.notified = true
         const xml =
           `<task-notification>\n<task-id>${agentId}</task-id>\n<status>${result.status}</status>\n` +
-          `<summary>${description}</summary>\n<result>${record.result}</result>\n` +
+          `<summary>${escapeXmlText(description)}</summary>\n` +
+          (record.error ? `<error>${escapeXmlText(record.error)}</error>\n` : '') +
+          `<result>${escapeXmlText(record.result)}</result>\n` +
           `<usage>total_tokens: ${record.tokens}\ntool_uses: ${record.toolUses}\nduration_ms: ${durationMs}</usage>\n</task-notification>`
         options.parentSession.enqueueNotification(xml, `子代理「${description}」已结束（${result.status}）`)
       }
+      pendingTools.clear()
+      completedTools.length = 0
+      failedTools.clear()
       internal.detachParentSignal()
       release()
       internal.terminal.resolve()
@@ -390,10 +445,31 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
 
     const unsubscribe = child.on((event) => {
       if (event.type === 'tool_call_completed') {
+        pendingTools.set(event.callId, { name: event.name, input: event.input })
         record.toolUses++
         record.lastTools.push(event.name)
         if (record.lastTools.length > 3) record.lastTools.shift()
         publishProgress()
+      } else if (event.type === 'tool_result') {
+        const call = pendingTools.get(event.callId)
+        pendingTools.delete(event.callId)
+        if (!call) return
+        const diagnostic = {
+          name: call.name,
+          arguments: diagnosticText(call.input),
+          output: diagnosticText(event.content),
+          ...(event.errorCode ? { errorCode: event.errorCode } : {})
+        }
+        if (event.isError) {
+          failedTools.set(event.callId, diagnostic)
+          if (failedTools.size > DIAGNOSTIC_TOOL_LIMIT) {
+            const oldest = failedTools.keys().next()
+            if (!oldest.done) failedTools.delete(oldest.value)
+          }
+        } else {
+          completedTools.push(diagnostic)
+          if (completedTools.length > DIAGNOSTIC_TOOL_LIMIT) completedTools.shift()
+        }
       } else if (event.type === 'message_completed' && event.usage) {
         record.tokens += (event.usage.inputTokens ?? 0) + (event.usage.outputTokens ?? 0)
         publishProgress()
@@ -438,7 +514,7 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
 
   function background(callId: string): boolean {
     const record = byCallId.get(callId)
-    if (!record) return false
+    if (record?.parentSessionId !== options.parentSession.id) return false
     const internal = internals.get(record.agentId)
     if (!internal || internal.finished || record.background) return false
     record.background = true
@@ -461,8 +537,13 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
     return true
   }
 
-  function stop(agentId: string): { ok: boolean; state?: AgentState } {
+  function get(agentId: string): AgentRecord | undefined {
     const record = records.get(agentId)
+    return record?.parentSessionId === options.parentSession.id ? record : undefined
+  }
+
+  function stop(agentId: string): { ok: boolean; state?: AgentState } {
+    const record = get(agentId)
     if (!record) return { ok: false }
     if (isTerminal(record)) return { ok: false, state: record.state }
     record.stopped = true
@@ -471,9 +552,13 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
   }
 
   async function taskOutput(agentId: string, outputOptions: { block?: boolean; timeoutMs?: number } = {}): Promise<TaskOutputResult> {
-    const record = records.get(agentId)
+    const record = get(agentId)
     if (!record) throw new Error(`Unknown agent id: ${agentId}`)
-    if (isTerminal(record)) return { status: record.state as TaskOutputResult['status'], text: record.result }
+    function terminalOutput(record: AgentRecord): TaskOutputResult {
+      const text = record.state === 'failed' ? [record.error, record.result].filter(Boolean).join('\n\n') : record.result
+      return { status: record.state as TaskOutputResult['status'], text }
+    }
+    if (isTerminal(record)) return terminalOutput(record)
     if (outputOptions.block === false) return { status: 'running', message: 'agent is still running' }
     const internal = internals.get(agentId)
     if (!internal) return { status: 'running', message: 'agent is still running' }
@@ -485,7 +570,7 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
     if (raced === 'timeout' && !isTerminal(record)) {
       return { status: 'running', message: `timed out after ${timeout}ms; agent is still running` }
     }
-    return { status: record.state as TaskOutputResult['status'], text: record.result }
+    return terminalOutput(record)
   }
 
   function dispose(): void {
@@ -505,8 +590,10 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
     background,
     stop,
     taskOutput,
-    list: () => [...records.values()].sort((a, b) => a.startedAt - b.startedAt),
-    get: (agentId) => records.get(agentId),
+    list: () => [...records.values()]
+      .filter((record) => record.parentSessionId === options.parentSession.id)
+      .sort((a, b) => a.startedAt - b.startedAt),
+    get,
     dispose
   }
 }

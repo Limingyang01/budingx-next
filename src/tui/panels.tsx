@@ -3,12 +3,19 @@ import { useEffect, useMemo, useState, type RefObject } from 'react'
 import type { CommandContext } from './commands.js'
 import { formatTokens } from './commands.js'
 import { exportSelectedSession } from './commands/builtin-extended.js'
+import type { ExportFormat } from './export.js'
 
 export type PanelInput = { key: (text: string, key: Key) => void; paste: (text: string) => void }
+const searchText = (value: string) => value.normalize('NFKC').toLowerCase()
 
-export function usePanelInput(input: RefObject<PanelInput | undefined>, handler: (text: string, key: Key) => void, deps: unknown[]) {
+export function usePanelInput(
+  input: RefObject<PanelInput | undefined>,
+  handler: (text: string, key: Key) => void,
+  deps: unknown[],
+  paste: (text: string) => void = () => {}
+) {
   useEffect(() => {
-    input.current = { key: handler, paste: () => {} }
+    input.current = { key: handler, paste }
     return () => { input.current = undefined }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps)
@@ -20,22 +27,53 @@ export function ResumePicker({ context, close, input, onPick }: {
   input: RefObject<PanelInput | undefined>; onPick: (sessionId: string) => void
 }) {
   const pick = (zh: string, en: string) => (context.lang === 'zh' ? zh : en)
-  const sessions = useMemo(() => context.sessions?.list() ?? [], [context.sessions])
+  const searchIndex = useMemo(() => {
+    const entries = context.sessions?.searchIndex?.() ??
+      context.sessions?.list().map((entry) => ({ ...entry, body: '' })) ?? []
+    return entries.map(({ body, ...entry }) => ({
+      ...entry, indexedTitle: searchText(entry.title), indexedBody: searchText(body)
+    }))
+  }, [context.sessions])
+  const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
+  const needle = searchText(query.trim())
+  const sessions = useMemo(() => searchIndex.map((entry) => ({
+    ...entry,
+    titleMatch: !needle || entry.indexedTitle.includes(needle),
+    bodyMatch: needle !== '' && entry.indexedBody.includes(needle)
+  })).filter((entry) => entry.titleMatch || entry.bodyMatch), [searchIndex, needle])
   const selected = Math.min(index, Math.max(0, sessions.length - 1))
+  const viewportStart = Math.max(0, selected - 7)
+  function appendQuery(text: string) {
+    setQuery((value) => (value + text.replace(/\p{Cc}/gu, '')).slice(0, 256))
+    setIndex(0)
+  }
   usePanelInput(input, (text, key) => {
     if (key.escape) return close()
     if (key.upArrow) return setIndex((v) => Math.max(0, v - 1))
     if (key.downArrow) return setIndex((v) => Math.min(Math.max(0, sessions.length - 1), v + 1))
-    if (key.return && sessions[selected]) onPick(sessions[selected].sessionId)
-  }, [sessions, selected])
+    if (key.return) {
+      if (sessions[selected]) onPick(sessions[selected].sessionId)
+      return
+    }
+    if (key.backspace || key.delete) {
+      setQuery((value) => Array.from(value).slice(0, -1).join(''))
+      setIndex(0)
+      return
+    }
+    if (text && !key.ctrl && !key.meta && !key.tab) appendQuery(text)
+  }, [sessions, selected], appendQuery)
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="gray">
       <Text bold>{pick('恢复会话（当前工作区）', 'Resume session (this workspace)')}</Text>
-      {sessions.length === 0 && <Text dimColor>{pick('当前工作区没有已保存的会话', 'No saved sessions in this workspace')}</Text>}
-      {sessions.map((entry, i) => (
-        <Text key={entry.sessionId} color={i === selected ? '#56b6c2' : undefined}>
-          {i === selected ? '❯ ' : '  '}{entry.title}  {entry.updatedAt}  {pick('回合', 'turns')} {entry.turns}
+      <Text>{pick('搜索标题或正文：', 'Search titles or messages: ')}{query || '…'}</Text>
+      {sessions.length === 0 && <Text dimColor>{needle
+        ? pick('没有匹配的会话', 'No matching sessions')
+        : pick('当前工作区没有已保存的会话', 'No saved sessions in this workspace')}</Text>}
+      {sessions.slice(viewportStart, viewportStart + 12).map((entry, i) => (
+        <Text key={entry.sessionId} color={i + viewportStart === selected ? '#56b6c2' : undefined}>
+          {i + viewportStart === selected ? '❯ ' : '  '}{entry.title}  {entry.updatedAt}  {pick('回合', 'turns')} {entry.turns}
+          {entry.bodyMatch && !entry.titleMatch ? pick(' · 正文命中', ' · message match') : ''}
         </Text>
       ))}
       <Text dimColor>{pick('↑↓ 选择 · Enter 恢复 · Esc 关闭', 'up/down · Enter resume · Esc close')}</Text>
@@ -44,11 +82,12 @@ export function ResumePicker({ context, close, input, onPick }: {
 }
 
 /** SP009 /export：选择要导出的会话（当前会话 + 已保存会话）。 */
-export function ExportPicker({ context, current, close, input }: {
+export function ExportPicker({ context, current, close, input, options }: {
   context: CommandContext
   current: { id: string; history: readonly unknown[] }
   close: (notice?: string) => void
   input: RefObject<PanelInput | undefined>
+  options?: { format: ExportFormat; path?: string }
 }) {
   const pick = (zh: string, en: string) => (context.lang === 'zh' ? zh : en)
   const entries = useMemo(() => {
@@ -60,16 +99,17 @@ export function ExportPicker({ context, current, close, input }: {
   }, [context.sessions, current.id, current.history.length])
   const [index, setIndex] = useState(0)
   const selected = Math.min(index, Math.max(0, entries.length - 1))
+  const format = options?.format ?? 'jsonl'
   usePanelInput(input, (text, key) => {
     if (key.escape) return close()
     if (key.upArrow) return setIndex((v) => Math.max(0, v - 1))
     if (key.downArrow) return setIndex((v) => Math.min(entries.length - 1, v + 1))
     if (key.return && entries[selected])
-      close(exportSelectedSession(context, { sessionId: entries[selected].sessionId, format: 'jsonl' }).message)
-  }, [entries, selected])
+      close(exportSelectedSession(context, { sessionId: entries[selected].sessionId, format, path: options?.path }).message)
+  }, [entries, selected, format, options?.path])
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="gray">
-      <Text bold>{pick('导出会话（JSONL）', 'Export session (JSONL)')}</Text>
+      <Text bold>{pick('导出会话', 'Export session')} ({format.toUpperCase()})</Text>
       {entries.map((entry, i) => (
         <Text key={entry.sessionId} color={i === selected ? '#56b6c2' : undefined}>
           {i === selected ? '❯ ' : '  '}{entry.title}

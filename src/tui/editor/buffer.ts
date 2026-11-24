@@ -3,7 +3,10 @@
 // The cursor column counts code points, so emoji and CJK never split.
 export type Cursor = { line: number; col: number }
 
-type Snapshot = { lines: string[]; cursor: Cursor }
+type Snapshot = { lines: string[]; cursor: Cursor; longPasteLength: number }
+
+export const INPUT_LENGTH_LIMIT = 100_000
+export const LONG_PASTE_THRESHOLD = 10_000
 
 const characters = (text: string): string[] => Array.from(text)
 
@@ -11,9 +14,11 @@ export class EditorBuffer {
   lines: string[] = ['']
   cursor: Cursor = { line: 0, col: 0 }
   history: string[] = []
+  longPasteLength = 0
   private undoStack: Snapshot[] = []
   private historyIndex = -1
   private draft = ''
+  private stashedDraft?: Snapshot
 
   get text(): string {
     return this.lines.join('\n')
@@ -27,23 +32,28 @@ export class EditorBuffer {
     return this.lines.length > 1
   }
 
-  setText(text: string): void {
+  setText(text: string): boolean {
+    if (text.length > INPUT_LENGTH_LIMIT) return false
     this.pushUndo()
     this.lines = text.split('\n')
+    this.longPasteLength = 0
     this.cursor = {
       line: this.lines.length - 1,
       col: characters(this.lines.at(-1) ?? '').length
     }
+    return true
   }
 
   clear(): void {
     this.pushUndo()
     this.lines = ['']
     this.cursor = { line: 0, col: 0 }
+    this.longPasteLength = 0
   }
 
-  insert(text: string): void {
-    if (!text) return
+  insert(text: string): boolean {
+    if (text.length + this.text.length > INPUT_LENGTH_LIMIT) return false
+    if (!text) return true
     this.pushUndo()
     const parts = text.split('\n')
     const line = characters(this.lines[this.cursor.line])
@@ -52,7 +62,7 @@ export class EditorBuffer {
     if (parts.length === 1) {
       this.lines[this.cursor.line] = head + parts[0] + tail
       this.cursor.col += characters(parts[0]).length
-      return
+      return true
     }
     const before = this.lines.slice(0, this.cursor.line)
     const after = this.lines.slice(this.cursor.line + 1)
@@ -68,10 +78,18 @@ export class EditorBuffer {
       line: before.length + parts.length - 1,
       col: characters(parts.at(-1) ?? '').length
     }
+    return true
   }
 
-  newline(): void {
-    this.insert('\n')
+  paste(text: string): boolean {
+    const normalized = text.replace(/\r\n?/g, '\n')
+    if (!this.insert(normalized)) return false
+    if (normalized.length > LONG_PASTE_THRESHOLD) this.longPasteLength += normalized.length
+    return true
+  }
+
+  newline(): boolean {
+    return this.insert('\n')
   }
 
   backspace(): void {
@@ -167,7 +185,35 @@ export class EditorBuffer {
     if (!snapshot) return false
     this.lines = snapshot.lines
     this.cursor = snapshot.cursor
+    this.longPasteLength = snapshot.longPasteLength
     return true
+  }
+
+  toggleStash(): 'stored' | 'restored' | 'occupied' | 'empty' {
+    if (!this.isEmpty) {
+      if (this.stashedDraft) return 'occupied'
+      this.stashedDraft = this.snapshot()
+      this.clear()
+      this.historyIndex = -1
+      this.draft = ''
+      return 'stored'
+    }
+    const saved = this.stashedDraft
+    if (!saved) return 'empty'
+    this.stashedDraft = undefined
+    this.pushUndo()
+    this.lines = saved.lines
+    this.cursor = saved.cursor
+    this.longPasteLength = saved.longPasteLength
+    return 'restored'
+  }
+
+  resetDraft(): void {
+    this.clear()
+    this.undoStack = []
+    this.stashedDraft = undefined
+    this.historyIndex = -1
+    this.draft = ''
   }
 
   /** Move one step back in the submitted input history. */
@@ -206,11 +252,16 @@ export class EditorBuffer {
     this.draft = ''
   }
 
-  private pushUndo(): void {
-    this.undoStack.push({
+  private snapshot(): Snapshot {
+    return {
       lines: [...this.lines],
-      cursor: { ...this.cursor }
-    })
+      cursor: { ...this.cursor },
+      longPasteLength: this.longPasteLength
+    }
+  }
+
+  private pushUndo(): void {
+    this.undoStack.push(this.snapshot())
     if (this.undoStack.length > 100) this.undoStack.shift()
   }
 }

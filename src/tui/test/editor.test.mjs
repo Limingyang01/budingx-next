@@ -124,3 +124,33 @@ test('Home and End move within the current draft line', () => {
   applyKey(buffer, '', { end: true }, { busy: false })
   assert.equal(buffer.cursor.col, 3)
 })
+
+test('AC-INPUT-01 暂存多行草稿时保留光标、粘贴和已提交历史', () => {
+  const buffer = new EditorBuffer()
+  buffer.commit('历史记录')
+  buffer.paste('第一行\n第二行' + '长'.repeat(10_001))
+  buffer.moveUp()
+  buffer.moveLeft()
+  const snapshot = { text: buffer.text, cursor: { ...buffer.cursor }, size: buffer.longPasteLength }
+  assert.equal(buffer.toggleStash(), 'stored')
+  assert.equal(buffer.text, '')
+  assert.equal(buffer.recallPrevious(), true)
+  assert.equal(buffer.text, '历史记录')
+  assert.equal(buffer.toggleStash(), 'occupied')
+  assert.equal(buffer.recallNext(), true)
+  assert.equal(buffer.toggleStash(), 'restored')
+  assert.deepEqual({ text: buffer.text, cursor: buffer.cursor, size: buffer.longPasteLength }, snapshot)
+  assert.deepEqual(buffer.history, ['历史记录'])
+})
+
+test('AC-INPUT-02 拒绝超过输入上限的整段粘贴，撤销会恢复粘贴状态', () => {
+  const buffer = new EditorBuffer()
+  buffer.insert('前缀')
+  assert.equal(buffer.paste('中'.repeat(100_000)), false)
+  assert.equal(buffer.text, '前缀')
+  assert.equal(buffer.paste('中'.repeat(10_001)), true)
+  assert.equal(buffer.longPasteLength, 10_001)
+  assert.equal(buffer.undo(), true)
+  assert.equal(buffer.text, '前缀')
+  assert.equal(buffer.longPasteLength, 0)
+})

@@ -50,6 +50,7 @@ import type {
 } from './provider.js'
 import { assembleToolCalls, parseToolArguments } from './tool-calls.js'
 import type { ToolSearchController } from './tool-search.js'
+import { sliceToolOutput } from './tools.js'
 import type {
   ApprovalDecision,
   ApprovalGateway,
@@ -138,6 +139,7 @@ export type SessionOptions = {
    * 每次请求重新读取，因此文件改动在下一回合生效。
    */
   resolveSystemContext?: () => string | undefined
+  resolveLocalInstructions?: (target: { path: string; kind?: string }) => { key: string; content: string } | undefined
   /** SP006 §9：hooks 宿主端口；未注入时所有 hook 事件为空操作。 */
   hooks?: SessionHooks
   /** SP007 §4.2：ToolSearch 延迟加载控制器；未注入时全部工具恒加载（既有行为）。 */
@@ -155,6 +157,8 @@ export type SubmitOptions = {
   }
   /** SP007 MM-07：随本条用户消息附带的图片（base64），按能力传递或降级。 */
   images?: { id: number; mediaType: string; data: string; width?: number; height?: number }[]
+  allowedSkillTools?: readonly string[]
+  preserveWhitespace?: boolean
 }
 
 type QueuedInput = { id: string; text: string; options?: SubmitOptions; notification?: boolean; notice?: string }
@@ -168,6 +172,9 @@ type ActiveTurn = {
   finalized: boolean
   userText: string
   messageIds: string[]
+  allowedSkillTools?: Set<string>
+  skillContexts?: NonNullable<SubmitOptions['context']>
+  localRuleScopes?: Map<string, string>
   assistant?: Message
   cancelTimer?: NodeJS.Timeout
   /** SP004 agent-observability：本回合根观测句柄。 */
@@ -349,7 +356,7 @@ export class Session {
    */
   private readonly repeatedToolFailures = new Map<string, number>()
   /** SP005 FR-05：同一工具 + 同一错误码的连续失败计数（捕捉换参数瞎试）。 */
-  private readonly toolFailureStreaks = new Map<string, number>()
+  private readonly toolFailureStreaks = new Map<string, { code: string | undefined; count: number }>()
   /** SP006 §9：hook 注入的附加上下文，只作用于下一次请求。 */
   private readonly hookContext: string[] = []
   private sessionStartHooked = false
@@ -401,6 +408,12 @@ export class Session {
   adoptIdentity(next: { id: string; transcript?: SessionTranscript }): void {
     this.currentId = next.id
     if (next.transcript) this.options.transcript = next.transcript
+  }
+
+  replacePlanModeHost(host: PlanModeHost): void {
+    if (this.isBusy || this.planMode.active) throw new Error('A plan or turn is active')
+    this.options.planMode = host
+    this.approvedPlanCheck = undefined
   }
 
   /** 0.5.4 /rewind：对话检查点（用户消息）列表，供选择面板使用。 */
@@ -979,15 +992,15 @@ export class Session {
 
   /** Submit user input. While a turn is running the input is queued. */
   submit(text: string, options?: SubmitOptions): void {
-    const trimmed = text.trim()
-    if (!trimmed) return
+    if (!text.trim()) return
+    const submitted = options?.preserveWhitespace ? text : text.trim()
     if (this.state !== 'idle') {
-      const item: QueuedInput = { id: randomUUID(), text: trimmed, ...(options ? { options } : {}) }
+      const item: QueuedInput = { id: randomUUID(), text: submitted, ...(options ? { options } : {}) }
       this.queue.push(item)
-      this.emit({ type: 'input_queued', queueId: item.id, preview: previewOf(trimmed) })
+      this.emit({ type: 'input_queued', queueId: item.id, preview: previewOf(submitted) })
       return
     }
-    void this.startTurn(trimmed, undefined, options).catch((error) => {
+    void this.startTurn(submitted, undefined, options).catch((error) => {
       this.emit({
         type: 'notice',
         level: 'error',
@@ -1053,7 +1066,12 @@ export class Session {
       this.planModeState = undefined
       this.approvedPlanCheck = undefined
     }
-    if (this.activeTurn) this.activeTurn.controller.abort()
+    if (this.activeTurn) {
+      const turn = this.activeTurn
+      this.queue.length = 0
+      turn.controller.abort()
+      this.finalize(turn, 'cancelled')
+    }
     // Host-owned resources: the command runner terminates any background task tree (SP004 §4.4).
     for (const dispose of this.options.disposers ?? []) {
       try {
@@ -1257,6 +1275,8 @@ export class Session {
     })
     this.setState('requesting')
     const userMessage = this.userMessage(userText, options)
+    this.limitSkillTools(turn, options?.allowedSkillTools)
+    if (queued?.notification) userMessage.notificationDisplay = queued.notice ?? 'Background task finished'
     turn.messageIds.push(userMessage.id)
     this.messages.push(userMessage)
     this.recordMessage(userMessage)
@@ -1327,6 +1347,7 @@ export class Session {
       ...(parentId ? { parentId } : {}),
       role: message.role,
       blocks: message.blocks,
+      ...(message.notificationDisplay ? { notificationDisplay: message.notificationDisplay } : {}),
       ...(model ? { model } : {}),
       ...(usage ? { usage } : {})
     })
@@ -1612,7 +1633,7 @@ export class Session {
     // SP007 RD-13：每次请求前从历史标记重建发现集（覆盖 /resume），并公告当前延迟池。
     const toolSearch = this.options.toolSearch
     toolSearch?.scanHistory(this.messages)
-    const deferredNotice = toolSearch?.notice()
+    const deferredNotice = turn.allowedSkillTools ? undefined : toolSearch?.notice()
     const extraContext = [systemContext, hookContext, deferredNotice].filter(Boolean).join('\n\n')
     request.messages.unshift({
       role: 'system',
@@ -1624,7 +1645,7 @@ export class Session {
     if (this.tools.length > 0 && snapshot.capabilities.tools) {
       // SP007 RD-12：启用 ToolSearch 时只发送非延迟＋已发现＋ToolSearch 本身。
       const visible = toolSearch?.enabled ? toolSearch.filter(this.tools) : this.tools
-      request.tools = visible.map((tool) => ({
+      request.tools = visible.filter((tool) => !turn.allowedSkillTools || turn.allowedSkillTools.has(tool.name)).map((tool) => ({
         name: tool.name,
         parameters: tool.parameters ?? { type: 'object', properties: {} },
         description: tool.summary ?? tool.describe({})
@@ -1940,6 +1961,16 @@ export class Session {
         error = dispatched.error
         break
       }
+      if (turn.skillContexts?.length) {
+        const context: Message = {
+          id: randomUUID(), role: 'user',
+          blocks: turn.skillContexts.map(({ source, content }) => ({ type: 'context', source, content }))
+        }
+        turn.messageIds.push(context.id)
+        this.messages.push(context)
+        this.recordMessage(context)
+        turn.skillContexts = []
+      }
       // 真正执行了工具（无论成败）就代表还在推进，完成声明的重试计数清零。
       completionRejections = 0
     }
@@ -2020,6 +2051,10 @@ export class Session {
       else this.pushToolResult(turn, call.id, content, isError, code, trace)
     }
     if (turn.controller.signal.aborted) return { cancelled: true }
+    if (turn.allowedSkillTools && !turn.allowedSkillTools.has(call.name)) {
+      pushResult(`Tool "${call.name}" is outside the active skill's allowed-tools scope`, true, ERROR_CODES.permissionDenied)
+      return {}
+    }
     try {
       JSON.parse(call.arguments || '{}')
     } catch {
@@ -2134,6 +2169,16 @@ export class Session {
           }
         })
         return {}
+      }
+      if (target?.path && target.kind !== 'plan-draft') {
+        const local = this.options.resolveLocalInstructions?.({ path: target.path, kind: target.kind })
+        if (local && turn.localRuleScopes?.get(local.key) !== local.content) {
+          turn.localRuleScopes ??= new Map()
+          turn.localRuleScopes.set(local.key, local.content)
+          this.traceEnd(toolTrace, 'blocked')
+          pushResult(`Local project instructions for ${local.key}:\n${local.content}\nReview them, then retry or revise this operation.`, true)
+          return {}
+        }
       }
       // §6.3：已批准计划在首次副作用前重查目标与前像；漂移则回到待审，
       // 本次调用不执行任何副作用，也不消耗一次工具批准。
@@ -2287,11 +2332,20 @@ export class Session {
     try {
       const toolContext: ToolContext = {
         signal: turn.controller.signal,
-        changes: (records) => this.emit({ type: 'change_set', changes: records }),
+        changes: (records) => {
+          this.writeTranscript({ type: 'change_set', ts: new Date().toISOString(), changes: records })
+          this.emit({ type: 'change_set', changes: records })
+        },
         turnId: turn.id,
         callId: call.id,
         emit: (event) => this.emit(event),
         approved,
+        allowedToolNames: turn.allowedSkillTools ? [...turn.allowedSkillTools] : undefined,
+        activateSkill: ({ name, body, allowedTools }) => {
+          this.limitSkillTools(turn, allowedTools)
+          turn.skillContexts ??= []
+          turn.skillContexts.push({ source: `skill:${name}`, content: body })
+        },
         ...(this.options.codingTask
           ? {
               onCommandResult: (command: string, result: CommandResult) =>
@@ -2325,14 +2379,8 @@ export class Session {
       tool_response: { content, is_error: isError }
     })
     if (content.length > TOOL_OUTPUT_CAP) {
-      // SP005 FR-03：截断必须带显式标记，模型与人都能看出结果不完整，
-      // 不能把一段被砍掉的内容当成完整结果。
-      const omitted = content.length - TOOL_OUTPUT_CAP
-      content = content.slice(0, TOOL_OUTPUT_CAP) +
-        `\n[truncated] ${omitted} characters were omitted because the tool output exceeded ` +
-        `${TOOL_OUTPUT_CAP} characters (${ERROR_CODES.coreToolOutputTooLong})`
-      isError = true
-      errorCode = errorCode ?? ERROR_CODES.coreToolOutputTooLong
+      const notice = `\n[truncated] Tool output exceeded ${TOOL_OUTPUT_CAP} characters.`
+      content = sliceToolOutput(content, TOOL_OUTPUT_CAP - notice.length) + notice
     }
     if (startedAt !== undefined) {
       this.lastToolElapsed = { turnId: turn.id, callId: call.id, ms: performance.now() - startedAt }
@@ -2343,41 +2391,41 @@ export class Session {
     //       参数签名变了但错误类型没变，同样不会带来新信息。
     // 两种情况都只会让长任务空转到最大迭代次数，因此必须显式停下并给出稳定原因。
     const signature = this.toolSignature(call.name, call.arguments)
-    const streakKey = `${call.name}:${errorCode ?? 'unknown'}`
     if (isError) {
       const count = (this.repeatedToolFailures.get(signature) ?? 0) + 1
       this.repeatedToolFailures.set(signature, count)
-      const streak = (this.toolFailureStreaks.get(streakKey) ?? 0) + 1
-      this.toolFailureStreaks.set(streakKey, streak)
-      const tripped =
-        count >= MAX_REPEATED_TOOL_FAILURES
-          ? `failed ${count} times with the same arguments`
+      const previous = this.toolFailureStreaks.get(call.name)
+      const streak = previous && previous.code === errorCode ? previous.count + 1 : 1
+      this.toolFailureStreaks.set(call.name, { code: errorCode, count: streak })
+      const sameArguments = count >= MAX_REPEATED_TOOL_FAILURES
+      const failure =
+        sameArguments
+          ? `failed ${count} times with the same arguments (${errorCode ?? 'unknown'})`
           : streak >= MAX_TOOL_FAILURE_STREAK
             ? `failed ${streak} times in a row with the same error (${errorCode ?? 'unknown'})`
             : undefined
-      if (tripped) {
+      if (failure) {
         this.repeatedToolFailures.delete(signature)
-        this.toolFailureStreaks.delete(streakKey)
-        this.traceEnd(toolTrace, 'error')
-        pushResult(`Tool "${call.name}" ${tripped}; retrying it again cannot add information. ` +
-            `Stop and report the reason instead. (${ERROR_CODES.coreToolLoopDetected})`,
-          true,
-          ERROR_CODES.coreToolLoopDetected
-        )
+        this.toolFailureStreaks.delete(call.name)
+        const advice = sameArguments
+          ? 'Stop retrying the same arguments and check the failure reason.'
+          : 'Switch to a different tool or strategy.'
+        const message = `Tool "${call.name}" ${failure}. ${advice} (${ERROR_CODES.coreToolLoopDetected})`
+        pushResult(message, true, ERROR_CODES.coreToolLoopDetected, toolTrace)
+        this.lastToolElapsed = undefined
         return {
           error: {
             class: 'unknown',
             code: ERROR_CODES.coreToolLoopDetected,
-            message:
-              `Tool "${call.name}" ${tripped} ` +
-              `(${ERROR_CODES.coreToolLoopDetected})`,
-            retryable: false
+            message,
+            retryable: false,
+            toolFailure: { callId: call.id, code: errorCode ?? ERROR_CODES.coreToolFailed }
           }
         }
       }
     } else {
       this.repeatedToolFailures.delete(signature)
-      this.toolFailureStreaks.delete(streakKey)
+      this.toolFailureStreaks.delete(call.name)
     }
     try {
       pushResult(content, isError, errorCode, toolTrace)
@@ -2437,7 +2485,8 @@ export class Session {
       turnId: turn.id,
       callId,
       content: code ? `${content} (${code})` : content,
-      isError
+      isError,
+      ...(code ? { errorCode: code } : {})
     })
   }
 
@@ -2509,9 +2558,12 @@ export class Session {
     if (this.queue.length === 0) return
     const items = this.queue.splice(0, this.queue.length)
     for (const item of items) {
+      this.limitSkillTools(turn, item.options?.allowedSkillTools)
       const message = this.userMessage(item.text, item.options)
+      if (item.notification) message.notificationDisplay = item.notice ?? 'Background task finished'
       turn.messageIds.push(message.id)
       this.messages.push(message)
+      this.recordMessage(message)
       this.emit({
         type: 'input_injected',
         turnId: turn.id,
@@ -2522,6 +2574,12 @@ export class Session {
         ...(item.notice ? { display: item.notice } : {})
       })
     }
+  }
+
+  private limitSkillTools(turn: ActiveTurn, allowed: readonly string[] | undefined): void {
+    if (!allowed) return
+    const previous = turn.allowedSkillTools
+    turn.allowedSkillTools = new Set(previous ? allowed.filter((name) => previous.has(name)) : allowed)
   }
 
   private canRestore(turn: ActiveTurn): boolean {

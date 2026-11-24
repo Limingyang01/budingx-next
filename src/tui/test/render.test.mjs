@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
-import { collapseReadSearch, visibleHistoryRange } from '../dist/tui/render/history-window.js'
+import { renderToString } from 'ink'
+import { createElement } from 'react'
+import stringWidth from 'string-width'
+import { collapseReadSearch, HistoryWindow, visibleHistoryRange } from '../dist/tui/render/history-window.js'
 import { test } from 'node:test'
 import { reduceFrame, renderTextLines } from '../dist/tui/render/reducer.js'
 import { initialFrame } from '../dist/tui/render/types.js'
@@ -240,4 +243,131 @@ test('only consecutive successful reads and searches in one turn are collapsed',
   assert.match(result[0].text, /2 次读取／搜索/)
   assert.deepEqual(result.slice(1), [error, nextTurn])
   assert.equal(result[0].result, 'Ctrl+O 展开详情')
+})
+
+test('流式思考按段合并，按原顺序与回答交错，并在恢复后保留相同标识', () => {
+  const messageId = 'assistant-1'
+  const content = [
+    ['thinking', '初步'],
+    ['thinking', '判断'],
+    ['text', '阶段一。'],
+    ['thinking', '再次核对'],
+    ['text', '最终结论。']
+  ]
+  let live = initialFrame()
+  for (const [kind, text] of content) {
+    live = reduceFrame(live, { type: kind + '_delta', turnId, messageId, text })
+  }
+  live = reduceFrame(live, { type: 'message_completed', turnId, messageId })
+  live = reduceFrame(live, { type: 'turn_finalized', turnId, outcome: 'completed' })
+  assert.deepEqual(live.transcript.map(({ kind, text }) => [kind, text]), [
+    ['thinking', '初步判断'],
+    ['assistant', '阶段一。'],
+    ['thinking', '再次核对'],
+    ['assistant', '最终结论。']
+  ])
+  assert.equal(live.lastAnswer, '阶段一。最终结论。')
+
+  const restored = reduceFrame(initialFrame(), { type: 'conversation_restored', messages: [{
+    id: messageId,
+    role: 'assistant',
+    blocks: content.map(([type, text]) => ({ type, text, signature: 'private protocol metadata' }))
+  }] })
+  assert.deepEqual(restored.transcript, live.transcript)
+  const thinking = restored.transcript.filter((entry) => entry.kind === 'thinking')
+  assert.ok(thinking.every((entry) => entry.id))
+  assert.notEqual(thinking[0].id, thinking[1].id)
+  assert.doesNotMatch(JSON.stringify(restored.transcript), /private protocol metadata/)
+})
+
+test('实时和恢复的超长思考限制在有限正文，并保留 Unicode 边界', () => {
+  const messageId = 'assistant-large'
+  const text = 'x'.repeat(8191) + '😀' + 'IGNORE_BEYOND_DISPLAY_BOUND'
+  const live = reduceFrame(initialFrame(), { type: 'thinking_delta', turnId, messageId, text })
+  const restored = reduceFrame(initialFrame(), { type: 'conversation_restored', messages: [{
+    id: messageId,
+    role: 'assistant',
+    blocks: [{ type: 'thinking', text }]
+  }] })
+  assert.deepEqual(restored.transcript, live.transcript)
+  const entry = restored.transcript[0]
+  assert.equal(entry.truncated, true)
+  assert.equal(entry.text, 'x'.repeat(8191))
+})
+
+test('工具结果按调用 ID 更新同一卡片，通知注入后只留系统转录', () => {
+  const notification = '子代理「审核」已结束'
+  let frame = reduceFrame(initialFrame(), {
+    type: 'tool_call_completed', turnId, callId: 'call-1', name: 'Read', input: { path: 'a' }
+  })
+  frame = reduceFrame(frame, { type: 'tool_result', turnId, callId: 'call-1', content: 'first', isError: false })
+  frame = reduceFrame(frame, { type: 'tool_result', turnId, callId: 'call-1', content: 'updated', isError: true })
+  frame = reduceFrame(frame, { type: 'notice', level: 'info', code: 'agent_notification', text: notification })
+  frame = reduceFrame(frame, {
+    type: 'input_injected', turnId, queueId: 'notification', boundary: 'intra_turn',
+    text: '<task-notification>raw</task-notification>', notification: true, display: notification
+  })
+  assert.deepEqual(frame.transcript.map(({ kind, text, status, result }) => [kind, text, status, result]), [
+    ['tool', 'Read(a)', 'error', 'updated'],
+    ['meta', notification, undefined, undefined]
+  ])
+  assert.equal(frame.notices.length, 0)
+})
+
+test('恢复有显示元数据的子代理通知不会把原始内容当作用户输入', () => {
+  const display = '子代理「验证」已结束'
+  const raw = '<task-notification>internal payload</task-notification>'
+  const frame = reduceFrame(initialFrame(), { type: 'conversation_restored', messages: [
+    { id: 'notice', role: 'user', notificationDisplay: display, blocks: [{ type: 'text', text: raw }] },
+    { id: 'user', role: 'user', blocks: [{ type: 'text', text: raw }] }
+  ] })
+  assert.deepEqual(frame.transcript, [
+    { kind: 'meta', text: display },
+    { kind: 'user', text: raw }
+  ])
+})
+
+test('Ink 折叠思考只占一行，单项切换覆盖全量切换，工具结果完整显示一次', () => {
+  const entries = [
+    { kind: 'thinking', id: 'a', text: '第一个摘要'.repeat(12) + '\nTHOUGHT_A_DETAIL' },
+    { kind: 'thinking', id: 'b', text: 'Second summary\nTHOUGHT_B_DETAIL' },
+    { kind: 'thinking', id: 'missing', text: '' },
+    { kind: 'tool', text: 'Read(a)', turnId, callId: 'c', status: 'success', result: 'first row\nTOOL_DETAIL' },
+    { kind: 'assistant', text: 'ANSWER_ONCE' }
+  ]
+  const columns = 37
+  const render = (expanded, toggledIds = []) => renderToString(createElement(HistoryWindow, {
+    entries, expanded, width: columns, height: 24, offset: 0, ascii: true, fullScreen: false,
+    thinkingView: { selectedId: 'b', toggledIds: new Set(toggledIds) }
+  }), { columns })
+  const collapsed = render(false)
+  assert.doesNotMatch(collapsed, /THOUGHT_[AB]_DETAIL|TOOL_DETAIL/)
+  assert.match(collapsed, /^\s*>.*Second summary/m)
+  assert.match(collapsed, /Thinking text unavailable/i)
+  assert.equal(collapsed.split('\n').filter((line) => line.includes('摘要')).length, 1)
+  const individual = render(false, ['a'])
+  assert.match(individual, /THOUGHT_A_DETAIL/)
+  assert.doesNotMatch(individual, /THOUGHT_B_DETAIL|TOOL_DETAIL/)
+  const allExceptOne = render(true, ['b'])
+  assert.match(allExceptOne, /THOUGHT_A_DETAIL/)
+  assert.doesNotMatch(allExceptOne, /THOUGHT_B_DETAIL/)
+  assert.equal(allExceptOne.match(/TOOL_DETAIL/g)?.length, 1)
+  assert.equal(allExceptOne.match(/ANSWER_ONCE/g)?.length, 1)
+  assert.ok(collapsed.split('\n').every((line) => stringWidth(line) <= columns))
+  assert.ok(allExceptOne.split('\n').every((line) => stringWidth(line) <= columns))
+})
+
+test('长转录首次挂载在中间偏移时直接显示该位置附近的思考段', () => {
+  const entries = Array.from({ length: 480 }, (_, index) => (
+    index === 300 ? { kind: 'thinking', id: 'restored', text: 'RESTORED_ANCHOR' }
+      : { kind: 'plain', text: `entry ${index}` }
+  ))
+  const frame = renderToString(createElement(HistoryWindow, {
+    entries, width: 60, height: 24, offset: 300, ascii: true, fullScreen: true, expanded: false,
+    thinkingView: { selectedId: 'restored', toggledIds: new Set() },
+    onTargetOffset: () => {},
+    onPriorRowsChanged: () => {}
+  }), { columns: 60 })
+  assert.match(frame, /> Thinking - RESTORED_ANCHOR/)
+  assert.doesNotMatch(frame, /entry 120|entry 450/)
 })

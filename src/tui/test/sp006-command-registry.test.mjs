@@ -92,7 +92,8 @@ test('CMD-12 注册表覆盖 22 条既有命令与 7 条新增命令且可直接
     assert.ok(registry.get(name), `missing /${name}`)
     assert.ok(listed.has(name), `/${name} 未列出`)
   }
-  assert.equal(listed.size, ALL.length + EXTENDED.length)
+  for (const name of ['branch', 'rename']) assert.ok(listed.has(name))
+  assert.equal(listed.size, ALL.length + EXTENDED.length + 2)
 })
 
 test('CMD-12 runCommand 委派注册表后行为不变（清理/退出/配置/帮助/未知）', async () => {

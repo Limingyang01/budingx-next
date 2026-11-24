@@ -250,6 +250,83 @@ test('连续两个 Agent 并行执行，结果按调用原序回灌', async () =
   session.dispose()
 })
 
+test('AC-SUBAGENT-02 失败的并行子代理回灌结构化诊断，主回合与相邻子代理继续', async () => {
+  const call = (nameDelta, callId, args) => [
+    { type: 'tool_call_delta', index: 0, callId, nameDelta, argsDelta: JSON.stringify(args) },
+    { type: 'message_completed', finishReason: 'tool_calls' }
+  ]
+  const child = makeProvider([(request) => {
+    const messages = JSON.stringify(request.messages)
+    if (messages.includes('TASK-B')) return textEvents('other agent done')
+    if (!messages.includes('background facts')) return call('Read', 'read', { path: 'notes.md' })
+    const failed = request.messages.filter((message) => message.role === 'tool').length
+    return call('WebFetch', 'fetch-' + failed, { url: 'https://example.test/missing' })
+  }])
+  const fetch = {
+    ...toolStub('WebFetch', 'network'),
+    execute: async () => { throw Object.assign(new Error('HTTP 503'), { code: 'BUDINGX_WEB_HTTP_ERROR' }) }
+  }
+  const sessionProvider = makeProvider([twoAgentCalls(), textEvents('parent recovered')])
+  const { session, registry } = wireSession(sessionProvider, child, [
+    { ...toolStub('Read'), execute: async () => 'background facts' },
+    fetch
+  ])
+  try {
+    const results = []
+    let outcome
+    session.on((event) => {
+      if (event.type === 'tool_result') results.push(event)
+      if (event.type === 'turn_finalized') outcome = event.outcome
+    })
+    session.submit('start both agents')
+    await waitFor(() => !session.isBusy)
+    assert.equal(outcome, 'completed')
+    assert.equal(results[0].isError, true)
+    const failure = JSON.parse(results[0].content.split('\n')[1])
+    assert.equal(failure.code, 'BUDINGX_CORE_010')
+    assert.equal(failure.failedTool.name, 'WebFetch')
+    assert.equal(failure.failedTool.errorCode, 'BUDINGX_WEB_HTTP_ERROR')
+    assert.match(JSON.stringify(failure.failedTool), /example\.test\/missing/)
+    assert.equal(failure.completedTools[0].name, 'Read')
+    assert.match(failure.completedTools[0].output, /background facts/)
+    assert.match(failure.suggestion, /different/)
+    assert.equal(results[1].isError, false)
+    assert.match(results[1].content, /other agent done/)
+  } finally {
+    registry.dispose()
+    session.dispose()
+  }
+})
+
+test('AC-SUBAGENT-02 父 Agent 重复派发相同失败任务仍会熔断', async () => {
+  let id = 0
+  const parent = makeProvider([() => [
+    {
+      type: 'tool_call_delta', index: 0, callId: 'retry-' + ++id, nameDelta: 'Agent',
+      argsDelta: '{"description":"repeat","prompt":"same failing task"}'
+    },
+    { type: 'message_completed', finishReason: 'tool_calls' }
+  ]])
+  const child = makeProvider([{
+    type: 'failed', error: { class: 'unknown', code: 'FIXTURE_ERROR', message: 'cannot continue', retryable: false }
+  }])
+  const { session, registry } = wireSession(parent, child)
+  try {
+    const finalized = new Promise((resolve) => session.on((event) => {
+      if (event.type === 'turn_finalized') resolve(event)
+    }))
+    session.submit('repeat a failing task')
+    const event = await finalized
+    assert.equal(event.outcome, 'error')
+    assert.equal(event.error.code, 'BUDINGX_CORE_010')
+    assert.equal(event.error.toolFailure.code, 'AGENT_FAILED')
+    assert.equal(id, 3)
+  } finally {
+    registry.dispose()
+    session.dispose()
+  }
+})
+
 test('非并发安全工具隔断分组：Agent 之间夹 Read 仍顺序', async () => {
   const childProvider = childByPrompt()
   const calls = [

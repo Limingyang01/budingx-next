@@ -158,16 +158,19 @@ function truncatePreview(encoded: string): string {
  * @param value 待上报的结构
  * @param knownSecrets 宿主提供的已知凭据字面量
  */
-export function redactValue(value: unknown, knownSecrets: readonly string[] = []): string {
+export function redactContent(value: unknown, knownSecrets: readonly string[] = []): unknown {
   const secrets = knownSecrets.filter(
     (secret) => typeof secret === 'string' && secret.length >= MIN_SECRET_LENGTH
   )
-  let redacted: unknown
   try {
-    redacted = redactStructure(value, secrets, new WeakSet<object>())
+    return redactStructure(value, secrets, new WeakSet<object>())
   } catch {
-    return JSON.stringify({ error: 'unserializable' })
+    return { error: 'unserializable' }
   }
+}
+
+export function redactValue(value: unknown, knownSecrets: readonly string[] = []): string {
+  const redacted = redactContent(value, knownSecrets)
   let encoded: string
   try {
     encoded = JSON.stringify(redacted) ?? 'null'

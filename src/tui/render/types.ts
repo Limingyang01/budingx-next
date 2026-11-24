@@ -40,9 +40,17 @@ export type ToolTranscriptEntry = {
   elapsedMs?: number
 }
 
+export type ThinkingTranscriptEntry = {
+  kind: 'thinking'
+  id: string
+  text: string
+  truncated?: true
+}
+
 export type TranscriptEntry =
   | { kind: 'user' | 'assistant' | 'meta' | 'plain'; text: string }
   | ToolTranscriptEntry
+  | ThinkingTranscriptEntry
 
 /** 命令卡片：一次命令调用的可视状态（SP004 T15 / VIS-01）。 */
 export type CommandCard = {
@@ -114,7 +122,10 @@ export type Frame = {
   suggestFollowUp?: boolean
   /** Raw text of the running assistant message (never re-wrapped in place). */
   liveText: string
+  /** Earlier text segments in this message, before a following thinking segment. */
+  liveAnswerPrefix?: string
   thinking: boolean
+  thinkingCursor?: { messageId: string; ordinal: number; index: number }
   status: { state: SessionState; note?: string }
   queue: QueueItem[]
   approval?: ApprovalCard

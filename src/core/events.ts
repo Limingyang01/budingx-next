@@ -76,6 +76,7 @@ export type ErrorInfo = {
   message: string
   retryable: boolean
   status?: number
+  toolFailure?: { callId: string; code: string }
 }
 
 export type Usage = {
@@ -132,6 +133,7 @@ export type Message = {
   id: string
   role: 'user' | 'assistant' | 'tool'
   blocks: MessageBlock[]
+  notificationDisplay?: string
 }
 
 export type TurnFinalizedEvent = {
@@ -228,6 +230,7 @@ export type SessionEvent =
       callId: string
       content: string
       isError: boolean
+      errorCode?: string
     }
   | { type: 'change_set'; changes: ChangeRecordSummary[] }
   | { type: 'denial_recorded'; denial: DenialRecord }

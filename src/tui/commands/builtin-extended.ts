@@ -3,7 +3,7 @@
 import { homedir } from 'node:os'
 import type { CommandContext, CommandDefinition, CommandResult } from './types.js'
 import type { Message } from '../../core/events.js'
-import { exportSession } from '../export.js'
+import { exportSession, type ExportFormat } from '../export.js'
 import { planInit } from '../init.js'
 import { discoverSkills } from '../skills.js'
 import { formatTaskList } from '../tasks.js'
@@ -50,12 +50,20 @@ const btwCommand: CommandDefinition = {
 const worktreeCommand: CommandDefinition = {
   name: 'worktree',
   kind: 'local',
-  summary: '列出、创建或移除隔离工作树（删除需确认）',
+  summary: '列出、创建、进入、退出、合并或移除隔离工作树',
   async run(args, context) {
+    const operation = args.trim().split(/\s+/)[0]
+    const write = ['create', 'add', 'merge', 'remove', 'rm'].includes(operation)
+    const switchOrWrite = write || operation === 'enter' || operation === 'exit'
+    const port = context.worktree
+    if (port && switchOrWrite && !port.idle()) return text('请等待当前回合、计划或后台任务结束后再操作工作树')
+    if (port && write && context.permission?.policy.getMode() === 'read_only') return text('仅可查看档位下无法修改工作树')
+    const origin = port && switchOrWrite ? await port.origin() : undefined
     const result = await runWorktreeCommand(
       args,
       {
         cwd: context.cwd ?? context.permission?.workspace.root ?? process.cwd(),
+        ...(origin ? { origin, enter: port?.enter, exit: port?.exit } : {}),
         ...(context.home ? { home: context.home } : {}),
         ...(context.confirm ? { confirm: context.confirm } : {})
       },
@@ -67,9 +75,11 @@ const worktreeCommand: CommandDefinition = {
 
 const tasksCommand: CommandDefinition = {
   name: 'tasks',
+  aliases: ['bashes'],
   kind: 'local',
   summary: '列出后台或未完成任务（状态、退出码、输出路径）与子代理',
   async run(_args, context) {
+    if (context.interactive && context.taskPanel) return text('', { handled: true, openTasks: true })
     const language = lang(context)
     const en = language === 'en'
     const shells = formatTaskList(context.tasks?.list() ?? [], language)
@@ -85,25 +95,40 @@ const tasksCommand: CommandDefinition = {
   }
 }
 
-function mcpLines(context: CommandContext): string[] {
+export function mcpLines(context: CommandContext): string[] {
   const statuses = context.mcp?.statuses ?? []
   if (statuses.length === 0) {
     return [lang(context) === 'en' ? 'No MCP servers configured.' : '未配置 MCP 服务器。']
   }
   return statuses.map((status) => {
+    const source = [status.transport, status.address].filter(Boolean).join(' ')
     if (status.connected) {
-      return `${status.name} · 已连接 · 工具 ${status.tools} 个` +
-        (status.serverName ? ` · ${status.serverName} ${status.serverVersion ?? ''}`.trimEnd() : '')
+      return `${status.name} · 已连接 · 工具 ${status.tools} 个 · 资源 ${status.resources ?? 0} 个` +
+        (source ? ` · ${source}` : '')
     }
-    return `${status.name} · 未连接${status.error ? ' · ' + status.error : ''}`
+    return `${status.name} · 未连接${status.state ? ' · ' + status.state : ''}${source ? ' · ' + source : ''}${status.error ? ' · ' + status.error : ''}`
   })
 }
 
 const mcpCommand: CommandDefinition = {
   name: 'mcp',
   kind: 'local-jsx',
-  summary: '查看 MCP 服务器、连接状态与工具数',
-  async run(_args, context) {
+  summary: '查看 MCP 或启停／重连指定服务器',
+  async run(args, context) {
+    if (args.trim()) {
+      const [action, name, extra] = args.trim().split(/\s+/)
+      const usage = '用法：/mcp [start|stop|reconnect <服务器名>]'
+      if (extra || !name || (action !== 'start' && action !== 'stop' && action !== 'reconnect')) return text(usage)
+      const operation = context.mcp?.[action]
+      if (!operation) return text('当前宿主未接入 MCP 连接管理')
+      try {
+        await operation(name)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'MCP 操作失败'
+        return text(message, { handled: true, error: message })
+      }
+      return text(mcpLines(context).join('\n'))
+    }
     const lines = mcpLines(context)
     return text(lines.join('\n'), {
       handled: true,
@@ -113,7 +138,7 @@ const mcpCommand: CommandDefinition = {
 }
 
 function skillLines(context: CommandContext): string[] {
-  const skills = discoverSkills({
+  const skills = context.skillCatalog?.list() ?? discoverSkills({
     homeDir: context.home ?? homedir(),
     workspaceDir: context.cwd ?? process.cwd()
   })
@@ -123,7 +148,11 @@ function skillLines(context: CommandContext): string[] {
   return skills.map((skill) => {
     const scope = skill.scope === 'project' ? '项目' : skill.scope === 'bundled' ? '内置' : '用户'
     const state = skill.valid ? '' : ` · 不可用（${skill.error ?? '未知原因'}）`
-    return `/${skill.name} · ${scope}${state}\n  ${skill.description || '（无描述）'}\n  ${skill.path}`
+    const filters = [
+      skill.meta?.userInvocable === false ? ' · 禁用手动' : '',
+      skill.meta?.disableModelInvocation === true ? ' · 禁用模型' : ''
+    ].join('')
+    return `/${skill.name} · ${scope}${state}${filters}\n  ${skill.description || '（无描述）'}\n  ${skill.path}`
   })
 }
 
@@ -150,7 +179,7 @@ const reloadSkillsCommand: CommandDefinition = {
   summary: '重新发现技能（新建/修改 SKILL.md 后刷新）',
   supportsNonInteractive: true,
   async run(_args, context) {
-    const skills = discoverSkills({
+    const skills = context.skillCatalog?.reload() ?? discoverSkills({
       homeDir: context.home ?? homedir(),
       workspaceDir: context.cwd ?? process.cwd()
     })
@@ -170,21 +199,21 @@ const reloadSkillsCommand: CommandDefinition = {
   }
 }
 
-function parseExportArgs(args: string): {
-  format: 'jsonl' | 'text'
+export function parseExportArgs(args: string): {
+  format: ExportFormat
   path?: string
   session?: string
   error?: string
 } {
   const tokens = args.trim().split(/\s+/).filter(Boolean)
-  let format: 'jsonl' | 'text' = 'jsonl'
+  let format: ExportFormat = 'jsonl'
   let path: string | undefined
   let session: string | undefined
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index]
     if (token === '--format' || token === '-f') {
       const value = tokens[index + 1]
-      if (value !== 'jsonl' && value !== 'text') return { format, error: '--format 只能是 jsonl 或 text' }
+      if (value !== 'jsonl' && value !== 'text' && value !== 'markdown') return { format, error: '--format 只能是 jsonl、text 或 markdown' }
       format = value
       index += 1
     } else if (token === '--path' || token === '-p') {
@@ -199,7 +228,7 @@ function parseExportArgs(args: string): {
       index += 1
     } else if (token.startsWith('--format=')) {
       const value = token.slice('--format='.length)
-      if (value !== 'jsonl' && value !== 'text') return { format, error: '--format 只能是 jsonl 或 text' }
+      if (value !== 'jsonl' && value !== 'text' && value !== 'markdown') return { format, error: '--format 只能是 jsonl、text 或 markdown' }
       format = value
     } else if (token.startsWith('--path=')) {
       path = token.slice('--path='.length) || undefined
@@ -215,27 +244,30 @@ function parseExportArgs(args: string): {
 /** SP009：导出会话（当前或指定）到数据根内；返回可读结果。 */
 export function exportSelectedSession(
   context: CommandContext,
-  options: { sessionId: string; format: 'jsonl' | 'text'; path?: string }
+  options: { sessionId: string; format: ExportFormat; path?: string }
 ): { ok: boolean; message: string } {
   let messages: readonly Message[]
-  let sessionId = options.sessionId
-  if (sessionId === context.session.id) {
+  const sessionId = options.sessionId
+  const current = sessionId === context.session.id
+  const saved = !current || options.format === 'markdown' ? context.sessions?.read?.(sessionId) : undefined
+  if (current) {
     messages = context.session.history
   } else {
-    const read = context.sessions?.read
-    if (!read)
+    if (!saved)
       return {
         ok: false,
         message: '当前宿主不支持读取其他会话；请先 /resume 切到该会话再导出'
       }
-    const loaded = read(sessionId)
-    if (!loaded.ok || !loaded.messages)
-      return { ok: false, message: loaded.message ?? `无法读取会话 ${sessionId}` }
-    messages = loaded.messages as unknown as Message[]
+    if (!saved.ok || !saved.messages)
+      return { ok: false, message: saved.message ?? `无法读取会话 ${sessionId}` }
+    messages = saved.messages as unknown as Message[]
   }
   const result = exportSession(messages, {
     sessionId,
     format: options.format,
+    title: saved?.title,
+    changes: saved?.changes,
+    knownSecrets: [context.getConfig?.().apiKey ?? ''],
     ...(options.path ? { path: options.path } : {}),
     ...(context.home ? { home: context.home } : {})
   })
@@ -247,27 +279,33 @@ export function exportSelectedSession(
 const exportCommand: CommandDefinition = {
   name: 'export',
   kind: 'local',
-  summary: '导出会话为 JSONL 或文本（可选择会话，默认写入 ~/.budingx/exports）',
+  summary: '导出会话为 JSONL、文本或 Markdown（可选择会话，默认写入 ~/.budingx/exports）',
   async run(args, context) {
     const parsed = parseExportArgs(args)
     if (parsed.error) return text(parsed.error)
     if (!parsed.session) {
       if (context.interactive && context.sessions?.list)
-        return { kind: 'text', value: '', outcome: { handled: true, openExport: true } }
+        return {
+          kind: 'text', value: '',
+          outcome: {
+            handled: true, openExport: true,
+            exportOptions: { format: parsed.format, ...(parsed.path ? { path: parsed.path } : {}) }
+          }
+        }
       // 非交互宿主没有面板：保持旧行为，导出当前会话。
       const current = exportSelectedSession(context, {
         sessionId: context.session.id,
         format: parsed.format,
         ...(parsed.path ? { path: parsed.path } : {})
       })
-      return text(current.message)
+      return current.ok ? text(current.message) : text(current.message, { handled: true, message: current.message, error: current.message })
     }
     const result = exportSelectedSession(context, {
       sessionId: parsed.session,
       format: parsed.format,
       ...(parsed.path ? { path: parsed.path } : {})
     })
-    return text(result.message)
+    return result.ok ? text(result.message) : text(result.message, { handled: true, message: result.message, error: result.message })
   }
 }
 

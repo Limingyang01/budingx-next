@@ -224,6 +224,61 @@ test('SR-10 恢复的会话保留原权限档位，不被提升', () => {
   assert.notEqual(result.summary.permissionMode, 'full_access')
 })
 
+test('AC-NAME-01/02 用户标题独立持久化，写锁、长度及历史追加保持一致', () => {
+  const home = tempHome()
+  const store = new SessionStore({ home, workspaceRoot: home })
+  const { transcript } = startSession({ sessionId: 'naming', home, workspaceRoot: home })
+  transcript.append({
+    type: 'message', ts: '2026-01-01T00:00:00.000Z', id: 'first', role: 'user',
+    blocks: [{ type: 'text', text: '原始标题' }]
+  })
+  const writer = store.acquire('naming')
+  assert.equal(writer.acquired, true)
+  try {
+    assert.equal(store.rename('naming', '新的中文标题', writer.lock).ok, true)
+    assert.equal(store.rename('naming', '    ', writer.lock).ok, false)
+    assert.equal(store.rename('naming', '🌏'.repeat(81), writer.lock).ok, false)
+    assert.equal(store.acquire('naming').acquired, false)
+    transcript.append({ type: 'turn', ts: new Date().toISOString(), turnId: 'one', outcome: 'completed' })
+    const restored = new SessionStore({ home, workspaceRoot: home }).restore('naming')
+    assert.equal(restored.summary.title, '新的中文标题')
+    assert.equal(restored.summary.turns, 1)
+    assert.equal(restored.summary.sessionId, 'naming')
+    assert.equal(restored.messages[0].blocks[0].text, '原始标题')
+    assert.equal(store.readMeta('naming').title, '原始标题')
+  } finally {
+    writer.lock.release()
+  }
+})
+
+test('AC-FORK-01/02 分支继承完整历史、来源及核对步骤，损坏来源没有半成品', () => {
+  const home = tempHome()
+  const store = new SessionStore({ home, workspaceRoot: home })
+  const { transcript } = startSession({ sessionId: 'source', title: '主会话', home, workspaceRoot: home })
+  transcript.append({
+    type: 'message', ts: '2026-01-01T00:00:00.000Z', id: 'point', role: 'assistant',
+    blocks: [{ type: 'tool_use', id: 'w1', name: 'Write', input: { path: 'a.txt' } }]
+  })
+  const first = store.fork('source', { permissionMode: 'read_only' })
+  const second = store.fork('source', { permissionMode: 'read_only' })
+  assert.equal(first.ok, true)
+  assert.equal(second.ok, true)
+  assert.notEqual(first.sessionId, second.sessionId)
+  assert.deepEqual(store.readMeta(first.sessionId).forkedFrom, { sessionId: 'source', messageId: 'point' })
+  const branch = store.restore(first.sessionId)
+  assert.equal(branch.summary.permissionMode, 'read_only')
+  assert.deepEqual(branch.needsReview.map((step) => step.callId), ['w1'])
+  assert.match(branch.summary.title, /主会话/)
+  assert.equal(store.restore('source').messages.length, 1)
+
+  const original = join(sessionDir(home, 'source'), 'transcript.jsonl')
+  const damaged = readFileSync(original, 'utf8') + '{"incomplete":\n'
+  writeFileSync(original, damaged)
+  assert.equal(store.fork('source').ok, false)
+  assert.equal(store.list().length, 3)
+  assert.equal(readFileSync(original, 'utf8'), damaged)
+})
+
 test('SR-11 活跃写锁拒绝第二个写入者，陈旧锁不静默删除', () => {
   const home = tempHome()
   mkdirSync(sessionDir(home, 's11'), { recursive: true })

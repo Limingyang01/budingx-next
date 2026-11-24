@@ -5,6 +5,7 @@ import type { SessionEvent } from '../../core/events.js'
 import type { Frame, PlanCard, TodoCard } from './types.js'
 import { initialFrame } from './types.js'
 import { restoredTranscriptEntries } from './restored-transcript.js'
+import { appendThinkingText, startThinkingEntry } from './thinking.js'
 import { toolArgument } from './tool-summary.js'
 
 export type RenderOptions = {
@@ -76,6 +77,19 @@ const TRANSIENT_NOTICE_CODES = new Set([
 /** 只保留最新一条的提示：重试/回退这类「attempt N/M」状态不应逐条堆叠（0.5.4）。 */
 const LATEST_WINS_NOTICE_CODES = new Set(['api_retry', 'stream_fallback', 'late_event_dropped'])
 
+function appendNotification(frame: Frame, text: string): void {
+  frame.transcript = [...frame.transcript, { kind: 'meta', text }]
+  const notice = frame.notices.findIndex((entry) => entry.code === 'agent_notification' && entry.text === text)
+  if (notice >= 0) frame.notices.splice(notice, 1)
+}
+
+function flushLiveText(frame: Frame): void {
+  if (frame.liveText.length > 0) {
+    frame.transcript = [...frame.transcript, { kind: 'assistant', text: frame.liveText }]
+    frame.liveText = ''
+  }
+}
+
 export function reduceFrame(
   frame: Frame,
   event: SessionEvent,
@@ -134,14 +148,14 @@ export function reduceFrame(
       next.suggestFollowUp = false
       if (event.notification) {
         // SP009 0.9.1：子代理通知按系统消息渲染简洁文本，绝不把原始 XML 当用户输入展示。
-        if (event.display) {
-          next.transcript = [...next.transcript, { kind: 'meta', text: event.display }]
-        }
+        if (event.display) appendNotification(next, event.display)
       } else if (event.userText) {
         next.transcript = [...next.transcript, { kind: 'user', text: event.userText }]
       }
       next.liveText = ''
+      next.liveAnswerPrefix = undefined
       next.thinking = false
+      next.thinkingCursor = undefined
       next.error = undefined
       // 上一回合的 @ 引用反馈已过期，新回合开始时收起，避免长期占位（0.5.4）。
       next.notices = next.notices.filter((notice) => notice.code !== 'file_context')
@@ -156,16 +170,33 @@ export function reduceFrame(
       return next
     }
     case 'thinking_delta': {
+      const cursor = next.thinkingCursor?.messageId === event.messageId ? next.thinkingCursor : undefined
+      const current = cursor !== undefined ? next.transcript[cursor.index] : undefined
+      if (cursor !== undefined && next.thinking && current?.kind === 'thinking') {
+        const entry = appendThinkingText(current, event.text)
+        if (entry !== current) {
+          next.transcript = [...next.transcript]
+          next.transcript[cursor.index] = entry
+        }
+        return next
+      }
+      if (next.liveText) {
+        next.liveAnswerPrefix = (next.liveAnswerPrefix ?? '') + next.liveText
+        flushLiveText(next)
+      }
+      const ordinal = (cursor?.ordinal ?? -1) + 1
+      next.thinkingCursor = { messageId: event.messageId, ordinal, index: next.transcript.length }
+      const entry = appendThinkingText(startThinkingEntry(event.messageId, ordinal), event.text)
+      next.transcript = [...next.transcript, entry]
       next.thinking = true
       return next
     }
     case 'message_completed': {
-      next.lastAnswer = next.liveText
+      next.lastAnswer = (next.liveAnswerPrefix ?? '') + next.liveText
+      next.liveAnswerPrefix = undefined
       next.thinking = false
-      if (next.liveText.length > 0) {
-        next.transcript = [...next.transcript, { kind: 'assistant', text: next.liveText }]
-        next.liveText = ''
-      }
+      next.thinkingCursor = undefined
+      flushLiveText(next)
       return next
     }
     case 'tool_call_completed': {
@@ -206,14 +237,14 @@ export function reduceFrame(
       }
       const index = next.transcript.findLastIndex((entry) =>
         entry.kind === 'tool' && entry.turnId === event.turnId &&
-        entry.callId === event.callId && entry.status === 'pending'
+        entry.callId === event.callId
       )
       const status = event.isError ? 'error' : 'success'
       const result = event.content
       const entry = next.transcript[index]
       if (entry?.kind === 'tool') {
         next.transcript = [...next.transcript]
-        next.transcript[index] = { ...entry, status, result, elapsedMs: options.toolElapsedMs }
+        next.transcript[index] = { ...entry, status, result, elapsedMs: options.toolElapsedMs ?? entry.elapsedMs }
       } else {
         next.transcript = [...next.transcript, {
           kind: 'tool', text: 'Tool', turnId: event.turnId, callId: event.callId, status, result
@@ -229,9 +260,7 @@ export function reduceFrame(
       if (event.boundary === 'intra_turn' && event.text) {
         if (event.notification) {
           // SP009 0.9.1：通知按系统消息渲染，不污染用户输入转录。
-          if (event.display) {
-            next.transcript = [...next.transcript, { kind: 'meta', text: event.display }]
-          }
+          if (event.display) appendNotification(next, event.display)
         } else {
           next.transcript = [...next.transcript, { kind: 'user', text: event.text }]
           next.lastQuestion = event.text
@@ -394,11 +423,10 @@ export function reduceFrame(
           ? { ...entry, status: 'interrupted' }
           : entry
       )
-      if (next.liveText.length > 0) {
-        next.transcript = [...next.transcript, { kind: 'assistant', text: next.liveText }]
-        next.liveText = ''
-      }
+      flushLiveText(next)
+      next.liveAnswerPrefix = undefined
       next.thinking = false
+      next.thinkingCursor = undefined
       if (next.startedAt !== undefined && event.finishedAt !== undefined) {
         const elapsed = Math.max(0, Math.floor((event.finishedAt - next.startedAt) / 1000))
         const time = new Date(event.finishedAt).toTimeString().slice(0, 5)

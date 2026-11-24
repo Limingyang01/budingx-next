@@ -186,7 +186,12 @@ export function messagesFromRecords(records: TranscriptRecord[]): Message[] {
     if (record.type === 'message') {
       if (!Array.isArray(record.blocks)) continue
       if (!byId.has(record.id)) order.push(record.id)
-      byId.set(record.id, { id: record.id, role: record.role, blocks: record.blocks })
+      byId.set(record.id, {
+        id: record.id,
+        role: record.role,
+        blocks: record.blocks,
+        ...(typeof record.notificationDisplay === 'string' ? { notificationDisplay: record.notificationDisplay } : {})
+      })
       continue
     }
     if (record.type === 'compaction') {

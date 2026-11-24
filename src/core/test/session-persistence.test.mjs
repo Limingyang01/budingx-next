@@ -212,9 +212,10 @@ test('FR-03 工具输出超限时带显式截断标记且不伪造完整结果',
   const finalized = waitFor(session, (event) => event.type === 'turn_finalized')
   session.submit('run it')
   const result = await toolResult
-  assert.equal(result.isError, true)
+  assert.equal(result.isError, false)
+  assert.ok(result.content.length <= 32768)
   assert.match(result.content, /\[truncated\]/)
-  assert.match(result.content, /BUDINGX_CORE_003/)
+  assert.doesNotMatch(result.content, /BUDINGX_CORE_003/)
   await finalized
 })
 

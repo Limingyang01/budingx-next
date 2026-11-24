@@ -4,6 +4,11 @@ import type { ChangeRecordSummary, SessionEvent } from './events.js'
 import type { CommandResult } from './exec.js'
 import type { ToolCapability } from './permissions.js'
 
+export function sliceToolOutput(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text
+  return text.slice(0, maxLength).replace(/[\uD800-\uDBFF]$/, '')
+}
+
 export type ToolContext = {
   signal: AbortSignal
   onUpdate?(text: string): void
@@ -28,6 +33,8 @@ export type ToolContext = {
    * 用于「删除等不可逆操作必须由宿主授权、模型参数无授权效力」的场景。
    */
   approved?: boolean
+  allowedToolNames?: readonly string[]
+  activateSkill?(skill: { name: string; body: string; allowedTools?: readonly string[] }): void
 }
 
 export type PreparedTool = {

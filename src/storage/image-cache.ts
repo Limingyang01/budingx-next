@@ -1,7 +1,7 @@
 // SP007 T8 — 图片附件缓存（design §4.4，AC MM-06）。
 // 落盘 ~/.budingx/image-cache/<sessionId>/<id>.<ext>，私有权限（同 storage 0o700/0o600 纪律）；
 // 内存 Map 上限 200 逐旧淘汰（LRU），磁盘文件保留供重显链接。
-import { writeFileSync, chmodSync } from 'node:fs'
+import { writeFileSync, chmodSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { imageCacheDir } from './paths.js'
@@ -18,6 +18,7 @@ export type ImageCacheEntry = {
 export type ImageCache = {
   put(id: number, mediaType: string, data: Buffer): ImageCacheEntry
   get(id: number): ImageCacheEntry | undefined
+  nextId?(): number
   readonly size: number
   readonly directory: string
 }
@@ -36,15 +37,31 @@ export function createImageCache(options: { sessionId: string; home?: string; ma
   const max = options.maxEntries ?? IMAGE_CACHE_MAX_ENTRIES
   // Map 插入序即 LRU 序：get/put 移到末尾，超限逐最旧。
   const entries = new Map<number, ImageCacheEntry>()
+  let largestId: number | undefined
   return {
     directory,
     get size() {
       return entries.size
     },
+    nextId() {
+      if (largestId === undefined) {
+        largestId = 0
+        try {
+          for (const name of readdirSync(directory)) {
+            const id = Number(/^(\d+)\.[a-z]+$/.exec(name)?.[1])
+            if (Number.isSafeInteger(id) && id < Number.MAX_SAFE_INTEGER) largestId = Math.max(largestId, id)
+          }
+        } catch {
+          // A newly created session has no cache directory yet.
+        }
+      }
+      return ++largestId
+    },
     put(id, mediaType, data) {
       ensurePrivateDirectory(directory)
       const ext = EXT_BY_TYPE[mediaType] ?? 'bin'
       const path = join(directory, id + '.' + ext)
+      if (largestId !== undefined) largestId = Math.max(largestId, id)
       writeFileSync(path, data, { mode: PRIVATE_FILE_MODE })
       try {
         chmodSync(path, PRIVATE_FILE_MODE)

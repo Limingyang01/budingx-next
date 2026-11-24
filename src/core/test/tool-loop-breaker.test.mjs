@@ -73,6 +73,7 @@ test('FR-05 同一工具同一参数连续失败达到上限后熔断，不再�
   const event = await finalized
   assert.equal(event.outcome, 'error')
   assert.equal(event.error.code, ERROR_CODES.coreToolLoopDetected)
+  assert.match(event.error.message, /stop retrying the same arguments/i)
   // The breaker must stop the loop early, not let it spin to maxIterations.
   assert.ok(calls.length <= 4, `expected the loop to stop early, got ${calls.length} model calls`)
 })
@@ -206,6 +207,7 @@ test('FR-05 换参数反复试同一工具（同一错误码）也会熔断', as
   assert.equal(event.outcome, 'error')
   assert.equal(event.error.code, ERROR_CODES.coreToolLoopDetected)
   assert.match(event.error.message, /same error/)
+  assert.match(event.error.message, /switch to a different tool or strategy/i)
   // Five same-error failures in a row must stop the turn, not run to 12.
   assert.ok(attempt <= 7, `expected the streak breaker to stop early, got ${attempt} attempts`)
 });

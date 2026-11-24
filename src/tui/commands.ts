@@ -21,7 +21,7 @@ import { changeDiffs, type ChangeRecord, type UndoOutcome } from '../workspace/c
 import type { Workspace } from '../workspace/paths.js'
 import { diffStats, diffText } from './render/diff-view.js'
 import { homedir } from 'node:os'
-import { discoverSkills, findSkill, type SkillEntry } from './skills.js'
+import { activateSkill, discoverSkills, findSkill, type SkillEntry } from './skills.js'
 
 import type { CommandContext, CommandOutcome } from './commands/types.js'
 
@@ -60,6 +60,8 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
   /denials              查看拒绝历史
   /sessions             列出已保存的会话
   /resume [会话ID]      恢复会话（交互模式打开选择面板，按当前工作区过滤）
+  /branch [会话ID]      派生独立会话并切换（别名 /fork）
+  /rename <标题>         为当前会话保存标题
   /continue             恢复当前工作区最近会话
   /context              上下文占用网格（System/Tools/History）
   /compact [指令]       手动压缩历史释放 token
@@ -98,6 +100,8 @@ export function commandHelp(lang: 'zh' | 'en' = 'en', interactive = false): stri
   /denials              show the denial history
   /sessions             list saved sessions
   /resume [sessionId]   restore a session (picker interactively, filtered to this workspace)
+  /branch [sessionId]   create and switch to a session branch (alias /fork)
+  /rename <title>       save a title for the current session
   /continue             resume the most recent session in this workspace
   /context              context usage grid (System/Tools/History)
   /compact [instruction]  manually compact history to free tokens
@@ -169,6 +173,7 @@ async function executeCommand(
         outcome.prompt !== undefined ||
         outcome.sideQuestion !== undefined ||
         outcome.openList !== undefined ||
+        outcome.openTasks !== undefined ||
         outcome.openModels !== undefined ||
         outcome.openEffort !== undefined ||
         outcome.openRules !== undefined ||
@@ -202,13 +207,15 @@ async function executeCommand(
   const body = text.slice(1)
   const separator = body.search(/\s/)
   const name = (separator < 0 ? body : body.slice(0, separator)).toLowerCase()
-  const injectedSkill = context.skills ? findSkill(context.skills, name) : undefined
-  const skillBody = injectedSkill
-    ? injectedSkill.valid
-      ? injectedSkill.body
-      : undefined
-    : loadSkillBody(name)
-  if (skillBody !== undefined) return { handled: true, skillPrompt: { name, body: skillBody } }
+  const skill = findSkill(context.skillCatalog?.list() ?? context.skills ?? listSkills(context), name)
+  if (skill) {
+    const activation = (context.skillCatalog?.activate ?? activateSkill)(skill, 'manual')
+    if (!activation.ok) return { handled: true, error: activation.error }
+    return {
+      handled: true,
+      skillPrompt: { name, body: activation.body, ...(activation.allowedTools ? { allowedTools: activation.allowedTools } : {}) }
+    }
+  }
   return {
     handled: true,
     error: pick('未知命令；使用 /help', 'Unknown command; use /help')
@@ -781,23 +788,21 @@ export function planCommand(argument: string, context: CommandContext, pick: (zh
 
 /** 0.5.4 /help：附加已加载的自定义技能命令（.budingx/skills）。 */
 export function skillHelpSection(context: CommandContext, pick: (zh: string, en: string) => string): string {
-  const skills = context.skills
-    ? context.skills.filter((skill) => skill.valid).map((skill) => ({ name: skill.name, description: skill.description }))
-    : discoverSkillCommands()
+  const skills = discoverSkillCommands(context)
   if (skills.length === 0) return ''
   const lines = skills.map((skill) => `  /${skill.name}  ${skill.description}`)
   return '\n' + pick('自定义技能命令：', 'Custom skill commands:') + '\n' + lines.join('\n')
 }
 
 /** SM-03：只暴露有效技能；无效条目留在 /skills 面板解释原因。 */
-export function discoverSkillCommands(): { name: string; description: string }[] {
-  return listSkills()
-    .filter((skill) => skill.valid)
+export function discoverSkillCommands(context?: Pick<CommandContext, 'skills' | 'skillCatalog' | 'cwd' | 'home'>): { name: string; description: string }[] {
+  return (context?.skillCatalog?.list() ?? context?.skills ?? listSkills(context))
+    .filter((skill) => skill.valid && skill.meta?.userInvocable !== false)
     .map((skill) => ({ name: skill.name, description: skill.description }))
 }
 
-export function listSkills(): SkillEntry[] {
-  return discoverSkills({ homeDir: homedir(), workspaceDir: process.cwd() })
+export function listSkills(context?: Pick<CommandContext, 'cwd' | 'home'>): SkillEntry[] {
+  return discoverSkills({ homeDir: context?.home ?? homedir(), workspaceDir: context?.cwd ?? process.cwd() })
 }
 
 export function loadSkillBody(name: string): string | undefined {

@@ -46,6 +46,8 @@ function writeMcpServers(home, servers) {
       args: [SIM_MCP],
       env: {
         SIM_MCP_NAME: '${SIM_MCP_NAME_' + name.toUpperCase().replace(/[^A-Z0-9_]/g, '_') + '}',
+        SIM_MCP_FAIL_TOOL: '${SIM_MCP_FAIL_TOOL}',
+        SIM_MCP_FAIL_MODE: '${SIM_MCP_FAIL_MODE}',
         ...(spec.env ?? {})
       },
       ...(spec.disabled ? { enabled: false } : {})
