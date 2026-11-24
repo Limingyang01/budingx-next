@@ -43,3 +43,14 @@
 
 - 原生终端的 IME / 鼠标观感和第三方 MCP 服务组合需要对应终端与授权测试服务。交互现有证据为真实 Ink 帧。外部 MCP OAuth、复杂表单和 sampling 超出本次实现范围。
 - Provider 实际金额以供应商账单核对。0.9.2 的 GitHub Windows/Linux 托管验证、正式 npm 上传和回执依赖维护者手动触发后取得。
+
+## T8 交叉验证与集成
+
+`npm run merge:gate` 在功能分支 `28d64d7ccad7229c629d2752674dfd4fc1e94d1c` 完成，**GREEN**。六项检查退出码均为 0（`npm test`、规格、技能、版本、隔离安装和升级）。报告 `artifacts/merge-gate/feature-SP009-tui-gap-optimizations-2026-11-24T04-32-35-488Z.md`，检查 3 个引入提交、80 个文件，无禁带路径和失败行。合并预演及 ancestry 校验通过。功能合并与远端核验 SHA 为 `42528089566b903ac393e7a6e710b5f8e99154d6`。
+
+### 0.9.2 发布预演
+
+- 在 Windows、Node 22.22.0、`CI=true` 下执行 `npm ci --ignore-scripts --no-audit --no-fund` 和 `npm run publish -- --dry-run --expected-version 0.9.2 --tag latest`，均退出 0。
+- 预演执行 1520 项自动化测试，1519 项通过，0 失败、0 取消。1 项 POSIX 文件权限测试在 Windows 跳过。产品测试为 1344 通过 / 1345 执行。
+- tarball 190 个文件，隔离安装后 CLI 返回 0.9.2，本机 HTTP fixture 命中 1 次。SHA-512 integrity 为 `sha512-BEmesNNxLRx0NHAug8AoDBapcFZn9FhkWGBTBNdITmHJ/UHkUagU6w2X2OsRKaeZU1NYvwqOKAvRw3n8vmkGGw==`。报告 `artifacts/release/0.9.2-1795495213094/report.json` 状态为 `dry-run-complete`。
+- 本机预演使用 master 的合入代码与当前 0.9.2 版本文件。正式发布的源码与双平台工作流回执待取得。

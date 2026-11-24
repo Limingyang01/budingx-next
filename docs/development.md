@@ -55,6 +55,8 @@ CI 发布成功后下载 report.json，执行 `npm run release:sync -- --receipt
 
 ## 显式 opt-in 的真实模型 e2e
 
+0.9.2 的长页子代理验收使用 `node --env-file=.env.e2e.local scripts/testing/sp009-live-subagent.mjs`。命令须在授权的隔离模型与费用范围内运行，执行 3 次任务、最多 6 个实际请求，回执落在忽略的 `artifacts/SP009-0.9.2/`。
+
 先构建，再将 scripts/testing/e2e.env.example 复制到仓库根目录 .env.e2e.local；填写 Base URL、模型、Key、允许的美元预算、请求/输出上限和工具能力。只提交空模板，真实本地文件被 Git 忽略。npm test 不读取该文件，也不会自动调用真实服务。
 
 用户授权测试费用后，运行 node scripts/testing/live-provider.mjs。脚本执行流式 UI、工具审批回合（支持 tools 时）、用户取消入口及无效 Key 错误；只使用临时存储及自有 echo 测试桩，不读取旧客户端数据。请求计数和脱敏回执保存在忽略的 artifacts/SP002-e2e/。

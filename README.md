@@ -1,5 +1,7 @@
 # budingx-next
 
+源码已准备 SP009 补丁 [0.9.2](release-notes/v0.9.2.md)。npm `latest` 仍为 0.9.1。
+
 独立开发 Coding Agent 的仓库。**npm `latest` 为 0.9.1（SP009 补丁：主循环去固定回合上限、上下文窗口动态化与模型摘要压缩、子代理默认无预算与通知系统化、技能多级别与 `/skillify` `/reload-skills`）**。0.9.0 交付 SP009 TUI 独立交付和 npm 发布工程：触发技能不再把提示词打进会话、`/export` 可选择导出哪个会话、全自动档位不再被工作区边界拦截，并交付干净安装/升级/卸载/回退门禁与发布判定工具链。SP008 能力包括 `budingx serve` 宿主入口（进程内/stdio/WebSocket）、版本化 NDJSON 宿主契约、活动会话归属与崩溃接管、共享配置/历史并发安全，owner 进程与交互 TUI 共用同一份 MCP/hooks 配置。SP007 能力包括：子代理执行（Agent/TaskOutput/TaskStop、`/agents` 面板与代理卡片）、多模态上下文（图片粘贴、`/image` 附件入口、PNG 缩放）、Anthropic 协议适配、ToolSearch 延迟加载、运行时诊断（`/status` `/stats` `/doctor`）与评估回归 runner；并延续 SP006 的四区终端骨架与帧级刷新、上下文键位、状态栏外部命令、项目指令、技能发现、MCP 客户端、受控 hooks、WebFetch、无头 stream-json 与命令注册表三型。**0.9.0 已由 [GitHub Actions 运行 #45100998785](https://github.com/Limingyang01/budingx-next/actions/runs/45100998785) 发布**（此前 0.8.0 由 [运行 #45010118350](https://github.com/Limingyang01/budingx-next/actions/runs/45010118350) 发布，0.7.0 由 [运行 #27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352) 发布）。 产品全貌见 [产品说明书](PRODUCT.md)，使用说明见 [TUI README](src/tui/README.md)。
 
 默认主分支为 `master`；新项目统一使用 Node.js + TypeScript，不引入 Bun。

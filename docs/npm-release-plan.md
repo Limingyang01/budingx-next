@@ -25,6 +25,8 @@ SP009 起，本机与 CI 共用同一组发布相关命令：
 
 当前 npm `latest` 为 0.9.1（SP009 补丁）。发布回执见 [0.9.1 发行说明](../release-notes/v0.9.1.md)及 [0.9.0 发行说明](../release-notes/v0.9.0.md)；0.8.0（SP008）的回执见 [v0.8.0](../release-notes/v0.8.0.md)。0.7.0（SP007）的回执见 [0.7.0 发行说明](../release-notes/v0.7.0.md)、0.6.0（SP006）见 [0.6.0 发行说明](../release-notes/v0.6.0.md)。后续版本完成准备后，可按下面命令预演。
 
+当前准备版本为 [0.9.2](../release-notes/v0.9.2.md)，目标通道为 `latest`。真实上传由维护者在 Actions 手动触发。
+
 ```powershell
 $releaseVersion = (Get-Content src/tui/package.json -Raw | ConvertFrom-Json).version
 npm run publish -- --dry-run --expected-version $releaseVersion --tag latest
