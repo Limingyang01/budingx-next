@@ -17,11 +17,11 @@
 
 规范依据：[npm SemVer 说明](https://docs.npmjs.com/about-semantic-versioning/)。
 
-准备工具入口为 `npm run version:prepare -- kind --iteration SPnnn`，按已确定的类型与迭代替换参数。同轮修复使用 patch。当前 npm `latest` 指向 [0.9.1](../release-notes/v0.9.1.md)（SP009），台账状态 `published`。此前 [0.9.0](../release-notes/v0.9.0.md) 已发布；SP008 的 [0.8.0](../release-notes/v0.8.0.md)、SP007 的 [0.7.0](../release-notes/v0.7.0.md)、SP006 的 [0.6.0](../release-notes/v0.6.0.md) 亦为 published。新 SP 首次交付使用 minor。准备前需要当前版本已有 published 回执且无未处理 prepared 版本。命令保留台账未知字段，根维护包版本沿用现有值。
+准备工具入口为 `npm run version:prepare -- kind --iteration SPnnn`，按已确定的类型与迭代替换参数。同轮修复使用 patch。当前 npm `latest` 指向 [0.9.2](../release-notes/v0.9.2.md)（SP009），台账状态 `published`。此前 [0.9.0](../release-notes/v0.9.0.md) 已发布；SP008 的 [0.8.0](../release-notes/v0.8.0.md)、SP007 的 [0.7.0](../release-notes/v0.7.0.md)、SP006 的 [0.6.0](../release-notes/v0.6.0.md) 亦为 published。新 SP 首次交付使用 minor。准备前需要当前版本已有 published 回执且无未处理 prepared 版本。命令保留台账未知字段，根维护包版本沿用现有值。
 
 ## Actions 发布回执
 
-SP009 的下一个准备版本为 [0.9.2](../release-notes/v0.9.2.md)，按用户 2026-11-24 决定使用同轮 patch。台账为 `prepared`，实际发布后再更新公开版本和回执。
+SP009 按用户 2026-11-24 决定以同轮 patch 发布 [0.9.2](../release-notes/v0.9.2.md)，台账已登记为 `published`。
 
 推荐的远端发布入口及首次授信见 [Actions 指南](github-actions-npm.md)。CI 只有 GitHub 内容只读权限，更新的台账作为 artifact 交付。下载正确运行的 report.json，用 `npm run release:sync -- --receipt <path>` 核对公共 npm 版本/integrity 后导入；审阅提交后才能 version:prepare。CI 不为 publish 自动 bump、提交或创建 tag。导入信任维护者选择的 artifact，不是独立 GitHub attestation 验证。
 

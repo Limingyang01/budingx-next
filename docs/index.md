@@ -1,6 +1,6 @@
 # 文档导航
 
-源码已准备 [0.9.2（SP009）](../release-notes/v0.9.2.md)，npm `latest` 仍为 0.9.1。实现与证据见 [0.9.2 状态](../SP/SP009/tui-gap-optimizations/STATUS.md)。
+npm `latest` 为 [0.9.2（SP009）](../release-notes/v0.9.2.md)。实现与证据见 [0.9.2 状态](../SP/SP009/tui-gap-optimizations/STATUS.md)。
 
 本仓是 budingx-next 的独立开发起点，当前有文档、技能、维护工具及简易聊天 TUI，完整 Agent 尚未实现。
 
@@ -28,7 +28,7 @@
 
 首发使用与交付：[TUI README](../src/tui/README.md)、[版本管理](versioning.md)、[首发状态](requirements/tui-bootstrap/STATUS.md)。
 
-当前 npm `latest` 为 [0.9.1 补丁](../release-notes/v0.9.1.md)（主循环、上下文、子代理与技能更新）。上一版本为 [0.9.0 · TUI 独立交付和 npm 发布工程](../release-notes/v0.9.0.md)。此前 [0.8.0 · 多端架构入口与共享边界](../release-notes/v0.8.0.md)（SP008，由 [运行 #45010118350](https://github.com/Limingyang01/budingx-next/actions/runs/45010118350) 发布）、[0.7.0 · Agent 质量与扩展](../release-notes/v0.7.0.md)（SP007，由 [运行 #27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352) 发布），进度见 [SP009 迭代汇总](../SP/SP009/requirements-summary.md)。历史发布见 [0.6.0 发行说明](../release-notes/v0.6.0.md)、[0.5.4 发行说明](../release-notes/v0.5.4.md)、[0.5.3 发行说明](../release-notes/v0.5.3.md)、[0.5.2 发行说明](../release-notes/v0.5.2.md)和 [0.5.0 发行说明](../release-notes/v0.5.0.md)。
+上一补丁为 [0.9.1](../release-notes/v0.9.1.md)（主循环、上下文、子代理与技能更新）。上一版本为 [0.9.0 · TUI 独立交付和 npm 发布工程](../release-notes/v0.9.0.md)。此前 [0.8.0 · 多端架构入口与共享边界](../release-notes/v0.8.0.md)（SP008，由 [运行 #45010118350](https://github.com/Limingyang01/budingx-next/actions/runs/45010118350) 发布）、[0.7.0 · Agent 质量与扩展](../release-notes/v0.7.0.md)（SP007，由 [运行 #27](https://github.com/Limingyang01/budingx-next/actions/runs/44921288352) 发布），进度见 [SP009 迭代汇总](../SP/SP009/requirements-summary.md)。历史发布见 [0.6.0 发行说明](../release-notes/v0.6.0.md)、[0.5.4 发行说明](../release-notes/v0.5.4.md)、[0.5.3 发行说明](../release-notes/v0.5.3.md)、[0.5.2 发行说明](../release-notes/v0.5.2.md)和 [0.5.0 发行说明](../release-notes/v0.5.0.md)。
 
 源码模块组织见 [仓库布局](repository-layout.md)。
 

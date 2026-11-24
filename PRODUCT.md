@@ -1,13 +1,13 @@
 # budingx 产品说明书
 
-> **npm 已发布版本**：0.9.1（`latest`）。详见 [0.9.1 发行说明与发布回执](release-notes/v0.9.1.md)。
-> **源码准备版本**：0.9.2，已合入 master 并等待发布。详见 [0.9.2 发行说明](release-notes/v0.9.2.md)。
-> **最新补丁**：0.9.1（SP009 补丁迭代：主循环去固定回合上限、上下文窗口动态化与模型摘要压缩、子代理默认无预算与通知系统化、技能多级别与 `/skillify` `/reload-skills`）。详见 [0.9.1 发行说明](release-notes/v0.9.1.md)。
+> **npm 已发布版本**：0.9.2（`latest`）。详见 [0.9.2 发行说明与发布回执](release-notes/v0.9.2.md)。
+> **本版**：SP009 的 12 项 TUI 优化及 Windows 短路径兼容修复。发布来源为 `74c5156`。 [Actions #35](https://github.com/Limingyang01/budingx-next/actions/runs/45345532000)
+> **上一补丁**：0.9.1（主循环、上下文、子代理与技能）。详见 [0.9.1 发行说明](release-notes/v0.9.1.md)。
 >
-> **上一版本**：0.9.0（SP009 TUI 独立交付和 npm 发布工程），由 [GitHub Actions 运行 #45100998785](https://github.com/Limingyang01/budingx-next/actions/runs/45100998785) 从源码 `aecd8b7` 发布（publishedAt=2026-11-23T02:43:37.613Z）。技能提示词不再进会话、`/export` 可选择会话、全自动档位不再被工作区边界拦截，并交付独立安装/升级/卸载/回退门禁与发布判定工具链。详见 [0.9.0 发行说明与发布回执](release-notes/v0.9.0.md)。
+> **此前版本**：0.9.0（SP009 TUI 独立交付和 npm 发布工程），由 [GitHub Actions 运行 #45100998785](https://github.com/Limingyang01/budingx-next/actions/runs/45100998785) 从源码 `aecd8b7` 发布（publishedAt=2026-11-23T02:43:37.613Z）。技能提示词不再进会话、`/export` 可选择会话、全自动档位不再被工作区边界拦截，并交付独立安装/升级/卸载/回退门禁与发布判定工具链。详见 [0.9.0 发行说明与发布回执](release-notes/v0.9.0.md)。
 >
 > **历史版本**：0.8.0（SP008）。详见 [0.8.0 发行说明](release-notes/v0.8.0.md)。
-> **说明书版本**：v1.37（2026-11-24 记录 0.9.2 优化）
+> **说明书版本**：v1.38（2026-11-24 补录 0.9.2 发布）
 > **更新日期**：2026-11-24
 > **产品形态**：独立 MIT 许可的终端 Coding Agent（Node.js ≥ 22.18 + TypeScript，不依赖 Bun）
 
@@ -55,7 +55,7 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 本轮实现完成并合入 master，0.6.0 已发布 |
 | SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | **已实现、通过回归并合入 master（`5dbfe3a` / `ee9118e`），并已发布 npm 0.7.0（运行 #27，源码 `a8628b5`）** |
 | SP008 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | **已实现并合入 master**（`feature/SP008/host-contract`）；宿主扩展（MCP/hooks）端到端矩阵已验证；`budingx serve` 提供进程内/stdio/WS 三种宿主入口；**0.8.0 已发布** |
-| SP009 | TUI 独立交付与 npm 发布工程 | tui-distribution、upgrade-compatibility、npm-publish-pipeline                                              | **0.9.0 与 0.9.1 已发布**（合并提交 `10704ab`/`2a918b3`，运行 #45100998785，源码 `aecd8b7`）：干净安装/覆盖升级/旧数据兼容/卸载/回退的真实 npm 门禁（`npm run test:install`、`npm run test:upgrade`）、版本一致性检查（`npm run version:check`）、发布失败分类与上传不确定判定（`npm run release:resolve`）、技能提示词不进会话、`/export` 可选择会话、全自动档位不再被工作区边界拦截。**0.9.2 源码已准备**，12 项优化已合入 master。WebFetch 和子代理通过真实 Provider 验证，见[状态](SP/SP009/tui-gap-optimizations/STATUS.md)。 |
+| SP009 | TUI 独立交付与 npm 发布工程 | tui-distribution、upgrade-compatibility、npm-publish-pipeline                                              | **0.9.0 与 0.9.1 已发布**（合并提交 `10704ab`/`2a918b3`，运行 #45100998785，源码 `aecd8b7`）：干净安装/覆盖升级/旧数据兼容/卸载/回退的真实 npm 门禁（`npm run test:install`、`npm run test:upgrade`）、版本一致性检查（`npm run version:check`）、发布失败分类与上传不确定判定（`npm run release:resolve`）、技能提示词不进会话、`/export` 可选择会话、全自动档位不再被工作区边界拦截。**0.9.2 已正式发布**，12 项优化已合入 master。WebFetch 和子代理通过真实 Provider 验证，见[状态](SP/SP009/tui-gap-optimizations/STATUS.md)。 |
 | SP010 | 中期编码效果检查        | coding-parity-checkpoint、core-reliability                                                                 | 规划中 |
 | SP011 | 多代理团队              | team-lifecycle、task-coordination、team-messaging、worktree-isolation                                      | 规划中；2026-11-24 补排已细化 task-coordination 与 worktree-isolation（PLANNED，见[需求](SP/SP011/requirements-summary.md)） |
 | SP012 | 浏览器操作              | browser-session、page-actions、browser-artifacts                                                           | 规划中 |
@@ -402,7 +402,7 @@ SP007 在 0.6.0 的命令面之上补齐子代理执行、多模态上下文、�
 
 ### 5.9 SP008 · 通用宿主契约与 `serve`（已合入 master）
 
-SP008 固定 TUI、headless 与未来各端共用的本地宿主契约，并用进程内、stdio、WebSocket 三种传输验证。实现位于 `src/host/`，已完成多轮真实进程端到端验证（交付 3 轮 × 20/20，扩展复测 3 轮 × 23/23，扩展矩阵 3 轮 × 11/11，T17 加固 3 轮 × 42/42，含自模拟 MCP/hooks）；**已合入 master 并随 0.8.0 发布**（2026-11-23 前发布，npm `latest` 现为 0.9.1），`serve` 命令已随 npm 制品对安装包可用。
+SP008 固定 TUI、headless 与未来各端共用的本地宿主契约，并用进程内、stdio、WebSocket 三种传输验证。实现位于 `src/host/`，已完成多轮真实进程端到端验证（交付 3 轮 × 20/20，扩展复测 3 轮 × 23/23，扩展矩阵 3 轮 × 11/11，T17 加固 3 轮 × 42/42，含自模拟 MCP/hooks）；**已合入 master 并随 0.8.0 发布**（2026-11-23 前发布），`serve` 命令已随 npm 制品对安装包可用。
 
 #### 5.9.1 `budingx serve`
 
@@ -445,7 +445,7 @@ budingx serve --transport ws --session my-session --port 0
 
 升级只替换程序文件，`~/.budingx` 的配置、凭据、会话与记忆保持不变；旧配置按迁移规则就地升级并保留 `.bak` 备份，未知字段不丢失。卸载保留数据；回退可安装指定旧版本，但旧版本读不了新版本写下的会话。
 
-#### 5.10.2 0.9.2 TUI 优化（源码已准备）
+#### 5.10.2 0.9.2 TUI 优化
 
 - **会话**：`/branch [会话 ID]` 从当前或同工作区的已保存会话派生新 ID 并切换，`/fork` 是别名。派生保留分支点和待核对操作。用 `/rename <标题>` 保存最多 80 个字符的单行标题。`/resume` 面板支持搜索标题和会话正文，↑↓ 选中后按 Enter 恢复。正在被其他进程写入的会话需要等写入会话退出后恢复。
 - **Windows 路径**：同一工作区的 8.3 短路径和长路径使用统一的物理路径进行会话归属和读取权限判断。旧会话可用原启动路径恢复。
@@ -516,7 +516,7 @@ budingx serve --transport ws --session my-session --port 0
 | 0.8.0（SP008） | 2026-11-22 | SP008 通用宿主契约：`budingx serve`（stdio/WS）、版本化 NDJSON 身份/事件/权限协议、owner/observer/takeover 与崩溃恢复、配置并发锁、转录尾行容错、凭据作用域与传输不泄密；宿主与交互入口一致装配 MCP/hooks 并经真实进程端到端验证；T17 测试加固补齐 WS 帧级/客户端错误/协议文案/serve 退出码/interrupt/history.limit 证据并修复三处实现缺陷；验收期补全菜单全部命令中英文短描述（m02582）；见 [发行说明](release-notes/v0.8.0.md)、[验收报告](SP/SP008/test-report.md)。 | 已发布 |
 | 0.9.0（SP009） | 2026-11-23 | SP009 独立交付与发布工程：技能触发不再回显提示词（正文以 `<skill>` 上下文送达模型）、`/export` 可选择会话、全自动档位不再被工作区边界拦截（另两档与安全地板不变）、发布编排状态机与通道/失败判定、上传不确定只读判定命令、版本一致性检查、干净安装/升级/卸载/回退生命周期门禁；由 [运行 #45100998785](https://github.com/Limingyang01/budingx-next/actions/runs/45100998785) 从源码 `aecd8b7` 发布，npm `latest` = 0.9.0；见 [发行说明](release-notes/v0.9.0.md)、[验收报告](SP/SP009/test-report.md)。 | 已发布 |
 | 0.9.1（SP009 补丁） | 2026-11-23 | 主循环移除固定 32 回合上限（无头可选 `--max-turns`）、上下文窗口按模型动态解析且自定义模型可填写、自动压缩默认启用并改为模型摘要、子代理默认无 token 预算且终态通知按系统消息渲染、技能多级别（用户级优先/项目向上遍历/内置）与 `/skillify` `/reload-skills`；见 [0.9.1 发行说明](release-notes/v0.9.1.md)。 | 已发布 |
-| 0.9.2（SP009 补丁） | 2026-11-24 | 会话分支、改名和正文搜索、Markdown 导出、MCP 四传输、技能及规则、输入和转录、后台任务、工作树，以及 WebFetch 子代理失败处理。见 [0.9.2 发行说明](release-notes/v0.9.2.md)。 | 源码已准备，预演通过 |
+| 0.9.2（SP009 补丁） | 2026-11-24 | 会话分支、改名和正文搜索、Markdown 导出、MCP 四传输、技能及规则、输入和转录、后台任务、工作树，以及 WebFetch 子代理失败处理。见 [0.9.2 发行说明](release-notes/v0.9.2.md)。 | 已发布，独立安装通过 |
 | —（规划调整，无产品行为变化） | 2026-11-17 | 路线图 r6：TUI 单端优先；SP008/SP009/SP016–SP018 暂缓、多端架构入口保留；TUI 三权限模式固定；能力清单分母 53→47；说明书 v1.3 | 规划文档调整 |
 | —（规划调整） | 2026-11-18 | 路线图 r7：移出五个原暂缓 SP，保留通用宿主契约，必交能力仍为 47 | 规划文档调整 |
 | —（规划调整） | 2026-11-18 | 路线图 r8：现行 SP001–SP016 连续编号，能力与产品版本不变 | 规划文档调整 |
