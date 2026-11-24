@@ -77,12 +77,24 @@ export function realPathOf(target: string): string | undefined {
   }
 }
 
+/** Resolve the existing ancestor even when the requested directory is not created yet. */
+export function resolvePhysicalPath(target: string): string {
+  let parent = resolve(target)
+  const missing: string[] = []
+  let real = realPathOf(parent)
+  while (!real && parent !== dirname(parent)) {
+    missing.unshift(basename(parent))
+    parent = dirname(parent)
+    real = realPathOf(parent)
+  }
+  return join(real ?? parent, ...missing)
+}
+
 export function createWorkspace(
   root: string,
   options: { allowOutside?: () => boolean } = {}
 ): Workspace {
-  const rootAbsolute = resolve(root)
-  const rootReal = realPathOf(rootAbsolute) ?? rootAbsolute
+  const rootReal = resolvePhysicalPath(root)
 
   const workspace: Workspace = {
     root: rootReal,
@@ -107,16 +119,7 @@ export function createWorkspace(
           isDirectory = false
         }
       } else {
-        // Walk past missing parents before resolving the physical ancestor.
-        let parent = dirname(absolute)
-        const missing = [basename(absolute)]
-        let parentReal = realPathOf(parent)
-        while (!parentReal && parent !== dirname(parent)) {
-          missing.unshift(basename(parent))
-          parent = dirname(parent)
-          parentReal = realPathOf(parent)
-        }
-        real = join(parentReal ?? parent, ...missing)
+        real = resolvePhysicalPath(absolute)
       }
       if (!workspace.isInside(real)) {
         // 全自动档位（完全权限）允许工作区外的目标；其余档位保持工作区边界。

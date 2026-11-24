@@ -78,10 +78,12 @@ test('MM-10：图片读不到时明确报错、不发起请求，且正文留在
   await ui.waitFor((frame) => /无法读取图片/.test(frame))
   assert.equal(requests.length, 0, 'no provider request when the image is unreadable')
   const frame = ui.last()
-  // 输入区回显（行首 '>' 的编辑器行）必须仍带原文；提示气泡里的路径不算恢复。
-  const composer = frame.split('\n').filter((line) => /^\s*>\s/.test(line))
+  // The composer can wrap a long path. The error hint alone is not evidence of retention.
+  const lines = frame.split(/\r?\n/)
+  const promptLine = lines.findIndex((line) => /^\s*>\s/.test(line))
+  const composer = lines.slice(promptLine).join('').trimStart()
   assert.ok(
-    composer.some((line) => line.includes('nope.png')),
+    promptLine >= 0 && composer.startsWith(`> ${text}`),
     'prompt text survives in the composer: ' + frame
   )
 })

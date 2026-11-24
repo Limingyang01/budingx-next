@@ -3,7 +3,7 @@
 // pointing outside the workspace is refused.
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createWorkspace, isInsideRoot } from '../../tui/dist/workspace/paths.js'
@@ -40,6 +40,20 @@ test('a path that does not exist yet resolves through its parent', () => {
     const resolved = workspace.resolve('src/new-file.ts')
     assert.equal(resolved.relative, 'src/new-file.ts')
     assert.equal(resolved.existed, false)
+  } finally {
+    rmSync(tree.base, { recursive: true, force: true })
+  }
+})
+
+test('a workspace root that does not exist yet resolves through its physical ancestor', () => {
+  const tree = makeTree()
+  try {
+    const root = join(tree.root, 'future', 'workspace')
+    const workspace = createWorkspace(root)
+    assert.equal(workspace.root, join(realpathSync.native(tree.root), 'future', 'workspace'))
+    const target = workspace.resolve(join(root, 'doc.md'))
+    assert.equal(target.real, join(workspace.root, 'doc.md'))
+    assert.equal(target.existed, false)
   } finally {
     rmSync(tree.base, { recursive: true, force: true })
   }
