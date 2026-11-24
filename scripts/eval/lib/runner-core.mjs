@@ -11,6 +11,9 @@ import { createAgentRegistry } from '../../../src/tui/dist/core/agent-runtime.js
 import { createAgentTools } from '../../../src/tui/dist/core/agent-tools.js'
 import { BUILT_IN_AGENTS } from '../../../src/tui/dist/core/agent-definitions.js'
 import { createToolSearch } from '../../../src/tui/dist/core/tool-search.js'
+import { createCommandRunner } from '../../../src/tui/dist/exec/runner.js'
+import { createSandboxPolicy } from '../../../src/tui/dist/exec/sandbox-policy.js'
+import { createExecTools } from '../../../src/tui/dist/exec/tools.js'
 import { createWorkspace } from '../../../src/tui/dist/workspace/paths.js'
 import { createWorkspaceTools } from '../../../src/tui/dist/workspace/tools.js'
 import { createPermissionPolicy } from '../../../src/tui/dist/workspace/policy.js'
@@ -25,7 +28,7 @@ import {
   repoRoot,
   snapshotFiles
 } from './util.mjs'
-import { BUDGET_PROFILES } from './tasks.mjs'
+import { BUDGET_PROFILES, CHECKPOINT_BUDGET_PROFILES, CHECKPOINT_BUDGET_VERSION } from './tasks.mjs'
 
 const EVAL_MODEL = 'eval-model'
 
@@ -156,11 +159,11 @@ function buildSession({
 
   const sessionOptions = {
     provider: parentProvider,
-    approval: ALWAYS_ALLOW,
+    approval: setup.approval ?? ALWAYS_ALLOW,
     resolveSnapshot: () => turnSnapshot,
     tools,
     permissionPolicy: policy,
-    maxIterations: 8
+    maxIterations: budget.maxTurns ?? 8
   }
   if (setup.toolSearchEnv) {
     sessionOptions.toolSearch = createToolSearch({
@@ -179,7 +182,7 @@ function buildSession({
       provider: parentProvider,
       resolveProvider: () => childWrapper ?? parentProvider,
       resolveSnapshot: () => turnSnapshot,
-      approval: ALWAYS_ALLOW,
+      approval: setup.approval ?? ALWAYS_ALLOW,
       policy,
       createChildPolicy: (childMode) =>
         createPermissionPolicy({ workspace, mode: childMode, dataRootOverride })
@@ -223,27 +226,30 @@ function collectAgents(registry) {
 }
 
 /** 执行任务声明的校验命令（编码回归子集用）。 */
-function runVerifyCommands(task, cwd) {
+function runVerifyCommands(task, cwd, deadline = Infinity) {
   const commands = task.verify?.commands ?? []
   if (commands.length === 0) return { exitCode: 0, output: '' }
   let output = ''
   let exitCode = 0
   for (const command of commands) {
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) return { exitCode: 1, output, timedOut: true }
     const run = spawnSync(command[0], command.slice(1), {
       cwd,
       encoding: 'utf8',
-      timeout: 60_000
+      timeout: Math.min(60_000, remaining)
     })
     exitCode = run.status === null ? 1 : run.status
     output += (run.stdout ?? '') + (run.stderr ?? '')
+    if (Date.now() >= deadline) return { exitCode, output, timedOut: true }
     if (exitCode !== 0) break
   }
   return { exitCode, output }
 }
 
-function budgetOf(task) {
+function budgetOf(task, profiles = BUDGET_PROFILES) {
   return {
-    ...(BUDGET_PROFILES[task.budget] ?? BUDGET_PROFILES.B),
+    ...(profiles[task.budget] ?? profiles.B),
     ...(task.budget_overrides ?? {})
   }
 }
@@ -425,20 +431,46 @@ export async function runLiveTask(task, options = {}) {
   }
   const events = []
   const workspaceDir = mkdtempSync(join(tmpdir(), 'budingx-live-'))
-  const budget = { ...budgetOf(task), ...(options.budget ?? {}) }
+  const budget = { ...budgetOf(task, CHECKPOINT_BUDGET_PROFILES), ...(options.budget ?? {}) }
+  const deadline = started + budget.timeoutMs
   let result = { outcome: 'unknown', error: undefined, requestCount: 0 }
   let changed = { added: [], modified: [], removed: [] }
   let toolResults = []
+  let checks = []
   let thrown = null
   let timedOut = false
+  let commandRunner
   try {
     const fixtureDir = join(root, 'scripts', 'eval', 'fixtures', task.fixture ?? task.id)
     if (exists(fixtureDir)) copyTree(fixtureDir, workspaceDir)
     const before = snapshotFiles(workspaceDir)
+    const mode = task.permissionMode ?? 'workspace_edit'
+    const approvalStrategy = task.approval ?? 'allow'
+    if (!['read_only', 'workspace_edit', 'full_access'].includes(mode)) {
+      throw new Error('Unsupported evaluation permission mode: ' + mode)
+    }
+    if (!['allow', 'deny', 'deny_then_allow'].includes(approvalStrategy)) {
+      throw new Error('Unsupported evaluation approval strategy: ' + approvalStrategy)
+    }
+    const sandboxPolicy = createSandboxPolicy({ hostTrusted: true })
+    if (task.permissionMode !== undefined) {
+      commandRunner = createCommandRunner({ defaultCwd: workspaceDir, sandboxPolicy })
+    }
+    let approvalRequests = 0
     const setup = {
       kind: 'session',
       tools: 'workspace',
-      mode: 'workspace_edit',
+      mode,
+      extraTools: commandRunner
+        ? createExecTools({ runner: commandRunner, defaultCwd: workspaceDir, sandboxPolicy })
+        : undefined,
+      approval: {
+        async request() {
+          approvalRequests++
+          const deny = approvalStrategy === 'deny' || (approvalStrategy === 'deny_then_allow' && approvalRequests === 1)
+          return { outcome: deny ? 'deny' : 'allow', via: 'user' }
+        }
+      },
       provider: options.provider,
       submit: task.instruction
     }
@@ -454,9 +486,8 @@ export async function runLiveTask(task, options = {}) {
     })
     try {
       session.submit(task.instruction)
-      const finalized = await waitFor(() => hasFinalized(events), budget.timeoutMs)
-      timedOut = !finalized
-      await waitFor(() => allTurnsFinalized(events), Math.min(budget.timeoutMs, 15_000))
+      timedOut = !await waitFor(() => allTurnsFinalized(events), deadline - Date.now())
+      if (timedOut) session.interrupt('user')
     } finally {
       unsubscribe()
       try {
@@ -467,25 +498,22 @@ export async function runLiveTask(task, options = {}) {
       session.dispose()
     }
     toolResults = collectToolResults(events)
-    const verification = runVerifyCommands(task, workspaceDir)
+    const verification = timedOut ? undefined : runVerifyCommands(task, workspaceDir, deadline)
     const finalized = events.filter((event) => event.type === 'turn_finalized').pop()
+    timedOut ||= verification?.timedOut === true
+    state.budgetExceeded ??= timedOut ? 'wall-clock' : finalized?.outcome === 'max_turns' ? 'turns' : undefined
     result = {
-      outcome:
-        verification.exitCode === 0 ? 'completed' : (finalized?.outcome ?? 'error'),
-      error:
-        verification.exitCode === 0
-          ? finalized?.error
-          : {
-              class: 'unknown',
-              code: 'EVAL_VERIFY_FAILED',
-              message: verification.output.slice(0, 2000)
-            },
+      outcome: finalized?.outcome ?? (timedOut ? 'timeout' : 'unknown'),
+      error: finalized?.error,
       requestCount: state.requestCount,
       budgetExceeded: state.budgetExceeded,
-      commandExitCode: verification.exitCode,
-      commandOutput: verification.output
+      commandExitCode: verification?.exitCode,
+      commandOutput: verification?.output
     }
     changed = diffSnapshots(before, snapshotFiles(workspaceDir))
+    checks = evaluateChecks(task.live_checks ?? task.checks ?? [], {
+      events, toolResults, changed, workspaceDir, state, result
+    })
   } catch (error) {
     thrown = error
     result = {
@@ -498,12 +526,17 @@ export async function runLiveTask(task, options = {}) {
       requestCount: state.requestCount
     }
   } finally {
+    commandRunner?.dispose()
     removeTree(workspaceDir)
   }
-  const ctx = { events, toolResults, changed, workspaceDir, state, result }
-  const checks = thrown ? [] : evaluateChecks(task.live_checks ?? task.checks ?? [], ctx)
-  const passed = !thrown && checks.length > 0 && checks.every((check) => check.ok)
-  const failureClass = passed ? undefined : classifyFailure(ctx, timedOut)
+  const passed = !thrown && !timedOut && !result.budgetExceeded &&
+    result.outcome === 'completed' && result.commandExitCode === 0 &&
+    checks.length > 0 && checks.every((check) => check.ok)
+  const failureClass = passed
+    ? undefined
+    : result.budgetExceeded
+      ? 'BUDGET'
+      : classifyFailure({ events, toolResults, result }, timedOut)
   return {
     id: task.id,
     version: task.version,
@@ -514,9 +547,11 @@ export async function runLiveTask(task, options = {}) {
     durationMs: Date.now() - started,
     outcome: result.outcome,
     error: result.error,
+    commandExitCode: result.commandExitCode,
     requestCount: result.requestCount,
     tokens: state.tokens,
     budgetExceeded: state.budgetExceeded,
+    budgetVersion: CHECKPOINT_BUDGET_VERSION,
     changed,
     checks,
     failureClass,

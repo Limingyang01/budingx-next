@@ -153,7 +153,6 @@ export function reduceFrame(
         next.transcript = [...next.transcript, { kind: 'user', text: event.userText }]
       }
       next.liveText = ''
-      next.liveAnswerPrefix = undefined
       next.thinking = false
       next.thinkingCursor = undefined
       next.error = undefined
@@ -180,10 +179,7 @@ export function reduceFrame(
         }
         return next
       }
-      if (next.liveText) {
-        next.liveAnswerPrefix = (next.liveAnswerPrefix ?? '') + next.liveText
-        flushLiveText(next)
-      }
+      // Thinking is a separate transcript entry, so it does not commit partial answer text.
       const ordinal = (cursor?.ordinal ?? -1) + 1
       next.thinkingCursor = { messageId: event.messageId, ordinal, index: next.transcript.length }
       const entry = appendThinkingText(startThinkingEntry(event.messageId, ordinal), event.text)
@@ -192,8 +188,7 @@ export function reduceFrame(
       return next
     }
     case 'message_completed': {
-      next.lastAnswer = (next.liveAnswerPrefix ?? '') + next.liveText
-      next.liveAnswerPrefix = undefined
+      next.lastAnswer = next.liveText
       next.thinking = false
       next.thinkingCursor = undefined
       flushLiveText(next)
@@ -424,7 +419,6 @@ export function reduceFrame(
           : entry
       )
       flushLiveText(next)
-      next.liveAnswerPrefix = undefined
       next.thinking = false
       next.thinkingCursor = undefined
       if (next.startedAt !== undefined && event.finishedAt !== undefined) {

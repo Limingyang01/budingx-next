@@ -17,6 +17,8 @@ test('SM-01 两类根都被发现，记录名称/描述/路径/来源', () => {
   const home = mkdtempSync(join(tmpdir(), 'budingx-skill-home-'))
   const workspace = mkdtempSync(join(tmpdir(), 'budingx-skill-work-'))
   try {
+    // Stop project discovery at the fixture instead of inheriting host ancestor skills.
+    mkdirSync(join(workspace, '.git'))
     writeSkill(home, 'review', '---\nname: review\ndescription: 代码审查\n---\n审查正文')
     writeSkill(workspace, 'ship', '---\nname: ship\ndescription: 发布\n---\n发布正文')
     const skills = discoverSkills({ homeDir: home, workspaceDir: workspace })

@@ -122,8 +122,6 @@ export type Frame = {
   suggestFollowUp?: boolean
   /** Raw text of the running assistant message (never re-wrapped in place). */
   liveText: string
-  /** Earlier text segments in this message, before a following thinking segment. */
-  liveAnswerPrefix?: string
   thinking: boolean
   thinkingCursor?: { messageId: string; ordinal: number; index: number }
   status: { state: SessionState; note?: string }

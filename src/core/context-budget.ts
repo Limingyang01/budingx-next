@@ -37,6 +37,8 @@ export type ContextBudgetInput = {
    * （真实分词器与本地启发式不一致）。
    */
   force?: boolean
+  /** 手动摘要已结束的会话时，最新回合也可纳入摘要。 */
+  includeCompletedHistory?: boolean
   /**
    * 模型生成的历史摘要（SP009 0.9.1 LC-06）。提供时，被裁剪回合的信息以一条
    * 摘要消息保留在压缩边界处，而不是静默丢弃——对齐参考仓「模型摘要压缩」手段。
@@ -402,9 +404,13 @@ export function createContextBudgetManager(): ContextBudgetManager {
     const answered = answeredCallIds(messages)
     const boundaries = boundariesOf(messages)
 
-    // 当前请求是最后一条用户消息；它之前的回合才可裁剪。
-    const lastUserIndex = boundaries.length > 0 ? boundaries[boundaries.length - 1] : messages.length - 1
-    const cuttableBoundaries = boundaries.filter((index) => index < lastUserIndex)
+    // 自动与溢出恢复保留当前请求。用户手动摘要时会话已空闲，可选中完整历史。
+    const lastUserIndex = input.includeCompletedHistory
+      ? messages.length
+      : (boundaries.at(-1) ?? messages.length - 1)
+    const cuttableBoundaries = input.includeCompletedHistory
+      ? [0]
+      : boundaries.filter((index) => index < lastUserIndex)
     if (cuttableBoundaries.length === 0) {
       // 没有历史回合可裁剪：只有当单条消息本身就超预算时才区分原因。
       const reason = overflowReasonOf(messages, floor, target, effectivePreserved, false)

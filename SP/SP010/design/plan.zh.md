@@ -2,11 +2,11 @@
 
 版本 v1.4｜2026-11-24｜输入基线 master `74c5156`｜实施分支在 T0 确认
 
-目标：交付[需求正本](../coding-parity-checkpoint/requirements.md)的 CP-01…CP-10 与[core-reliability 需求](../core-reliability/requirements.md)的 CR-01…CR-06。设计依据为[设计 v1.4](design.zh.md)；进度见[迭代汇总](../requirements-summary.md)和两项 STATUS。本次修订停在文档阶段。
+目标：交付[需求正本](../coding-parity-checkpoint/requirements.md)的 CP-01…CP-10 与[core-reliability 需求](../core-reliability/requirements.md)的 CR-01…CR-06。设计依据为[设计 v1.4](design.zh.md)；进度见[迭代汇总](../requirements-summary.md)和两项 STATUS。T0 已完成，实施进度见迭代汇总。
 
 ## 架构与全局约束
 
-沿用现有 Core、工具、Storage 与宿主边界：TypeScript + Node test runner + Node 22.18+，不引入 Bun，不新增运行时依赖。评估资产仍放 `scripts/eval/`（不进 `src/` 包，不进 npm 制品）。每项改动先写有意义的失败用例（RED），再做最小实现，复跑到 GREEN，再跑定向套件与 `npm test`。命令 cwd 为仓库根；临时工作区与用户数据根隔离；不读写真实 `~/.budingx`，不触碰 `~/.claude`。不改产品的用户可见行为；测量口径的改动不得顺带改产品语义。盲测失败细节不落盘、不进文档、不进修复依据。无本仓 formatter 配置时沿用既有文件风格（2 空格、ESM、无分号）。
+沿用现有 Core、工具、Storage 与宿主边界：TypeScript + Node test runner + Node 22.18+，不引入 Bun，不新增运行时依赖。评估资产仍放 `scripts/eval/`（不进 `src/` 包，不进 npm 制品）。每项改动先写有意义的失败用例（RED），再做最小实现，复跑到 GREEN，再跑定向套件与 `npm test`。命令 cwd 为仓库根；临时工作区与用户数据根隔离；不读写真实 `~/.budingx`，不触碰 `~/.claude`。测量口径的改动不改变产品语义。已报告的正文连续性与手动压缩缺陷按用户授权修复。盲测失败细节不落盘、不进文档、不进修复依据。无本仓 formatter 配置时沿用既有文件风格（2 空格、ESM、无分号）。
 
 预算档、任务集与快照均版本化。T0 确认实施起点。T6–T8 准备验证并可做非盲预跑，T9–T10 定位和修复，T11 冻结最终候选后执行正式验收和交接。预跑与正式验收各有运行 ID。
 
@@ -26,6 +26,8 @@
 | T11 最终候选验收、交接与集成（AC-CP-04…08、AC-CP-10、AC-CR-02、AC-CR-06） | `SP/SP010/test-report.md`、两项 STATUS、迭代汇总、`docs/current-status.md`、`PRODUCT.md`、版本清单与发行说明 | T10 修复 + T6–T8 验证流程 → 绑定同一候选的验收与交接 | 校验报告的候选身份和证据对应关系，拒绝并入旧 run 或其他 tarball 的记录 | 版本按 minor 准备后冻结候选与 tarball。完成正式题集每题 ≥3 次、12 条确定性保护、长任务与制品验证、受影响项定向复跑，并登记缺证项和恢复条件；门禁 GREEN 后合入、推送 |
 
 T11 顺序为「版本准备 → 冻结候选与运行身份 → 执行正式核对与受影响项复跑 → 报告与集成」。若候选身份变化，使用新 run，旧候选只保留诊断证据。汇总同时记录最终候选 SHA、tarball integrity 和实际各层证据的归属。集成后若构建或运行输入发生变化，重新冻结并验证受影响项。
+
+单轮手动压缩并入 T10 缺陷验证。用真实 `/compact` 命令入口和脚本化 Provider 断言摘要取代已完成历史、后续请求包含摘要、截断或失败保留历史。自动压缩和上下文溢出仍验证当前请求不被裁剪。
 
 ## 定向命令
 

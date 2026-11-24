@@ -1,18 +1,18 @@
 # SP010 · 中期编码效果检查验证报告
 
-状态：**文档 v1.4 已修订，实施未开始**｜更新：2026-11-24｜输入基线 master `74c5156`（0.9.2 已发布）
+状态：**v1.4 实施已启动，正式验收待执行**｜更新：2026-11-24｜输入基线 master `74c5156`（0.9.2 已发布）
 
 配套：[迭代汇总](requirements-summary.md)｜[需求正本](coding-parity-checkpoint/requirements.md)、[core-reliability 需求](core-reliability/requirements.md)｜[设计 v1.4](design/design.zh.md)｜[计划 v1.4](design/plan.zh.md)
 
 ## 0. 本轮性质
 
-本次按用户 2026-11-24 指令修订需求、设计、计划和验收记录。正式评测、修复、真实 Provider、SP010 候选制品验证均待实施，16 条 AC 保留 UNVERIFIED。既有测试复跑和脚本化复现作为文档修订依据，记录在 §3–§4。
+本次按用户 2026-11-24 指令修订需求、设计、计划和验收记录。已完成 T0、TUI 正文连续性及手动压缩修复的定向回归。正式评测、真实 Provider、SP010 候选制品验证待执行，16 条 AC 保留 UNVERIFIED。既有测试复跑和脚本化复现作为文档修订依据，记录在 §3–§4。
 
 ## 1. AC 逐条结论
 
 | AC ID | 结论 | 依据（文件 / 命令 / cwd / 数量） | 恢复条件 |
 | --- | --- | --- | --- |
-| AC-CP-01 任务集分母与快照 | UNVERIFIED | 未执行：任务集文件与校验器尚未建立（计划 T1） | 完成 T1 并使 `node scripts/eval/validate.mjs --set cp-v1` 退出码 0 |
+| AC-CP-01 任务集分母与快照 | UNVERIFIED | T1 校验器通过合成题集回归；正式 30 题及快照未齐备 | 完成 T1 并使 `node scripts/eval/validate.mjs --set cp-v1` 退出码 0 |
 | AC-CP-02 盲测纪律 | UNVERIFIED | 未执行：B1 十条盲测与 B2 预留尚未建立（计划 T1、T6） | 任务集落地后，核对报告脱敏结构与修复记录不含盲测失败信息 |
 | AC-CP-03 预算与回合上限 | UNVERIFIED | 已复现 token 超限却通过的旧行为，T2 待实施 | 请求、轮数、token、墙钟的预算证据齐备，超限且其他断言成功时仍记 `BUDGET` |
 | AC-CP-04 真实编码任务执行 | UNVERIFIED | 正式真实 Provider 运行待 T11 | 在最终候选运行真实编码闭环，关联初测失败、修复、复测通过的转录、目标 diff 与独立测试 |
@@ -134,7 +134,7 @@ v1.3 的两回合评分、媒体内容与 hook 判据在 v1.4 继续适用。本
 
 ### 0.9.2 TUI 正文连续性
 
-状态为 **已受控复现，待修复**。第一张图中，正文“今天是 2”与“026-11-24（周二）”被思考行隔开；第二张中，“子”与“agent 已返回 9 条新闻”也被思考行隔开。未取得当次原始事件流。
+状态为 **实施分支已修复，定向回归通过**。第一张图中，正文“今天是 2”与“026-11-24（周二）”被思考行隔开；第二张中，“子”与“agent 已返回 9 条新闻”也被思考行隔开。未取得当次原始事件流。
 
 在本地 0.9.2 产品代码上用 `mountTty` 挂载真实 Ink 界面。同一 messageId 依次发出 `text_delta → thinking_delta → text_delta`，正文输入无换行。112 列与 36 列均观察到以下行序，且流式帧与完成帧一致（2 个样例 × 2 种列宽 × 2 个阶段，共 8/8 个观察点复现）。
 
@@ -144,6 +144,28 @@ v1.3 的两回合评分、媒体内容与 hook 判据在 v1.4 继续适用。本
 | 中英混排 | 子 | Thinking - TRACE_THINK | agent 已返回 9 条新闻。 |
 
 自然折行对照中，同一段纯正文在 112 列占 1 行、36 列占 3 行，字符均完整。正文自带换行及下一回合消息也保持分段。受控流的触发位置在 [TUI 渲染 reducer](../../src/tui/render/reducer.ts#L183)：收到思考增量时将已有正文写入转录并追加思考条目，剩余正文随后单列。本次观察来自进程内伪终端，用户原始流仍未知。修复后按相同输入复验，正文应连续、思考内容保留，自然折行和显式换行仍须正确。
+
+修复后的定向回归覆盖实时、完成及恢复转录。参考 TUI 将流式正文与思考分别累积和渲染，见参考仓 `src/utils/messages.ts:3167` 和 `src/components/Messages.tsx:703`（`b5c9be8`）。本仓独立保留同一助手消息的正文缓冲，在消息结束时提交，恢复旧历史时跨思考块拼接正文，工具和中断仍作为边界。
+
+- RED：`node --test --test-name-pattern "同一助手消息" src/tui/test/sp009-transcript-render.test.mjs`，两个样例 × 两种列宽共 4 个子用例均因无法找到连续正文失败。
+- GREEN：`npm run build` 通过。定向运行 `node --test src/tui/test/render.test.mjs src/tui/test/sp009-transcript-render.test.mjs src/tui/test/sp006-resume-history.test.mjs`，29/29 通过。两个样例 × 两种列宽的流式帧及完成帧共 8 个观察点均为连续正文，思考条目各出现一次。真实 Windows Terminal 和发布制品尚待验证。
+
+### 0.9.2 手动压缩
+
+用户截图在单轮完成后显示 `压缩失败：no_compactable_range`。手动命令原先沿用自动压缩的边界，把最后一条用户消息当作当前请求而排除。参考 TUI 在手动压缩时把已结束的历史交给模型摘要，见参考仓 `src/commands/compact/compact.ts:44`（`b5c9be8`）。
+
+- RED：单轮实际 `/compact` 返回 `no_compactable_range`，模型请求数为 0。两个新增命令回归均失败。
+- GREEN：手动模型摘要在空闲时纳入最后一轮。成功后通过既有转录接口写回摘要，下一回合携带摘要；流失败或摘要超预算保持原历史。如果摘要期间已有其他操作改变会话，命令返回可重试的信息。
+- `npm run build` 通过。`node --test src/tui/test/sp0054-command-fidelity.test.mjs src/core/test/sp009-loop-context.test.mjs src/core/test/session-persistence.test.mjs src/core/test/sp005-review-compaction.test.mjs` 34/34 通过。
+
+### 实施阶段的评估器回归
+
+- T1 校验器新增配额、盲题数、必需字段、保护题来源、快照版本及逐文件 SHA-256 检查。合成题集可通过，配额、缺题、缺字段、篡改及未登记文件会被拒绝。正式 `set-cp-v1.json` 与快照待填写。
+- T2 已复测旧版的文件断言清理顺序、token 超限被评分掩盖、验证命令退出 0 掩盖鉴权失败及固定 8 轮上限，修复前均失败。live 路径采用 cp-v1 的 B/A/P 预算，保留会话原始终态、独立验证退出码与任务判定。9 次工具调用加最后一次回复的任务能完成；请求、token、轮数及墙钟超限均判 BUDGET。
+- `node --test src/tui/test/sp007-eval.test.mjs src/tui/test/sp010-eval.test.mjs` 共 29/29 通过。预期取消及 CAN 整题评分仍待接入，正式题集和正式 AC 保留 UNVERIFIED。
+
+- T3 的 live 路径按任务显式声明的 `permissionMode` 装配产品执行工具，`approval` 支持 allow、deny、deny_then_allow。受控 Provider 证实只读拒绝，工作区内修改档在首次拒绝后继续请求并完成实际子进程命令。真实模型的编码闭环仍待验收。
+- 首次全量运行的技能发现用例 SM-01 可单独复现。临时工作区没有项目边界，父目录中的技能进入精确数量断言。测试夹具加入仓库边界后，该文件 7/7 通过。
 
 ## 5. 交叉验证门禁
 

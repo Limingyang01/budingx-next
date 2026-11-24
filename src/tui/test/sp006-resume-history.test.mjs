@@ -290,14 +290,13 @@ test('SP006 波次 F：旧转录里的碎片文本块在恢复时合并为一条
     entries.map((entry) => [entry.kind, entry.text]),
     [
       ['user', '调整一下'],
-      ['assistant', '我调整颗粒度'],
       ['thinking', '可显示的思考'],
-      ['assistant', '（比如深挖某一板块）'],
+      ['assistant', '我调整颗粒度（比如深挖某一板块）'],
       ['tool', 'Read(a.txt)']
     ],
-    '同一条消息里的连续文本块必须合并，思考段保留原来的相对位置'
+    '旧转录中的同一条正文须跨思考块合并，工具结果仍配对'
   )
-  assert.equal(entries[4].status, 'success')
+  assert.equal(entries[3].status, 'success')
 })
 
 test('SP006 波次 F：多增量流式回答落盘为单块，恢复后整段显示', async (t) => {

@@ -246,7 +246,7 @@ test('only consecutive successful reads and searches in one turn are collapsed',
   assert.equal(result[0].result, 'Ctrl+O 展开详情')
 })
 
-test('流式思考按段合并，按原顺序与回答交错，并在恢复后保留相同标识', () => {
+test('流式和恢复转录均保留各段思考，助手正文连续', () => {
   const messageId = 'assistant-1'
   const content = [
     ['thinking', '初步'],
@@ -263,9 +263,8 @@ test('流式思考按段合并，按原顺序与回答交错，并在恢复后�
   live = reduceFrame(live, { type: 'turn_finalized', turnId, outcome: 'completed' })
   assert.deepEqual(live.transcript.map(({ kind, text }) => [kind, text]), [
     ['thinking', '初步判断'],
-    ['assistant', '阶段一。'],
     ['thinking', '再次核对'],
-    ['assistant', '最终结论。']
+    ['assistant', '阶段一。最终结论。']
   ])
   assert.equal(live.lastAnswer, '阶段一。最终结论。')
 

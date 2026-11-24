@@ -22,7 +22,7 @@ import { toolArgument } from './tool-summary.js'
  * - a tool_use without a result is marked as interrupted: a restored session
  *   must never look like a tool is still running.
  *
- * SP006 波次 F：同一条消息里的连续文本块合并成一条记录。老会话按流式增量
+ * 同一条消息的正文跨思考块合并，工具和中断标记仍是边界。老会话按流式增量
  * 逐块落盘（每个增量一个 text 块），逐块渲染会让恢复后的历史碎成一列窄字；
  * 合并后与原始运行时的整段回答一致，无需迁移已写盘的转录。
  */
@@ -59,23 +59,23 @@ export function restoredTranscriptEntries(messages: readonly Message[]): Transcr
       let text = ''
       let thinking: ThinkingTranscriptEntry | undefined
       let thinkingOrdinal = 0
-      const flush = (): void => {
-        if (text.trim().length > 0) entries.push({ kind: 'assistant', text })
+      const flushThinking = (): void => {
         if (thinking !== undefined) entries.push(thinking)
-        text = ''
         thinking = undefined
+      }
+      const flush = (): void => {
+        flushThinking()
+        if (text.trim().length > 0) entries.push({ kind: 'assistant', text })
+        text = ''
       }
       for (const block of message.blocks) {
         if (block.type === 'text') {
-          if (thinking !== undefined) flush()
+          flushThinking()
           text += block.text
           continue
         }
         if (block.type === 'thinking') {
-          if (thinking === undefined) {
-            flush()
-            thinking = startThinkingEntry(message.id, thinkingOrdinal++)
-          }
+          thinking ??= startThinkingEntry(message.id, thinkingOrdinal++)
           thinking = appendThinkingText(thinking, typeof block.text === 'string' ? block.text : '')
           continue
         }

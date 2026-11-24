@@ -78,3 +78,44 @@ test('AC-TRANSCRIPT-02 · 转录模式可以展开、收起指定的思考段', 
   await ui.send('\x0f')
   await ui.waitFor((frame) => !frame.includes('REASONING_DETAILS'))
 })
+
+test('同一助手消息的正文在思考增量前后保持连续', async (t) => {
+  for (const [prefix, suffix] of [
+    ['今天是 2', '026-11-24（周二）。'],
+    ['子', 'agent 已返回 9 条新闻。']
+  ]) {
+    for (const columns of [112, 36]) {
+      await t.test(prefix + ' / ' + columns, async (t) => {
+        const { promise: finish, resolve: finishMessage } = Promise.withResolvers()
+        t.after(finishMessage)
+        const ui = await mountTty(t, {
+          strategy: 'ascii', fullScreen: true, columns, rows: 32,
+          config: { model: 'fixture' },
+          provider: { async *stream() {
+            yield { type: 'text_delta', text: prefix }
+            yield { type: 'thinking_delta', text: 'TRACE_THINK' }
+            yield { type: 'text_delta', text: suffix }
+            await finish
+            yield { type: 'message_completed', finishReason: 'stop' }
+          } }
+        })
+        t.after(() => rmSync(ui.root, { recursive: true, force: true }))
+        const messageIds = new Set()
+        const off = ui.session.on((event) => {
+          if (event.type === 'text_delta' || event.type === 'thinking_delta') messageIds.add(event.messageId)
+        })
+        t.after(off)
+
+        await ui.send('check continuity\r')
+        const live = await ui.waitFor((frame) => frame.includes(suffix) && frame.includes('TRACE_THINK'))
+        finishMessage()
+        const done = await ui.waitFor((frame) => !ui.session.isBusy && frame.includes(suffix))
+        assert.equal(messageIds.size, 1)
+        for (const frame of [live, done]) {
+          assert.equal(frame.split(prefix + suffix).length - 1, 1, frame)
+          assert.equal(frame.split('TRACE_THINK').length - 1, 1)
+        }
+      })
+    }
+  }
+})

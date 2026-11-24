@@ -453,7 +453,7 @@ export class Session {
 
   /**
    * 0.5.4 /compact：手动压缩（忽略触发阈值），可附自定义摘要指令。
-   * 复用 SP005 确定性压缩核心，指令作为保留约束写入，压缩后仍保留。
+   * 空闲时用模型摘要已结束的历史，指令作为压缩后的保留约束。
    */
   async compactNow(instruction?: string): Promise<{ ok: boolean; before: number; after: number; message?: string }> {
     const budget = this.budget
@@ -462,36 +462,43 @@ export class Session {
       this.options.contextBudget?.maxTokens ?? 0,
       this.options.contextBudget?.reservedOutputTokens
     )
-    const before = budget.estimate({ messages: this.messages, ...shape })
+    const messages = [...this.messages]
+    const before = budget.estimate({ messages, ...shape })
+    if (this.isBusy) return { ok: false, before, after: before, message: '请等待当前回合结束后再压缩' }
+    if (messages.length === 0) return { ok: false, before, after: before, message: '没有可压缩的历史' }
     const preserved = this.preservedItems()
     if (instruction && instruction.trim()) {
       preserved.push({ kind: 'constraint', id: 'compact-instruction', text: instruction.trim(), reason: '用户自定义压缩指令' })
     }
-    // SP009 0.9.1 LC-06：手动 /compact 同样走模型摘要（对齐参考仓）。
-    // 无真实预算 / 无快照解析器时不发摘要请求，直接做确定性裁剪。
-    const probe = budget.compact({ messages: this.messages, ...shape, force: true }, preserved)
-    let summaryText: string | undefined
-    if (shape.maxTokens > 0 && probe.compacted && probe.replacedRange && this.options.resolveSnapshot) {
-      const dropped = this.messages.slice(probe.replacedRange.from, probe.replacedRange.to + 1)
-      const provider = this.options.resolveProvider?.() ?? this.options.provider
-      const snapshot = this.options.resolveSnapshot()
-      summaryText = await this.generateCompactionSummary({
-        provider,
+    const snapshot = shape.maxTokens > 0 ? this.options.resolveSnapshot?.() : undefined
+    const input = { messages, ...shape, force: true, includeCompletedHistory: snapshot !== undefined }
+    const probe = budget.compact(input, preserved)
+    if (!probe.compacted || !probe.replacedRange) {
+      return { ok: false, before, after: before, message: '没有可压缩的历史' }
+    }
+
+    const turnId = `manual-${Date.now()}`
+    let result = probe
+    if (snapshot) {
+      const summaryText = await this.generateCompactionSummary({
+        provider: this.options.resolveProvider?.() ?? this.options.provider,
         model: snapshot.model,
-        dropped,
+        dropped: messages.slice(probe.replacedRange.from, probe.replacedRange.to + 1),
         signal: new AbortController().signal,
         instruction,
-        turnId: `manual-${Date.now()}`
+        turnId
       })
+      if (!summaryText) return { ok: false, before, after: before, message: '未能生成完整的历史摘要' }
+      if (this.isBusy || this.messages.length !== messages.length ||
+          this.messages.some((message, index) => message !== messages[index])) {
+        return { ok: false, before, after: before, message: '会话在压缩期间已变化，请重试' }
+      }
+      result = budget.compact({ ...input, summaryText }, preserved)
+      if (!result.withinBudget) {
+        return { ok: false, before, after: before, message: '摘要超出上下文预算' }
+      }
     }
-    const result = budget.compact(
-      { messages: this.messages, ...shape, force: true, ...(summaryText ? { summaryText } : {}) },
-      preserved
-    )
-    if (!result.compacted) {
-      return { ok: false, before, after: before, message: result.overflowReason ?? '没有可压缩的历史' }
-    }
-    this.applyCompaction(`manual-${Date.now()}`, result, before)
+    this.applyCompaction(turnId, result, before)
     return { ok: true, before, after: result.estimatedTokens }
   }
 
@@ -1505,14 +1512,20 @@ export class Session {
         signal: opts.signal
       }
       let raw = ''
+      let completed = false
       for await (const event of opts.provider.stream(request)) {
         if (opts.signal.aborted) {
           this.traceEnd(trace, 'cancelled')
           return undefined
         }
+        if (event.type === 'failed') {
+          this.traceEnd(trace, 'error', event.error)
+          return undefined
+        }
         if (event.type === 'text_delta') raw += event.text
+        if (event.type === 'message_completed') completed = event.finishReason === 'stop'
       }
-      const summary = extractSummary(raw)
+      const summary = completed ? extractSummary(raw) : ''
       this.tracePayload(trace, 'output', summary)
       this.traceEnd(trace, summary ? 'success' : 'error')
       return summary || undefined

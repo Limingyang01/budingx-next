@@ -4,7 +4,7 @@
 
 2026-11-24，[SP009 0.9.2 的 12 项 TUI 差距优化与缺陷修复](../SP/SP009/tui-gap-optimizations/requirements.md)已实施并完成定向验收。#42 通过 3 次真实 Provider 子代理验证。集成及版本准备见 [0.9.2 状态](../SP/SP009/tui-gap-optimizations/STATUS.md)和[验证记录](../SP/SP009/tui-gap-optimizations/test-report.md)。团队交接及 P1 新入口分别进入 [SP011](../SP/SP011/requirements-summary.md)和 [SP015](../SP/SP015/requirements-summary.md)。
 
-2026-11-24，[SP010 中期编码效果检查](../SP/SP010/requirements-summary.md)的[设计 v1.4](../SP/SP010/design/design.zh.md)、[实施计划 v1.4](../SP/SP010/design/plan.zh.md)和[验收取证](../SP/SP010/test-report.md#v14-验收取证)已同步。本版补齐 CAN 恢复入口与首回合历史的证据，以及缺完成证据时受控注入和真实命令的请求轨迹。复审已记录 CAN 正反例，以及 T7 两种路径分别为 1 次和 2 次后续主请求的实测结果。0.9.2 TUI 正文断行已受控复现，待修复。SP010 实施待启动，16 条 AC 均为 UNVERIFIED。
+2026-11-24，[SP010 中期编码效果检查](../SP/SP010/requirements-summary.md)的[设计 v1.4](../SP/SP010/design/design.zh.md)、[实施计划 v1.4](../SP/SP010/design/plan.zh.md)和[验收取证](../SP/SP010/test-report.md#v14-验收取证)已同步。本版补齐 CAN 恢复入口与首回合历史的证据，以及缺完成证据时受控注入和真实命令的请求轨迹。复审已记录 CAN 正反例，以及 T7 两种路径分别为 1 次和 2 次后续主请求的实测结果。0.9.2 TUI 正文断行与单轮手动压缩已在实施分支修复并完成定向回归。SP010 已完成 T0，16 条 AC 均为 UNVERIFIED。
 
 截至 2026-11-23，**npm `latest` 为 0.9.1**（SP009 补丁）：主循环去固定回合上限、上下文窗口按模型动态解析并支持自定义、自动压缩默认开启且改模型摘要、子代理默认无 token 预算且通知按系统消息渲染、技能多级别与 `/skillify` `/reload-skills`；台账已登记。 [0.9.1 发布回执](../release-notes/v0.9.1.md)
 

@@ -120,3 +120,67 @@ test('0.5.4 /help 列出已加载自定义技能命令', async () => {
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+
+test('手动 /compact 摘要唯一已结束的回合，并可携摘要继续对话', async (t) => {
+  const requests = []
+  const session = new Session({
+    provider: { async *stream(request) {
+      requests.push(request)
+      const response = requests.length === 1 ? '<summary>保留项目目标</summary>' : '已继续'
+      yield { type: 'text_delta', text: response }
+      yield { type: 'message_completed', finishReason: 'stop' }
+    } },
+    approval: { request: async () => ({ outcome: 'deny', via: 'policy' }) },
+    contextBudget: { maxTokens: 200_000 },
+    resolveSnapshot: () => ({ modelId: 'manual', model: 'fixture', baseUrlHost: 'fixture.invalid', capabilities: {} })
+  })
+  t.after(() => session.dispose())
+  session.restoreHistory([
+    { id: 'u1', role: 'user', blocks: [{ type: 'text', text: '首问：当前项目目标是什么？' }] },
+    { id: 'a1', role: 'assistant', blocks: [{ type: 'text', text: '首答：保留项目目标和约束。' }] }
+  ])
+  const out = await runCommand('/compact 保留约束', baseCtx({ session }))
+  assert.match(out.message ?? '', /已压缩/, out.error)
+  assert.equal(requests.length, 1)
+  assert.match(JSON.stringify(requests[0].messages), /首问.*首答/)
+  assert.match(JSON.stringify(requests[0].messages), /保留约束/)
+  assert.match(JSON.stringify(session.history), /<compacted_summary>.*保留项目目标/)
+  assert.doesNotMatch(JSON.stringify(session.history), /首问|首答/)
+
+  const done = new Promise((resolve) => {
+    const off = session.on((event) => {
+      if (event.type === 'turn_finalized') {
+        off()
+        resolve(event)
+      }
+    })
+  })
+  session.submit('继续')
+  assert.equal((await done).outcome, 'completed')
+  assert.match(JSON.stringify(requests[1].messages), /保留项目目标/)
+})
+
+test('手动 /compact 的摘要流中途失败时保留历史', async (t) => {
+  let requests = 0
+  const session = new Session({
+    provider: { async *stream() {
+      requests++
+      yield { type: 'text_delta', text: '不完整摘要' }
+      yield { type: 'failed', error: { class: 'network', code: 'fixture', message: 'fixture', retryable: false } }
+    } },
+    approval: { request: async () => ({ outcome: 'deny', via: 'policy' }) },
+    contextBudget: { maxTokens: 200_000 },
+    resolveSnapshot: () => ({ modelId: 'manual', model: 'fixture', baseUrlHost: 'fixture.invalid', capabilities: {} })
+  })
+  t.after(() => session.dispose())
+  const history = [
+    { id: 'u1', role: 'user', blocks: [{ type: 'text', text: '问题' }] },
+    { id: 'a1', role: 'assistant', blocks: [{ type: 'text', text: '回答' }] }
+  ]
+  session.restoreHistory(history)
+  const result = await runCommand('/compact', baseCtx({ session }))
+  assert.equal(requests, 1)
+  assert.match(result.error ?? '', /摘要/)
+  assert.deepEqual(session.history, history)
+})
