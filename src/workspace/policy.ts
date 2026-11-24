@@ -13,7 +13,7 @@ import type {
 import { dataRoot } from '../storage/paths.js'
 import { ERROR_CODES } from '../core/constants.js'
 import { matchGlob } from './ignore.js'
-import { isInsideRoot, WorkspaceError, type Workspace } from './paths.js'
+import { isInsideRoot, resolvePhysicalPath, WorkspaceError, type Workspace } from './paths.js'
 
 export type PermissionRule = {
   id: string
@@ -168,9 +168,10 @@ export function createPermissionPolicy(
 
   function floorVerdict(request: PermissionRequest, real: string): PermissionVerdict | undefined {
     // B-1: user data is private. A verified linked checkout remains project data.
-    if (isInsideRoot(userRoot, real)) {
+    const canonicalUserRoot = resolvePhysicalPath(userRoot)
+    if (isInsideRoot(canonicalUserRoot, real) || isInsideRoot(userRoot, real)) {
       const managed = options.managedWorkspaceRoot?.()
-      const worktrees = resolve(userRoot, 'worktrees')
+      const worktrees = resolve(canonicalUserRoot, 'worktrees')
       if (!managed || relative(worktrees, managed) === '' || !isInsideRoot(worktrees, managed) || !isInsideRoot(managed, real)) {
         return { action: 'deny', reason: 'The budingx user data directory is off-limits', ruleId: 'floor:data' }
       }

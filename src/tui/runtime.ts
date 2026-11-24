@@ -60,7 +60,7 @@ import {
   type PermissionRule
 } from '../workspace/policy.js'
 import { createWorkspaceTools, resolveFileReferences, type CheckpointStore } from '../workspace/index.js'
-import { createWorkspace, type Workspace } from '../workspace/paths.js'
+import { createWorkspace, realPathOf, type Workspace } from '../workspace/paths.js'
 import type { TasksPanelPort } from './tasks-panel.js'
 import type { Tracer } from '../core/observability.js'
 import {
@@ -392,7 +392,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   let transcript: ReturnType<typeof startSession>['transcript'] | undefined
   if (persistence) {
     sessionStore = createSessionStore({
-      workspaceRoot: workspace.root,
+      workspaceRoot: options.cwd,
       ...(options.home ? { home: options.home } : {})
     })
     try {
@@ -403,7 +403,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       }
       transcript = startSession({
         sessionId,
-        workspaceRoot: workspace.root,
+        workspaceRoot: options.cwd,
         ...(options.home ? { home: options.home } : {})
       }).transcript
     } catch (error) {
@@ -507,7 +507,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       workspaceDir: workspace.root, homeDir: instructionHome, targetDir,
       allowImport: (path, fromUserConfig) => {
         if (!fromUserConfig) return allowProjectFile(path)
-        const parts = relative(dataRoot(instructionHome), path).split(/[\\/]/)
+        const root = dataRoot(instructionHome)
+        const parts = relative(realPathOf(root) ?? root, path).split(/[\\/]/)
         // User rule documents may import nearby Markdown or text, separate from product state.
         return /\.(?:md|txt)$/i.test(path) && (parts.length === 1 || parts[0] === 'rules')
       }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { once } from 'node:events'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -199,8 +199,10 @@ test('派生会话不接管临时批准、原会话后台结果或附件缓存',
 
 test('AC-WORKTREE-01/02 TUI 切换工作树后文件和 Shell 使用同一目录，重启恢复绑定', async (t) => {
   const { home, cwd, runtime, open, replies, config } = await fixture(t, { git: true })
+  const origin = realpathSync.native(cwd)
+  assert.equal(runtime.workspace.root, origin)
   const ui = await mountTty(t, {
-    strategy: 'ascii', sessionFactory: () => runtime.session, config,
+    strategy: 'ascii', columns: 64, sessionFactory: () => runtime.session, config,
     commandOverrides: {
       home, cwd, worktree: runtime.worktree, sessions: runtime.sessions,
       permission: {
@@ -212,13 +214,13 @@ test('AC-WORKTREE-01/02 TUI 切换工作树后文件和 Shell 使用同一目录
   })
   t.after(() => rmSync(home, { recursive: true, force: true }))
   await ui.send('/worktree create feature-box\r')
-  await ui.waitFor((frame) => /worktree.*feature-box|feature-box.*worktree/i.test(frame), 7000)
+  await ui.waitFor((frame) => frame.includes('Created worktree:') && frame.includes('feature-box'), 7000)
   await ui.send('/worktree enter feature-box\r')
-  await ui.waitFor(() => runtime.workspace.root !== cwd, 7000)
+  await ui.waitFor(() => runtime.workspace.root !== origin, 7000)
   const active = runtime.workspace.root
   const shell = process.platform === 'win32' ? 'PowerShell' : 'Bash'
   writeFileSync(join(active, 'same.txt'), 'isolated contents')
-  replies.push(tool('Read', { path: 'same.txt' }), tool(shell, { command: process.platform === 'win32' ? 'Get-Location' : 'pwd' }), null)
+  replies.push(tool('Read', { path: 'same.txt' }), tool(shell, { command: process.platform === 'win32' ? '(Get-Location).ProviderPath' : 'pwd' }), null)
   const result = await turn(runtime, 'read worktree')
   assert.match(result[0].content, /isolated contents/)
   assert.match(result[1].content, /feature-box/)
@@ -226,14 +228,14 @@ test('AC-WORKTREE-01/02 TUI 切换工作树后文件和 Shell 使用同一目录
   assert.match(JSON.stringify(refs), /isolated contents/)
   await ui.send('/branch\r')
   await ui.waitFor(() => runtime.session.id !== 'fixture-session', 7000)
-  assert.equal(runtime.workspace.root, cwd)
+  assert.equal(runtime.workspace.root, origin)
 
   const reopened = open('fixture-session')
   try {
     assert.equal(reopened.sessions.resume('fixture-session').ok, true)
     assert.equal(reopened.workspace.root, active)
     await reopened.worktree.exit()
-    assert.equal(reopened.workspace.root, cwd)
+    assert.equal(reopened.workspace.root, origin)
     const saved = new SessionStore({ home, workspaceRoot: cwd }).restore('fixture-session')
     assert.equal(saved.worktree, undefined)
     assert.equal(saved.worktreeOriginBranch, 'main')

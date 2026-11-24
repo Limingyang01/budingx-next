@@ -9,6 +9,7 @@ import {
   existsSync,
   mkdtempSync,
   readdirSync,
+  realpathSync,
   renameSync,
   rmSync,
   rmdirSync
@@ -102,8 +103,26 @@ function defaultNow(): string {
   return new Date().toISOString()
 }
 
+function workspaceIds(root: string): string[] {
+  const absolute = resolve(root)
+  let legacy = absolute
+  try {
+    legacy = realpathSync(absolute)
+  } catch {
+    // Older records can carry the absolute spelling of an unavailable root.
+  }
+  let canonical = legacy
+  try {
+    canonical = realpathSync.native(absolute)
+  } catch {
+    // Use the path spelling that can still be resolved.
+  }
+  return [...new Set([canonical, legacy])]
+    .map((path) => createHash('sha256').update(path).digest('hex'))
+}
+
 export function sessionWorkspaceId(root: string): string {
-  return createHash('sha256').update(resolve(root)).digest('hex')
+  return workspaceIds(root)[0]
 }
 
 export function validSessionId(sessionId: string): boolean {
@@ -276,10 +295,12 @@ function isProcessAlive(pid: number): boolean {
 export class SessionStore {
   private readonly root: string
   private readonly now: () => string
+  private readonly sourceWorkspaceIds?: string[]
 
   constructor(private readonly options: SessionStoreOptions = {}) {
     this.root = sessionsRoot(options.home)
     this.now = options.now ?? defaultNow
+    this.sourceWorkspaceIds = options.workspaceRoot === undefined ? undefined : workspaceIds(options.workspaceRoot)
   }
 
   /** Directory that holds all session directories. */
@@ -344,10 +365,9 @@ export class SessionStore {
   }
 
   private ownsTranscript(records: TranscriptRecord[]): boolean {
-    const root = this.options.workspaceRoot
-    if (root === undefined) return true
+    if (this.sourceWorkspaceIds === undefined) return true
     const started = records.find((record) => record.type === 'session_started')
-    return started?.workspaceId === sessionWorkspaceId(root)
+    return this.sourceWorkspaceIds.includes(started?.workspaceId ?? '')
   }
 
   private summarize(sessionId: string, records: TranscriptRecord[]): SessionSummary | undefined {
@@ -463,7 +483,7 @@ export class SessionStore {
       record.type === 'message' ? [[record.id, record] as const] : []
     ))
     const records: TranscriptRecord[] = [
-      { type: 'session_started', ts: at, schemaVersion: TRANSCRIPT_VERSION, sessionId, title, workspaceId: started.workspaceId },
+      { type: 'session_started', ts: at, schemaVersion: TRANSCRIPT_VERSION, sessionId, title, workspaceId: this.sourceWorkspaceIds?.[0] ?? started.workspaceId },
       ...messages.map((message) => ({
         ...previousMessages.get(message.id),
         ...message,
@@ -615,8 +635,9 @@ export function startSession(options: {
   const read = transcript.read()
   if (read.unsupported) throw new Error('Session transcript uses an unsupported schema')
   const started = read.records.find((record) => record.type === 'session_started')
-  const workspaceId = options.workspaceRoot === undefined ? undefined : sessionWorkspaceId(options.workspaceRoot)
-  if (workspaceId && (read.records.length > 0 || read.corruptLines > 0) && started?.workspaceId !== workspaceId) {
+  const ids = options.workspaceRoot === undefined ? undefined : workspaceIds(options.workspaceRoot)
+  const workspaceId = ids?.[0]
+  if (ids && (read.records.length > 0 || read.corruptLines > 0) && !ids.includes(started?.workspaceId ?? '')) {
     throw new Error('Existing session cannot be attached to this workspace')
   }
   if (!started) {
