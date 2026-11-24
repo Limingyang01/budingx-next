@@ -60,3 +60,10 @@
 - [Actions #33](https://github.com/Limingyang01/budingx-next/actions/runs/45335678863) 使用源码 `f3302a6`，Ubuntu 验证通过，Windows 在「Check, pack and install the actual tarball」失败，OIDC 发布作业被跳过。官方源仍指向 0.9.1，查询 0.9.2 返回 HTTP 404。公开作业注释只有退出码。原始 Windows 日志和验证 artifact 的下载需要登录。
 - 本机用 Windows、Node 22.22.0、npm 11.21.2、`CI=true` 和 `FORCE_COLOR=1` 复跑发布预演，产品测试 1345 项中 1343 通过、1 失败、1 平台跳过。唯一失败是 `src/tui/test/render.test.mjs` 的选中思考行断言。原始帧包含颜色转义码及正确的 `> Thinking - Second summary`。定向运行先复现失败，再对该断言使用 `stripVTControlCharacters`。有色和无色渲染各 15/15 通过。
 - 本次修订只涉及测试断言及验收记录。产品行为、版本、发布工作流和打包文件无需调整。正式发布回执继续以成功运行、官方源和独立安装结果确认。
+
+### 正式发布运行 #34 与 Windows 短路径修复
+
+- [Actions #34](https://github.com/Limingyang01/budingx-next/actions/runs/45339546481) 使用源码 `9be7753`，Ubuntu 验证成功，Windows 验证失败，发布作业跳过。Windows 原始日志中的产品测试共 1345 项，1339 通过、5 失败、1 平台跳过。失败涉及规则导入及技能读取权限、Worktree 进出和恢复。维护者提供的 ZIP 内 Windows 日志与临时直链下载内容的 SHA-256 一致。
+- GitHub Windows 的临时目录经过 `RUNNER~1` 短路径。旧工作区解析保留短路径，规则和 Worktree 使用长路径。两种表示不一致会拒绝合法导入，也会使按工作区相对路径配置的读取拒绝规则匹配失败。修订将工作区、目标、用户数据保护和新会话标识统一到物理路径，新旧会话标识均通过原启动路径核对。Worktree 测试按物理路径判断归属，终端提示断言容许换行，Shell 测试读取完整路径字符串。
+- 用真实 8.3 临时目录设置 `TEMP` 与 `TMP`，修订前复现相同 5 项失败。另增加旧路径会话恢复及用户数据目录拒绝的验证。产品说明书和发行说明已同步 Windows 路径行为。
+- 同一短路径环境下定向相关套件 37/37 通过。独立代码复审发现旧版可能把已登记的工作树放在按短目录名生成的同级目录。现在按既有 Git 分支登记复用，并核对管理根、仓库身份及分支；旧目录复用与越界拒绝在真实 Git 仓复测通过。

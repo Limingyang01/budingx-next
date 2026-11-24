@@ -448,6 +448,7 @@ budingx serve --transport ws --session my-session --port 0
 #### 5.10.2 0.9.2 TUI 优化（源码已准备）
 
 - **会话**：`/branch [会话 ID]` 从当前或同工作区的已保存会话派生新 ID 并切换，`/fork` 是别名。派生保留分支点和待核对操作。用 `/rename <标题>` 保存最多 80 个字符的单行标题。`/resume` 面板支持搜索标题和会话正文，↑↓ 选中后按 Enter 恢复。正在被其他进程写入的会话需要等写入会话退出后恢复。
+- **Windows 路径**：同一工作区的 8.3 短路径和长路径使用统一的物理路径进行会话归属和读取权限判断。旧会话可用原启动路径恢复。
 - **导出**：`/export --format markdown` 打开会话选择器，可附 `--session <ID>` 直接选择。Markdown 保留中文与围栏代码，并列出本会话中有记录的结构化文件修改。旧会话或 Shell/Git 修改缺少归属证据时提供缺失说明。脚本可运行 `budingx --prompt "/export --format markdown --session <ID>"`。导出目标仍限数据目录，已有文件不会被覆盖。
 - **输入和转录**：Ctrl+S 暂存多行草稿，在空输入框按 Ctrl+S 取回。单次粘贴超过 10000 个 UTF-16 码元时折叠，Ctrl+G 查看，按两次 Enter 确认发送。输入最多 100000 个码元。Ctrl+O 进入全屏转录，Ctrl+E 全量展开，↑↓ 与 Enter 逐条展开或收起思考。旧会话的通知缺少类型标记时沿用原显示方式。
 - **技能和项目规则**：技能的 `user-invocable: false`、`disable-model-invocation: true` 分别关闭手动和模型调用。用 `@./资源.md` 在技能正文引用技能目录内的 UTF-8 文件。用 `allowed-tools` 限定当前回合可用工具，三档权限仍适用。`/reload-skills` 刷新目录。AGENTS.md/CLAUDE.md 的叶文本支持 `@path` 递归导入。局部规则按工具声明的路径应用，Shell 命令内部的 `cd` 不改变局部规则范围。

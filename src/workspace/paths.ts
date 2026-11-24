@@ -71,7 +71,7 @@ export function isInsideRoot(root: string, target: string): boolean {
 export function realPathOf(target: string): string | undefined {
   try {
     if (!existsSync(target)) return undefined
-    return realpathSync(target)
+    return realpathSync.native(target)
   } catch {
     return undefined
   }
@@ -100,7 +100,7 @@ export function createWorkspace(
       let real: string
       let isDirectory = false
       if (existed) {
-        real = realpathSync(absolute)
+        real = realpathSync.native(absolute)
         try {
           isDirectory = statSync(real).isDirectory()
         } catch {

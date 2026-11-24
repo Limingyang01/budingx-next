@@ -283,13 +283,23 @@ export async function resolveWorktreeSession(input: EnterWorktreeInput & { baseB
   const { cwd, name, baseBranch } = input
   if (!isValidWorktreeName(name)) throw new Error(`非法 worktree 名称：${JSON.stringify(name)}`)
   const root = input.root ?? join(dataRoot(input.home), 'worktrees')
-  const path = realPathOf(join(root, repoSlug(cwd), name))
   const rootReal = realPathOf(root)
   const branch = `${baseBranch}-budingx/${name}`
-  if (!path || !rootReal || !isInside(rootReal, path)) {
+  let path = realPathOf(join(root, repoSlug(cwd), name))
+  let entry: WorktreeEntry | undefined
+  if (path) {
+    entry = await findWorktreeEntry(cwd, path)
+  } else if (rootReal) {
+    // A checkout created from an older workspace spelling can be under a different repo slug.
+    const registered = (await listWorktrees(cwd)).filter((item) => item.branch === branch)
+    if (registered.length === 1) {
+      entry = registered[0]
+      path = realPathOf(entry.path)
+    }
+  }
+  if (!path || !rootReal || !isInside(rootReal, path) || basename(path) !== name) {
     throw new Error(`找不到 worktree 或路径越界：${name}`)
   }
-  const entry = await findWorktreeEntry(cwd, path)
   if (entry?.branch !== branch) throw new Error(`worktree 身份已变化或分支未检出：${path} · ${branch}`)
   const source = await readCheckout(path, branch, '源 worktree')
   assertLinkedCheckout(source, path, await readCommonDir(cwd))
@@ -335,7 +345,11 @@ export async function enterWorktree(input: EnterWorktreeInput): Promise<Worktree
 
   const branch = `${baseBranch}-budingx/${flattenSlug(name)}`
   if (await branchExists(cwd, branch)) {
-    throw new Error(`分支已存在：${branch}（名称冲突，请换一个名称）`)
+    try {
+      return await resolveWorktreeSession({ ...input, baseBranch })
+    } catch {
+      throw new Error(`分支已存在：${branch}（名称冲突，请换一个名称）`)
+    }
   }
 
   mkdirSync(dirname(targetPath), { recursive: true })

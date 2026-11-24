@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import * as worktree from '../dist/git/worktree.js'
 import { runWorktreeCommand } from '../dist/tui/worktree.js'
@@ -33,7 +33,7 @@ async function setup(t) {
   const options = { cwd, root, origin: { cwd, branch: 'trunk' } }
   const created = await runWorktreeCommand('create demo', options)
   assert.equal(created.ok, true, created.text)
-  const source = join(root, 'repo', 'demo')
+  const source = realpathSync.native(join(root, 'repo', 'demo'))
   const run = (args, overrides = {}) => runWorktreeCommand(args, { ...options, ...overrides }, 'en')
   return { cwd, source, initial, run }
 }
@@ -45,6 +45,31 @@ test('concurrent same-slug creation leaves the winning checkout intact', async (
   const checkout = (await worktree.listWorktrees(cwd)).find((row) => row.branch === 'trunk-budingx/race')
   assert.ok(checkout)
   assert.equal(readFileSync(join(checkout.path, 'base.txt'), 'utf8'), 'original\n')
+})
+
+test('enter and create reuse an existing checkout under a legacy repo path only inside the managed root', async (t) => {
+  const { cwd, source, run } = await setup(t)
+  const root = dirname(dirname(source))
+  const legacyParent = join(root, 'legacy-short-repo')
+  mkdirSync(legacyParent)
+  const legacy = join(legacyParent, 'demo')
+  git(cwd, 'worktree', 'move', source, legacy)
+
+  const checkedOut = []
+  const entered = await run('enter demo', { enter: async (binding) => { checkedOut.push(binding.path) } })
+  assert.equal(entered.ok, true, entered.text)
+  assert.deepEqual(checkedOut, [realpathSync.native(legacy)])
+  const created = await run('create demo')
+  assert.equal(created.ok, true, created.text)
+  assert.match(created.text, /legacy-short-repo/)
+  assert.equal(existsSync(source), false)
+
+  const outside = join(dirname(root), 'unmanaged', 'demo')
+  mkdirSync(dirname(outside))
+  git(cwd, 'worktree', 'move', legacy, outside)
+  assert.equal((await run('enter demo', { enter: async () => assert.fail('Unexpected unmanaged checkout') })).ok, false)
+  assert.equal((await run('create demo')).ok, false)
+  assert.equal(existsSync(outside), true)
 })
 
 test('enter delegates the verified binding for an existing worktree and exit keeps it', async (t) => {

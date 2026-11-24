@@ -1,7 +1,8 @@
 // Session transcript and session store unit tests (SP005 AC SR-01..SR-11).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, symlinkSync, rmSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -13,6 +14,7 @@ import {
 import {
   SessionStore,
   SessionWriterLock,
+  sessionWorkspaceId,
   startSession
 } from '../../tui/dist/storage/session-store.js'
 
@@ -23,6 +25,26 @@ function tempHome() {
 function sessionDir(home, sessionId) {
   return join(home, '.budingx', 'sessions', sessionId)
 }
+
+test('同一工作区的路径别名共享会话，并可恢复旧路径标识', (t) => {
+  const home = tempHome()
+  t.after(() => rmSync(home, { recursive: true, force: true }))
+  const workspace = join(home, 'workspace')
+  const alias = join(home, 'workspace-alias')
+  mkdirSync(workspace)
+  symlinkSync(workspace, alias, process.platform === 'win32' ? 'junction' : 'dir')
+  assert.equal(sessionWorkspaceId(alias), sessionWorkspaceId(workspace))
+  startSession({ sessionId: 'canonical-session', home, workspaceRoot: workspace })
+  const store = new SessionStore({ home, workspaceRoot: alias })
+  assert.equal(store.restore('canonical-session').status, 'restored')
+  createSessionTranscript({ sessionId: 'legacy-session', home }).append({
+    type: 'session_started', ts: new Date().toISOString(), schemaVersion: TRANSCRIPT_VERSION,
+    sessionId: 'legacy-session', workspaceId: createHash('sha256').update(realpathSync(alias)).digest('hex')
+  })
+  assert.equal(store.restore('legacy-session').status, 'restored')
+  assert.doesNotThrow(() => startSession({ sessionId: 'legacy-session', home, workspaceRoot: alias }))
+  assert.equal(new SessionStore({ home, workspaceRoot: join(home, 'unrelated') }).restore('legacy-session').status, 'workspace_mismatch')
+})
 
 test('SR-01 转录写入会话私有目录，文件仅当前用户可读', () => {
   const home = tempHome()

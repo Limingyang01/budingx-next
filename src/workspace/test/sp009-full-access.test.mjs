@@ -2,7 +2,7 @@
 // 边界只有一个判定点（workspace.resolve + 权限地板），这里按工具逐个取证。
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createWorkspace } from '../../tui/dist/workspace/paths.js'
@@ -81,7 +81,7 @@ test('全自动档位也不能读写用户数据根与凭据型文件', () => {
     const dataVerdict = env.policy.decide({
       tool: 'Read',
       capability: 'read',
-      path: join(env.userRoot, 'config.json')
+      path: realpathSync.native(join(env.userRoot, 'config.json'))
     })
     assert.equal(dataVerdict.action, 'deny')
     assert.equal(dataVerdict.ruleId, 'floor:data')

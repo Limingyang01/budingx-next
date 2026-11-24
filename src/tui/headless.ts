@@ -6,7 +6,6 @@ import type { ConfigStore } from '../storage/config-store.js'
 import type { ResolvedConfig } from '../storage/profiles.js'
 import type { Message, SessionEvent, TurnFinalizedEvent, Usage } from '../core/events.js'
 import { createSessionStore } from '../storage/session-store.js'
-import { createWorkspace } from '../workspace/paths.js'
 import { createAgentRuntime, workspacePromptOptions, type AgentRuntime } from './runtime.js'
 import { startMcp } from './mcp/index.js'
 import { startHooks } from './hooks/index.js'
@@ -277,7 +276,7 @@ export async function runHeadless(
     const parsed = parseExportArgs(exportRequest[1] ?? '')
     const sessionId = parsed.session ?? options.session
     const error = parsed.error ?? (sessionId ? undefined : 'Specify a session ID with --session')
-    const store = createSessionStore({ home: io.home, workspaceRoot: createWorkspace(io.cwd ?? process.cwd()).root })
+    const store = createSessionStore({ home: io.home, workspaceRoot: io.cwd ?? process.cwd() })
     const saved = !error && sessionId ? store.restore(sessionId) : undefined
     const result = saved?.status === 'restored' && sessionId
       ? exportSession(saved.messages as Message[], {

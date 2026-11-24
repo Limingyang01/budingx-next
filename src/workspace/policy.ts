@@ -3,7 +3,7 @@
 // The interactive edit fast path allows ordinary workspace writes. Legacy
 // non-interactive modes retain their original defaults. All callers apply the
 // same floor rules and deny-rule priority.
-import { basename, isAbsolute, relative, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, relative, resolve } from 'node:path'
 import type {
   PermissionMode,
   PermissionPolicy,
@@ -13,7 +13,7 @@ import type {
 import { dataRoot } from '../storage/paths.js'
 import { ERROR_CODES } from '../core/constants.js'
 import { matchGlob } from './ignore.js'
-import { isInsideRoot, WorkspaceError, type Workspace } from './paths.js'
+import { isInsideRoot, realPathOf, WorkspaceError, type Workspace } from './paths.js'
 
 export type PermissionRule = {
   id: string
@@ -168,9 +168,11 @@ export function createPermissionPolicy(
 
   function floorVerdict(request: PermissionRequest, real: string): PermissionVerdict | undefined {
     // B-1: user data is private. A verified linked checkout remains project data.
-    if (isInsideRoot(userRoot, real)) {
+    const parent = dirname(userRoot)
+    const canonicalUserRoot = realPathOf(userRoot) ?? resolve(realPathOf(parent) ?? parent, basename(userRoot))
+    if (isInsideRoot(canonicalUserRoot, real) || isInsideRoot(userRoot, real)) {
       const managed = options.managedWorkspaceRoot?.()
-      const worktrees = resolve(userRoot, 'worktrees')
+      const worktrees = resolve(canonicalUserRoot, 'worktrees')
       if (!managed || relative(worktrees, managed) === '' || !isInsideRoot(worktrees, managed) || !isInsideRoot(managed, real)) {
         return { action: 'deny', reason: 'The budingx user data directory is off-limits', ruleId: 'floor:data' }
       }
