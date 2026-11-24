@@ -1,6 +1,6 @@
 # 当前状态
 
-源码已准备 **0.9.2（SP009）**，功能已合入并推送 master（集成提交 `4252808`）。npm `latest` 仍为 0.9.1。发布参数和兼容说明见 [0.9.2 发行说明](../release-notes/v0.9.2.md)。
+**0.9.2（SP009）已发布，npm `latest` 指向 0.9.2。** 发布源码为 `74c5156`。Windows、Ubuntu 验证及 npm OIDC 发布作业均通过。已从官方 npm 独立安装，命令版本、签名及本地 HTTP 流式验证通过。 [0.9.2 发布回执](../release-notes/v0.9.2.md) · [Actions #35](https://github.com/Limingyang01/budingx-next/actions/runs/45345532000)
 
 2026-11-24，[SP009 0.9.2 的 12 项 TUI 差距优化与缺陷修复](../SP/SP009/tui-gap-optimizations/requirements.md)已实施并完成定向验收。#42 通过 3 次真实 Provider 子代理验证。集成及版本准备见 [0.9.2 状态](../SP/SP009/tui-gap-optimizations/STATUS.md)和[验证记录](../SP/SP009/tui-gap-optimizations/test-report.md)。团队交接及 P1 新入口分别进入 [SP011](../SP/SP011/requirements-summary.md)和 [SP015](../SP/SP015/requirements-summary.md)。
 

@@ -1,6 +1,6 @@
 # SP009 · TUI 差距优化状态（0.9.2）
 
-状态：PREPARED（源码）｜更新：2026-11-24｜开发基线：master b8c920d，TUI 0.9.1。
+状态：已发布（npm `latest`）｜更新：2026-11-24｜开发基线：master b8c920d，TUI 0.9.1。
 
 - 需求：[0.9.2 TUI 差距优化](requirements.md)，12 项、28 条 AC（11 项差距优化 + 1 项缺陷修复 #42）。
 - 用户授权来源：2026-11-24「/buding-sdd 开始0.9.2的优化需求的开发」。开发、测试、中文提交、门禁通过后集成和推送、发布前准备沿用 AGENTS.md 2026-11-17 委托。
@@ -17,6 +17,6 @@
 | 设计、计划 | 自审通过 | [设计 v1.0](design/design.zh.md)（Git blob `cee4bb5`）与[实施计划](design/plan.zh.md)。独立审阅涉及局部规则、导出归属、真实失败和 Provider 验收，已落实到设计 §2、§3、§5、§8 |
 | 实施、测试 | 通过 | T1 `5105f7a`、T2–T7 `28d64d7`，定向验收和复审闭环见[报告](test-report.md) |
 | 集成 | 门禁 GREEN，已推送 | 来源 `28d64d7` → master 合并 `42528089566b903ac393e7a6e710b5f8e99154d6`，已核对远端及包含关系 |
-| 版本准备、发布 | 预演通过 | 已准备 0.9.2，`CI=true` 下隔离安装与 HTTP smoke 通过。预演回执见[报告](test-report.md)，正式发布由维护者手动触发 |
+| 版本准备、发布 | 已发布 | [Actions #35](https://github.com/Limingyang01/budingx-next/actions/runs/45345532000)，源码 `74c5156`；npm `latest` 为 0.9.2，隔离安装和来源核验通过。见[回执](../../../release-notes/v0.9.2.md) |
 
 本次开发按批次同步 [产品说明书](../../../PRODUCT.md) 的实际行为，发布前同步版本及兼容说明。
