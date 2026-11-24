@@ -100,6 +100,7 @@ test('CMD-06 旁路提问真实请求模型但不写入主会话历史', async (
     home,
     configStore,
     mode: 'read_only',
+    persistence: true,
     getConfig: () => ({ profileId: profile.id, baseUrl, model: 'fixture', apiKey: '', timeoutMs: 5000, source: 'file' }),
     approval: { request: async () => ({ outcome: 'deny', via: 'policy' }) }
   })
@@ -124,6 +125,18 @@ test('CMD-06 旁路提问真实请求模型但不写入主会话历史', async (
   assert.equal(requests.length, 2)
   assert.match(JSON.stringify(requests[1].messages), /旁路问答/)
   assert.ok(JSON.stringify(requests[1].messages).includes('旁路问题'))
+
+  const original = runtime.session.id
+  const branch = runtime.sessions.fork(original, { question: '旁路问题', answer: 'side-answer' })
+  assert.equal(branch.ok, true, branch.message)
+  assert.notEqual(branch.sessionId, original)
+  assert.equal(runtime.session.id, branch.sessionId)
+  assert.equal(runtime.session.history.length, 4)
+  assert.match(JSON.stringify(runtime.session.history.slice(-2)), /旁路问题.*side-answer/)
+  const restored = runtime.sessions.resume(original)
+  assert.equal(restored.ok, true, restored.message)
+  assert.equal(runtime.session.history.length, 2)
+  assert.doesNotMatch(JSON.stringify(runtime.session.history), /旁路问题|side-answer/)
 })
 
 test('CMD-07 /worktree：列出、创建、删除需确认并留预览（真实 git）', async (t) => {

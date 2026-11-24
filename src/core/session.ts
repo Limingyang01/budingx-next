@@ -1294,7 +1294,8 @@ export class Session {
    * SP006 §6.3 /btw：旁路问答。复制当前上下文向模型单独提问，回答不写回
    * 会话历史、不触发工具与审批，因此不会污染主回合语义（CMD-06）。
    */
-  async submitSideQuestion(question: string): Promise<{ ok: boolean; text?: string; error?: string }> {
+  async submitSideQuestion(question: string, signal = new AbortController().signal): Promise<{ ok: boolean; text?: string; error?: string }> {
+    if (signal.aborted) return { ok: false }
     const trimmed = question.trim()
     if (!trimmed) return { ok: false, error: '旁路问题不能为空' }
     const provider = this.options.resolveProvider?.() ?? this.options.provider
@@ -1307,14 +1308,10 @@ export class Session {
         '回答简短、不要调用工具、不要修改文件，也不要假装已经执行任何操作。'
     })
     messages.push({ role: 'user', content: trimmed })
-    const controller = new AbortController()
     try {
       let text = ''
-      for await (const event of provider.stream({
-        model: snapshot.model,
-        messages,
-        signal: controller.signal
-      })) {
+      for await (const event of provider.stream({ model: snapshot.model, messages, signal })) {
+        if (signal.aborted) return { ok: false }
         if (event.type === 'text_delta') text += event.text
         else if (event.type === 'failed') return { ok: false, error: event.error.message }
         else if (event.type === 'message_completed') break

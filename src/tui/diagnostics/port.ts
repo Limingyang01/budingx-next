@@ -69,7 +69,11 @@ function runtimeKind(entryPath: string): string {
 export function copyToClipboard(text: string): boolean {
   try {
     if (process.platform === 'win32') {
-      const result = spawnSync('powershell.exe', ['-NonInteractive', '-NoProfile', '-Command', 'Set-Clipboard'], { input: text, windowsHide: true, stdio: ['pipe', 'ignore', 'ignore'] })
+      const script = '[Console]::InputEncoding = [Text.UTF8Encoding]::new($false); ' +
+        'Set-Clipboard -Value ([Console]::In.ReadToEnd()) -ErrorAction Stop'
+      const result = spawnSync('powershell.exe', ['-NonInteractive', '-NoProfile', '-Command', script], {
+        input: text, windowsHide: true, stdio: ['pipe', 'ignore', 'ignore']
+      })
       return result.status === 0
     }
     if (process.platform === 'darwin') {

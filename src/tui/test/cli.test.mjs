@@ -240,3 +240,71 @@ test('a fresh CLI process can select a grouped model and authenticates with the 
   assert.deepEqual(requests, [{ model: 'secondary', auth: 'Bearer fixture-shared-key' }])
   assert.doesNotMatch(out + err, /fixture-shared-key|Orphan credentials/)
 })
+
+test('交互退出输出中文恢复提示，--resume 能恢复到同一会话', async (t) => {
+  const home = mkdtempSync(join(tmpdir(), 'budingx-cli-resume-'))
+  t.after(() => rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }))
+  const server = createServer(async (req, res) => {
+    for await (const _ of req) {}
+    res.writeHead(200, { 'content-type': 'text/event-stream' })
+    res.end('data: {"choices":[{"delta":{"content":"RESUME_FIXTURE_ANSWER"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n')
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  t.after(() => { server.closeAllConnections(); server.close() })
+  const preload = 'process.stdin.isTTY=true;process.stdin.setRawMode=()=>{};process.stdout.isTTY=true;process.stdout.columns=100;process.stdout.rows=40;'
+  function open(args = []) {
+    const child = spawn(process.execPath, ['--import', 'data:text/javascript,' + encodeURIComponent(preload), cli, ...args], {
+      cwd: home, windowsHide: true,
+      env: {
+        ...process.env, HOME: home, USERPROFILE: home,
+        BUDINGX_MODEL: 'fixture', BUDINGX_API_KEY: 'fixture',
+        BUDINGX_BASE_URL: 'http://127.0.0.1:' + server.address().port + '/v1',
+        CI: 'false', TERM: 'xterm-256color', BUDINGX_FORCE_ASCII_LOGO: '1'
+      }
+    })
+    t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill() })
+    let out = ''
+    let error = ''
+    child.stdout.on('data', (chunk) => { out += chunk })
+    child.stderr.on('data', (chunk) => { error += chunk })
+    return {
+      closed: once(child, 'close'), out: () => out, error: () => error,
+      async wait(pattern) {
+        const deadline = Date.now() + 5000
+        while (!pattern.test(out) && child.exitCode === null && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 25))
+        }
+        assert.match(out, pattern, error)
+      },
+      async send(text) {
+        child.stdin.write(text)
+        await new Promise((resolve) => setTimeout(resolve, 60))
+        child.stdin.write('\r')
+      }
+    }
+  }
+  const first = open()
+  await first.wait(/fixture/)
+  await first.send('/exit')
+  assert.equal((await first.closed)[0], 0, first.error())
+  assert.doesNotMatch(first.out(), /budingx --resume/)
+
+  const active = open()
+  await active.wait(/fixture/)
+  await active.send('resume-known-question')
+  await active.wait(/RESUME_FIXTURE_ANSWER/)
+  await active.send('/exit')
+  assert.equal((await active.closed)[0], 0, active.error())
+  assert.match(active.out(), /使用以下命令恢复此会话/)
+  const command = active.out().match(/budingx --resume ([\w-]+)/g)
+  assert.equal(command?.length, 1)
+  const id = command[0].split(' ').at(-1)
+
+  const restored = open(['--resume', id])
+  await restored.wait(/RESUME_FIXTURE_ANSWER/)
+  assert.match(restored.out(), /resume-known-question/)
+  await restored.send('/exit')
+  assert.equal((await restored.closed)[0], 0, restored.error())
+  assert.ok(restored.out().includes('budingx --resume ' + id))
+})

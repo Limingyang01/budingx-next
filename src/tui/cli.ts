@@ -2,6 +2,8 @@
 // budingx entry point (SP002 design §3.1/§3.6).
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
+import { validSessionId } from '../storage/session-store.js'
+import { createSessionTranscript } from '../storage/session-transcript.js'
 import { createElement } from 'react'
 import { render } from 'ink'
 import { ConfigStore } from '../storage/config-store.js'
@@ -75,6 +77,7 @@ function readProductVersion(): string {
 const version = readProductVersion()
 const help = `budingx ${version} — independent terminal coding agent
 Usage: budingx [--model NAME] [--base-url URL] [--timeout MS] [--prompt TEXT]
+  budingx --resume ID
   budingx --prompt TEXT [--output-format text|json|stream-json]
           [--input-format text|stream-json] [--input-file PATH] [--session ID] [--verbose]
 Environment: BUDINGX_API_KEY, BUDINGX_MODEL, BUDINGX_BASE_URL
@@ -200,7 +203,7 @@ async function runPipe(config: ResolvedConfig, stores: Stores): Promise<number> 
   return code
 }
 
-async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<void> {
+async function runInteractive(config: ResolvedConfig, stores: Stores, resume?: string): Promise<void> {
   const gateway = new InkApprovalGateway()
   let current = config
   // 0.5.2：交互式 TUI 打开会话持久化与上下文预算，/sessions /resume
@@ -234,6 +237,20 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
     process.stderr.write(`Warning: ${warning}\n`)
   }
   const session = runtime.session
+  const shutdown = async () => {
+    session.dispose()
+    await runtime.shutdownTracing?.()
+    await mcp.close()
+  }
+  if (resume !== undefined) {
+    const result = runtime.sessions?.resume(resume)
+    if (!result?.ok) {
+      await shutdown()
+      process.stderr.write('无法恢复此会话：' + (result?.message ?? '未找到会话') + '\n')
+      process.exitCode = 1
+      return
+    }
+  }
 
   const fullScreen = process.env.TERM !== 'dumb' &&
     terminalStrategy(process.env, process.platform) === 'pixel'
@@ -298,10 +315,15 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
     }),
     { exitOnCtrlC: false, alternateScreen: fullScreen }
   )
-  await instance.waitUntilExit()
-  session.dispose()
-  await runtime.shutdownTracing?.()
-  await mcp.close()
+  try {
+    await instance.waitUntilExit()
+  } finally {
+    await shutdown()
+  }
+  const saved = createSessionTranscript({ sessionId: session.id }).read()
+  if (!saved.unsupported && saved.records.some((record) => record.type === 'message')) {
+    process.stdout.write(`\n使用以下命令恢复此会话：\nbudingx --resume ${session.id}\n`)
+  }
 }
 
 async function main(): Promise<void> {
@@ -329,6 +351,12 @@ async function main(): Promise<void> {
       return
     }
     throw error
+  }
+
+  if (parsed.resume !== undefined && (!validSessionId(parsed.resume) || !process.stdin.isTTY || !process.stdout.isTTY)) {
+    process.stderr.write('用法：在交互式终端运行 budingx --resume <会话 ID>\n')
+    process.exitCode = 2
+    return
   }
 
   let stores: Stores
@@ -368,7 +396,7 @@ async function main(): Promise<void> {
     return
   }
 
-  await runInteractive(config, stores)
+  await runInteractive(config, stores, parsed.resume)
 }
 
 main().catch((error) => {

@@ -145,7 +145,7 @@ export type AgentRuntime = {
       /** SP006：恢复后当前生效的会话 id（恢复会切换身份）。 */
       sessionId?: string
     }
-    fork?: (sessionId?: string) => SessionChangeResult & { warnings?: string[] }
+    fork?: (sessionId?: string, exchange?: { question: string; answer: string }) => SessionChangeResult & { warnings?: string[] }
     rename?: (title: string) => SessionChangeResult
     searchIndex?: () => SessionSearchEntry[]
   }
@@ -731,11 +731,17 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           })),
         resume: resumeSession,
         searchIndex: () => sessionStore!.searchIndex(),
-        fork: (target = session.id) => {
+        fork: (target = session.id, exchange?: { question: string; answer: string }) => {
           if (!writer || !canSwitchSession()) return { ok: false as const, message: 'Wait for the active session work before branching' }
           const branch = sessionStore!.fork(target, {
             permissionMode: policy.getMode(),
-            ...(target === session.id ? { messages: session.history } : {})
+            ...(target === session.id ? {
+              messages: exchange ? [
+                ...session.history,
+                { id: randomUUID(), role: 'user' as const, blocks: [{ type: 'text' as const, text: exchange.question }] },
+                { id: randomUUID(), role: 'assistant' as const, blocks: [{ type: 'text' as const, text: exchange.answer }] }
+              ] : session.history
+            } : {})
           })
           if (!branch.ok) return branch
           const resumed = resumeSession(branch.sessionId)

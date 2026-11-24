@@ -12,6 +12,8 @@ import {
   type Key
 } from 'ink'
 import { createHash } from 'node:crypto'
+import { stripVTControlCharacters } from 'node:util'
+import { copyToClipboard } from './diagnostics/port.js'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import stringWidth from 'string-width'
 /**
@@ -23,7 +25,7 @@ import stringWidth from 'string-width'
  */
 const STREAM_FRAME_MS = 16
 
-import type { SessionEvent } from '../core/events.js'
+import type { Message, SessionEvent } from '../core/events.js'
 import type { Session } from '../core/session.js'
 import type { InkApprovalGateway } from './approval.js'
 import { changePermissionMode, discoverSkillCommands, effortDisplayLabel, formatTokens, interactiveModeLabel, runCommand, type CommandContext, type CommandOutcome } from './commands.js'
@@ -91,6 +93,16 @@ export type AppProps = {
   /** SP007 MM-06：图片缓存（粘贴/路径附件落盘供重显链接）。 */
   imageCache?: import('../storage/image-cache.js').ImageCache
   onExit: () => void
+}
+
+function nextHistoryImageId(messages: readonly Message[]): number {
+  let next = 1
+  for (const message of messages) {
+    for (const block of message.blocks) {
+      if (block.type === 'image') next = Math.max(next, block.id + 1)
+    }
+  }
+  return next
 }
 
 type DiffDialog = {
@@ -186,7 +198,9 @@ export function App({
     (state: ReturnType<typeof initialFrame>, action: { event: SessionEvent; toolElapsedMs?: number }) =>
       reduceFrame(state, action.event, { width, english: !zh, toolElapsedMs: action.toolElapsedMs }),
     commandContext.permission?.policy.getMode(),
-    (mode) => initialFrame(mode ?? 'read_only')
+    (mode) => reduceFrame(initialFrame(mode ?? 'read_only'), {
+      type: 'conversation_restored', messages: [...session.history]
+    })
   )
   const [input, setInput] = useState('')
   // SP006 波次 G：输入框「下一句」建议。文本由模型生成，这里只保存结果与取消句柄。
@@ -345,7 +359,65 @@ export function App({
     { summary: string; preview: string[]; resolve: (approved: boolean) => void } | undefined
   >()
   const [commandOverlay, setCommandOverlay] = useState<{ title: string; lines: string[] } | undefined>()
-  const [sideAnswer, setSideAnswer] = useState<string | undefined>()
+  const [sideEntries, setSideEntries] = useState<{ question: string; answer?: string; error?: string }[]>([])
+  const [sideIndex, setSideIndex] = useState<number>()
+  const [sideScroll, setSideScroll] = useState(0)
+  const [sideFeedback, setSideFeedback] = useState('')
+  const sideRequest = useRef<AbortController | undefined>(undefined)
+  const sideEntry = sideIndex === undefined ? undefined : sideEntries[sideIndex]
+  const sideBody = sideEntry?.answer ?? sideEntry?.error ?? ''
+  const sideLines = useMemo(
+    () => renderTextLines(stripVTControlCharacters(sideBody).replace(/\r\n/g, '\n'), Math.max(1, width - 4)),
+    [sideBody, width]
+  )
+  const sidePage = Math.max(1, Math.min(rows - 7, Math.floor(rows * 0.55)))
+  const sideScrollLimit = Math.max(0, sideLines.length - sidePage)
+  const sideStart = Math.min(sideScroll, sideScrollLimit)
+  const scrollSide = (lines: number) => setSideScroll((offset) =>
+    Math.max(0, Math.min(sideScrollLimit, offset + lines)))
+  useEffect(() => () => sideRequest.current?.abort(), [])
+  function dismissSideQuestion(clear = false): void {
+    sideRequest.current?.abort()
+    sideRequest.current = undefined
+    setSideIndex(undefined)
+    setSideEntries((entries) => clear ? [] : entries.filter((entry) => entry.answer !== undefined || entry.error !== undefined))
+    setSideScroll(0)
+    setSideFeedback('')
+  }
+
+  function askSideQuestion(question: string): void {
+    if (!question) {
+      if (!sideEntries.length) {
+        setHint(pick('用法：/btw <问题>', 'Usage: /btw <question>'))
+        return
+      }
+      setSideIndex(sideEntries.length - 1)
+      setSideScroll(0)
+      setSideFeedback('')
+      return
+    }
+    sideRequest.current?.abort()
+    const request = new AbortController()
+    sideRequest.current = request
+    const entries = sideEntries.filter((entry) => entry.answer !== undefined || entry.error !== undefined).slice(-19)
+    const index = entries.length
+    setSideEntries([...entries, { question }])
+    setSideIndex(index)
+    setSideScroll(0)
+    setSideFeedback('')
+    setPosition(undefined)
+    const finish = (result: { ok: boolean; text?: string; error?: string }) => {
+      if (request.signal.aborted || sideRequest.current !== request) return
+      sideRequest.current = undefined
+      setSideEntries((previous) => previous.map((entry, i) => i !== index ? entry : {
+        question,
+        ...(result.ok ? { answer: result.text ?? '' } : {
+          error: result.error ?? pick('旁路提问失败', 'Side question failed')
+        })
+      }))
+    }
+    void session.submitSideQuestion(question, request.signal).then(finish, () => finish({ ok: false }))
+  }
   const [overlayDismissed, setOverlayDismissed] = useState(false)
   const [completionIndex, setCompletionIndex] = useState(0)
   const fileCache = useRef<string[] | null>(null)
@@ -493,9 +565,10 @@ export function App({
     Map<number, { mediaType: string; data: string; width?: number; height?: number; hash?: string }>
   >(() => new Map())
   const stashedImages = useRef<typeof pastedImages | undefined>(undefined)
-  const nextImageId = useRef(1)
+  const nextImageId = useRef<number | undefined>(undefined)
+  nextImageId.current ??= nextHistoryImageId(session.history)
   function allocateImageId(): number {
-    const id = Math.max(nextImageId.current, imageCache?.nextId?.() ?? 1)
+    const id = Math.max(nextImageId.current ?? 1, imageCache?.nextId?.() ?? 1)
     nextImageId.current = id + 1
     return id
   }
@@ -698,17 +771,8 @@ export function App({
           allowedSkillTools: result.skillPrompt.allowedTools
         })
       } else if (result.prompt) {
-        setSideAnswer(undefined)
         if (result.prompt.progress) setHint(result.prompt.progress)
         session.submit(result.prompt.text)
-      } else if (result.sideQuestion) {
-        setSideAnswer(pick('正在旁路提问…', 'Asking on the side…'))
-        const answer = await session.submitSideQuestion(result.sideQuestion)
-        setSideAnswer(
-          answer.ok
-            ? pick('旁路回答（未写入会话）：', 'Side answer (not stored):') + '\n' + answer.text
-            : pick('旁路提问失败：', 'Side question failed: ') + (answer.error ?? '')
-        )
       } else if (result.openList) {
         setPosition(undefined)
         setCommandOverlay(result.openList)
@@ -925,6 +989,7 @@ export function App({
           : undefined
         deliverEvent(event, toolElapsedMs)
         if (event.type === 'conversation_cleared') {
+          dismissSideQuestion(true)
           setTopic(undefined)
           setScrollTop(undefined)
           setAgentCards(new Map())
@@ -939,6 +1004,7 @@ export function App({
           setSelectedThinking(undefined)
           setToggledThinking(new Set())
           if (editorSessionId.current !== session.id) {
+            dismissSideQuestion(true)
             editorSessionId.current = session.id
             editor.resetDraft()
             setInput('')
@@ -946,9 +1012,7 @@ export function App({
             confirmedDraft.current = undefined
             stashedImages.current = undefined
             setPastedImages(new Map())
-            nextImageId.current = event.messages.reduce((next, message) =>
-              message.blocks.reduce((maximum, block) => block.type === 'image' ? Math.max(maximum, block.id + 1) : maximum, next),
-            1)
+            nextImageId.current = nextHistoryImageId(event.messages)
           }
           clearSuggestion()
         }
@@ -1074,6 +1138,31 @@ export function App({
     }
     if (managerDone.current) {
       managerInput.current?.key(text, key)
+      return
+    }
+    if (sideEntry && sideIndex !== undefined) {
+      if (key.escape || key.return || text === ' ' || (key.ctrl && ['c', 'd'].includes(text))) {
+        dismissSideQuestion()
+      } else if (key.leftArrow || key.rightArrow) {
+        setSideIndex(Math.max(0, Math.min(sideEntries.length - 1, sideIndex + (key.leftArrow ? -1 : 1))))
+        setSideScroll(0)
+        setSideFeedback('')
+      } else if (key.upArrow || key.downArrow || key.pageUp || key.pageDown) {
+        const step = key.pageUp || key.pageDown ? sidePage : 1
+        scrollSide(key.upArrow || key.pageUp ? -step : step)
+      } else if (text === 'x') {
+        dismissSideQuestion(true)
+      } else if (text === 'c' && sideEntry.answer !== undefined) {
+        setSideFeedback(copyToClipboard(sideEntry.answer)
+          ? pick('已复制回答', 'Answer copied')
+          : pick('无法访问剪贴板', 'Clipboard unavailable'))
+      } else if (text === 'f' && sideEntry.answer !== undefined && commandContext.sessions?.fork) {
+        const branch = commandContext.sessions.fork(session.id, { question: sideEntry.question, answer: sideEntry.answer })
+        if (branch.ok) {
+          dismissSideQuestion(true)
+          setHint(pick('已从旁路问答创建会话分支', 'Branched from side question'))
+        } else setSideFeedback(branch.message ?? pick('无法创建分支', 'Could not branch the session'))
+      }
       return
     }
     // 0.5.4 /rewind 快捷键 Esc+Esc：空闲且无覆盖层时双击 Esc 打开回滚面板。
@@ -1660,6 +1749,10 @@ export function App({
       setHint('')
       setTyping(false)
       if (!literal && submitted.startsWith('/')) {
+        if (/^\/btw(?:\s|$)/i.test(submitted)) {
+          askSideQuestion(submitted.slice(4).trim())
+          return
+        }
         // Interactive /diff opens the two-level dialog (SP003 AC CP-07);
         // pipe and non-workspace hosts keep the text output.
         if (permissionHandles && /^\/diff(\s|$)/.test(submitted)) {
@@ -1717,6 +1810,10 @@ export function App({
     if (text || key.backspace || key.delete) markTyping()
   })
   useWheel(fullScreen, (lines) => {
+    if (sideEntry) {
+      scrollSide(lines)
+      return
+    }
     if (!modelManagerOpen && !rulesManagerOpen && !resumeOpen && !exportOpen && !rewindOpen && !contextOpen && !agentsOpen && !statusOpen && !statsOpen && !doctorOpen && !dialog) scrollHistory(lines)
   })
   const config = commandContext.getConfig()
@@ -2132,12 +2229,22 @@ export function App({
           <Text dimColor>{pick('Esc 关闭', 'Esc to close')}</Text>
         </Box>
       )}
-      {sideAnswer && (
-        <Box flexDirection="column" borderStyle="single" borderColor="gray">
-          <Text dimColor>{sideAnswer.split('\n')[0]}</Text>
-          {sideAnswer.split('\n').slice(1).map((line, index) => (
-            <Text key={index} wrap="truncate-end">{line}</Text>
-          ))}
+      {sideEntry && sideIndex !== undefined && (
+        <Box flexDirection="column" flexShrink={0} borderStyle="round" borderColor={ACCENT} paddingX={1}>
+          <Text wrap="truncate-end">
+            <Text bold color={ACCENT}>/btw </Text>
+            {stripVTControlCharacters(sideEntry.question).replace(/\s+/g, ' ')}
+            <Text dimColor>{'  '}{sideIndex + 1}/{sideEntries.length}</Text>
+          </Text>
+          {sideBody ? sideLines.slice(sideStart, sideStart + sidePage).map((line, index) => (
+            <Text key={index} color={sideEntry.error !== undefined ? 'red' : undefined}>{line || ' '}</Text>
+          )) : <Text dimColor>{pick('正在旁路提问…', 'Asking on the side…')}</Text>}
+          {sideFeedback && <Text wrap="truncate-end">{sideFeedback}</Text>}
+          <Text dimColor wrap="truncate-end">
+            {pick('↑↓ 滚动 · ←→ 浏览 · C 复制', '↑↓ scroll · ←→ browse · C copy')}
+            {commandContext.sessions?.fork ? pick(' · F 分支', ' · F fork') : ''}
+          </Text>
+          <Text dimColor wrap="truncate-end">{pick('X 清空 · Esc 关闭', 'X clear · Esc close')}</Text>
         </Box>
       )}
       {!fullScreen && frame.error && <Text color="red">{frame.error}</Text>}
@@ -2187,7 +2294,7 @@ export function App({
           />
         )}
         <Box ref={inputBox}>
-          {commandOverlay || commandConfirm ? null : search ? (
+          {commandOverlay || commandConfirm || sideEntry ? null : search ? (
             <Box flexDirection="column">
               <Text color={ACCENT} wrap="truncate-end">
                 {transcriptMode ? pick('搜索会话', 'Search transcript') : pick('搜索输入历史', 'Search input history')}

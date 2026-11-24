@@ -95,7 +95,7 @@ export type CommandContext = {
       /** SP006：恢复后当前生效的会话 id（恢复会切换身份）。 */
       sessionId?: string
     }
-    fork?: (sessionId?: string) => { ok: boolean; sessionId?: string; message?: string; warnings?: string[] }
+    fork?: (sessionId?: string, exchange?: { question: string; answer: string }) => { ok: boolean; sessionId?: string; message?: string; warnings?: string[] }
     rename?: (title: string) => { ok: boolean; message?: string }
     searchIndex?: () => SessionSearchEntry[]
     /** SP009：只读读取某个会话的历史，不切换身份、不写盘（/export 选择会话用）。 */

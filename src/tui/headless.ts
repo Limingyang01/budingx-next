@@ -36,6 +36,7 @@ export type ParsedCli = {
   options: HeadlessOptions
   /** 是否显式给出无头参数（--verbose 本身不触发无头）。 */
   explicit: boolean
+  resume?: string
 }
 
 const OUTPUT_FORMATS: HeadlessOutputFormat[] = ['text', 'json', 'stream-json']
@@ -62,6 +63,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
   }
   const passthrough: string[] = []
   let explicit = false
+  let resume: string | undefined
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!
     if (arg === '--verbose') {
@@ -91,6 +93,11 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       options.inputFile = requireValue(argv, ++i, arg)
       continue
     }
+    if (arg === '--resume') {
+      if (resume !== undefined) throw new UsageError('Specify --resume only once')
+      resume = requireValue(argv, ++i, arg)
+      continue
+    }
     if (arg === '--session') {
       explicit = true
       options.session = requireValue(argv, ++i, arg)
@@ -116,7 +123,10 @@ export function parseCliArgs(argv: string[]): ParsedCli {
   }
   if (options.prompt !== undefined && options.inputFile !== undefined)
     throw new UsageError('--prompt and --input-file are mutually exclusive')
-  return { passthrough, options, explicit }
+  if (resume !== undefined && (explicit || options.prompt !== undefined)) {
+    throw new UsageError('--resume is interactive and cannot be combined with headless flags')
+  }
+  return { passthrough, options, explicit, ...(resume === undefined ? {} : { resume }) }
 }
 
 export type HeadlessEvent =

@@ -56,7 +56,7 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | **已实现、通过回归并合入 master（`5dbfe3a` / `ee9118e`），并已发布 npm 0.7.0（运行 #27，源码 `a8628b5`）** |
 | SP008 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | **已实现并合入 master**（`feature/SP008/host-contract`）；宿主扩展（MCP/hooks）端到端矩阵已验证；`budingx serve` 提供进程内/stdio/WS 三种宿主入口；**0.8.0 已发布** |
 | SP009 | TUI 独立交付与 npm 发布工程 | tui-distribution、upgrade-compatibility、npm-publish-pipeline                                              | **0.9.0 与 0.9.1 已发布**（合并提交 `10704ab`/`2a918b3`，运行 #45100998785，源码 `aecd8b7`）：干净安装/覆盖升级/旧数据兼容/卸载/回退的真实 npm 门禁（`npm run test:install`、`npm run test:upgrade`）、版本一致性检查（`npm run version:check`）、发布失败分类与上传不确定判定（`npm run release:resolve`）、技能提示词不进会话、`/export` 可选择会话、全自动档位不再被工作区边界拦截。**0.9.2 已正式发布**，12 项优化已合入 master。WebFetch 和子代理通过真实 Provider 验证，见[状态](SP/SP009/tui-gap-optimizations/STATUS.md)。 |
-| SP010 | 中期编码效果检查        | coding-parity-checkpoint、core-reliability                                                                 | 实施中。实施分支已修复同一条正文被思考行拆开，以及仅有一问一答时手动 `/compact` 无法摘要的问题。实时与恢复转录、手动压缩定向回归通过。已发布 npm 制品仍为 0.9.2。 |
+| SP010 | 中期编码效果检查        | coding-parity-checkpoint、core-reliability                                                                 | 实施中。实施分支已修复同一条正文被思考行拆开，以及仅有一问一答时手动 `/compact` 无法摘要的问题。实时与恢复转录、手动压缩定向回归通过。旁路问答面板和退出恢复命令已在实施分支验证。已发布 npm 制品仍为 0.9.2。 |
 | SP011 | 多代理团队              | team-lifecycle、task-coordination、team-messaging、worktree-isolation                                      | 规划中；2026-11-24 补排已细化 task-coordination 与 worktree-isolation（PLANNED，见[需求](SP/SP011/requirements-summary.md)） |
 | SP012 | 浏览器操作              | browser-session、page-actions、browser-artifacts                                                           | 规划中 |
 | SP013 | Computer Use            | computer-permissions、screen-actions、desktop-control-recovery                                             | 规划中 |
@@ -299,7 +299,7 @@ SP006 在 0.5.4 的命令面之上补齐终端骨架、扩展机制与无头入�
 | 命令 | 操作与结果 |
 | --- | --- |
 | `/init` | 生成项目指令模板（AGENTS.md）。已有文件时拒绝覆盖；实际写文件仍需审批。 |
-| `/btw <问题>` | 旁路提问：独立请求模型，答案显示在会话中但不写入主会话历史，不影响正在进行的回合。 |
+| `/btw <问题>` | 旁路提问。SP010 实施分支即时打开独立面板，主回合可继续。↑↓ 或 PgUp/PgDn 翻阅回答，←→ 浏览当前会话的旁路记录，C 复制，F 从所选问答创建会话分支，X 清空，Esc 关闭。旁路历史保存在内存，输入 `/btw` 可重新打开。 |
 | `/worktree [list\|create <名称>\|remove <路径或分支>]` | 列出、创建或删除隔离工作树。删除必须经宿主确认，并复用 SP004 的丢弃/未合并保护。 |
 | `/tasks` | 列出后台与未完成任务的状态、退出码和输出文件路径。 |
 | `/mcp` | 打开 MCP 服务器列表：名称、连接状态、工具数量。非交互模式输出文本。 |
@@ -337,6 +337,7 @@ Get-Content prompts.jsonl | budingx --input-format stream-json --output-format j
 - `--output-format text|json|stream-json`：纯文本、单个结果对象或逐行事件流。事件依次为 `system`（init/status）、`user`、`assistant`（增量与整段）、`tool_call`、`tool_result`、`result`。stdout 只承载协议内容，诊断写 stderr。
 - `--input-format stream-json`、`--input-file <文件>`：从 stdin 或文件读取逐行 JSON 输入；与 `--prompt` 互斥。
 - `--session <ID>`：恢复既有会话后再执行；无头模式默认不创建新会话、不写用户数据。
+- SP010 实施分支的交互式 TUI 退出后，以中文显示 `budingx --resume <会话 ID>`，执行后打开该会话与已保存的转录。
 - 参数错误（未知选项、非法枚举、缺值）退出码为 2；回合失败退出码为 1，且 `result.is_error` 为真。
 
 #### 5.7.6 0.6.0 验证与限制
