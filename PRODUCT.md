@@ -6,7 +6,7 @@
 > **上一版本**：0.9.0（SP009 TUI 独立交付和 npm 发布工程），由 [GitHub Actions 运行 #45100998785](https://github.com/Limingyang01/budingx-next/actions/runs/45100998785) 从源码 `aecd8b7` 发布（publishedAt=2026-11-23T02:43:37.613Z）。技能提示词不再进会话、`/export` 可选择会话、全自动档位不再被工作区边界拦截，并交付独立安装/升级/卸载/回退门禁与发布判定工具链。详见 [0.9.0 发行说明与发布回执](release-notes/v0.9.0.md)。
 >
 > **历史版本**：0.8.0（SP008）。详见 [0.8.0 发行说明](release-notes/v0.8.0.md)。
-> **说明书版本**：v1.34（2026-11-23 登记 0.9.1 发布回执）
+> **说明书版本**：v1.35（2026-11-24 登记 0.9.2 规划与 TUI 差距盘点固化；无产品行为变更）
 > **更新日期**：2026-11-23
 > **产品形态**：独立 MIT 许可的终端 Coding Agent（Node.js ≥ 22.18 + TypeScript，不依赖 Bun）
 
@@ -54,13 +54,13 @@ budingx 是一个**从零独立实现的终端 Coding Agent**，目标是在终�
 | SP006 | 日常开发与 TUI 候选     | project-instructions、skills-and-mcp、hooks、web-retrieval、headless-cli、tui-usability、npm-packaging     | 本轮实现完成并合入 master，0.6.0 已发布 |
 | SP007 | Agent 质量与扩展        | evaluation-regression、runtime-diagnostics、provider-compatibility、subagent-execution、multimodal-context | **已实现、通过回归并合入 master（`5dbfe3a` / `ee9118e`），并已发布 npm 0.7.0（运行 #27，源码 `a8628b5`）** |
 | SP008 | 多端架构入口与共享边界  | shared-models-and-history、session-ownership、transport-boundaries                                         | **已实现并合入 master**（`feature/SP008/host-contract`）；宿主扩展（MCP/hooks）端到端矩阵已验证；`budingx serve` 提供进程内/stdio/WS 三种宿主入口；**0.8.0 已发布** |
-| SP009 | TUI 独立交付与 npm 发布工程 | tui-distribution、upgrade-compatibility、npm-publish-pipeline                                              | **0.9.0 与 0.9.1 已发布**（合并提交 `10704ab`/`2a918b3`，运行 #45100998785，源码 `aecd8b7`）：干净安装/覆盖升级/旧数据兼容/卸载/回退的真实 npm 门禁（`npm run test:install`、`npm run test:upgrade`）、版本一致性检查（`npm run version:check`）、发布失败分类与上传不确定判定（`npm run release:resolve`）、技能提示词不进会话、`/export` 可选择会话、全自动档位不再被工作区边界拦截 |
+| SP009 | TUI 独立交付与 npm 发布工程 | tui-distribution、upgrade-compatibility、npm-publish-pipeline                                              | **0.9.0 与 0.9.1 已发布**（合并提交 `10704ab`/`2a918b3`，运行 #45100998785，源码 `aecd8b7`）：干净安装/覆盖升级/旧数据兼容/卸载/回退的真实 npm 门禁（`npm run test:install`、`npm run test:upgrade`）、版本一致性检查（`npm run version:check`）、发布失败分类与上传不确定判定（`npm run release:resolve`）、技能提示词不进会话、`/export` 可选择会话、全自动档位不再被工作区边界拦截。**0.9.2 规划中（PLANNED）**：12 项（11 项 TUI 差距优化 + 1 项缺陷修复）：会话分支/改名/搜索、Markdown 导出、MCP HTTP/SSE/WS、Skills 运行时、项目指令导入、输入编辑、消息转录、后台任务操作、单会话 Worktree，以及子代理失败兜底（长页面抓取不再必然失败、父 agent 获得结构化失败信息），见[需求正本](SP/SP009/tui-gap-optimizations/requirements.md)；版本按用户 2026-11-24 决定保持 0.9.2 |
 | SP010 | 中期编码效果检查        | coding-parity-checkpoint、core-reliability                                                                 | 规划中 |
-| SP011 | 多代理团队              | team-lifecycle、task-coordination、team-messaging、worktree-isolation                                      | 规划中 |
+| SP011 | 多代理团队              | team-lifecycle、task-coordination、team-messaging、worktree-isolation                                      | 规划中；2026-11-24 补排已细化 task-coordination 与 worktree-isolation（PLANNED，见[需求](SP/SP011/requirements-summary.md)） |
 | SP012 | 浏览器操作              | browser-session、page-actions、browser-artifacts                                                           | 规划中 |
 | SP013 | Computer Use            | computer-permissions、screen-actions、desktop-control-recovery                                             | 规划中 |
 | SP014 | 定时任务                | schedule-management、durable-scheduler、scheduled-agent-run                                                | 规划中 |
-| SP015 | 当前范围全能力集成与交付 | tui-capability-integration、advanced-distribution、full-upgrade                                            | 规划中 |
+| SP015 | 当前范围全能力集成与交付 | tui-capability-integration、advanced-distribution、full-upgrade                                            | 规划中；2026-11-24 补排已细化 tui-capability-integration（直接 Shell 输入、统一设置面板与组合验收，PLANNED，见[需求](SP/SP015/tui-capability-integration/requirements.md)） |
 | SP016 | 当前范围完整替代验收    | full-agent-parity、long-running-reliability、final-release-evidence                                        | 规划中 |
 
 > 路线图 r8 现行编号为 SP001–SP016，九个后续轮次的旧编号见[映射表](docs/iteration-plan.md)。
@@ -506,6 +506,7 @@ budingx serve --transport ws --session my-session --port 0
 | —（规划调整） | 2026-11-18 | 路线图 r7：移出五个原暂缓 SP，保留通用宿主契约，必交能力仍为 47 | 规划文档调整 |
 | —（规划调整） | 2026-11-18 | 路线图 r8：现行 SP001–SP016 连续编号，能力与产品版本不变 | 规划文档调整 |
 | —（规划调整） | 2026-11-18 | 路线图 r9：确立 TUI 还原度目标与判定口径（结构覆盖率 + 行为用例），SP006 加 P0 骨架出口、SP015 加 P1 命令与工具面出口、SP016 加覆盖率公布出口；能力清单升 v1.4（分母 47→49）；说明书 v1.6 | 规划文档调整 |
+| —（规划调整） | 2026-11-24 | 路线图 r8 补排：登记 13 项 TUI 差距，落到 SP009 **0.9.2**（11 项）、SP011（团队任务协调与成员 Worktree 隔离）、SP015（直接 Shell 输入与统一设置面板）；同日完成逐项参考事实复核（MCP 补 WebSocket、技能 `allowed-tools` 改限制语义、worktree 合并与正文检索标为自研、Shell 模式不沿用参考的绕过沙箱与入模型行为）、登记用户现场报告的 #42 子代理失败缺陷修复（0.9.2 扩为 12 项 28 条 AC）、版本按用户决定保持 0.9.2、差距盘点固化入仓；说明书 v1.35 | 规划文档调整 |
 
 发布台账以 [release-ledger.json](release-ledger.json) 为准，发行说明见 `release-notes/`。
 
