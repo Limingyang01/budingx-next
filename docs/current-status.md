@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-24 已登记 [SP009 0.9.2 的 12 项 TUI 差距优化与缺陷修复](../SP/SP009/tui-gap-optimizations/requirements.md)及[正式路线图补排](iteration-plan.md#tui-差距补排2026-11-24)，同日完成逐项事实复核并把[差距盘点](requirements/tui-gap-inventory-2026-11-24/requirements.md)固化进仓库（原盘点全表待补录，见该文件 OPEN-1）。0.9.2 处于 PLANNED，产品 AC 为 UNVERIFIED（12 项、28 条 AC，含用户现场报告的 #42 子代理失败缺陷修复）；版本按用户 2026-11-24 决定保持 0.9.2。团队交接及 P1 新入口分别进入 [SP011](../SP/SP011/requirements-summary.md)和 [SP015](../SP/SP015/requirements-summary.md)。
+
 截至 2026-11-23，**npm `latest` 为 0.9.1**（SP009 补丁）：主循环去固定回合上限、上下文窗口按模型动态解析并支持自定义、自动压缩默认开启且改模型摘要、子代理默认无 token 预算且通知按系统消息渲染、技能多级别与 `/skillify` `/reload-skills`；台账已登记。 [0.9.1 发布回执](../release-notes/v0.9.1.md)
 
 SP009 **已完成实施与验收，合入 master 后由 [GitHub Actions 运行 #45100998785](https://github.com/Limingyang01/budingx-next/actions/runs/45100998785)（源码 `aecd8b7`）完成 Windows、Linux 验证与 OIDC 发布**。本版新增技能提示词不进会话、`/export` 可选择会话、全自动档位不再被工作区边界拦截，以及干净安装/升级/卸载/回退门禁与发布判定工具链。0.8.0（多端架构入口与共享边界，SP008）此前由 [运行 #45010118350](https://github.com/Limingyang01/budingx-next/actions/runs/45010118350)（源码 `b71b3f5`）发布，本版新增通用宿主契约（进程内/stdio/WS）、活动会话归属与崩溃接管、共享配置/历史并发安全与 `budingx serve` 入口。0.7.0（Agent 质量与扩展，SP007）此前已于 2026-11-21 经门禁 GREEN 合入 master（合并提交 `ee9118e`）并由运行 #27（源码 `a8628b5`）发布，见 [0.7.0 发行说明](../release-notes/v0.7.0.md)；0.6.0（TUI 对齐与扩展，SP006）更早已发布，见 [0.6.0 发行说明](../release-notes/v0.6.0.md)。
