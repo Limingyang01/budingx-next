@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "files": {
+    "CONSTRAINTS.md": "74c8a6c9438c3b51c639e7384314b75ee4e195405458ad5265040be38b654650",
+    "README.md": "02b301955f2d19632eb9ee58a02af9ec96f263304ffbe3ea3b5296305d158bfc",
+    "package.json": "e1c748244ef3e976648f902ae117f2b2badf58c07c6cb089dee7cb643d0b67ea",
+    "src/legacy/format.ts": "5934be41ef2ead5727995ebdfa1f97704df5ac6f709ca6b1c12f8e50d2b32ba2",
+    "src/steps/step1.ts": "31e310f3675e657a6acda68f2161f78635de148185b12aed0540b674848718d9",
+    "src/steps/step2.ts": "674d4e827623f13d0c530d3536c4abc5fd718f1862b43690af18ce32a3f3ed08",
+    "src/steps/step3.ts": "a62f5bcbf9f07cadbbc186d2abac03e9014d6cd826c5c08a5dec3bd909824b66",
+    "src/steps/step4.ts": "986b09f9f86a1815d4b0a0aa3cbfd29f3eea5402f426d0d0709e0e54cccd6085",
+    "test/steps.test.mjs": "ba6df0a57d8bfb6e8be713392989b558cfebe2d91734196b96fd79a87f1ac47a",
+    "verify.mjs": "c4b30edc9516b48640aafa9ea00d8c662007df47becb45a39085f34d651fbcdb"
+  }
+}

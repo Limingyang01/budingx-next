@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "files": {
+    "README.md": "a06b54166f29012bbd7b5b577b42ebc11283e9d16db6bf637a1efd0a3df5c436",
+    "app/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "app/parser.py": "78e33a5f4d513af862c9b7393f9e5feeca9793ba7d22bad0f746d019b7e3be52",
+    "logs/app.log": "e7fa279cec3e9dc87e356d7af62608d3453555da93a9f807fda12d57018cfbbd",
+    "package.json": "4cf996f5fb76342a6e04f52b8ab14c92ac9ef2d9480fc03aadb03fdf283c0195",
+    "tests/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tests/test_parser.py": "8423c7292f1ba986aa5ed0e4f571aa8846aacd6f254aa29d21e2eebeda65cf5e",
+    "verify.mjs": "f7955f1a1da0af3bab62f53150037823967c56b7059edda2ee9bbe6fbec3d080"
+  }
+}

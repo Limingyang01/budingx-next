@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "files": {
+    "README.md": "c2775af4fd081463feb6d27878dccdae8bd225809aa578ac24d7f762ea28c77c",
+    "app/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "app/service.py": "fe45d4d66c6f961b0457c5ba109eff17836b3419b01176e185cd7d5b88f6c7cf",
+    "package.json": "57ffb32dbf2c84e8e563bc7265d0725ee8553537d3bd6616b48f44b8403263ea",
+    "tests/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tests/test_service.py": "0a3b8e7c1fcd43330ac51b8880b1c913b3efdc961a1bb8756dc65a6d010b9324",
+    "vendor/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "vendor/httpclient.py": "d9ba002dc4a74648949f981ab72c75c791baa8b2b5bba63818df089216c36f48",
+    "verify.mjs": "154b793066369bf555dfb24cef661ad3ab7314758263df8db692f5e050622692"
+  }
+}

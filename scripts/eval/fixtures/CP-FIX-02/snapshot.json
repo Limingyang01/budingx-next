@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "files": {
+    "README.md": "c68353197bd8355715a9d685705130c94bb2fc8038cc7328fe43f4673975bd18",
+    "app/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "app/calc.py": "29b7632044165c6e341e4bbb332e450f0bb0cb4db3020528256fa03cefb274cf",
+    "package.json": "a6fa515f45a6030395987baec854c84adc207612ece083fc3ea4091bdfe30ae5",
+    "tests/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tests/test_calc.py": "cf8b94098c9bf7732d448f514d3332e895a4272f2559acf92466d1fcda3b2a5d",
+    "verify.mjs": "a94f4385a5a9f2d42ed06db22d7fec711b073a94589d29fada21c1a610705117"
+  }
+}

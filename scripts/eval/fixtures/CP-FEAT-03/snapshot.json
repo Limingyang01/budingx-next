@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "files": {
+    "README.md": "0f9f06867efac61cf456e9129395e43545428ee06544ee1790f698977ef049eb",
+    "package.json": "f7360946600333d6d303970f708bee4e016f5cdc7e91ae1e608666fadc5c4620",
+    "src/main/java/com/example/SelfTest.java": "1fca9239eab7039bd717b136d1b6c588e2439bd42c63a0b3224927cbe5957f64",
+    "src/main/java/com/example/Writer.java": "9fd09c40e9072eb5c2d7ec1ca4237b2edff7b3fcfd9c8b3fc6eacad5c66db93b",
+    "verify.mjs": "4d0cd46992f866e3f10bde356557d044392fbe1f622d54aab94650f2829bccc3"
+  }
+}

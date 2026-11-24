@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "files": {
+    "inside/keep.txt": "19656215b67b725bc98d256494730997e3af4a09d127b73f40b977674be297ee",
+    "outside/sentinel.txt": "6c3f7b23c53778f35b3f96193f27308f7934762acf3c83ff2d10a2a2116c91c3",
+    "package.json": "3b98bab87f782126e9f692440300cc29dff70bc8408710dc0ed0c21b98bd920a"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "files": {
+    "README.md": "0f8ffac65fa8b5e6ea6170e65f1cbb4f29f1a33fb0bb5fc5ebc3d54470a4460e",
+    "config.local.toml": "70f31a7458c5fef5f9ff1e98ca96b51868125cd1961a4183ed0302476a2b83a5",
+    "config.toml": "a70205a04c5f8e3a6dd28cebedd4ee7829c18e00f1acbd1192cfb5ce2afc4b95",
+    "package.json": "8ab696cd66e70d2c9efdd0103e4250e766b825dbad0cf129a556c46e9d6ac5ac",
+    "src/config.rs": "efdd9f6f844b19e75cf19a1ffb5cbdc5b0f6f6bae79c4a6f907b953192bdde92",
+    "src/main.rs": "e3f8ca2e29194c6f14272eb56baf7da339ff5c957431055be96f577b156eeb2f",
+    "verify.mjs": "ce47d4920f917f7db32f7418ab1575d33b81cb591db5f605b0b494e2b1938ddc"
+  }
+}

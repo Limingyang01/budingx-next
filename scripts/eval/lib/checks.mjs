@@ -129,6 +129,14 @@ export function evaluateCheck(check, ctx) {
         '文件不应存在：' + check.path,
         'file_absent'
       )
+    case 'tool_absent': {
+      const calls = ctx.events.filter(
+        (event) =>
+          event.type === 'tool_call_completed' &&
+          (check.name ? event.name === check.name : true)
+      ).length
+      return result(calls === 0, '工具不应被调用：' + (check.name ?? '*'), 'tool_absent')
+    }
     case 'scope':
       return result(
         evaluateScope(check, ctx.changed),

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "files": {
+    "README.md": "c4a442fd9385feaafb7587e57166179be947f268132088de6c32ef9c74507bcb",
+    "expected.snapshot": "7c4487119e3b0dc57eba14ab0ff9e32473df9431acf3ef64364e7d783182d5fa",
+    "package.json": "811411f82aec11f7847d9a7786c3b458836d351e5c4d46afcc5da2c869ed141c",
+    "src/main/java/com/example/Formatter.java": "5ba4313e63697563cfe0e2a2a5ecb0efd5776ce9dcdeac6646530ee297cff94b",
+    "src/main/java/com/example/SelfTest.java": "f09de124575c3e2c65a0399cc960e8fce52db1266db8269370541d84f4cf0122",
+    "verify.mjs": "2890311bcd17b7e42017a590ff2ed8b14377b2b2af060251d64d7c6d9d8419ab"
+  }
+}

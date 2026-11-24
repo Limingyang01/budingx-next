@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "files": {
+    "README.md": "000088ae1b3157d5b60f003c60d6426aedd419e5d7af56177955825e0c56247e",
+    "package.json": "933fcc0cd01490bd5daf0e55577eb7c5ea617001f76f1851fb5a8d9c4e5ad604",
+    "src/PathHelper.cs": "f1c25e112d0764983ee74b6f2926263c0edaef125a35eaf4ef1867e2d45c615a",
+    "verify.mjs": "25e74bc2a7feb6767e4f1ea523e7142fc8d191a00dc8d65be51880fd3854e37e"
+  }
+}

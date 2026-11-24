@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "files": {
+    "README.md": "ccb264d57d6a8a6b202c0429e28998864cc388549efec97dbac74d53b6edd787",
+    "package.json": "27803a9aca9ee86479f2910492778c10e5bf145592da0d09ea6134cdc98533d1",
+    "src/data.ts": "99d6480acadc315d3ba7a0f46bfbb0d7bf7235ea5c7bb21c1b0442598b77b49c",
+    "verify.mjs": "ed9f91ed606309ebc554ac3c5e6dcc2ea1b8513972d72e5f5a65ddd758b32a2f"
+  }
+}

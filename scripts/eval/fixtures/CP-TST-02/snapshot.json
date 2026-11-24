@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "files": {
+    "README.md": "b25ee35f13dc77950cdfabe9f5b96768bfc7d3abd7395cd73ff9b122da8610ee",
+    "package.json": "48cff2f08bc512daef0171a766f45400beb923c109f99e0062b0ef380f95be1a",
+    "src/cache.rs": "fdcc1b7e9f707e8af1de1aa60bdfe82d891d5359bdbb9430fb44fe26784314b6",
+    "src/cache_spec.md": "e8539ff86054757b44393dca2b62683ceebfc14c0148a0529ad1e0c243476166",
+    "src/cache_test.rs": "bd3d210e2adf20e4ed0943fc339a47cf2a5f11f7125c1ea99554cd3d288dbcf8",
+    "verify.mjs": "ad08b9ecb7ff2e72b125cc72da66c7f4948f7398e76cfcbafcb18ee15e35bb2e"
+  }
+}

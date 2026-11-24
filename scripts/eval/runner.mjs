@@ -12,7 +12,7 @@ const ROOT = repoRoot()
 
 function parseArgs(argv) {
   const args = argv.slice(2)
-  const opts = { repeats: 1, tasks: null, runId: null }
+  const opts = { repeats: 1, tasks: null, runId: null, set: 'sp007' }
   for (let i = 0; i < args.length; i += 1) {
     if (args[i] === '--repeats' && args[i + 1]) {
       opts.repeats = Number(args[i + 1])
@@ -23,6 +23,9 @@ function parseArgs(argv) {
     } else if (args[i] === '--run-id' && args[i + 1]) {
       opts.runId = args[i + 1]
       i += 1
+    } else if (args[i] === '--set' && args[i + 1]) {
+      opts.set = args[i + 1]
+      i += 1
     }
   }
   return opts
@@ -30,6 +33,20 @@ function parseArgs(argv) {
 
 async function main() {
   const opts = parseArgs(process.argv)
+  if (opts.set === 'cp-v1') {
+    // CP-SET-v1 的题目需要真实模型驱动，不存在离线场景脚本；
+    // 离线可做的是题目校验与「未预先解出」自检。
+    console.error('cp-v1 任务集需要真实模型：请使用 scripts/eval/live.mjs --set cp-v1。')
+    console.error('离线自检：node scripts/eval/validate.mjs --set cp-v1')
+    console.error('         node scripts/eval/tools/verify-fixtures.mjs --set cp-v1')
+    process.exitCode = 1
+    return
+  }
+  if (opts.set !== 'sp007') {
+    console.error('未知任务集：' + opts.set)
+    process.exitCode = 1
+    return
+  }
   const allTasks = loadTasks(ROOT)
   const { errors, summary: validationSummary } = validateTasks(allTasks)
   if (errors.length > 0) {

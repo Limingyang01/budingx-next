@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "files": {
+    "README.md": "51ec28c5274e40734faddd3746f94ca275c51fc49223c086ef12a113b76e81a6",
+    "app/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "app/monolith.py": "653c9244584d36d8fe2857759c5beedb384fa5d5d2dbee4c4fc2797ac035c8bd",
+    "package.json": "7703a5ba628578c7c8eec56ec7995a0ed82fc9802b9ed02189ad665bf2c1974b",
+    "tests/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tests/test_refactor.py": "371ce824bd356e66e2670c947bfbdb675bb1340c67d725f954a7a63d9011afa7",
+    "verify.mjs": "f85bd8b462cc17d990048ed54038b471734e10e30db82d04a506a811ae893540"
+  }
+}

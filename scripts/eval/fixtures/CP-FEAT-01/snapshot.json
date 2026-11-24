@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "files": {
+    "README.md": "66d7aa01cd82e1a1afadee37aadcd90f53e2b1214b93fde497360d6794704309",
+    "package.json": "ceed8d14f773fd303fc03ef24e5004d5a8f814bc624faddd0828209281d07c34",
+    "src/cli.ts": "7a5a38591f704f38e7cc9d328efb394abc63ca012f18c5b3e4e761a1a032f455",
+    "test/cli.test.mjs": "4e772dedac72ff1043f67575622d68d437f23da32c1b15b1c84f5e9e9eb4787d",
+    "verify.mjs": "f3743423cd1743f57cb544dad5bd184c2043f3ca4c704ec39065ea2549dc03e2"
+  }
+}

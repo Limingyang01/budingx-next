@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "files": {
+    "README.md": "862a11eb927b188f8e794d08742ab73f4efbad2d3c568c14250a0a4b79dd157e",
+    "package.json": "ef1a7f950f2164e92108fede7c033f28089b9fc6685b4af8b6af2f57a6c9affd",
+    "src/main.rs": "21e60732137ca34b6001bb1d018150ba3e698a7b1c1080ac5027707fad1d5e25",
+    "src/memory.rs": "3043d95d3e5ca88f527e1292819d5bfaff9f034d84f380b14ea0671f1825ac1c",
+    "verify.mjs": "b585c642ca61d5a8b5751da9d7a7b2145af91e12c13ae3ec8cf978df1d93f0df"
+  }
+}

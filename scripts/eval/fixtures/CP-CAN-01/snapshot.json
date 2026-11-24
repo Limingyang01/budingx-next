@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "files": {
+    "README.md": "f45bf454b0c928d24b8521cae6845dd9b1df4d87406e7e822cb72ec332b2f34b",
+    "package.json": "2779877c4b1c21c8087165aec5caab7b028d98cfc6bd33a1fdf80a8e75670405",
+    "src/task.go": "3ecbabffca8381cc6522f8f2fd90a6111632961c546749739707ba7e202da765",
+    "src/task_spec.md": "d27a549c0c43983245ece258201e559b67f2d7b998d1635f3808538cf3f774ca",
+    "verify.mjs": "ff301f7df94f5fe39806721c455c944d462bb6fc989e63dfa3062aedffe960ba"
+  }
+}
