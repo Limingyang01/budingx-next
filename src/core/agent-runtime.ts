@@ -6,7 +6,7 @@
 // are host-injected ports (D14). The registry is deliberately separate from
 // the background-command TaskRegistry (SA-14).
 import { randomUUID } from 'node:crypto'
-import { Session } from './session.js'
+import { Session, type SessionOptions } from './session.js'
 import type { AgentDefinition } from './agent-definitions.js'
 import type { ErrorInfo, TurnOutcome, TurnSnapshot } from './events.js'
 import type { ModelProvider } from './provider.js'
@@ -44,6 +44,7 @@ export type AgentState = 'running' | 'completed' | 'failed' | 'cancelled' | 'bac
 
 export interface AgentRecord {
   agentId: string
+  parentSessionId: string
   agentType: string
   description: string
   color?: string
@@ -96,6 +97,7 @@ export interface SpawnAgentOptions {
   runInBackground?: boolean
   /** Sync agents abort with the parent turn; background agents survive it. */
   parentSignal?: AbortSignal
+  allowedToolNames?: readonly string[]
 }
 
 export interface AgentRegistryOptions {
@@ -118,6 +120,8 @@ export interface AgentRegistryOptions {
   tokenLimit?: number
   resultCharLimit?: number
   redactDiagnostic?: (value: unknown) => unknown
+  resolveProjectContext?: () => string | undefined
+  resolveLocalInstructions?: SessionOptions['resolveLocalInstructions']
 }
 
 export interface TaskOutputResult {
@@ -265,7 +269,9 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
 
     const modelOverride =
       spawnOptions.model ?? (definition.model && definition.model !== 'inherit' ? definition.model : undefined)
-    const childTools = trimTools(options.tools, definition, background)
+    const childTools = trimTools(options.tools, definition, background).filter(
+      (tool) => !spawnOptions.allowedToolNames || spawnOptions.allowedToolNames.includes(tool.name)
+    )
     const parentMode = options.policy.getMode()
     const childPolicy = options.createChildPolicy(minMode(parentMode, definition.permissionMode ?? parentMode))
     const transcript = options.createTranscript?.(agentId)
@@ -277,6 +283,7 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
 
     const record: AgentRecord = {
       agentId,
+      parentSessionId: options.parentSession.id,
       agentType: definition.name,
       description,
       ...(definition.color ? { color: definition.color } : {}),
@@ -336,7 +343,8 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
       maxIterations: spawnOptions.maxTurns ?? definition.maxTurns,
       ...(transcript ? { transcript } : {}),
       ...(options.contextBudget ? { contextBudget: options.contextBudget } : {}),
-      resolveSystemContext: () => systemContext,
+      resolveSystemContext: () => [systemContext, options.resolveProjectContext?.()].filter(Boolean).join('\n\n'),
+      resolveLocalInstructions: options.resolveLocalInstructions,
       disposers: [() => { internal.detachParentSignal(); unsubscribe() }]
     })
     record.session = child
@@ -506,7 +514,7 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
 
   function background(callId: string): boolean {
     const record = byCallId.get(callId)
-    if (!record) return false
+    if (record?.parentSessionId !== options.parentSession.id) return false
     const internal = internals.get(record.agentId)
     if (!internal || internal.finished || record.background) return false
     record.background = true
@@ -529,8 +537,13 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
     return true
   }
 
-  function stop(agentId: string): { ok: boolean; state?: AgentState } {
+  function get(agentId: string): AgentRecord | undefined {
     const record = records.get(agentId)
+    return record?.parentSessionId === options.parentSession.id ? record : undefined
+  }
+
+  function stop(agentId: string): { ok: boolean; state?: AgentState } {
+    const record = get(agentId)
     if (!record) return { ok: false }
     if (isTerminal(record)) return { ok: false, state: record.state }
     record.stopped = true
@@ -539,7 +552,7 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
   }
 
   async function taskOutput(agentId: string, outputOptions: { block?: boolean; timeoutMs?: number } = {}): Promise<TaskOutputResult> {
-    const record = records.get(agentId)
+    const record = get(agentId)
     if (!record) throw new Error(`Unknown agent id: ${agentId}`)
     function terminalOutput(record: AgentRecord): TaskOutputResult {
       const text = record.state === 'failed' ? [record.error, record.result].filter(Boolean).join('\n\n') : record.result
@@ -577,8 +590,10 @@ export function createAgentRegistry(options: AgentRegistryOptions): AgentRegistr
     background,
     stop,
     taskOutput,
-    list: () => [...records.values()].sort((a, b) => a.startedAt - b.startedAt),
-    get: (agentId) => records.get(agentId),
+    list: () => [...records.values()]
+      .filter((record) => record.parentSessionId === options.parentSession.id)
+      .sort((a, b) => a.startedAt - b.startedAt),
+    get,
     dispose
   }
 }

@@ -178,9 +178,10 @@ export async function runServeCommand(args: string[]): Promise<number> {
         configStore,
         sessionId: options.sessionId,
         persistence: true,
+        sessionWriterOwnedExternally: true,
         persistPermissionMode: true,
         mode: 'workspace_edit',
-        mcp: { tools: mcp.tools, statuses: mcp.statuses },
+        mcp,
         hooks: hooks.runner
       })
     } catch (error) {
@@ -213,6 +214,10 @@ export async function runServeCommand(args: string[]): Promise<number> {
       process.stderr.write(
         'Warning: session ' + options.sessionId + ' could not be restored: ' + resumed.message + '\n'
       )
+      runtime.session.dispose()
+      await mcp?.close()
+      ownership.release()
+      return 1
     }
   }
 

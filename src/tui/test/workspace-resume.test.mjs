@@ -51,11 +51,13 @@ test('continuing in a different workspace cannot load old project messages', asy
   })
   const old = open(oldProject, 'old-project')
   assert.equal(await send(old, 'Only in the old repository: refactor OldProjectMarker'), 'completed')
+  old.session.dispose()
   const newRuntime = open(newProject, 'new-project')
   startSession({ sessionId: 'legacy-session', home, title: 'No saved workspace' })
 
   assert.ok(!newRuntime.sessions.list().some((entry) => entry.sessionId === 'old-project'))
   assert.ok(!newRuntime.sessions.list().some((entry) => entry.sessionId === 'legacy-session'))
+  assert.ok(!newRuntime.sessions.searchIndex().some((entry) => /OldProjectMarker/.test(entry.body)))
   assert.match(newRuntime.sessions.resume('old-project').message, /workspace/i)
   assert.match(newRuntime.sessions.resume('legacy-session').message, /workspace/i)
   assert.equal(newRuntime.session.history.length, 0)

@@ -8,7 +8,8 @@
 // Pure function, no I/O: the input array is walked once and every message
 // contributes at most a handful of entries, so a long session stays cheap.
 import type { Message } from '../../core/events.js'
-import type { TranscriptEntry, ToolTranscriptEntry } from './types.js'
+import { appendThinkingText, startThinkingEntry } from './thinking.js'
+import type { ThinkingTranscriptEntry, TranscriptEntry, ToolTranscriptEntry } from './types.js'
 import { toolArgument } from './tool-summary.js'
 
 /**
@@ -31,6 +32,10 @@ export function restoredTranscriptEntries(messages: readonly Message[]): Transcr
 
   for (const message of messages) {
     if (message.role === 'user') {
+      if (typeof message.notificationDisplay === 'string') {
+        if (message.notificationDisplay) entries.push({ kind: 'meta', text: message.notificationDisplay })
+        continue
+      }
       let text = ''
       const flush = (): void => {
         if (text.trim().length > 0) entries.push({ kind: 'user', text })
@@ -52,17 +57,28 @@ export function restoredTranscriptEntries(messages: readonly Message[]): Transcr
 
     if (message.role === 'assistant') {
       let text = ''
+      let thinking: ThinkingTranscriptEntry | undefined
+      let thinkingOrdinal = 0
       const flush = (): void => {
         if (text.trim().length > 0) entries.push({ kind: 'assistant', text })
+        if (thinking !== undefined) entries.push(thinking)
         text = ''
+        thinking = undefined
       }
       for (const block of message.blocks) {
         if (block.type === 'text') {
+          if (thinking !== undefined) flush()
           text += block.text
           continue
         }
-        // 思考块不进入可见转录，也不打断文本合并。
-        if (block.type === 'thinking') continue
+        if (block.type === 'thinking') {
+          if (thinking === undefined) {
+            flush()
+            thinking = startThinkingEntry(message.id, thinkingOrdinal++)
+          }
+          thinking = appendThinkingText(thinking, typeof block.text === 'string' ? block.text : '')
+          continue
+        }
         flush()
         if (block.type === 'tool_use') {
           const entry: ToolTranscriptEntry = {

@@ -228,7 +228,7 @@ test('CMD-11 /export：格式/路径显式且必须位于数据根内，不覆�
   const badFlag = await runCommand('/export --nope', baseCtx({ home, session }))
   assert.match(badFlag.message, /未知参数：--nope/)
   const badFormat = await runCommand('/export -f xml', baseCtx({ home, session }))
-  assert.match(badFormat.message, /只能是 jsonl 或 text/)
+  assert.match(badFormat.message, /jsonl、text 或 markdown/)
   const defaults = await runCommand('/export -f jsonl', baseCtx({ home, session }))
   assert.match(defaults.message, /已导出/)
   const defaultPath = defaults.message.replace(/^已导出 \d+ 字节：/, '')

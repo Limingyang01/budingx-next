@@ -33,6 +33,8 @@ export type ToolContext = {
    * 用于「删除等不可逆操作必须由宿主授权、模型参数无授权效力」的场景。
    */
   approved?: boolean
+  allowedToolNames?: readonly string[]
+  activateSkill?(skill: { name: string; body: string; allowedTools?: readonly string[] }): void
 }
 
 export type PreparedTool = {

@@ -63,13 +63,17 @@ test('SM-07 MCP 调用走审批通道；拒绝时不触达服务端且回合继�
   })
   const baseUrl = 'http://127.0.0.1:' + server.address().port + '/v1'
 
-  const previous = process.env.MCP_FAKE_LOG
-  process.env.MCP_FAKE_LOG = logPath
-  const connected = await connectMcpServers([
-    { name: 'fake', command: process.execPath, args: [fakeServer] }
-  ])
-  if (previous === undefined) delete process.env.MCP_FAKE_LOG
-  else process.env.MCP_FAKE_LOG = previous
+  const connected = await connectMcpServers(
+    [
+      {
+        name: 'fake',
+        command: process.execPath,
+        args: [fakeServer],
+        env: { MCP_FAKE_LOG: '${MCP_FAKE_LOG}' }
+      }
+    ],
+    { env: { MCP_FAKE_LOG: logPath } }
+  )
   t.after(() => connected.close())
   assert.equal(connected.clients.length, 1)
 
@@ -120,6 +124,7 @@ test('SM-07 MCP 调用走审批通道；拒绝时不触达服务端且回合继�
   assert.equal(approvalCalls.length, 1)
   assert.ok(requests[1].messages.some((message) => message.role === 'tool'))
   const log = existsSync(logPath) ? readFileSync(logPath, 'utf8') : ''
+  assert.match(log, /"tools\/list"/)
   assert.doesNotMatch(log, /"tools\/call"/)
   assert.doesNotMatch(log, /"echo"/)
 })

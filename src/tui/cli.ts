@@ -12,6 +12,7 @@ import type { PermissionMode } from '../core/permissions.js'
 import { App } from './app.js'
 import { createAgentRuntime, workspacePromptOptions, type AgentRuntime } from './runtime.js'
 import { startMcp } from './mcp/index.js'
+import { createMcpElicitation } from './mcp/elicitation.js'
 import { buildDiagnosticsPort } from './diagnostics/port.js'
 import { startHooks } from './hooks/index.js'
 import type { CommandContext } from './commands.js'
@@ -206,7 +207,8 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
   // /context /memory 与上下文用量显示才有数据源。窗口默认不猜：
   // 只有显式配置 BUDINGX_CONTEXT_WINDOW 才显示百分比。
   const contextWindow = positiveInteger(process.env.BUDINGX_CONTEXT_WINDOW)
-  const mcp = await startMcp()
+  const mcpElicitation = createMcpElicitation()
+  const mcp = await startMcp({ clientOptions: { onElicitation: mcpElicitation.request } })
   for (const warning of mcp.warnings) {
     process.stderr.write(`Warning: ${warning}\n`)
   }
@@ -221,7 +223,7 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
     configStore: stores.configStore,
     persistPermissionMode: true,
     persistence: true,
-    mcp: { tools: mcp.tools, statuses: mcp.statuses },
+    mcp,
     hooks: hooks.runner,
     ...(contextWindow === undefined ? {} : { contextBudget: { maxTokens: contextWindow } }),
     ...(effortFromEnv(process.env.BUDINGX_REASONING_EFFORT) === undefined
@@ -253,7 +255,10 @@ async function runInteractive(config: ResolvedConfig, stores: Stores): Promise<v
         cwd: process.cwd(),
         home: homedir(),
         ...(runtime.tasks ? { tasks: runtime.tasks } : {}),
-        ...(runtime.mcp ? { mcp: runtime.mcp } : {}),
+        ...(runtime.taskPanel ? { taskPanel: runtime.taskPanel } : {}),
+        ...(runtime.skillCatalog ? { skillCatalog: runtime.skillCatalog } : {}),
+        ...(runtime.worktree ? { worktree: runtime.worktree } : {}),
+        ...(runtime.mcp ? { mcp: runtime.mcp, mcpElicitation } : {}),
         ...(runtime.contextUsage ? { contextUsage: runtime.contextUsage } : {}),
         ...(runtime.sessions ? { sessions: runtime.sessions } : {}),
         ...(runtime.context ? { context: runtime.context } : {}),

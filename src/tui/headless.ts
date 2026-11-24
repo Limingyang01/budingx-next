@@ -4,10 +4,14 @@ import { readFileSync } from 'node:fs'
 import type { CredentialStore } from '../storage/credentials.js'
 import type { ConfigStore } from '../storage/config-store.js'
 import type { ResolvedConfig } from '../storage/profiles.js'
-import type { SessionEvent, TurnFinalizedEvent, Usage } from '../core/events.js'
+import type { Message, SessionEvent, TurnFinalizedEvent, Usage } from '../core/events.js'
+import { createSessionStore } from '../storage/session-store.js'
+import { createWorkspace } from '../workspace/paths.js'
 import { createAgentRuntime, workspacePromptOptions, type AgentRuntime } from './runtime.js'
 import { startMcp } from './mcp/index.js'
 import { startHooks } from './hooks/index.js'
+import { parseExportArgs } from './commands/builtin-extended.js'
+import { exportSession } from './export.js'
 
 export type HeadlessOutputFormat = 'text' | 'json' | 'stream-json'
 export type HeadlessInputFormat = 'text' | 'stream-json'
@@ -140,6 +144,7 @@ export type HeadlessEvent =
       usage: Usage | null
       permission_denials: unknown[]
       errors?: { code: string; message: string }[]
+      export_path?: string
     }
 
 /**
@@ -267,6 +272,33 @@ export async function runHeadless(
       ? options.prompt
       : await readStdinText(io)
   const turnsInput = parseTurns(raw, options.inputFormat)
+  const exportRequest = options.prompt?.trim().match(/^\/export(?:\s+(.*))?$/)
+  if (exportRequest) {
+    const parsed = parseExportArgs(exportRequest[1] ?? '')
+    const sessionId = parsed.session ?? options.session
+    const error = parsed.error ?? (sessionId ? undefined : 'Specify a session ID with --session')
+    const store = createSessionStore({ home: io.home, workspaceRoot: createWorkspace(io.cwd ?? process.cwd()).root })
+    const saved = !error && sessionId ? store.restore(sessionId) : undefined
+    const result = saved?.status === 'restored' && sessionId
+      ? exportSession(saved.messages as Message[], {
+          sessionId, home: io.home, format: parsed.format, path: parsed.path,
+          title: saved.summary?.title, changes: saved.changes, knownSecrets: [config.apiKey]
+        })
+      : { ok: false as const, error: error ?? saved?.message ?? 'Session could not be loaded' }
+    if (options.outputFormat === 'text') {
+      if (result.ok) io.stdout.write(`Exported ${result.bytes} bytes: ${result.path}\n`)
+      else io.stderr.write(`Error: ${result.error}\n`)
+    } else {
+      writeEvent({
+        type: 'result', subtype: result.ok ? 'success' : 'error_during_execution', is_error: !result.ok,
+        duration_ms: Math.max(0, now() - startedAt), duration_api_ms: 0, num_turns: 0,
+        stop_reason: result.ok ? 'completed' : 'error', session_id: sessionId ?? '',
+        total_cost_usd: 0, usage: null, permission_denials: [],
+        ...(result.ok ? { export_path: result.path } : { errors: [{ code: 'BUDINGX_EXPORT_FAILED', message: result.error }] })
+      })
+    }
+    return result.ok ? 0 : 1
+  }
   if (turnsInput.length === 0) {
     // 无输入：不启动会话，只给出终态，避免凭空写用户数据。
     writeEvent({
@@ -302,30 +334,37 @@ export async function runHeadless(
   const rawEffort = process.env.BUDINGX_REASONING_EFFORT
   const reasoningEffort =
     rawEffort === 'low' || rawEffort === 'medium' || rawEffort === 'high' ? rawEffort : undefined
-  const runtime: AgentRuntime = createAgentRuntime({
-    cwd: io.cwd ?? process.cwd(),
-    getConfig: () => config,
-    approval: {
-      async request() {
-        return { outcome: 'deny', via: 'policy' }
-      }
-    },
-    configStore: stores.configStore,
-    mode: 'read_only',
-    mcp: { tools: mcp.tools, statuses: mcp.statuses },
-    hooks: hooks.runner,
-    ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
-    ...(options.maxTurns === undefined ? {} : { maxIterations: options.maxTurns }),
-    ...(io.home === undefined ? {} : { home: io.home }),
-    ...(options.session === undefined
-      ? {}
-      : { sessionId: options.session, persistence: true })
-  })
+  let runtime: AgentRuntime
+  try {
+    runtime = createAgentRuntime({
+      cwd: io.cwd ?? process.cwd(),
+      getConfig: () => config,
+      approval: {
+        async request() {
+          return { outcome: 'deny', via: 'policy' }
+        }
+      },
+      configStore: stores.configStore,
+      mode: 'read_only',
+      mcp,
+      hooks: hooks.runner,
+      ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+      ...(options.maxTurns === undefined ? {} : { maxIterations: options.maxTurns }),
+      ...(io.home === undefined ? {} : { home: io.home }),
+      ...(options.session === undefined
+        ? {}
+        : { sessionId: options.session, persistence: true })
+    })
+  } catch (error) {
+    await mcp.close()
+    io.stderr.write(`Error: ${error instanceof Error ? error.message : 'session startup failed'}\n`)
+    return 1
+  }
   const session = runtime.session
   if (options.session !== undefined) {
     const resumed = runtime.sessions?.resume(options.session)
     if (!resumed?.ok) {
-      io.stderr.write(`Error: session not found: ${options.session}\n`)
+      io.stderr.write(`Error: cannot restore session ${options.session}: ${resumed?.message ?? 'session not found'}\n`)
       session.dispose()
       await mcp.close()
       return 1

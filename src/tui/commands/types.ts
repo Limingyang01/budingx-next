@@ -1,5 +1,6 @@
 // SP006 §6.1：命令注册表三型契约（独立实现，行为语义对齐参考仓）
-import type { DenialRecord } from '../../core/events.js'
+import type { ChangeRecordSummary, DenialRecord } from '../../core/events.js'
+import type { ExportFormat } from '../export.js'
 import type { PermissionMode } from '../../core/permissions.js'
 import type { ReasoningEffort } from '../../core/provider.js'
 import type { Session } from '../../core/session.js'
@@ -7,6 +8,7 @@ import type { ConfigStore } from '../../storage/config-store.js'
 import type { CredentialStore } from '../../storage/credentials.js'
 import type { ResolvedConfig } from '../../storage/profiles.js'
 import type { PermissionsStore } from '../../storage/permissions.js'
+import type { SessionSearchEntry } from '../../storage/session-store.js'
 import type { discoverModelMetadata, discoverModels, probe } from '../../provider/openai.js'
 import type { BudingPermissionPolicy, PermissionRule } from '../../workspace/policy.js'
 import type { ChangeRecord, UndoOutcome } from '../../workspace/checkpoint.js'
@@ -23,9 +25,10 @@ export type CommandOutcome = {
   openResume?: boolean
   openRewind?: boolean
   openContext?: boolean
-  skillPrompt?: { name: string; body: string }
+  skillPrompt?: { name: string; body: string; allowedTools?: readonly string[] }
   /** SP009：/export 打开会话选择面板（local-jsx）。 */
   openExport?: boolean
+  exportOptions?: { format: ExportFormat; path?: string }
   /** SP009 0.9.1 SA-07：/reload-skills 重新发现技能后，宿主刷新补全与帮助。 */
   skillsReloaded?: number
   /** Interactive hosts open the diff dialog on this instead of printing. */
@@ -42,6 +45,7 @@ export type CommandOutcome = {
   openStatus?: boolean
   openStats?: boolean
   openDoctor?: boolean
+  openTasks?: boolean
   /**
    * SP007 MM-01 补：/image 已准备好的附件。终端无关——VS Code 等宿主会把
    * alt+v 当 chord 前缀吞掉，用户仍可用 /image 附上剪贴板图片。
@@ -91,23 +95,25 @@ export type CommandContext = {
       /** SP006：恢复后当前生效的会话 id（恢复会切换身份）。 */
       sessionId?: string
     }
+    fork?: (sessionId?: string) => { ok: boolean; sessionId?: string; message?: string; warnings?: string[] }
+    rename?: (title: string) => { ok: boolean; message?: string }
+    searchIndex?: () => SessionSearchEntry[]
     /** SP009：只读读取某个会话的历史，不切换身份、不写盘（/export 选择会话用）。 */
     read?: (sessionId: string) => {
       ok: boolean
       message?: string
       messages?: { role: string; blocks: unknown[] }[]
+      title?: string
+      changes?: ChangeRecordSummary[]
     }
   }
   /** SP009：技能列表注入点；缺省时从用户/项目目录发现。 */
-  skills?: {
-    name: string
-    description: string
-    body: string
-    path: string
-    scope: 'user' | 'project'
-    valid: boolean
-    error?: string
-  }[]
+  skills?: import('../skills.js').SkillEntry[]
+  skillCatalog?: {
+    list: () => import('../skills.js').SkillEntry[]
+    reload: () => import('../skills.js').SkillEntry[]
+    activate?: typeof import('../skills.js').activateSkill
+  }
   contextUsage?: {
     usage: () => {
       usedTokens?: number
@@ -142,6 +148,7 @@ export type CommandContext = {
   tasks?: {
     list: () => import('../tasks.js').TaskRecord[]
   }
+  taskPanel?: import('../tasks-panel.js').TasksPanelPort
   /** SP007 T9：子代理登记表（/tasks Agents 分组、停止/后台化）。 */
   agents?: {
     list: () => import('../../core/agent-runtime.js').AgentRecord[]
@@ -165,7 +172,13 @@ export type CommandContext = {
   /** SP006 CMD-09：MCP 连接状态（由宿主在启动时注入）。 */
   mcp?: {
     statuses: import('../mcp/types.js').McpServerStatus[]
+    start?: (name: string) => Promise<void>
+    stop?: (name: string) => Promise<void>
+    reconnect?: (name: string) => Promise<void>
+    subscribe?: (listener: () => void) => () => void
   }
+  mcpElicitation?: import('../mcp/elicitation.js').McpElicitationPort
+  worktree?: import('../runtime.js').AgentRuntime['worktree']
   /** SP006 CMD-07：删除类命令的宿主确认；返回 false 表示用户取消。 */
   confirm?: (request: { summary: string; preview: string[] }) => Promise<boolean>
   /** 当前工作区与数据根；缺省用 process.cwd()/homedir()。 */

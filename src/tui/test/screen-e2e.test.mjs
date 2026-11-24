@@ -343,7 +343,7 @@ test('session tab title describes the first substantive prompt and signals activ
 
 test('conversation shows question, elapsed time, completion and generated follow-up', async (t) => {
   const { release, provider } = gatedStream([
-    { type: 'thinking_delta', text: 'hidden-fixture' },
+    { type: 'thinking_delta', text: 'fixture reasoning\nonly visible when expanded' },
     '@gate',
     { type: 'text_delta', text: '我是 budingx' },
     done
@@ -357,14 +357,15 @@ test('conversation shows question, elapsed time, completion and generated follow
   })
   await ui.send('你是谁\r')
   await ui.waitFor((frame) => frame.includes('› 你是谁') && /正在思考/.test(frame) && /[1-9]\d* 秒/.test(frame))
-  assert.doesNotMatch(ui.raw(), /hidden-fixture/)
+  assert.match(ui.last(), /思考.*fixture reasoning/)
+  assert.doesNotMatch(ui.last(), /only visible when expanded/)
   release()
   await ui.waitFor((frame) =>
     /已完成 · 用时 (?:\d+ 小时 )?(?:\d+ 分钟 )?[1-9]\d* 秒 · \d{2}:\d{2}/.test(frame) && frame.includes('Tab 填入')
   )
   assert.match(ui.last(), /› 你是谁[\s\S]*我是 budingx/)
   await ui.send('\t')
-  assert.doesNotMatch(ui.raw(), /hidden-fixture/)
+  assert.doesNotMatch(ui.last(), /only visible when expanded/)
   assert.match(ui.last(), /> 再看看测试覆盖/)
   assert.doesNotMatch(ui.last(), /Tab 填入/)
   assert.equal(ui.session.history.filter(m => m.role === 'user').length, 1)
@@ -437,6 +438,8 @@ test('tool rows pulse, then show success and failure beside readable tool names'
   assert.doesNotMatch(final, /Additional tool result/)
   assert.match(final, /\d+\.\ds/)
   await ui.send('\x0f')
+  await ui.waitFor((frame) => /转录视图/.test(frame) && !frame.includes('Additional tool result'))
+  await ui.send('\x05')
   await ui.waitFor((frame) => frame.includes('Additional tool result'))
   await ui.send('\x0f')
   await ui.waitFor((frame) => !frame.includes('Additional tool result'))

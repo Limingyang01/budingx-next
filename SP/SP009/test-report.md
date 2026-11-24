@@ -177,3 +177,7 @@
 - [运行 #32](https://github.com/Limingyang01/budingx-next/actions/runs/45149813230) 基于 `68e2c1c`，Windows 与 Ubuntu 验证均通过。OIDC 上传已接受，发布作业在 `uploaded-awaiting-receipt` 耗尽可见性重试后退出 1。 [作业日志](https://github.com/Limingyang01/budingx-next/actions/runs/45149813230/job/137610154150#step:6:1833)
 - npm 官方源于 `2026-11-23T09:57:31.967Z` 公开 `budingx@0.9.1` 并将 `latest` 指向该版本。制品摘要与发布及来源证明、独立安装锁一致。
 - 独立安装复验通过（L2）：CLI 返回 `0.9.1`，fixture 流式请求命中 1 次，npm 验证 53 个 registry 签名及 7 份 attestation。正式发布使用的 run 与源码 SHA 由 npm provenance 核对；真实外部 Provider UNVERIFIED，按 §6 恢复条件补测。 [0.9.1 发布回执](../../release-notes/v0.9.1.md)
+
+## 8. 0.9.2 优化与缺陷修复自审
+
+0.9.2 在 `feature/SP009/tui-gap-optimizations` 基于 `b8c920d` 实施。12 项、28 条产品验收的对应测试、独立审阅修订、证据层与恢复条件见 [0.9.2 验证记录](tui-gap-optimizations/test-report.md)。会话、Worktree、技能与 MCP 的独立复审项已补回归，#42 真实 Provider 验收 3/3。0.9.2 的交叉验证门禁与版本准备回执单独记录。历史回执保留其原测试版本和事实。

@@ -88,7 +88,8 @@ export function createAgentTools(
         turnId: context.turnId ?? '',
         ...(readString(input, 'model') ? { model: readString(input, 'model') } : {}),
         runInBackground,
-        parentSignal: context.signal
+        parentSignal: context.signal,
+        allowedToolNames: context.allowedToolNames
       })
       return formatSpawnResult(result)
     }

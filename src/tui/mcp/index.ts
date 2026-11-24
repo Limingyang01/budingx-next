@@ -1,60 +1,63 @@
 import { readFileSync } from 'node:fs'
-import type { ToolContext, ToolHandler } from '../../core/tools.js'
+import type { ToolHandler } from '../../core/tools.js'
 import { mcpPath } from '../../storage/paths.js'
 import { extractMcpText, McpClient, mcpToolName } from './client.js'
-import {
-  McpError,
-  type McpClientOptions,
-  type McpServerConfig,
-  type McpServerStatus,
-  type McpToolDescriptor
-} from './types.js'
-
+import { remoteUrl } from './transport.js'
+import { McpError, type McpClientOptions, type McpServerConfig, type McpServerStatus } from './types.js'
 export * from './types.js'
 export { McpClient, extractMcpText, mcpToolName, resolveMcpEnv, MCP_PROTOCOL_VERSION } from './client.js'
 
 export interface LoadedMcpConfig {
   servers: McpServerConfig[]
   warnings: string[]
-  /** 配置文件存在但整体不可解析时为 true，宿主据此提示 /mcp。 */
   corrupt?: boolean
 }
-
 const ENV_REF = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/
-
 function validateServer(name: string, raw: any, warnings: string[]): McpServerConfig | undefined {
-  if (!raw || typeof raw !== 'object') {
+  const invalid = () => {
     warnings.push(`MCP 配置无效，已忽略：${name}`)
     return undefined
   }
-  if (typeof raw.command !== 'string' || raw.command.trim() === '') {
-    warnings.push(`MCP 服务器缺少 command，已忽略：${name}`)
-    return undefined
-  }
-  const args = Array.isArray(raw.args)
-    ? raw.args.filter((item: unknown): item is string => typeof item === 'string')
-    : undefined
-  const env: Record<string, string> = {}
-  if (raw.env && typeof raw.env === 'object') {
-    for (const [key, value] of Object.entries(raw.env)) {
-      if (typeof value !== 'string') continue
-      if (!ENV_REF.test(value.trim())) {
-        // SM-09：不打印、不保留明文密钥，只报告键名。
-        warnings.push(`MCP 服务器 ${name} 的环境变量 ${key} 必须是 \${ENV_NAME} 引用，已忽略`)
-        continue
-      }
-      env[key] = value.trim()
+  if (!raw || typeof raw !== 'object') return invalid()
+  const base = { name, enabled: raw.enabled !== false }
+  if (raw.type !== undefined && raw.type !== 'stdio') {
+    if (!['http', 'sse', 'ws'].includes(raw.type) || typeof raw.url !== 'string') return invalid()
+    try {
+      remoteUrl(raw.url, raw.type === 'ws')
+    } catch {
+      return invalid()
     }
+    if (
+      raw.headers !== undefined &&
+      (!raw.headers || typeof raw.headers !== 'object' || Array.isArray(raw.headers))
+    )
+      return invalid()
+    for (const [key, value] of Object.entries(raw.headers ?? {})) {
+      if (
+        typeof value !== 'string' ||
+        !ENV_REF.test(value) ||
+        !/^[A-Za-z0-9-]+$/.test(key) ||
+        /^(?:host|connection|content-length|content-type|accept|transfer-encoding|upgrade|sec-websocket-.*|mcp-.*)$/i.test(
+          key
+        )
+      )
+        return invalid()
+    }
+    return { ...base, type: raw.type, url: raw.url, ...(raw.headers ? { headers: raw.headers } : {}) }
+  }
+  if (typeof raw.command !== 'string' || !raw.command.trim()) return invalid()
+  const env: Record<string, string> = Object.create(null)
+  for (const [key, value] of Object.entries(raw.env ?? {})) {
+    if (typeof value === 'string' && ENV_REF.test(value.trim())) env[key] = value.trim()
+    else warnings.push(`MCP 服务器 ${name} 的环境变量 ${key} 必须是 \${ENV_NAME} 引用，已忽略`)
   }
   return {
-    name,
+    ...base,
     command: raw.command,
-    ...(args && args.length > 0 ? { args } : {}),
-    ...(Object.keys(env).length > 0 ? { env } : {}),
-    enabled: raw.enabled !== false
+    ...(Array.isArray(raw.args) ? { args: raw.args.filter((arg: unknown) => typeof arg === 'string') } : {}),
+    ...(Object.keys(env).length ? { env: { ...env } } : {})
   }
 }
-
 /** §8.2：读取 `~/.budingx/mcp.json`；损坏时返回空清单与告警，不崩溃。 */
 export function loadMcpConfig(homeDir?: string): LoadedMcpConfig {
   let text: string
@@ -85,34 +88,55 @@ export function loadMcpConfig(homeDir?: string): LoadedMcpConfig {
   return { servers, warnings }
 }
 
-/** SM-05：把 MCP 工具注册进 Agent 工具表（名字与 schema 均可用）。 */
 export function toAgentTools(client: McpClient): ToolHandler[] {
-  return client.tools.map((descriptor) => {
-    const handler: ToolHandler = {
-      name: mcpToolName(client.name, descriptor.name),
-      summary: descriptor.description ?? `MCP ${client.name}:${descriptor.name}`,
-      parameters: normalizeSchema(descriptor.inputSchema),
-      describe: () => `MCP ${client.name} · ${descriptor.name}`,
-      // 外部动作按写能力处理：只读档位拒绝，其余档位走审批通道（SM-07）。
+  function handler(
+    name: string,
+    summary: string,
+    parameters: unknown,
+    execute: ToolHandler['execute']
+  ): ToolHandler {
+    return {
+      name: mcpToolName(client.name, name),
+      summary,
+      parameters:
+        parameters && typeof parameters === 'object' && 'type' in parameters && parameters.type === 'object'
+          ? (parameters as Record<string, unknown>)
+          : { type: 'object', properties: {} },
+      describe: () => `MCP ${client.name} · ${name}`,
       capability: () => 'write',
       requiresApproval: () => true,
       target: () => ({ kind: 'none' }),
-      execute: async (input: unknown, _context: ToolContext) => {
-        const result = await client.callTool(descriptor.name, input ?? {})
-        const text = extractMcpText(result)
-        if (text) return text
-        return JSON.stringify(result ?? null)
-      }
+      execute
     }
-    return handler
-  })
-}
-
-function normalizeSchema(schema: unknown): Record<string, unknown> {
-  if (schema && typeof schema === 'object' && (schema as any).type === 'object') {
-    return schema as Record<string, unknown>
   }
-  return { type: 'object', properties: {} }
+  const tools = client.tools.map((tool) =>
+    handler(
+      tool.name,
+      tool.description ?? `MCP ${client.name}:${tool.name}`,
+      tool.inputSchema,
+      async (input, context) => {
+        const result = await client.callTool(tool.name, input ?? {}, context.signal)
+        return extractMcpText(result) || JSON.stringify(result ?? null)
+      }
+    )
+  )
+  if (client.capabilities?.resources) {
+    tools.push(
+      handler('list_resources', 'List resources on ' + client.name, undefined, async (_input, context) =>
+        JSON.stringify(await client.listResources(undefined, context.signal))
+      )
+    )
+    tools.push(
+      handler(
+        'read_resource',
+        'Read a listed resource on ' + client.name,
+        { type: 'object', properties: { uri: { type: 'string' } }, required: ['uri'] },
+        async (input, context) =>
+          JSON.stringify(await client.readResource((input as { uri: string })?.uri, context.signal))
+      )
+    )
+  }
+  return tools
 }
 
 export interface ConnectedMcp {
@@ -120,90 +144,228 @@ export interface ConnectedMcp {
   tools: ToolHandler[]
   statuses: McpServerStatus[]
   warnings: string[]
+  subscribe(listener: () => void): () => void
+  start(name: string): Promise<void>
+  stop(name: string): Promise<void>
+  reconnect(name: string): Promise<void>
   close(): Promise<void>
 }
 
-/** 连接全部启用的服务器；单个失败只降级该服务器（SM-08），并发以免串行叠加超时。 */
+type Slot = {
+  config: McpServerConfig
+  status: McpServerStatus
+  revision: number
+  attempts: number
+  timer?: NodeJS.Timeout
+  connecting?: Promise<void>
+  attempt?: AbortController
+  client?: McpClient
+}
 export async function connectMcpServers(
   configs: McpServerConfig[],
   options: McpClientOptions = {}
 ): Promise<ConnectedMcp> {
-  const outcomes = await Promise.all(
-    configs.map(async (config) => {
-      if (config.enabled === false) {
-        return {
-          status: {
-            name: config.name,
-            command: config.command,
-            connected: false,
-            tools: 0,
-            error: 'disabled'
-          } satisfies McpServerStatus,
-          warnings: [] as string[]
-        }
-      }
+  const clients: McpClient[] = [],
+    tools: ToolHandler[] = [],
+    warnings: string[] = []
+  const listeners = new Set<() => void>()
+  const slots: Slot[] = configs.map((config) => {
+    let address: string | undefined
+    if ('url' in config) {
       try {
-        const client = await McpClient.connect(config, options)
-        return {
-          client,
-          tools: toAgentTools(client),
-          status: {
-            name: config.name,
-            command: config.command,
-            connected: true,
-            tools: client.tools.length,
-            ...(client.protocolVersion ? { protocolVersion: client.protocolVersion } : {}),
-            ...(client.serverInfo?.name ? { serverName: client.serverInfo.name } : {}),
-            ...(client.serverInfo?.version ? { serverVersion: client.serverInfo.version } : {})
-          } satisfies McpServerStatus,
-          warnings: [] as string[]
-        }
-      } catch (error) {
-        const message = error instanceof McpError ? error.message : String(error)
-        return {
-          status: {
-            name: config.name,
-            command: config.command,
-            connected: false,
-            tools: 0,
-            error: message
-          } satisfies McpServerStatus,
-          warnings: [message]
-        }
+        address = remoteUrl(config.url, config.type === 'ws').origin
+      } catch {
+        /* startup reports invalid endpoints */
       }
-    })
-  )
-  const clients: McpClient[] = []
-  const tools: ToolHandler[] = []
-  const statuses: McpServerStatus[] = []
-  const warnings: string[] = []
-  for (const outcome of outcomes) {
-    if (outcome.client) clients.push(outcome.client)
-    if (outcome.tools) tools.push(...outcome.tools)
-    statuses.push(outcome.status)
-    warnings.push(...outcome.warnings)
+    }
+    const status: McpServerStatus = {
+      name: config.name,
+      command: 'command' in config ? config.command : (address ?? ''),
+      transport: config.type ?? 'stdio',
+      ...(address ? { address } : {}),
+      tools: 0,
+      resources: 0,
+      connected: false,
+      state: config.enabled === false ? 'disabled' : 'disconnected',
+      ...(config.enabled === false ? { error: 'disabled' } : {})
+    }
+    return { config, status, attempts: 0, revision: 0 }
+  })
+  const namespaces = configs.map((config) => mcpToolName(config.name, ''))
+  let closed = false
+  const publish = () => {
+    clients.splice(
+      0,
+      clients.length,
+      ...slots.flatMap((s) => (s.client && !s.client.isClosed ? [s.client] : []))
+    )
+    const all = clients.flatMap(toAgentTools)
+    const seen = new Set<string>(),
+      collisions = new Set<string>()
+    for (const item of all) {
+      if (seen.has(item.name)) collisions.add(item.name)
+      seen.add(item.name)
+    }
+    // Include disabled/disconnected origins when checking ownership. A saved tool
+    // name must never become an alias for a different server after a disconnect.
+    const unambiguous = all.filter(
+      (item) =>
+        !collisions.has(item.name) && namespaces.filter((prefix) => item.name.startsWith(prefix)).length === 1
+    )
+    tools.splice(0, tools.length, ...unambiguous)
+    for (const fn of listeners) fn()
   }
+  const clearCatalog = (slot: Slot) => {
+    slot.client = undefined
+    Object.assign(slot.status, { connected: false, tools: 0, resources: 0 })
+    delete slot.status.protocolVersion
+    delete slot.status.serverName
+    delete slot.status.serverVersion
+  }
+  const updateCatalog = (slot: Slot, client: McpClient) => {
+    Object.assign(slot.status, { tools: client.tools.length, resources: client.resources.length })
+    publish()
+  }
+  function retry(slot: Slot) {
+    if (
+      closed ||
+      slot.status.state === 'disabled' ||
+      !slot.config.type ||
+      slot.config.type === 'stdio' ||
+      slot.attempts >= 5
+    )
+      return
+    slot.status.state = 'reconnecting'
+    const delay = (options.reconnectDelayMs ?? 500) * 2 ** slot.attempts++
+    slot.timer = setTimeout(() => {
+      slot.timer = undefined
+      void connect(slot)
+    }, delay)
+    slot.timer.unref()
+  }
+  function connect(slot: Slot): Promise<void> {
+    if (closed) return Promise.reject(new Error('MCP manager closed'))
+    if (slot.connecting) return slot.connecting
+    if (slot.client) return Promise.resolve()
+    clearTimeout(slot.timer)
+    const attempt = new AbortController()
+    slot.attempt = attempt
+    slot.status.state = 'connecting'
+    delete slot.status.error
+    publish()
+    const run = async () => {
+      try {
+        const client = await McpClient.connect(slot.config, {
+          ...options,
+          signal: options.signal ? AbortSignal.any([options.signal, attempt.signal]) : attempt.signal,
+          onClose: (error) => {
+            if (slot.attempt !== attempt || !slot.client) return
+            clearCatalog(slot)
+            slot.status.state = 'disconnected'
+            slot.status.error = error.message
+            retry(slot)
+            publish()
+            options.onClose?.(error)
+          },
+          onToolsChanged: () => {
+            if (slot.attempt === attempt && slot.client) {
+              updateCatalog(slot, slot.client)
+              options.onToolsChanged?.()
+            }
+          }
+        })
+        if (slot.attempt !== attempt || closed) {
+          await client.close()
+          return
+        }
+        if (client.isClosed) throw new Error('Connection ended')
+        slot.client = client
+        slot.attempts = 0
+        Object.assign(slot.status, {
+          connected: true,
+          state: 'connected',
+          protocolVersion: client.protocolVersion
+        })
+        if (!slot.config.type || slot.config.type === 'stdio') {
+          slot.status.serverName = client.serverInfo?.name
+          slot.status.serverVersion = client.serverInfo?.version
+        }
+        updateCatalog(slot, client)
+      } catch (error) {
+        if (slot.attempt !== attempt || closed) return
+        clearCatalog(slot)
+        slot.status.error = error instanceof McpError ? error.message : `MCP ${slot.config.name} 连接失败`
+        slot.status.state = 'disconnected'
+        retry(slot)
+        publish()
+      } finally {
+        if (slot.attempt === attempt) slot.connecting = undefined
+      }
+    }
+    slot.connecting = run()
+    return slot.connecting
+  }
+  async function stop(slot: Slot) {
+    slot.revision++
+    clearTimeout(slot.timer)
+    const client = slot.client,
+      pending = slot.connecting,
+      attempt = slot.attempt
+    slot.connecting = undefined
+    slot.attempt = undefined
+    slot.attempts = 0
+    attempt?.abort()
+    clearCatalog(slot)
+    slot.status.state = 'disabled'
+    slot.status.error = 'disabled'
+    publish()
+    await Promise.all([client?.close(), pending])
+  }
+  function lookup(name: string): Slot {
+    const slot = slots.find((s) => s.config.name === name)
+    if (!slot) throw new Error('未知 MCP 服务器')
+    return slot
+  }
+  await Promise.all(slots.filter((s) => s.config.enabled !== false).map(connect))
+  warnings.push(
+    ...slots.flatMap((s) => (s.status.error && s.status.state !== 'disabled' ? [s.status.error] : []))
+  )
   return {
     clients,
     tools,
-    statuses,
+    statuses: slots.map((s) => s.status),
     warnings,
+    subscribe(fn) {
+      listeners.add(fn)
+      return () => listeners.delete(fn)
+    },
+    start: async (name) => {
+      const slot = lookup(name)
+      slot.revision++
+      slot.attempts = 0
+      await connect(slot)
+    },
+    stop: async (name) => stop(lookup(name)),
+    reconnect: async (name) => {
+      const slot = lookup(name)
+      const stopped = stop(slot)
+      const revision = slot.revision
+      await stopped
+      if (!closed && slot.revision === revision) await connect(slot)
+    },
     close: async () => {
-      await Promise.all(clients.map((client) => client.close()))
+      closed = true
+      listeners.clear()
+      await Promise.all(slots.map(stop))
     }
   }
 }
 
-/**
- * 启动装配：读配置 → 连接 → 合并配置告警。
- * 宿主在创建 AgentRuntime 之前调用，并把 tools/statuses 传入。
- */
-export async function startMcp(options: {
-  homeDir?: string
-  clientOptions?: McpClientOptions
-} = {}): Promise<ConnectedMcp> {
+export async function startMcp(
+  options: { homeDir?: string; clientOptions?: McpClientOptions } = {}
+): Promise<ConnectedMcp> {
   const loaded = loadMcpConfig(options.homeDir)
-  const connected = await connectMcpServers(loaded.servers, options.clientOptions)
-  connected.warnings.unshift(...loaded.warnings)
-  return connected
+  const manager = await connectMcpServers(loaded.servers, options.clientOptions)
+  manager.warnings.unshift(...loaded.warnings)
+  return manager
 }

@@ -32,6 +32,7 @@ export type KeyAction = {
   escape?: boolean
   interrupt?: boolean
   exit?: boolean
+  lengthExceeded?: boolean
 }
 
 const nothing: KeyAction = { handled: false }
@@ -55,8 +56,7 @@ export function applyKey(
   if (key.return) {
     // Shift+Enter inserts a line break instead of submitting.
     if (key.shift) {
-      buffer.newline()
-      return { handled: true }
+      return { handled: true, lengthExceeded: !buffer.newline() }
     }
     return { handled: true, submit: true }
   }
@@ -105,16 +105,14 @@ export function applyKey(
     return { handled: true }
   }
   if (key.ctrl && input === 'j') {
-    buffer.newline()
-    return { handled: true }
+    return { handled: true, lengthExceeded: !buffer.newline() }
   }
   if (input && !key.ctrl && !key.meta) {
     // Windows paste sends \r\n line endings; strip bare \r so it does not
     // land in the buffer as a visible/control character (SP002 TC-03).
     const cleaned = input.replace(/\r/g, '')
     if (!cleaned) return { handled: true }
-    buffer.insert(cleaned)
-    return { handled: true }
+    return { handled: true, lengthExceeded: !buffer.insert(cleaned) }
   }
   return nothing
 }

@@ -3,7 +3,8 @@ import { Box, Text } from 'ink'
 import { Marked, type Token, type Tokens } from 'marked'
 import { Fragment, memo, useEffect, useState, type ReactNode } from 'react'
 import { ACCENT } from './header.js'
-import type { ToolTranscriptEntry, TranscriptEntry } from './types.js'
+import { displayThinkingText, thinkingBody } from './thinking.js'
+import type { ThinkingTranscriptEntry, ToolTranscriptEntry, TranscriptEntry } from './types.js'
 
 const markdown = new Marked({ gfm: true })
 
@@ -146,6 +147,30 @@ function ToolMessage({ entry, ascii, expanded }: { entry: ToolTranscriptEntry; a
   )
 }
 
+function ThinkingMessage({
+  entry, ascii, expanded, selected
+}: {
+  entry: ThinkingTranscriptEntry
+  ascii: boolean
+  expanded: boolean
+  selected: boolean
+}) {
+  const text = displayThinkingText(entry)
+  const label = text
+    ? (ascii ? 'Thinking' : '思考')
+    : (ascii ? 'Thinking text unavailable' : '思考内容缺失')
+  const summary = !expanded && text ? (ascii ? ' - ' : ' · ') + text.split('\n', 1)[0] : ''
+  const prefix = selected ? (ascii ? '> ' : '› ') : '  '
+  return (
+    <Box marginTop={1} paddingX={1} flexDirection="column">
+      <Text wrap="truncate-end" color={selected ? ACCENT : undefined} dimColor={!selected} italic>
+        {prefix}{label}{summary}
+      </Text>
+      {expanded && text && <Box paddingLeft={2}><Text dimColor>{thinkingBody(entry, text, ascii)}</Text></Box>}
+    </Box>
+  )
+}
+
 /**
  * Parse an assistant message into render tokens, reusing the tokens of the
  * already completed part. The cache key is the entry object, so it is freed
@@ -168,9 +193,10 @@ function assistantTokens(entry: TranscriptEntry, text: string): Token[] {
 }
 
 export const TranscriptMessage = memo(function TranscriptMessage({
-  entry, ascii, expanded = false
-}: { entry: TranscriptEntry; ascii: boolean; expanded?: boolean }) {
+  entry, ascii, expanded = false, selected = false
+}: { entry: TranscriptEntry; ascii: boolean; expanded?: boolean; selected?: boolean }) {
   if (entry.kind === 'tool') return <ToolMessage entry={entry} ascii={ascii} expanded={expanded} />
+  if (entry.kind === 'thinking') return <ThinkingMessage entry={entry} ascii={ascii} expanded={expanded} selected={selected} />
   const text = stripVTControlCharacters(entry.text)
   if (entry.kind === 'user') {
     return (

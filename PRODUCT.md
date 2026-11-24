@@ -6,8 +6,8 @@
 > **上一版本**：0.9.0（SP009 TUI 独立交付和 npm 发布工程），由 [GitHub Actions 运行 #45100998785](https://github.com/Limingyang01/budingx-next/actions/runs/45100998785) 从源码 `aecd8b7` 发布（publishedAt=2026-11-23T02:43:37.613Z）。技能提示词不再进会话、`/export` 可选择会话、全自动档位不再被工作区边界拦截，并交付独立安装/升级/卸载/回退门禁与发布判定工具链。详见 [0.9.0 发行说明与发布回执](release-notes/v0.9.0.md)。
 >
 > **历史版本**：0.8.0（SP008）。详见 [0.8.0 发行说明](release-notes/v0.8.0.md)。
-> **说明书版本**：v1.36（2026-11-24 记录 0.9.2 开发中的 WebFetch 与子代理失败处理）
-> **更新日期**：2026-11-23
+> **说明书版本**：v1.37（2026-11-24 记录 0.9.2 优化）
+> **更新日期**：2026-11-24
 > **产品形态**：独立 MIT 许可的终端 Coding Agent（Node.js ≥ 22.18 + TypeScript，不依赖 Bun）
 
 本文件是面向使用者的产品说明书，回答「这是什么、能做什么、怎么用、还差什么」。仓库协作约定见 [AGENTS.md](AGENTS.md)，开发命令见 [开发指南](docs/development.md)，迭代明细见 [SP 目录](SP/README.md)。
@@ -444,8 +444,15 @@ budingx serve --transport ws --session my-session --port 0
 
 升级只替换程序文件，`~/.budingx` 的配置、凭据、会话与记忆保持不变；旧配置按迁移规则就地升级并保留 `.bak` 备份，未知字段不丢失。卸载保留数据；回退可安装指定旧版本，但旧版本读不了新版本写下的会话。
 
-#### 5.10.2 WebFetch 与子代理失败处理（0.9.2 开发分支）
+#### 5.10.2 0.9.2 TUI 优化（开发分支）
 
+- **会话**：`/branch [会话 ID]` 从当前或同工作区的已保存会话派生新 ID 并切换，`/fork` 是别名。派生保留分支点和待核对操作。用 `/rename <标题>` 保存最多 80 个字符的单行标题。`/resume` 面板支持搜索标题和会话正文，↑↓ 选中后按 Enter 恢复。正在被其他进程写入的会话需要等写入会话退出后恢复。
+- **导出**：`/export --format markdown` 打开会话选择器，可附 `--session <ID>` 直接选择。Markdown 保留中文与围栏代码，并列出本会话中有记录的结构化文件修改。旧会话或 Shell/Git 修改缺少归属证据时提供缺失说明。脚本可运行 `budingx --prompt "/export --format markdown --session <ID>"`。导出目标仍限数据目录，已有文件不会被覆盖。
+- **输入和转录**：Ctrl+S 暂存多行草稿，在空输入框按 Ctrl+S 取回。单次粘贴超过 10000 个 UTF-16 码元时折叠，Ctrl+G 查看，按两次 Enter 确认发送。输入最多 100000 个码元。Ctrl+O 进入全屏转录，Ctrl+E 全量展开，↑↓ 与 Enter 逐条展开或收起思考。旧会话的通知缺少类型标记时沿用原显示方式。
+- **技能和项目规则**：技能的 `user-invocable: false`、`disable-model-invocation: true` 分别关闭手动和模型调用。用 `@./资源.md` 在技能正文引用技能目录内的 UTF-8 文件。用 `allowed-tools` 限定当前回合可用工具，三档权限仍适用。`/reload-skills` 刷新目录。AGENTS.md/CLAUDE.md 的叶文本支持 `@path` 递归导入。局部规则按工具声明的路径应用，Shell 命令内部的 `cd` 不改变局部规则范围。
+- **后台任务**：`/tasks`（别名 `/bashes`）列出本会话的后台 Shell 和子代理。Enter 查看状态和最多 32 KiB 日志尾部。按 `s` 后确认停止所选任务。重启后旧进程不由面板接管。
+- **Worktree**：`/worktree create <名称>` 后可用 `/worktree enter <名称>` 进入，`/worktree exit` 返回来源工作区。工作树绑定随会话恢复。合并使用 `/worktree merge <名称>`，审批显示源和目标提交。合并与删除独立确认。源或目标存在未提交文件时，先处理本地变化。发生冲突时保留 Git 的冲突状态。
+- **MCP**：现有 stdio 配置继续使用。远程服务器用 `type: "http" | "sse" | "ws"`、`url` 和可选 `headers`；WS 采用 `mcp` 子协议。认证值用 `${ENV_NAME}` 引用。stdio 保留基本系统环境，额外的普通变量和凭据需在该服务器的 `env` 显式映射。`/mcp start|stop|reconnect <服务器名>` 管理连接。资源可列出和读取，TUI 可回答简单确认请求。支持的远程连接可自动恢复，未明确完成的调用不自动重发。目前支持空表单确认，OAuth、复杂表单、URL elicitation 和 sampling 超出本版支持范围。
 - WebFetch 结果最多 32768 个 UTF-16 码元，含网页摘要头、正文和截断提示。长页返回可用的截断正文，可继续尝试更具体的章节或来源。HTTP、网络、私网拒绝和超时仍报告各自错误。
 - 工具成功且结果过长时，模型收到带截断提示的成功结果。真实工具失败仍参与熔断。同步子代理结束于错误时，父 Agent 收到失败原因、相关工具与参数摘要、已完成调用和部分结果。后台任务的通知和 `TaskOutput` 同样提供失败原因。
 

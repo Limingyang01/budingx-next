@@ -12,7 +12,7 @@ import {
   type Key
 } from 'ink'
 import { createHash } from 'node:crypto'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import stringWidth from 'string-width'
 /**
  * Stream deltas are coalesced into one paint per frame.
@@ -26,8 +26,8 @@ const STREAM_FRAME_MS = 16
 import type { SessionEvent } from '../core/events.js'
 import type { Session } from '../core/session.js'
 import type { InkApprovalGateway } from './approval.js'
-import { changePermissionMode, discoverSkillCommands, effortDisplayLabel, formatTokens, interactiveModeLabel, runCommand, type CommandContext } from './commands.js'
-import { EditorBuffer } from './editor/buffer.js'
+import { changePermissionMode, discoverSkillCommands, effortDisplayLabel, formatTokens, interactiveModeLabel, runCommand, type CommandContext, type CommandOutcome } from './commands.js'
+import { EditorBuffer, INPUT_LENGTH_LIMIT } from './editor/buffer.js'
 import { useWheel } from './editor/mouse.js'
 import { applyKey } from './editor/keys.js'
 import { formatDuration, reduceFrame, renderTextLines } from './render/reducer.js'
@@ -55,6 +55,8 @@ import { workspacePromptOptions } from './runtime.js'
 import { ModelManager } from './model-manager.js'
 import { RulesManager } from './rules-manager.js'
 import { ResumePicker, RewindPicker, ContextGrid, ExportPicker } from './panels.js'
+import { mcpLines } from './commands/builtin-extended.js'
+import { TasksPanel } from './tasks-panel.js'
 import { AgentsMenu } from './agents-menu.js'
 import { StatusDialog } from './diagnostics/status-dialog.js'
 import { StatsDialog } from './diagnostics/stats-dialog.js'
@@ -108,6 +110,9 @@ export const COMMAND_NAMES = [
   'clear',
   'resume',
   'sessions',
+  'branch',
+  'fork',
+  'rename',
   'context',
   'compact',
   'cost',
@@ -147,17 +152,20 @@ const STATUS_EN: Record<string, string> = {
   tool_running: 'Running tool…',
   cancelling: 'Cancelling…'
 }
+const noStoreSubscription = () => () => {}
+const noElicitation = () => undefined
 export function App({
   session,
   gateway,
   commandContext,
   version,
-  cwd,
+  cwd: initialCwd,
   fullScreen = false,
   suggestNextPrompt,
   imageCache,
   onExit
 }: AppProps) {
+  const cwd = commandContext.permission?.workspace.root ?? commandContext.cwd ?? initialCwd
   const { exit } = useApp()
   const { stdout } = useStdout()
   const terminal = stdout as NodeJS.WriteStream
@@ -189,6 +197,11 @@ export function App({
   const [topic, setTopic] = useState<string>()
   const [scrollTop, setScrollTop] = useState<number>()
   const [transcriptMode, setTranscriptMode] = useState(false)
+  const [transcriptExpanded, setTranscriptExpanded] = useState(false)
+  const [toggledThinking, setToggledThinking] = useState<ReadonlySet<string>>(() => new Set())
+  const [selectedThinking, setSelectedThinking] = useState<string>()
+  const [thinkingTarget, setThinkingTarget] = useState<number>()
+  const modeScroll = useRef<{ normal?: number; transcript?: number }>({})
   const [search, setSearch] = useState<{ text: string; index: number }>()
   const displayedHistory = useMemo(
     () => transcriptMode || !fullScreen ? frame.transcript : collapseReadSearch(frame.transcript, !zh),
@@ -237,6 +250,7 @@ export function App({
   const scrolled = fullScreen && offset < maxScroll
   const unseenMessages = scrolled && !transcriptMode ? Math.max(0, frame.transcript.length - historyCountAtScroll) : 0
   function scrollHistory(lines: number) {
+    setThinkingTarget(undefined)
     if (lines < 0 && !scrolled) setHistoryCountAtScroll(frame.transcript.length)
     setScrollTop((previous) => {
       const current = Math.min(previous ?? maxScroll, maxScroll)
@@ -395,6 +409,14 @@ export function App({
     setQuestionError(undefined)
   }
   const editor = useMemo(() => new EditorBuffer(), [])
+  const mcpElicitation = commandContext.mcpElicitation
+  const mcpPrompt = useSyncExternalStore(mcpElicitation?.subscribe ?? noStoreSubscription, mcpElicitation?.snapshot ?? noElicitation)
+  useEffect(() => mcpElicitation?.attach(), [mcpElicitation])
+  const editorSessionId = useRef(session.id)
+  const [longPasteOpen, setLongPasteOpen] = useState(false)
+  const confirmedDraft = useRef<string | undefined>(undefined)
+  const longPaste = editor.longPasteLength > 0 && input.length > 0
+  const foldedPaste = longPaste && !longPasteOpen
   const query = search?.text.toLowerCase()
   const inputMatches = search && !transcriptMode
     ? editor.history.filter((item) => item.toLowerCase().includes(query ?? '')).toReversed()
@@ -444,7 +466,7 @@ export function App({
   const [cursorPosition, setPosition] = useState<{ x: number; y: number } | undefined>(
     undefined
   )
-  setCursorPosition(transcriptMode || search ? undefined : cursorPosition)
+  setCursorPosition(transcriptMode || search || foldedPaste ? undefined : cursorPosition)
   const commands = useRef<string[]>([])
   const [commandCount, setCommandCount] = useState(0)
   const queuePreviewRows = fullScreen ? Math.max(1, Math.min(3, Math.floor(rows / 12))) : frame.queue.length
@@ -457,18 +479,26 @@ export function App({
   const [rulesManagerOpen, setRulesManagerOpen] = useState(false)
   const [resumeOpen, setResumeOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const exportOptions = useRef<CommandOutcome['exportOptions']>(undefined)
   const [rewindOpen, setRewindOpen] = useState(false)
   const [contextOpen, setContextOpen] = useState(false)
   const [agentsOpen, setAgentsOpen] = useState(false)
   const [statusOpen, setStatusOpen] = useState(false)
   const [statsOpen, setStatsOpen] = useState(false)
   const [doctorOpen, setDoctorOpen] = useState(false)
+  const [tasksOpen, setTasksOpen] = useState(false)
   // SP007 T9：子代理卡片状态（agent_* 事件驱动）与图片附件（MM-05）。
   const [agentCards, setAgentCards] = useState<Map<string, AgentCardInput>>(() => new Map())
   const [pastedImages, setPastedImages] = useState<
     Map<number, { mediaType: string; data: string; width?: number; height?: number; hash?: string }>
   >(() => new Map())
+  const stashedImages = useRef<typeof pastedImages | undefined>(undefined)
   const nextImageId = useRef(1)
+  function allocateImageId(): number {
+    const id = Math.max(nextImageId.current, imageCache?.nextId?.() ?? 1)
+    nextImageId.current = id + 1
+    return id
+  }
   const lastEscRef = useRef(0)
   const [typing, setTyping] = useState(false)
   const typingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -477,6 +507,24 @@ export function App({
     setTyping(true)
     clearTimeout(typingTimer.current)
     typingTimer.current = setTimeout(() => setTyping(false), 700)
+  }
+  function showInputLimit() {
+    setHint(pick(`输入最多 ${INPUT_LENGTH_LIMIT} 个字符，原草稿已保留`, `Input limit is ${INPUT_LENGTH_LIMIT} characters. Draft retained.`))
+  }
+  function insertPaste(text: string) {
+    if (!editor.paste(text)) return showInputLimit()
+    confirmedDraft.current = undefined
+    if (editor.longPasteLength) setLongPasteOpen(false)
+    setInput(editor.text)
+    bumpEditor()
+    markTyping()
+  }
+  function changeTranscriptMode(next: boolean) {
+    modeScroll.current[transcriptMode ? 'transcript' : 'normal'] = scrollTop
+    setScrollTop(modeScroll.current[next ? 'transcript' : 'normal'])
+    setThinkingTarget(undefined)
+    setSearch(undefined)
+    setTranscriptMode(next)
   }
   // SP007 MM-01 补：把已准备好的图片挂为附件。粘贴键与 /image 命令共用同一条
   // 路径，保证「同一个 [Image #N] 占位、同一份提交时收集逻辑」。
@@ -497,10 +545,11 @@ export function App({
         return
       }
     }
-    const id = nextImageId.current++
+    const id = allocateImageId()
     setPastedImages((previous) => new Map(previous).set(id, { ...prepared, hash }))
     imageCache?.put(id, prepared.mediaType, Buffer.from(prepared.data, 'base64'))
-    editor.insert(`[Image #${id}]`)
+    if (!editor.insert(`[Image #${id}]`)) return showInputLimit()
+    confirmedDraft.current = undefined
     setInput(editor.text)
     bumpEditor()
     markTyping()
@@ -522,13 +571,18 @@ export function App({
   const [, bumpConfig] = useReducer((n: number) => n + 1, 0)
   const context = {
     ...commandContext,
-    ...(commandContext.cwd || !cwd ? {} : { cwd }),
+    ...(cwd ? { cwd } : {}),
     lang: (zh ? 'zh' : 'en') as 'zh' | 'en',
     setConfig: (next: Parameters<CommandContext['setConfig']>[0]) => {
       commandContext.setConfig(next)
       bumpConfig()
     }
   }
+  useEffect(() => commandContext.mcp?.subscribe?.(() => {
+    setCommandOverlay((overlay) => overlay?.title === 'MCP 服务器'
+      ? { ...overlay, lines: mcpLines({ ...commandContext, session }) }
+      : overlay)
+  }), [commandContext, session])
   const leave = () => {
     gateway.cancelAll()
     onExit()
@@ -593,6 +647,7 @@ export function App({
           managerDone.current = resolve
         })
       } else if (result.openExport) {
+        exportOptions.current = result.exportOptions
         setPosition(undefined)
         setExportOpen(true)
         await new Promise<void>((resolve) => { managerDone.current = resolve })
@@ -628,6 +683,10 @@ export function App({
         setPosition(undefined)
         setDoctorOpen(true)
         await new Promise<void>((resolve) => { managerDone.current = resolve })
+      } else if (result.openTasks && commandContext.taskPanel) {
+        setPosition(undefined)
+        setTasksOpen(true)
+        await new Promise<void>((resolve) => { managerDone.current = resolve })
       } else if (result.attachImage) {
         // SP007 MM-01 补：/image 把剪贴板/路径图片挂进输入区。
         attachPreparedImage(result.attachImage)
@@ -635,7 +694,8 @@ export function App({
         // SP009：技能正文作为上下文块交给模型，不在会话里回显提示词。
         setHint(pick(`技能 /${result.skillPrompt.name} 已加载`, `Skill /${result.skillPrompt.name} loaded`))
         session.submit(`/${result.skillPrompt.name}`, {
-          context: [{ source: `skill:${result.skillPrompt.name}`, content: result.skillPrompt.body }]
+          context: [{ source: `skill:${result.skillPrompt.name}`, content: result.skillPrompt.body }],
+          allowedSkillTools: result.skillPrompt.allowedTools
         })
       } else if (result.prompt) {
         setSideAnswer(undefined)
@@ -692,7 +752,7 @@ export function App({
     : [])
   // 0.5.4：/ 补全包含内置命令 + 已加载技能命令（对齐参考）。
   const commandList = useMemo(
-    () => [...COMMAND_NAMES, ...discoverSkillCommands().map((s) => s.name)],
+    () => [...COMMAND_NAMES, ...discoverSkillCommands(context).map((s) => s.name)],
     // skillsRevision：/reload-skills 后重新纳入新技能命令。
     [context, skillsRevision]
   )
@@ -758,7 +818,7 @@ export function App({
     suggestionAbort.current = undefined
     setSuggestionText('')
   }, [])
-  const submitPrompt = (text: string) => {
+  const submitPrompt = (text: string, literal = false) => {
     if (!context.getConfig().model.trim()) {
       setHint(pick('请先配置并选择模型', 'Configure and select a model first'))
       return
@@ -786,7 +846,7 @@ export function App({
     for (const [existingId, existing] of pastedImages) {
       if (existing.hash && outgoing.includes(`[Image #${existingId}]`)) keptByHash.set(existing.hash, existingId)
     }
-    for (const match of extractImagePaths(outgoing)) {
+    for (const match of literal ? [] : extractImagePaths(outgoing)) {
       try {
         const file = readImageFile(match.path)
         const prepared = prepareImage(file.data, file.mediaType)
@@ -796,7 +856,7 @@ export function App({
           outgoing = outgoing.replaceAll(match.token, `[Image #${kept}]`)
           continue
         }
-        const id = nextImageId.current++
+        const id = allocateImageId()
         keptByHash.set(hash, id)
         setPastedImages((previous) => new Map(previous).set(id, { ...prepared, hash }))
         imageCache?.put(id, prepared.mediaType, Buffer.from(prepared.data, 'base64'))
@@ -818,10 +878,10 @@ export function App({
       const existing = pastedImages.get(id)
       if (existing) pushImage(id, existing)
     }
-    const base = permission
+    const base = permission && !literal
       ? workspacePromptOptions(outgoing, permission.workspace, permission.policy)
       : undefined
-    session.submit(outgoing, { ...(base ?? {}), ...(images.length ? { images } : {}) })
+    session.submit(outgoing, { ...(base ?? {}), ...(images.length ? { images } : {}), preserveWhitespace: literal })
     if (consumed.size > 0) {
       setPastedImages((previous) => {
         const next = new Map(previous)
@@ -874,6 +934,22 @@ export function App({
           // SP006：恢复出的历史重建了转录，滚动位置与话题都要回到新内容。
           setTopic(undefined)
           setScrollTop(undefined)
+          modeScroll.current = {}
+          setThinkingTarget(undefined)
+          setSelectedThinking(undefined)
+          setToggledThinking(new Set())
+          if (editorSessionId.current !== session.id) {
+            editorSessionId.current = session.id
+            editor.resetDraft()
+            setInput('')
+            setLongPasteOpen(false)
+            confirmedDraft.current = undefined
+            stashedImages.current = undefined
+            setPastedImages(new Map())
+            nextImageId.current = event.messages.reduce((next, message) =>
+              message.blocks.reduce((maximum, block) => block.type === 'image' ? Math.max(maximum, block.id + 1) : maximum, next),
+            1)
+          }
           clearSuggestion()
         }
         if (event.type === 'turn_started') clearSuggestion()
@@ -951,6 +1027,7 @@ export function App({
     [session, gateway, editor, deliverEvent, requestSuggestion, clearSuggestion]
   )
   usePaste((text) => {
+    if (mcpPrompt) return
     if (managerDone.current) {
       managerInput.current?.paste(text)
       return
@@ -965,16 +1042,14 @@ export function App({
       return
     }
     if (transcriptMode) return
-    editor.insert(text.replace(/\r\n?/g, '\n'))
-    setInput(editor.text)
-    markTyping()
+    insertPaste(text)
   })
-  const beforeCursor = editor.lines
+  const beforeCursor = foldedPaste ? '' : editor.lines
     .slice(0, editor.cursor.line)
     .concat(Array.from(editor.lines[editor.cursor.line]).slice(0, editor.cursor.col).join(''))
     .join('\n')
   const cursorLines = renderTextLines('> ' + beforeCursor, width)
-  const draftLines = fullScreen ? renderTextLines('> ' + input, width) : []
+  const draftLines = fullScreen && !foldedPaste ? renderTextLines('> ' + input, width) : []
   const composerRows = Math.max(1, Math.min(4, Math.floor(rows / 6)))
   const draftStart = fullScreen
     ? Math.max(0, Math.min(draftLines.length - composerRows, cursorLines.length - composerRows))
@@ -991,6 +1066,12 @@ export function App({
     )
   })
   useInput((text, key) => {
+    if (mcpPrompt) {
+      if (text.toLowerCase() === 'y') mcpElicitation?.answer('accept')
+      else if (text.toLowerCase() === 'n') mcpElicitation?.answer('decline')
+      else if (key.escape) mcpElicitation?.answer('cancel')
+      return
+    }
     if (managerDone.current) {
       managerInput.current?.key(text, key)
       return
@@ -1185,10 +1266,7 @@ export function App({
         return
       }
       if (clip) {
-        editor.insert(clip)
-        setInput(editor.text)
-        bumpEditor()
-        markTyping()
+        insertPaste(clip)
         return
       }
       // 剪贴板里没有文本但有图片时，ctrl+v 也按图片附件处理：Windows 主键位是
@@ -1269,9 +1347,7 @@ export function App({
       return
     }
     if (fullScreen && key.ctrl && text === 'o') {
-      setSearch(undefined)
-      if (transcriptMode) setScrollTop(undefined)
-      setTranscriptMode((current) => !current)
+      changeTranscriptMode(!transcriptMode)
       return
     }
     if (search) {
@@ -1279,6 +1355,7 @@ export function App({
       else if (key.return) {
         if (inputMatch !== undefined) {
           editor.setText(inputMatch)
+          confirmedDraft.current = undefined
           setInput(editor.text)
           bumpEditor()
         }
@@ -1300,6 +1377,7 @@ export function App({
       return
     }
     if (fullScreen && key.ctrl && key.end) {
+      setThinkingTarget(undefined)
       setScrollTop(undefined)
       return
     }
@@ -1309,11 +1387,29 @@ export function App({
       return
     }
     if (transcriptMode) {
-      if (key.escape) {
-        setTranscriptMode(false)
-        setScrollTop(undefined)
-      }
+      if (key.escape) changeTranscriptMode(false)
       else if (text === '/') setSearch({ text: '', index: 0 })
+      else if (key.ctrl && text === 'e') {
+        setTranscriptExpanded((value) => !value)
+        setToggledThinking(new Set())
+      } else if (key.upArrow || key.downArrow) {
+        const available = frame.transcript.flatMap((entry, index) => entry.kind === 'thinking' && entry.id ? [{ id: entry.id, index }] : [])
+        if (available.length) {
+          const current = available.findIndex((entry) => entry.id === selectedThinking)
+          const next = current === -1
+            ? (key.upArrow ? available.length - 1 : 0)
+            : Math.max(0, Math.min(available.length - 1, current + (key.upArrow ? -1 : 1)))
+          setSelectedThinking(available[next].id)
+          setThinkingTarget(available[next].index)
+        }
+      } else if (key.return && selectedThinking) {
+        setToggledThinking((ids) => {
+          const next = new Set(ids)
+          if (next.has(selectedThinking)) next.delete(selectedThinking)
+          else next.add(selectedThinking)
+          return next
+        })
+      }
       return
     }
     if (planEditing !== null && !typing) {
@@ -1486,13 +1582,45 @@ export function App({
       return
     }
     if (suggestion && !session.isBusy && editor.isEmpty && key.tab && !key.shift && !approval) {
-      editor.insert(suggestion)
+      if (!editor.insert(suggestion)) return showInputLimit()
       setInput(editor.text)
       bumpEditor()
       return
     }
+    if (!approval && planEditing === null && key.ctrl && text === 's') {
+      const outcome = editor.toggleStash()
+      if (outcome === 'stored') {
+        stashedImages.current = pastedImages
+        setPastedImages(new Map())
+      } else if (outcome === 'restored') {
+        setPastedImages(stashedImages.current ?? new Map())
+        stashedImages.current = undefined
+      }
+      setInput(editor.text)
+      setLongPasteOpen(false)
+      confirmedDraft.current = undefined
+      bumpEditor()
+      const notices = {
+        stored: pick('草稿已暂存 · 空输入时 Ctrl+S 取回', 'Draft stashed · Ctrl+S on an empty input to restore'),
+        restored: pick('草稿已取回', 'Draft restored'),
+        occupied: pick('已有暂存草稿 · 清空或提交当前输入后取回', 'A draft is stashed · clear or submit the current input first'),
+        empty: pick('没有暂存草稿', 'No stashed draft')
+      }
+      setHint(notices[outcome])
+      return
+    }
+    if (longPaste && key.ctrl && text === 'g') {
+      setLongPasteOpen((value) => !value)
+      return
+    }
+    const beforeEdit = editor.text
     const action = applyKey(editor, text, key, { busy: session.isBusy })
     if (!action.handled) return
+    if (action.lengthExceeded) return showInputLimit()
+    if (editor.text !== beforeEdit) {
+      confirmedDraft.current = undefined
+      if (editor.longPasteLength) setLongPasteOpen(true)
+    }
     bumpEditor()
     if (action.interrupt) {
       session.interrupt('user')
@@ -1515,15 +1643,23 @@ export function App({
       return
     }
     if (action.submit) {
-      const submitted = editor.text.trim()
-      if (!submitted) return
+      const literal = editor.longPasteLength > 0
+      const submitted = literal ? editor.text : editor.text.trim()
+      if (!submitted.trim()) return
+      if (literal && confirmedDraft.current !== editor.text) {
+        confirmedDraft.current = editor.text
+        setHint(pick(`输入含长粘贴（${editor.text.length} 字符） · 再按 Enter 发送 · Ctrl+G 查看`, `Long paste (${editor.text.length} characters) · Enter again to send · Ctrl+G to review`))
+        return
+      }
+      confirmedDraft.current = undefined
+      setLongPasteOpen(false)
       setScrollTop(undefined)
       editor.commit(submitted)
       editor.clear()
       setInput('')
       setHint('')
       setTyping(false)
-      if (submitted.startsWith('/')) {
+      if (!literal && submitted.startsWith('/')) {
         // Interactive /diff opens the two-level dialog (SP003 AC CP-07);
         // pipe and non-workspace hosts keep the text output.
         if (permissionHandles && /^\/diff(\s|$)/.test(submitted)) {
@@ -1572,8 +1708,8 @@ export function App({
             )
           )
         }
-      } else if (pendingActions.current) schedule(() => submitPrompt(submitted))
-      else submitPrompt(submitted)
+      } else if (pendingActions.current) schedule(() => submitPrompt(submitted, literal))
+      else submitPrompt(submitted, literal)
       return
     }
     setInput(editor.text)
@@ -1593,8 +1729,26 @@ export function App({
       const done = managerDone.current; setResumeOpen(false); setHint(notice ?? ''); managerDone.current = undefined; done?.()
     }} />
   }
+  if (mcpPrompt) {
+    return (
+      <Box flexDirection="column" borderStyle="round" borderColor="yellow">
+        <Text bold>{pick('MCP 请求确认', 'MCP confirmation')} · {mcpPrompt.server}</Text>
+        <Text>{mcpPrompt.message.replace(/[\x00-\x09\x0b-\x1f\x7f]/g, '').slice(0, 1024)}</Text>
+        <Text dimColor>{pick('y 同意 · n 拒绝 · Esc 取消', 'y accept · n decline · Esc cancel')}</Text>
+      </Box>
+    )
+  }
+  if (tasksOpen && commandContext.taskPanel) {
+    return <TasksPanel tasks={commandContext.taskPanel} lang={zh ? 'zh' : 'en'} input={managerInput}
+      close={() => {
+        const complete = managerDone.current
+        setTasksOpen(false)
+        managerDone.current = undefined
+        complete?.()
+      }} />
+  }
   if (exportOpen) {
-    return <ExportPicker context={{ ...context, session }} current={{ id: session.id, history: session.history }} input={managerInput} close={(notice) => {
+    return <ExportPicker context={{ ...context, session }} current={{ id: session.id, history: session.history }} input={managerInput} options={exportOptions.current} close={(notice) => {
       const done = managerDone.current; setExportOpen(false); setHint(notice ?? ''); managerDone.current = undefined; done?.()
     }} />
   }
@@ -1852,8 +2006,10 @@ export function App({
           </Box>
           <HistoryWindow entries={displayedHistory} width={width} height={viewport.clientHeight}
             offset={Math.max(0, offset - headerMetrics.height)} fullScreen={fullScreen}
-            ascii={!zh} expanded={transcriptMode}
-            targetIndex={messageMatch} onTargetOffset={revealHistory} onPriorRowsChanged={correctPriorRows} />
+            ascii={!zh} expanded={transcriptMode && transcriptExpanded}
+            thinkingView={transcriptMode ? { toggledIds: toggledThinking, selectedId: selectedThinking } : undefined}
+            targetIndex={messageMatch ?? (transcriptMode ? thinkingTarget : undefined)}
+            onTargetOffset={revealHistory} onPriorRowsChanged={correctPriorRows} />
           {liveEntry && (
             <TranscriptMessage entry={liveEntry} ascii={!zh} />
           )}
@@ -2009,7 +2165,7 @@ export function App({
           </Box>
         )}
         {transcriptMode && (
-          <Text dimColor>{pick('转录视图 · / 搜索 · Ctrl+O 或 Esc 返回', 'Transcript · / search · Ctrl+O or Esc to return')}</Text>
+          <Text dimColor wrap="truncate-end">{pick('转录视图 · Ctrl+E 全量 · ↑↓ 思考 · Enter 展开 · / 搜索 · Esc 返回', 'Transcript · Ctrl+E expand all · Up/Down thinking · Enter toggle · / search · Esc return')}</Text>
         )}
         {scrolled && (
           <Box justifyContent="flex-end">
@@ -2044,6 +2200,8 @@ export function App({
             <Text wrap="truncate-end">
               {'> '}<Text dimColor>{pick('Tab 填入', 'Tab to fill')} · {suggestion}</Text>
             </Text>
+          ) : foldedPaste ? (
+            <Text dimColor wrap="truncate-end">{pick(`> 长粘贴已折叠（${input.length} 字符） · Ctrl+G 查看`, `> Long paste folded (${input.length} characters) · Ctrl+G to review`)}</Text>
           ) : (
             <Text>{fullScreen ? draftLines.slice(draftStart, draftStart + composerRows).join('\n') : `> ${input}`}</Text>
           )}

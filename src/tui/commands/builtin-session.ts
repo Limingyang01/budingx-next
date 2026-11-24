@@ -77,7 +77,8 @@ export function registerSessionCommands(registry: CommandRegistry): void {
     supportsNonInteractive: true,
     async run(_args, context) {
       const pick = pickFor(context)
-      const latest = context.sessions?.list()[0]
+      const choices = context.sessions?.list() ?? []
+      const latest = choices.find((entry) => entry.sessionId !== context.session.id || entry.turns > 0) ?? choices[0]
       if (!latest) {
         return outcomeResult({
           handled: true,
@@ -85,6 +86,38 @@ export function registerSessionCommands(registry: CommandRegistry): void {
         })
       }
       return outcomeResult(resumeCommand(latest.sessionId, context, pick))
+    }
+  })
+
+  registry.register({
+    name: 'branch',
+    aliases: ['fork'],
+    kind: 'local',
+    summary: '从当前或已保存的会话派生独立分支',
+    supportsNonInteractive: true,
+    async run(args, context) {
+      const pick = pickFor(context)
+      const result = context.sessions?.fork?.(args.trim() || undefined)
+      if (!result?.ok) return outcomeResult({ handled: true, error: result?.message ?? pick('会话分支不可用', 'Session branching is unavailable') })
+      const lines = [
+        pick(`已切换至会话分支 ${result.sessionId}`, `Switched to session branch ${result.sessionId}`),
+        ...(result.warnings ?? [])
+      ]
+      return outcomeResult({ handled: true, message: lines.join('\n') })
+    }
+  })
+
+  registry.register({
+    name: 'rename',
+    kind: 'local',
+    summary: '为当前会话保存标题',
+    supportsNonInteractive: true,
+    async run(args, context) {
+      const pick = pickFor(context)
+      const result = context.sessions?.rename?.(args)
+      return outcomeResult(result?.ok
+        ? { handled: true, message: pick('会话标题已保存', 'Session title saved') }
+        : { handled: true, error: result?.message ?? pick('会话命名不可用', 'Session naming is unavailable') })
     }
   })
 

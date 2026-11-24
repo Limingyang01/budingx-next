@@ -1,13 +1,9 @@
-/** SP006 §8.2：MCP 配置与工具描述契约（stdio 子集，D-06）。 */
+export type McpTransportType = 'stdio' | 'http' | 'sse' | 'ws'
 
-export interface McpServerConfig {
-  name: string
-  command: string
-  args?: string[]
-  /** 只允许 `${ENV_NAME}` 形式；明文密钥在加载时丢弃并告警。 */
-  env?: Record<string, string>
-  enabled?: boolean
-}
+export type McpServerConfig = { name: string; enabled?: boolean } & (
+  | { type?: 'stdio'; command: string; args?: string[]; env?: Record<string, string> }
+  | { type: 'http' | 'sse' | 'ws'; url: string; headers?: Record<string, string> }
+)
 
 export interface McpToolDescriptor {
   name: string
@@ -15,11 +11,22 @@ export interface McpToolDescriptor {
   inputSchema?: unknown
 }
 
+export interface McpResourceDescriptor {
+  uri: string
+  name: string
+  description?: string
+  mimeType?: string
+}
+
 export interface McpServerStatus {
   name: string
   command: string
   connected: boolean
   tools: number
+  resources?: number
+  transport?: McpTransportType
+  address?: string
+  state?: 'disabled' | 'connecting' | 'connected' | 'disconnected' | 'reconnecting'
   protocolVersion?: string
   serverName?: string
   serverVersion?: string
@@ -35,23 +42,26 @@ export type McpErrorCode =
   | 'BUDINGX_MCP_DISABLED'
 
 export class McpError extends Error {
-  readonly code: McpErrorCode
-  constructor(code: McpErrorCode, message: string) {
+  constructor(
+    readonly code: McpErrorCode,
+    message: string
+  ) {
     super(message)
     this.name = 'McpError'
-    this.code = code
   }
 }
 
+export type McpElicitationRequest = { server: string; message: string; signal: AbortSignal }
+export type McpElicitationAction = 'accept' | 'decline' | 'cancel'
+
 export interface McpClientOptions {
-  /** 连接（initialize + tools/list）超时，默认 10s。 */
   connectTimeoutMs?: number
-  /** 单次调用超时，默认 30s。 */
   callTimeoutMs?: number
-  /** 环境变量来源，默认 process.env；测试可注入。 */
+  elicitationTimeoutMs?: number
+  reconnectDelayMs?: number
   env?: NodeJS.ProcessEnv
-  /** 服务器退出时回调（宿主要移除其工具并 notice）。 */
+  signal?: AbortSignal
   onClose?: (error: McpError) => void
-  /** tools/list_changed 通知回调。 */
   onToolsChanged?: () => void
+  onElicitation?: (request: McpElicitationRequest) => Promise<McpElicitationAction>
 }

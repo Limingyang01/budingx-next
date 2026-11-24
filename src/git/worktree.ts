@@ -1,9 +1,8 @@
-// SP004 T8/T23 · worktree 进出（design §7.3，AC GW-05/GW-06/GW-07）。
-// 只做纯 git 路径（hook 包装留 SP006）：git worktree add / list / remove，不改主工作区。
+// SP004 T8/T23 · worktree 进出；SP009 #39 · 宿主确认后的本地合并。
 // 失败必须保持原 cwd 不变且不留半成品；名称与路径都做越界校验。
 // 删除一律需要宿主单次授权，并先列出可确认的残留（未提交文件/未合并提交）。
-import { execFile } from 'node:child_process'
-import { existsSync, mkdirSync, realpathSync, rmSync } from 'node:fs'
+import { execFile, execFileSync } from 'node:child_process'
+import { existsSync, mkdirSync, realpathSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { dataRoot } from '../storage/paths.js'
 import { readGitStatus } from './status.js'
@@ -33,6 +32,8 @@ export type WorktreeRemovalAuthorization = {
   branch: string
   /** 是否允许丢弃未提交改动与未合并提交。 */
   discardChanges: boolean
+  /** 由交互式命令在显示审批前采集，执行时重新核对。 */
+  snapshot?: WorktreeRemovalSnapshot
 }
 
 export type WorktreeExitResult = {
@@ -137,7 +138,7 @@ function runGit(args: string[], cwd: string): Promise<RunResult> {
         resolvePromise({
           ok: false,
           stdout: typeof stdout === 'string' ? stdout : '',
-          stderr: code === 'ENOENT' ? 'git 不可用' : stderr
+          stderr: code === 'ENOENT' ? 'git 不可用' : stderr || error.message
         })
       }
     )
@@ -151,29 +152,148 @@ function comparablePath(path: string): string | undefined {
   return process.platform === 'win32' ? realPath.toLowerCase() : realPath
 }
 
-/** 读取 `git worktree list --porcelain` 中某个真实路径对应的条目。 */
-async function findWorktreeEntry(
-  repoCwd: string,
-  targetPath: string
-): Promise<{ path: string; branch?: string } | undefined> {
-  const list = await runGit(['worktree', 'list', '--porcelain'], repoCwd)
-  if (!list.ok) return undefined
-  const records = list.stdout.split('\n\n')
+export type WorktreeEntry = {
+  path: string
+  head?: string
+  branch?: string
+  detached?: boolean
+  bare?: boolean
+  prunable?: boolean
+}
+
+/** 解析 Git porcelain 工作树列表，兼容旧的换行格式。 */
+export function parseWorktreeList(output: string): WorktreeEntry[] {
+  const nulTerminated = output.includes('\0')
+  const records = output.split(nulTerminated ? '\0\0' : /\r?\n\r?\n/)
+  const entries: WorktreeEntry[] = []
+  for (const record of records) {
+    const [first, ...lines] = record.split(nulTerminated ? '\0' : /\r?\n/)
+    if (!first?.startsWith('worktree ')) continue
+    const entry: WorktreeEntry = { path: first.slice('worktree '.length) }
+    for (const line of lines) {
+      if (line.startsWith('HEAD ')) entry.head = line.slice('HEAD '.length)
+      else if (line.startsWith('branch refs/heads/')) entry.branch = line.slice('branch refs/heads/'.length)
+      else if (line === 'detached') entry.detached = true
+      else if (line === 'bare') entry.bare = true
+      else if (line === 'prunable' || line.startsWith('prunable ')) entry.prunable = true
+    }
+    entries.push(entry)
+  }
+  return entries
+}
+
+export async function listWorktrees(cwd: string): Promise<WorktreeEntry[]> {
+  const list = await runGit(['worktree', 'list', '--porcelain', '-z'], cwd)
+  if (!list.ok) throw new Error(`无法列出 worktree：${list.stderr.trim() || 'git 失败'}`)
+  return parseWorktreeList(list.stdout)
+}
+
+async function findWorktreeEntry(repoCwd: string, targetPath: string): Promise<WorktreeEntry | undefined> {
+  return findLinkedWorktreeEntry(await listWorktrees(repoCwd), targetPath)
+}
+
+function findLinkedWorktreeEntry(entries: WorktreeEntry[], targetPath: string): WorktreeEntry | undefined {
   const wanted = comparablePath(targetPath)
   if (wanted === undefined) return undefined
-  for (const record of records) {
-    const lines = record.split('\n').filter((line) => line !== '')
-    const worktreeLine = lines.find((line) => line.startsWith('worktree '))
-    if (worktreeLine === undefined) continue
-    const entryPath = worktreeLine.slice('worktree '.length)
-    if (comparablePath(entryPath) !== wanted) continue
-    const branchLine = lines.find((line) => line.startsWith('branch '))
-    return {
-      path: entryPath,
-      ...(branchLine !== undefined ? { branch: branchLine.slice('branch refs/heads/'.length) } : {})
+  return entries.slice(1).find((entry) => !entry.prunable && comparablePath(entry.path) === wanted)
+}
+
+export async function getWorktreeBranch(cwd: string): Promise<string | undefined> {
+  const ref = await runGit(['symbolic-ref', '--quiet', 'HEAD'], cwd)
+  const name = ref.stdout.trim()
+  return ref.ok && name.startsWith('refs/heads/') ? name.slice('refs/heads/'.length) : undefined
+}
+
+type Checkout = {
+  path: string
+  branch: string
+  head: string
+  gitDir: string
+  commonDir: string
+}
+
+const CHECKOUT_ARGS = [
+  'rev-parse', '--path-format=absolute', '--show-toplevel', '--absolute-git-dir', '--git-common-dir',
+  'HEAD', '--symbolic-full-name', 'HEAD'
+]
+
+const COMMON_DIR_ARGS = ['rev-parse', '--path-format=absolute', '--git-common-dir']
+
+function parseCheckout(output: string, cwd: string, expectedBranch: string, role: string): Checkout {
+  const [path, gitDir, commonDir, head, branch] = output.trimEnd().split(/\r?\n/)
+  if (!path || !gitDir || !commonDir || !head || !OBJECT_ID_PATTERN.test(head)) {
+    throw new Error(`无法核对${role}身份与 HEAD：${cwd}`)
+  }
+  if (branch !== `refs/heads/${expectedBranch}`) {
+    throw new Error(`${role}未检出绑定分支 ${expectedBranch}，请先切回该分支：${cwd}`)
+  }
+  return { path, branch: expectedBranch, head, gitDir, commonDir }
+}
+
+async function readCheckout(cwd: string, expectedBranch: string, role: string): Promise<Checkout> {
+  const details = await runGit(CHECKOUT_ARGS, cwd)
+  return parseCheckout(details.ok ? details.stdout : '', cwd, expectedBranch, role)
+}
+
+async function readCommonDir(cwd: string): Promise<string | undefined> {
+  const result = await runGit(COMMON_DIR_ARGS, cwd)
+  return result.ok ? comparablePath(result.stdout.trimEnd()) : undefined
+}
+
+function assertLinkedCheckout(checkout: Checkout, path: string, originCommon: string | undefined): void {
+  const gitDir = comparablePath(checkout.gitDir)
+  if (!originCommon || !gitDir || gitDir === originCommon ||
+    comparablePath(checkout.commonDir) !== originCommon ||
+    comparablePath(checkout.path) !== comparablePath(path)) {
+    throw new Error(`无法核对 worktree 仓库身份：${path}`)
+  }
+}
+
+/** 会话恢复前同步验证原始工作区、已登记路径及检出分支。 */
+export function verifyWorktreeSessionSync(binding: WorktreeSession, originCwd: string): string {
+  const path = realPathOf(binding.path)
+  const origin = comparablePath(originCwd)
+  if (!path || !origin || origin === comparablePath(path) ||
+    (binding.originalCwd !== undefined && origin !== comparablePath(binding.originalCwd))) {
+    throw new Error(`无法核对 worktree 与来源工作区的路径：${binding.path}`)
+  }
+  const read = (args: string[], cwd: string): string => {
+    try {
+      return execFileSync('git', ['--no-optional-locks', ...args], {
+        cwd,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        maxBuffer: 8 * 1024 * 1024,
+        windowsHide: true
+      })
+    } catch {
+      throw new Error(`无法核对 worktree Git 身份：${cwd}`)
     }
   }
-  return undefined
+  const entries = parseWorktreeList(read(['worktree', 'list', '--porcelain', '-z'], originCwd))
+  const entry = findLinkedWorktreeEntry(entries, path)
+  if (entry?.branch !== binding.branch) throw new Error(`worktree 身份已变化或分支未检出：${path} · ${binding.branch}`)
+  const checkout = parseCheckout(read(CHECKOUT_ARGS, path), path, binding.branch, '绑定 worktree')
+  assertLinkedCheckout(checkout, path, comparablePath(read(COMMON_DIR_ARGS, originCwd).trimEnd()))
+  return path
+}
+
+/** 解析现有专用 worktree，供命令进入及宿主恢复时核对绑定。 */
+export async function resolveWorktreeSession(input: EnterWorktreeInput & { baseBranch: string }): Promise<WorktreeSession> {
+  const { cwd, name, baseBranch } = input
+  if (!isValidWorktreeName(name)) throw new Error(`非法 worktree 名称：${JSON.stringify(name)}`)
+  const root = input.root ?? join(dataRoot(input.home), 'worktrees')
+  const path = realPathOf(join(root, repoSlug(cwd), name))
+  const rootReal = realPathOf(root)
+  const branch = `${baseBranch}-budingx/${name}`
+  if (!path || !rootReal || !isInside(rootReal, path)) {
+    throw new Error(`找不到 worktree 或路径越界：${name}`)
+  }
+  const entry = await findWorktreeEntry(cwd, path)
+  if (entry?.branch !== branch) throw new Error(`worktree 身份已变化或分支未检出：${path} · ${branch}`)
+  const source = await readCheckout(path, branch, '源 worktree')
+  assertLinkedCheckout(source, path, await readCommonDir(cwd))
+  return { path, branch, baseBranch, originalCwd: cwd }
 }
 
 async function branchExists(cwd: string, branch: string): Promise<boolean> {
@@ -226,36 +346,149 @@ export async function enterWorktree(input: EnterWorktreeInput): Promise<Worktree
   }
   const added = await runGit(['worktree', 'add', worktreePath, '-b', branch], cwd)
   if (!added.ok) {
-    // 只清理本轮自己创建的路径，不触碰未知路径。
-    if (existsSync(worktreePath)) {
-      try {
-        rmSync(worktreePath, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 })
-      } catch {
-        // 清理失败时保留现场，错误信息里带上路径。
-      }
-    }
+    // Git owns its cleanup. A concurrent call may have created this path.
     throw new Error(`创建 worktree 失败：${added.stderr.trim() || added.stdout.trim()}`)
   }
   return { path: worktreePath, branch, baseBranch, originalCwd: cwd }
 }
 
-/** 统计 worktree 内未提交文件数（含暂存、未暂存、未跟踪；重命名按一条记录计）。 */
-async function countPendingFiles(worktreePath: string): Promise<number> {
-  const statusRun = await runGit(['status', '--porcelain=v1', '-z'], worktreePath)
-  if (!statusRun.ok) {
-    throw new Error(`无法复核未提交文件，拒绝删除：${worktreePath}；${statusRun.stderr.trim() || 'git status 失败'}`)
-  }
-  return statusRun.stdout.split('\0').filter((entry) => entry !== '').length
+function assertGitOperationIdle(checkout: Checkout): void {
+  const markers = [
+    'MERGE_HEAD', 'MERGE_AUTOSTASH', 'CHERRY_PICK_HEAD', 'REVERT_HEAD',
+    'REBASE_HEAD', 'rebase-merge', 'rebase-apply', 'sequencer', 'BISECT_START'
+  ]
+  const operation = markers.find((marker) => existsSync(join(checkout.gitDir, marker)))
+  if (operation) throw new Error(`Git 操作正在进行中（${operation}）：${checkout.path}`)
 }
 
-/** 统计专用分支相对基准分支的未合并提交数。 */
-async function countUnmergedCommits(repoCwd: string, baseBranch: string, branch: string): Promise<number> {
-  const countRun = await runGit(['rev-list', '--count', `refs/heads/${baseBranch}..refs/heads/${branch}`], repoCwd)
-  if (!countRun.ok) {
-    throw new Error(`无法复核未合并提交数量：${countRun.stderr.trim() || 'git rev-list 失败'}`)
+async function readPendingFiles(worktreePath: string, includeIgnored = false): Promise<string> {
+  const args = ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=none']
+  if (includeIgnored) args.push('--ignored')
+  const statusRun = await runGit(args, worktreePath)
+  if (!statusRun.ok) {
+    throw new Error(`无法复核工作区和暂存区：${worktreePath}；${statusRun.stderr.trim() || 'git status 失败'}`)
   }
-  const parsed = Number.parseInt(countRun.stdout.trim(), 10)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+  return statusRun.stdout
+}
+
+export type WorktreeMergePlan = { source: Checkout; target: Checkout }
+
+export async function prepareWorktreeMerge(session: WorktreeSession): Promise<WorktreeMergePlan> {
+  if (!session.originalCwd || session.baseBranch === session.branch) {
+    throw new Error('合并需要不同的源分支与已绑定的目标工作区')
+  }
+  const entry = await findWorktreeEntry(session.originalCwd, session.path)
+  if (entry?.branch !== session.branch) throw new Error(`worktree 身份已变化：${session.path} · ${session.branch}`)
+  const source = await readCheckout(session.path, session.branch, '源 worktree')
+  const target = await readCheckout(session.originalCwd, session.baseBranch, '目标工作区')
+  assertLinkedCheckout(source, session.path, comparablePath(target.commonDir))
+  if (comparablePath(source.path) === comparablePath(target.path)) {
+    throw new Error('合并的源与目标 worktree 路径无效')
+  }
+  for (const checkout of [source, target]) {
+    assertGitOperationIdle(checkout)
+    if (await readPendingFiles(checkout.path)) {
+      throw new Error(`合并要求工作区和暂存区干净：${checkout.path} · ${checkout.branch}`)
+    }
+  }
+  return { source, target }
+}
+
+const OBJECT_ID_PATTERN = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/
+
+/** Git 2.51 的普通 ort 合并仍可能覆盖本地忽略文件，因此预检其合并树。 */
+async function assertIgnoredFilesPreserved({ source, target }: WorktreeMergePlan): Promise<void> {
+  const ignored = await runGit(
+    ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '--no-empty-directory', '-z'],
+    target.path
+  )
+  if (!ignored.ok) throw new Error(`无法核对目标工作区的忽略文件：${target.path}`)
+  if (!ignored.stdout) return
+  const tree = await runGit(['merge-tree', '--write-tree', '--no-messages', target.head, source.head], target.path)
+  const treeId = tree.stdout.split(/\r?\n/, 1)[0]
+  if (!treeId || !OBJECT_ID_PATTERN.test(treeId)) {
+    throw new Error(`无法验证合并是否会覆盖目标工作区的忽略文件：${tree.stderr.trim()}`)
+  }
+  const diff = await runGit(
+    ['diff', '--name-only', '--no-renames', '--diff-filter=ACMT', '-z', target.head, treeId, '--'],
+    target.path
+  )
+  if (!diff.ok) throw new Error(`无法核对合并对目标工作区的影响：${target.path}`)
+  const normalize = (path: string) => {
+    const name = path.replace(/\/$/, '')
+    return process.platform === 'win32' ? name.toLowerCase() : name
+  }
+  const ignoredPaths = new Set(ignored.stdout.split('\0').filter(Boolean).map(normalize))
+  const changedPaths = diff.stdout.split('\0').filter(Boolean).map(normalize)
+  // 路径同名或文件与目录互相替代时，忽略文件可能被覆盖。
+  for (const changed of changedPaths) {
+    let prefix = changed
+    while (prefix) {
+      if (ignoredPaths.has(prefix)) throw new Error(`合并会覆盖目标工作区的忽略路径：${prefix}`)
+      const parent = prefix.lastIndexOf('/')
+      prefix = parent === -1 ? '' : prefix.slice(0, parent)
+    }
+  }
+  const changed = new Set(changedPaths)
+  for (const ignoredPath of ignoredPaths) {
+    let parent = ignoredPath.lastIndexOf('/')
+    while (parent !== -1) {
+      const prefix = ignoredPath.slice(0, parent)
+      if (changed.has(prefix)) throw new Error(`合并会覆盖目标工作区的忽略路径：${ignoredPath}`)
+      parent = prefix.lastIndexOf('/')
+    }
+  }
+}
+
+/** 复核宿主已批准的源与目标后，以批准的源提交执行正常 Git 合并。 */
+export async function mergeWorktree(session: WorktreeSession, approved: WorktreeMergePlan): Promise<void> {
+  const current = await prepareWorktreeMerge(session)
+  if (JSON.stringify(current) !== JSON.stringify(approved)) {
+    throw new Error('源或目标 worktree 的身份或 HEAD 在审批期间发生变化，请重新发起合并')
+  }
+  await assertIgnoredFilesPreserved(current)
+  const { source, target } = current
+  const merged = await runGit([
+    'merge', '--ff', '--no-squash', '--commit', '--no-edit', '--no-autostash', '--no-overwrite-ignore', '--', source.head
+  ], target.path)
+  if (merged.ok) return
+  if (existsSync(join(target.gitDir, 'MERGE_HEAD'))) {
+    const conflicts = await runGit(['diff', '--diff-filter=U', '--name-only', '-z'], target.path)
+    const paths = conflicts.ok ? conflicts.stdout.split('\0').filter(Boolean).join('、') : ''
+    const state = paths ? `合并冲突：${paths}` : '合并尚未完成'
+    throw new Error(`${state}。Git 合并状态已保留，请在 ${target.path} 检查 git status。${merged.stderr.trim()}`)
+  }
+  throw new Error(`合并失败：${merged.stderr.trim() || merged.stdout.trim() || 'git merge 失败'}`)
+}
+
+type WorktreeRemovalSnapshot = {
+  source: Checkout
+  baseHead: string
+  status: string
+  discardedFiles: number
+  discardedCommits: number
+}
+
+export async function prepareWorktreeRemoval(session: WorktreeSession): Promise<WorktreeRemovalSnapshot> {
+  const repoCwd = session.originalCwd ?? session.path
+  const entry = await findWorktreeEntry(repoCwd, session.path)
+  if (entry?.branch !== session.branch || session.branch === session.baseBranch) {
+    throw new Error(`无法复核 worktree 身份，拒绝删除；可确认残留：路径 ${session.path}、分支 ${session.branch}`)
+  }
+  const source = await readCheckout(entry.path, session.branch, '待删除 worktree')
+  assertLinkedCheckout(source, session.path, await readCommonDir(repoCwd))
+  assertGitOperationIdle(source)
+  const status = await readPendingFiles(source.path, true)
+  const discardedFiles = status.split('\0').filter((entry) => entry !== '').length
+  const base = await runGit(['rev-parse', '--verify', `refs/heads/${session.baseBranch}`], repoCwd)
+  if (!base.ok) throw new Error(`无法复核基准分支，拒绝删除：${session.baseBranch}`)
+  const baseHead = base.stdout.trim()
+  const count = await runGit(['rev-list', '--count', `${baseHead}..${source.head}`], repoCwd)
+  const discardedCommits = Number.parseInt(count.stdout.trim(), 10)
+  if (!count.ok || !Number.isSafeInteger(discardedCommits)) {
+    throw new Error(`无法复核未合并提交数量：${count.stderr.trim() || 'git rev-list 失败'}`)
+  }
+  return { source, baseHead, status, discardedFiles, discardedCommits }
 }
 
 /**
@@ -273,24 +506,20 @@ export async function exitWorktree(current: ExitWorktreeInput): Promise<Worktree
     throw new Error('删除 worktree 需要宿主单次授权：缺少 authorization（未经授权不会删除任何文件）')
   }
   const repoCwd = current.originalCwd ?? current.path
-  const entry = await findWorktreeEntry(repoCwd, current.path)
-  if (entry === undefined || entry.branch !== current.branch) {
-    throw new Error(
-      `无法复核 worktree 身份，拒绝删除；可确认残留：路径 ${current.path}、分支 ${current.branch}`
-    )
-  }
-
+  const snapshot = await prepareWorktreeRemoval(current)
   const authorizedPath = comparablePath(authorization.worktree)
   if (
     authorizedPath === undefined ||
-    authorizedPath !== comparablePath(entry.path) ||
+    authorizedPath !== comparablePath(snapshot.source.path) ||
     authorization.branch !== current.branch
   ) {
     throw new Error(`授权与目标 worktree 不匹配，拒绝删除：授权 ${authorization.worktree}@${authorization.branch}`)
   }
 
-  const discardedFiles = await countPendingFiles(entry.path)
-  const discardedCommits = await countUnmergedCommits(repoCwd, current.baseBranch, current.branch)
+  if (authorization.snapshot && JSON.stringify(snapshot) !== JSON.stringify(authorization.snapshot)) {
+    throw new Error('worktree 的身份、HEAD 或未提交文件在审批期间发生变化，请重新发起删除')
+  }
+  const { discardedFiles, discardedCommits } = snapshot
   const hasResidue = discardedFiles > 0 || discardedCommits > 0
   if (hasResidue && !(current.discard_changes === true && authorization.discardChanges === true)) {
     throw new Error(
@@ -299,7 +528,10 @@ export async function exitWorktree(current: ExitWorktreeInput): Promise<Worktree
     )
   }
 
-  const removed = await runGit(['worktree', 'remove', '--force', entry.path], repoCwd)
+  const removed = await runGit(
+    ['worktree', 'remove', ...(discardedFiles > 0 ? ['--force'] : []), '--', snapshot.source.path],
+    repoCwd
+  )
   if (!removed.ok) {
     throw new Error(`删除 worktree 失败：${removed.stderr.trim() || removed.stdout.trim()}；可确认残留：路径 ${current.path}`)
   }
