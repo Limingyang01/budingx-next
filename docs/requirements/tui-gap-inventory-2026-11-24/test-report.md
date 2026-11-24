@@ -37,6 +37,13 @@
 - 门禁复跑：`npm run merge:gate`；报告落 `artifacts/merge-gate/`（gitignored）。
 - 版本口径张力（0.9.2 承载新增能力但按用户决定保持 patch 号）已登记路线图版本记录，发布前由版本准备流程核对台账。
 
+## 门禁首轮 RED 与处置（2026-11-24）
+
+- 首轮 `npm run merge:gate` 结论 RED：`npm test` 中 `scripts/merge/cross-validate.test.mjs` 的「master 自身复核」用例失败（9 用例 8 过 1 败），其余门禁项（spec:check、skills:check、version:check、pack-smoke、test:upgrade）全部退出码 0。
+- 原因：该用例断言 master 复核报告必须落在排序最后的 SP 目录；本次按用户指令新建 **PLANNED** 的 `SP011/`、`SP015/` 目录（尚无验证报告，属正常状态），使断言前提失效。门禁函数 `reportFileForMaster` 的 documented 契约是「审计最新一份真实存在的报告」，测试断言比契约更严。
+- 处置：把该用例断言修正为与函数契约一致——审计最新一份真实存在的 SP 报告、显式跳过无报告的计划轮、保留「报告必须真实存在」与空输入返回 null 的断言。**未降低门禁阈值、未删除 FAIL 拦截与恢复条件要求**；修正后重跑门禁，结果见 `artifacts/merge-gate/` 报告与交接记录。
+- 同轮只读复核（子代理调研 + 直接读码）澄清 #42 两处事实并已写入需求正本：主回合本不因单个子代理失败而崩（回归项保留）；后台失败通知 `<result>` 误用 `record.result` 丢失失败原因；终止原因仅 failed/cancelled/budget 三类。
+
 ## Agent 自审记录
 
 - 逐条结论：文档类检查全部 PASS（见上表）；产品 AC 全部 UNVERIFIED 且有恢复条件；无 FAIL 行。

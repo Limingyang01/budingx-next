@@ -14,11 +14,15 @@ test('报告路径约定：SP 分支读当轮报告，feature 规划分支读 do
   assert.equal(reportFileForBranch('feature/bad slug'), null)
 })
 
-test('master 自身复核：审计仓内最新一轮 SP 报告，不因缺 SP slug 判缺失', () => {
+test('master 自身复核：审计仓内最新一份 SP 报告，跳过尚无报告的计划轮', () => {
   const dirs = spDirectories()
   assert.ok(dirs.length > 0, '仓内应存在 SP 轮次目录')
+  // 契约：审计「最新一份真实存在的报告」。PLANNED 轮次目录可以先于报告存在
+  // （2026-11-24 登记 SP011/SP015 需求时即如此），不得因此判缺失或审计空目录。
+  const withReport = dirs.filter((dir) => existsSync(path.join(ROOT, 'SP', dir, 'test-report.md')))
+  assert.ok(withReport.length > 0, '仓内应至少存在一轮带验证报告的 SP')
   const file = reportFileForMaster(dirs)
-  assert.ok(file && file.endsWith(path.join('SP', dirs[dirs.length - 1], 'test-report.md')))
+  assert.equal(file, path.join(ROOT, 'SP', withReport[withReport.length - 1], 'test-report.md'))
   assert.ok(existsSync(file), 'master 审计目标报告应真实存在')
   assert.equal(reportFileForMaster([]), null)
 })
