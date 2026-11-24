@@ -23,13 +23,13 @@
 
 ## 验证与验收
 
-状态：**UNVERIFIED**。尚未执行核查、修复、回归或集成验证。文档阶段仅完成源码级事实核对（读取 `src/core`、`src/exec`、`src/storage`、`src/host` 与 `src/tui/headless.ts` 的真实实现），未产生行为证据。
+状态：**UNVERIFIED**。尚未执行核查、修复、回归或集成验证。文档阶段仅完成源码级事实核对（读取 `src/core`、`src/exec`、`src/storage`、`src/host` 与 `src/tui/headless.ts` 的真实实现），Core 接入核查的正式行为证据仍待取得。本轮 CAN 恢复与两种 T7 续跑探针见[中期检查复审实测](../test-report.md#v14-验收取证)。
 
 计划的证据分层：readiness 的每条 PASS 必须指向真实实现或测试；每项缺陷修复先有失败用例（RED）再实现复测（GREEN）；修复后定向套件与 `npm test` 零失败；TUI、无头、serve 三入口行为不得漂移。
 
 ## 集成与发布
 
-v1.3 已进入 master（`46b9183`）。以下为首版文档的历史集成回执。
+v1.4 文档已进入 master（`bc00d2f`）。以下为首版文档的历史集成回执。
 
 - 源：`feature/SP010/mid-term-coding-checkpoint`（`7e8948c`）→ 目标 `master`（`74c5156`）；merge-base `50e558f`；合并提交 `d09445a`（`--no-ff`）；ancestry 证明源提交为 master 祖先。
 - 门禁：合入前 GREEN（`artifacts/merge-gate/feature-SP010-mid-term-coding-checkpoint-2026-11-24T07-10-50-700Z.md`），合入后 master 复核 GREEN（`artifacts/merge-gate/master-2026-11-24T07-17-04-811Z.md`）。
