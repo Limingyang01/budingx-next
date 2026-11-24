@@ -1,6 +1,6 @@
 # SP010 · 中期编码效果检查
 
-状态：ACTIVE（文档阶段，v1.1 已自审）｜更新：2026-11-24｜输入基线：master `74c5156`｜SP009 0.9.2 已发布
+状态：ACTIVE（文档阶段，v1.2 已自审）｜更新：2026-11-24｜输入基线：master `74c5156`｜SP009 0.9.2 已发布
 
 ## 本轮目标与边界
 
@@ -24,8 +24,8 @@
 
 | 功能/优化目录 | 来源 / 身份 | 验收目标 | 责任范围 | 阶段 | 需求 / 设计 / 计划 / STATUS | 验证 | 集成状态 | 下一步 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `coding-parity-checkpoint` | 路线图 SP010 行；SP001 任务清单与统计纪律；USER_CONFIRMED 2026-11-24 指令 | CP-01…CP-10：任务集分母与快照、盲测纪律、预算与回合上限、真实执行、统计报告、保护用例全通过、长任务稳定性、npm 制品核对、仪器可信、中期报告口径 | 评估与测量资产（`scripts/eval`）、Core 契约、制品与文档 | ✅需求→✅设计（自审通过）→✅计划→[ ]实施→[ ]测试→[ ]交付 | [需求](coding-parity-checkpoint/requirements.md) · [设计](design/design.zh.md) · [计划](design/plan.zh.md) · [STATUS](coding-parity-checkpoint/STATUS.md) · [验证报告](test-report.md) | UNVERIFIED（文档阶段，未执行） | 已合入 master（`d09445a`） | T0 基线冻结 → T1 任务集 → T2 仪器可信化 |
-| `core-reliability` | 路线图 SP010 行「修复影响高级能力接入的 Core 缺陷」；SP011–SP014 接入前置；USER_CONFIRMED 2026-11-24 指令 | CR-01…CR-06：接入前置核查与 GAP 归属、Core 缺陷修复（红绿）、评估回合上限不一致必修、无头审批语义归类、大输出与图片上限行为、交接文档 | Core（`src/core`）、评估资产、文档与交接 | ✅需求→✅设计（自审通过）→✅计划→[ ]实施→[ ]测试→[ ]交付 | [需求](core-reliability/requirements.md) · [设计](design/design.zh.md) · [计划](design/plan.zh.md) · [STATUS](core-reliability/STATUS.md) · [验证报告](test-report.md) | UNVERIFIED（文档阶段，未执行） | 已合入 master（`d09445a`） | T9 接入前置核查 → T10 缺陷修复 |
+| `coding-parity-checkpoint` | 路线图 SP010 行；SP001 任务清单与统计纪律；USER_CONFIRMED 2026-11-24 指令 | CP-01…CP-10：任务集分母与快照、盲测纪律、预算与回合上限、真实执行、统计报告、保护用例全通过、长任务稳定性、npm 制品核对、仪器可信、中期报告口径 | 评估与测量资产（`scripts/eval`）、Core 契约、制品与文档 | ✅需求→✅设计（自审通过）→✅计划→[ ]实施→[ ]测试→[ ]交付 | [需求](coding-parity-checkpoint/requirements.md) · [设计](design/design.zh.md) · [计划](design/plan.zh.md) · [STATUS](coding-parity-checkpoint/STATUS.md) · [验证报告](test-report.md) | UNVERIFIED（文档阶段，未执行） | v1.1 在 master（`3b58c3c`），v1.2 随本次 master 文档提交登记 | T0 基线冻结 → T1 任务集 → T2 仪器可信化 |
+| `core-reliability` | 路线图 SP010 行「修复影响高级能力接入的 Core 缺陷」；SP011–SP014 接入前置；USER_CONFIRMED 2026-11-24 指令 | CR-01…CR-06：接入前置核查与 GAP 归属、Core 缺陷修复（红绿）、评估回合上限不一致必修、无头审批语义归类、大输出与图片上限行为、交接文档 | Core（`src/core`）、评估资产、文档与交接 | ✅需求→✅设计（自审通过）→✅计划→[ ]实施→[ ]测试→[ ]交付 | [需求](core-reliability/requirements.md) · [设计](design/design.zh.md) · [计划](design/plan.zh.md) · [STATUS](core-reliability/STATUS.md) · [验证报告](test-report.md) | UNVERIFIED（文档阶段，未执行） | v1.1 在 master（`3b58c3c`），v1.2 随本次 master 文档提交登记 | T9 接入前置核查 → T10 缺陷修复 |
 
 SP010 的两项需求共用一份设计与计划（`SP/SP010/design/`）：它们共享同一测量基线、同一任务集与同一缺陷清单，拆成两份正本会产生互相矛盾的事实源。各项 AC 的证据分别登记在对应 STATUS 与 `test-report.md`。
 
@@ -35,17 +35,17 @@ SP010 的两项需求共用一份设计与计划（`SP/SP010/design/`）：它�
 | --- | --- | --- |
 | 需求 | ✅ | 两项需求正本建立，AC 编号稳定 |
 | 事实、来源与边界 | ✅ | 已核对真实仓库：`scripts/eval` 现状、`src/core` 现状、SP001 任务清单与统计纪律、发布台账与 CI 事实 |
-| 正式设计 | ✅ | `design/design.zh.md` v1.1 自审通过 |
-| 实施计划 | ✅ | `design/plan.zh.md` v1.1，正式验收移至 T11 的最终候选 |
+| 正式设计 | ✅ | `design/design.zh.md` v1.2 自审通过 |
+| 实施计划 | ✅ | `design/plan.zh.md` v1.2，正式验收移至 T11 的最终候选 |
 | 实施 | ⬜ | 未开始（用户指令：先做文档，不直接开发） |
 | 测试收口 | ⬜ | 未开始 |
 | 交付 | ⬜ | 未开始（合入 master、推送与版本准备在交付阶段按 buding-merge 规程执行） |
 
 ## 自审记录（Agent 自审对象）
 
-- 审查对象：[设计 v1.1](design/design.zh.md) 与[计划 v1.1](design/plan.zh.md)。按 AGENTS.md 2026-11-17 委托执行自审。
-- 自审结论：**文档通过**。五条发现均对应需求、设计、计划和[验收记录](test-report.md)。16 条 AC 编号保持稳定，保护用例触发、真实 Provider、独立安装和最终候选交接分别记录证据，盲测纪律沿用 SP001。
-- 批准来源与授权范围：用户 2026-11-24 指定按五条发现修订需求、设计、计划和验收记录，在现有检出提交到 master 并推送。实施仍待用户指示。
+- 审查对象：[设计 v1.2](design/design.zh.md) 与[计划 v1.2](design/plan.zh.md)。按 AGENTS.md 2026-11-17 委托执行自审。
+- 自审结论：**文档通过**。七条审核意见均对应需求、设计、计划和[验收记录](test-report.md)。16 条 AC 编号保持稳定，保护用例触发、真实 Provider、独立安装和最终候选交接分别记录证据，盲测纪律沿用 SP001。
+- 批准范围：用户要求按七条意见修订 SP010 文档至 v1.2，实施待另行指示。
 - 已知未决（随设计一并记录，不阻塞）：高级组合任务与高级盲测配额（SP015 前置 inventory v2）、headless 入口的隔离 home 参数是否存在（影响制品核对的隔离方式）。SP009 短路径补丁的合入方式已关闭：该修复已由并发会话合入 master `74c5156` 并推送。
 
 ## 验收与交接
@@ -55,7 +55,7 @@ SP010 的两项需求共用一份设计与计划（`SP/SP010/design/`）：它�
 - 未完成/延期项：全部实施与测试阶段待执行。
 - 下一轮输入（SP011–SP014）：带最终候选 SHA、tarball 摘要与复验记录的中期报告，以及 Core 契约清单、GAP 归属、缺陷修复清单和新盲测批次登记。
 - 风险/回退：评估资产改动只影响测量口径，不改变产品运行时；产品缺陷修复按功能分支逐项回退；任务集与快照版本化后可回退到上一版分母。
-- Git/产品发布：文档阶段**已合入 master 并推送**。源 `feature/SP010/mid-term-coding-checkpoint`（`7e8948c`）→ master 合并提交 `d09445a`；合入前门禁 GREEN（`artifacts/merge-gate/feature-SP010-mid-term-coding-checkpoint-2026-11-24T07-10-50-700Z.md`，outgoing 3 commits / 10 files），合入后 master 复核门禁 GREEN（`artifacts/merge-gate/master-2026-11-24T07-17-04-811Z.md`）；ancestry 证明源提交为 master 祖先。npm 发布、打标签与远端设置未执行。
+- Git/产品发布：首版文档**已合入 master 并推送**。源 `feature/SP010/mid-term-coding-checkpoint`（`7e8948c`）→ master 合并提交 `d09445a`；合入前门禁 GREEN（`artifacts/merge-gate/feature-SP010-mid-term-coding-checkpoint-2026-11-24T07-10-50-700Z.md`，outgoing 3 commits / 10 files），合入后 master 复核门禁 GREEN（`artifacts/merge-gate/master-2026-11-24T07-17-04-811Z.md`）；ancestry 证明源提交为 master 祖先。npm 发布、打标签与远端设置未执行。
 
 ## 变更记录
 
@@ -65,3 +65,4 @@ SP010 的两项需求共用一份设计与计划（`SP/SP010/design/`）：它�
 | 2026-11-24 | 文档提交前发生**并发会话分支切换**：另一会话在同一工作树把 SP009 短路径修复 `50e558f`／`03ad128` 合入 master（`74c5156`）并推送；本轮两次文档提交一度落在 SP009 分支上 | 并发工作树事实（非本轮授权范围内的改动） | 已把 `feature/SP010/mid-term-coding-checkpoint` 复位到本轮提交（与 master 的 merge-base 为 `50e558f`），把 `feature/SP009/0.9.2-windows-short-path` 复位回该会话原有尖端 `50e558f`；**未丢失任何提交**，未改写公共历史，未 force-push；本轮基线改按 `74c5156` 记录 |
 | 2026-11-24 | 文档阶段合入 master（`d09445a`）并推送；补记两次门禁 GREEN 回执 | 用户 2026-11-24「先提交文档到 master 并推送到远端」+ AGENTS.md 2026-11-17 委托 | 仅文档合入，无产品行为变化；npm 发布、打标签与远端设置未执行 |
 | 2026-11-24 | 文档修订为 v1.1 | 用户确认的五条审阅发现 | 补两处误判回归、最终候选与续跑校验、确定性保护和任务级区间，更新测试与发布现状。16 条产品验收继续标 UNVERIFIED |
+| 2026-11-24 | 文档修订为 v1.2 | 用户确认的七条审核意见 | 需求、设计、计划及验收证据已同步。逐项映射见[验证报告](test-report.md#4-bug-闭环与本轮核对发现)，实施待启动 |

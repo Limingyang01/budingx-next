@@ -4,7 +4,7 @@
 
 2026-11-24，[SP009 0.9.2 的 12 项 TUI 差距优化与缺陷修复](../SP/SP009/tui-gap-optimizations/requirements.md)已实施并完成定向验收。#42 通过 3 次真实 Provider 子代理验证。集成及版本准备见 [0.9.2 状态](../SP/SP009/tui-gap-optimizations/STATUS.md)和[验证记录](../SP/SP009/tui-gap-optimizations/test-report.md)。团队交接及 P1 新入口分别进入 [SP011](../SP/SP011/requirements-summary.md)和 [SP015](../SP/SP015/requirements-summary.md)。
 
-2026-11-24，[SP010 中期编码效果检查](../SP/SP010/requirements-summary.md)开轮，本阶段只完成需求与设计（[设计 v1.0](../SP/SP010/design/design.zh.md) 自审通过，[计划 v1.0](../SP/SP010/design/plan.zh.md)），未进入实施。核对中确认两处既有硬缺陷：评估器把会话回合硬截断为 8（产品主循环自 0.9.1 起无固定上限），以及评估预算档与 SP001 任务清单 §7 不一致——两者列为本轮必修项，避免中期测量测到被截断的产品。本轮只产出**中期结果**，不宣称完整替代。
+2026-11-24，[SP010 中期编码效果检查](../SP/SP010/requirements-summary.md)的[设计 v1.2](../SP/SP010/design/design.zh.md)、[实施计划 v1.2](../SP/SP010/design/plan.zh.md)及验收条件已按七条审核意见同步。文档明确了评估器失败判定、参考 TUI 行为、媒体完整性、无人值守审批及已安装制品的任务证据。实施待启动，16 条 AC 均为 UNVERIFIED。[审核意见与验收追踪](../SP/SP010/test-report.md#4-bug-闭环与本轮核对发现)
 
 截至 2026-11-23，**npm `latest` 为 0.9.1**（SP009 补丁）：主循环去固定回合上限、上下文窗口按模型动态解析并支持自定义、自动压缩默认开启且改模型摘要、子代理默认无 token 预算且通知按系统消息渲染、技能多级别与 `/skillify` `/reload-skills`；台账已登记。 [0.9.1 发布回执](../release-notes/v0.9.1.md)
 
