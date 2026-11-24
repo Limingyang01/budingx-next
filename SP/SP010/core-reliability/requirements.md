@@ -1,6 +1,6 @@
 # SP010 · Core 可靠性与高级能力接入前置需求（core-reliability）
 
-状态：设计 v1.3 已自审，待实施｜更新：2026-11-24｜输入基线：master `74c5156`｜TUI 0.9.2 已发布｜迭代：SP010
+状态：设计 v1.4 已自审，待实施｜更新：2026-11-24｜输入基线：master `74c5156`｜TUI 0.9.2 已发布｜迭代：SP010
 
 配套：[迭代汇总](../requirements-summary.md)｜[设计正本](../design/design.zh.md)｜[实施计划](../design/plan.zh.md)｜[状态](STATUS.md)｜[中期检查需求](../coding-parity-checkpoint/requirements.md)
 
@@ -89,6 +89,6 @@ readiness 结论、已修缺陷清单（含红绿证据及最终候选受影响�
 
 ## 批准与变更
 
-- 批准来源：用户 2026-11-24 指示先做文档，并确认按三处复审意见修订 v1.3。自审见[设计 §9](../design/design.zh.md)与[迭代汇总的自审记录](../requirements-summary.md#自审记录agent-自审对象)。
+- 批准来源：用户 2026-11-24 指示先做文档，并确认按两处复审意见同步 v1.4；本版沿用 Core 接入与媒体验收条件。自审见[设计 §9](../design/design.zh.md)与[迭代汇总的自审记录](../requirements-summary.md#自审记录agent-自审对象)。
 - 范围：本需求覆盖 CR-01…CR-06。实质行为、AC、范围或架构变化需更新本文件并重新自审；格式修改不使批准失效。
-- 版本：v1.3（2026-11-24）。
+- 版本：v1.4（2026-11-24）。

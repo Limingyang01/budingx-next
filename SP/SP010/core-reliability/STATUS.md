@@ -4,10 +4,10 @@
 
 ## 当前范围与依据
 
-- 需求/AC：[Core 可靠性与高级能力接入前置需求](requirements.md) v1.3（2026-11-24），AC-CR-01…AC-CR-06。
-- 设计/计划：[设计 v1.3](../design/design.zh.md)（自审通过）｜[实施计划 v1.3](../design/plan.zh.md)。
+- 需求/AC：[Core 可靠性与高级能力接入前置需求](requirements.md) v1.4（2026-11-24），AC-CR-01…AC-CR-06。
+- 设计/计划：[设计 v1.4](../design/design.zh.md)（自审通过）｜[实施计划 v1.4](../design/plan.zh.md)。
 - 输入基线：master `74c5156`（含 SP009 Windows 短路径修复 `50e558f`／`03ad128`）。该提交已用于发布 0.9.2，见[回执](../../../release-notes/v0.9.2.md)。
-- 当前批准范围：用户要求按三处复审意见修订文档至 v1.3。实施待另行指示。
+- 当前批准范围：用户要求按两处复审意见修订文档至 v1.4，并登记截图反馈。实施待另行指示。
 
 ## 进度（断线续接入口）
 
@@ -29,7 +29,7 @@
 
 ## 集成与发布
 
-v1.2 已进入 master（`fd38b52`）。以下为首版文档的历史集成回执。
+v1.3 已进入 master（`46b9183`）。以下为首版文档的历史集成回执。
 
 - 源：`feature/SP010/mid-term-coding-checkpoint`（`7e8948c`）→ 目标 `master`（`74c5156`）；merge-base `50e558f`；合并提交 `d09445a`（`--no-ff`）；ancestry 证明源提交为 master 祖先。
 - 门禁：合入前 GREEN（`artifacts/merge-gate/feature-SP010-mid-term-coding-checkpoint-2026-11-24T07-10-50-700Z.md`），合入后 master 复核 GREEN（`artifacts/merge-gate/master-2026-11-24T07-17-04-811Z.md`）。
@@ -37,7 +37,7 @@ v1.2 已进入 master（`fd38b52`）。以下为首版文档的历史集成回�
 
 ## 交接与历史
 
-- 下一位 Agent 应读：本文、[迭代汇总](../requirements-summary.md)、[需求正本](requirements.md)、[设计 v1.3](../design/design.zh.md)和[计划 v1.3](../design/plan.zh.md)，并核对实时 refs。
+- 下一位 Agent 应读：本文、[迭代汇总](../requirements-summary.md)、[需求正本](requirements.md)、[设计 v1.4](../design/design.zh.md)和[计划 v1.4](../design/plan.zh.md)，并核对实时 refs。
 - 最早未完成步骤：**T9 接入前置核查**。
 - 剩余风险：Core 修复可能影响 TUI、无头与 serve 三个入口，须在最终候选复验。SP009 短路径修复已纳入输入基线。
 - 批准变更历史：无替代或撤回记录。
