@@ -24,8 +24,8 @@
 
 | 功能/优化目录 | 来源 / 身份 | 验收目标 | 责任范围 | 阶段 | 需求 / 设计 / 计划 / STATUS | 验证 | 集成状态 | 下一步 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `coding-parity-checkpoint` | 路线图 SP010 行；SP001 任务清单与统计纪律；USER_CONFIRMED 2026-11-24 指令 | CP-01…CP-10：任务集分母与快照、盲测纪律、预算与回合上限、真实执行、统计报告、保护用例全通过、长任务稳定性、npm 制品核对、仪器可信、中期报告口径 | 评估与测量资产（`scripts/eval`）、Core 契约、制品与文档 | ✅需求→✅设计（自审通过）→✅计划→[ ]实施→[ ]测试→[ ]交付 | [需求](coding-parity-checkpoint/requirements.md) · [设计](design/design.zh.md) · [计划](design/plan.zh.md) · [STATUS](coding-parity-checkpoint/STATUS.md) | UNVERIFIED | 未提交（文档阶段） | T0 基线冻结 → T1 任务集 → T2 仪器可信化 |
-| `core-reliability` | 路线图 SP010 行「修复影响高级能力接入的 Core 缺陷」；SP011–SP014 接入前置；USER_CONFIRMED 2026-11-24 指令 | CR-01…CR-06：接入前置核查与 GAP 归属、Core 缺陷修复（红绿）、评估回合上限不一致必修、无头审批语义归类、大输出与图片上限行为、交接文档 | Core（`src/core`）、评估资产、文档与交接 | ✅需求→✅设计（自审通过）→✅计划→[ ]实施→[ ]测试→[ ]交付 | [需求](core-reliability/requirements.md) · [设计](design/design.zh.md) · [计划](design/plan.zh.md) · [STATUS](core-reliability/STATUS.md) | UNVERIFIED | 未提交（文档阶段） | T6 接入前置核查 → T7 缺陷修复 |
+| `coding-parity-checkpoint` | 路线图 SP010 行；SP001 任务清单与统计纪律；USER_CONFIRMED 2026-11-24 指令 | CP-01…CP-10：任务集分母与快照、盲测纪律、预算与回合上限、真实执行、统计报告、保护用例全通过、长任务稳定性、npm 制品核对、仪器可信、中期报告口径 | 评估与测量资产（`scripts/eval`）、Core 契约、制品与文档 | ✅需求→✅设计（自审通过）→✅计划→[ ]实施→[ ]测试→[ ]交付 | [需求](coding-parity-checkpoint/requirements.md) · [设计](design/design.zh.md) · [计划](design/plan.zh.md) · [STATUS](coding-parity-checkpoint/STATUS.md) | UNVERIFIED | 本地提交 `160607f`（文档阶段） | T0 基线冻结 → T1 任务集 → T2 仪器可信化 |
+| `core-reliability` | 路线图 SP010 行「修复影响高级能力接入的 Core 缺陷」；SP011–SP014 接入前置；USER_CONFIRMED 2026-11-24 指令 | CR-01…CR-06：接入前置核查与 GAP 归属、Core 缺陷修复（红绿）、评估回合上限不一致必修、无头审批语义归类、大输出与图片上限行为、交接文档 | Core（`src/core`）、评估资产、文档与交接 | ✅需求→✅设计（自审通过）→✅计划→[ ]实施→[ ]测试→[ ]交付 | [需求](core-reliability/requirements.md) · [设计](design/design.zh.md) · [计划](design/plan.zh.md) · [STATUS](core-reliability/STATUS.md) | UNVERIFIED | 本地提交 `160607f`（文档阶段） | T9 接入前置核查 → T10 缺陷修复 |
 
 SP010 的两项需求共用一份设计与计划（`SP/SP010/design/`）：它们共享同一测量基线、同一任务集与同一缺陷清单，拆成两份正本会产生互相矛盾的事实源。各项 AC 的证据分别登记在对应 STATUS 与 `test-report.md`。
 
