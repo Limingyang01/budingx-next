@@ -4,6 +4,7 @@ import { createElement } from 'react'
 import stringWidth from 'string-width'
 import { collapseReadSearch, HistoryWindow, visibleHistoryRange } from '../dist/tui/render/history-window.js'
 import { test } from 'node:test'
+import { stripVTControlCharacters } from 'node:util'
 import { reduceFrame, renderTextLines } from '../dist/tui/render/reducer.js'
 import { initialFrame } from '../dist/tui/render/types.js'
 
@@ -342,7 +343,7 @@ test('Ink 折叠思考只占一行，单项切换覆盖全量切换，工具结�
   }), { columns })
   const collapsed = render(false)
   assert.doesNotMatch(collapsed, /THOUGHT_[AB]_DETAIL|TOOL_DETAIL/)
-  assert.match(collapsed, /^\s*>.*Second summary/m)
+  assert.match(stripVTControlCharacters(collapsed), /^\s*>.*Second summary/m)
   assert.match(collapsed, /Thinking text unavailable/i)
   assert.equal(collapsed.split('\n').filter((line) => line.includes('摘要')).length, 1)
   const individual = render(false, ['a'])
