@@ -69,7 +69,16 @@
 
 ## 5. 交叉验证门禁
 
-门禁命令 `npm run merge:gate`，报告落在 `artifacts/merge-gate/feature-SP010-mid-term-coding-checkpoint-<timestamp>.md`（本地忽略）。本报告随分支提交后再执行门禁，结果在提交与合入记录中登记；门禁 RED 时禁止合入。
+门禁命令 `npm run merge:gate`，两次执行均为 **GREEN**：
+
+| 执行 | 范围 | merge-base / HEAD | outgoing | 结论 | 报告 |
+| --- | --- | --- | --- | --- | --- |
+| 合入前 | `feature/SP010/mid-term-coding-checkpoint` → master | `50e558f` / `7e8948c` | 3 commits / 10 files | GREEN | `artifacts/merge-gate/feature-SP010-mid-term-coding-checkpoint-2026-11-24T07-10-50-700Z.md` |
+| 合入后 | master → master | `d09445a` / `d09445a` | 0 commits / 0 files | GREEN | `artifacts/merge-gate/master-2026-11-24T07-17-04-811Z.md` |
+
+两次门禁的六项检查（`npm test`、`spec:check`、`skills:check`、`version:check`、`pack-smoke`、`test:upgrade`）退出码均为 0；禁带路径违规 0；报告 FAIL 行 0、UNVERIFIED 行 20、恢复条件节「有」。合并预演 `git merge-tree --write-tree 74c5156 7e8948c` 退出码 0、无冲突。合并提交 `d09445a`，ancestry 证明源 `7e8948c` 为 master 祖先。
+
+门禁报告落在本地忽略目录，仓库只保留本节结论与路径。
 
 ## 6. 风险与回退
 

@@ -30,7 +30,12 @@
 
 ## 集成与发布
 
-合并、推送、产品发布：**未执行**。本轮提交只含文档；合入 master 与推送在门禁 GREEN 后按 buding-merge 规程执行并在此记录真实 SHA。npm 发布由维护者手动触发，不在本轮授权内。
+合并、推送、产品发布：文档阶段**已合入 master**，推送见本轮提交记录。
+
+- 源：`feature/SP010/mid-term-coding-checkpoint`（`7e8948c`）→ 目标 `master`（`74c5156`）；merge-base `50e558f`；合并提交 `d09445a`（`--no-ff`，保留历史）；ancestry 证明源提交为 master 祖先。
+- 门禁：合入前 GREEN（`artifacts/merge-gate/feature-SP010-mid-term-coding-checkpoint-2026-11-24T07-10-50-700Z.md`，outgoing 3 commits / 10 files，禁带路径违规 0，报告失败行 0、UNVERIFIED 行 20、恢复条件节「有」）；合入后 master 复核 GREEN（`artifacts/merge-gate/master-2026-11-24T07-17-04-811Z.md`）。六项检查退出码均为 0。
+- 引入差异：10 个文件、673 行新增，全部为 Markdown，无产品代码、依赖、产物或凭据。
+- npm 发布、打标签、远端设置、分支/worktree 删除：**未执行**（不在本轮授权内）。
 
 ## 交接与历史
 
