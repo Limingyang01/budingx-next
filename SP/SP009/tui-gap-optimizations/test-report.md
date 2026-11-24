@@ -54,3 +54,9 @@
 - 预演执行 1520 项自动化测试，1519 项通过，0 失败、0 取消。1 项 POSIX 文件权限测试在 Windows 跳过。产品测试为 1344 通过 / 1345 执行。
 - tarball 190 个文件，隔离安装后 CLI 返回 0.9.2，本机 HTTP fixture 命中 1 次。SHA-512 integrity 为 `sha512-BEmesNNxLRx0NHAug8AoDBapcFZn9FhkWGBTBNdITmHJ/UHkUagU6w2X2OsRKaeZU1NYvwqOKAvRw3n8vmkGGw==`。报告 `artifacts/release/0.9.2-1795495213094/report.json` 状态为 `dry-run-complete`。
 - 本机预演使用 master 的合入代码与当前 0.9.2 版本文件。正式发布的源码与双平台工作流回执待取得。
+
+### 正式发布运行 #33 与 Windows 验证修复
+
+- [Actions #33](https://github.com/Limingyang01/budingx-next/actions/runs/45335678863) 使用源码 `f3302a6`，Ubuntu 验证通过，Windows 在「Check, pack and install the actual tarball」失败，OIDC 发布作业被跳过。官方源仍指向 0.9.1，查询 0.9.2 返回 HTTP 404。公开作业注释只有退出码。原始 Windows 日志和验证 artifact 的下载需要登录。
+- 本机用 Windows、Node 22.22.0、npm 11.21.2、`CI=true` 和 `FORCE_COLOR=1` 复跑发布预演，产品测试 1345 项中 1343 通过、1 失败、1 平台跳过。唯一失败是 `src/tui/test/render.test.mjs` 的选中思考行断言。原始帧包含颜色转义码及正确的 `> Thinking - Second summary`。定向运行先复现失败，再对该断言使用 `stripVTControlCharacters`。有色和无色渲染各 15/15 通过。
+- 本次修订只涉及测试断言及验收记录。产品行为、版本、发布工作流和打包文件无需调整。正式发布回执继续以成功运行、官方源和独立安装结果确认。
