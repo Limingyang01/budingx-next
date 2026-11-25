@@ -21,6 +21,7 @@ import type {
   Usage
 } from './events.js'
 import { normalizeForApi } from './normalize.js'
+import { runSideQuestion, type ConfirmSideSearch, type SideQuestionResult } from './side-question.js'
 import { isImageUnsupportedError } from './image-errors.js'
 import {
   COMPACTION_CIRCUIT_LIMIT,
@@ -86,6 +87,8 @@ export type SessionOptions = {
   approval: ApprovalGateway
   resolveSnapshot: () => TurnSnapshot
   tools?: ToolHandler[]
+  /** Public-only fetch implementation for isolated side questions. */
+  sideQuestionFetch?: ToolHandler
   /**
    * SP004 §4.4/§6.1：会话标识，用于后台输出目录与会话计划文件的隔离。
    * 宿主未提供时自动生成，保证同一进程内不同会话不互相覆盖。
@@ -1290,36 +1293,52 @@ export class Session {
     await this.runTurn(turn, snapshot)
   }
 
-  /**
-   * SP006 §6.3 /btw：旁路问答。复制当前上下文向模型单独提问，回答不写回
-   * 会话历史、不触发工具与审批，因此不会污染主回合语义（CMD-06）。
-   */
-  async submitSideQuestion(question: string, signal = new AbortController().signal): Promise<{ ok: boolean; text?: string; error?: string }> {
+  /** An isolated question can use the host's existing WebSearch permission. */
+  async submitSideQuestion(
+    question: string,
+    signal = new AbortController().signal,
+    confirmSearch?: ConfirmSideSearch
+  ): Promise<SideQuestionResult> {
     if (signal.aborted) return { ok: false }
     const trimmed = question.trim()
     if (!trimmed) return { ok: false, error: '旁路问题不能为空' }
     const provider = this.options.resolveProvider?.() ?? this.options.provider
     const snapshot = this.options.resolveSnapshot()
-    const messages = normalizeForApi(this.messages as Message[])
-    messages.unshift({
-      role: 'system',
-      content:
-        '你是 budingx，一款在终端运行的编程助手。这是一次不影响主会话的旁路问答：' +
-        '回答简短、不要调用工具、不要修改文件，也不要假装已经执行任何操作。'
+    const policy = this.options.permissionPolicy
+    const sideTools = [
+      this.tools.find((candidate) => candidate.name === 'WebSearch'),
+      this.options.sideQuestionFetch?.name === 'WebFetch' ? this.options.sideQuestionFetch : undefined
+    ].filter((tool): tool is ToolHandler => tool !== undefined)
+    const attributes = { 'session.id': this.id, 'turn.id': 'btw-' + randomUUID() }
+    const root = this.traceBegin('agent.side_question', {
+      ...attributes,
+      'langfuse.observation.type': 'agent',
+      'langfuse.trace.name': 'agent.side_question'
     })
-    messages.push({ role: 'user', content: trimmed })
-    try {
-      let text = ''
-      for await (const event of provider.stream({ model: snapshot.model, messages, signal })) {
-        if (signal.aborted) return { ok: false }
-        if (event.type === 'text_delta') text += event.text
-        else if (event.type === 'failed') return { ok: false, error: event.error.message }
-        else if (event.type === 'message_completed') break
+    if (root) this.tracePayload(root, 'input', [{ role: 'user', content: trimmed }])
+    const trace = root ? {
+      root, attributes,
+      tracer: {
+        begin: this.traceBegin.bind(this),
+        end: this.traceEnd.bind(this),
+        setAttributes: this.traceAttributes.bind(this),
+        setPayload: this.tracePayload.bind(this)
       }
-      const answer = text.trim()
-      return answer ? { ok: true, text: answer } : { ok: false, error: '模型没有返回内容' }
+    } : undefined
+    try {
+      const answer = await runSideQuestion({
+        provider, model: snapshot.model, question: trimmed, signal, trace,
+        history: normalizeForApi(this.messages),
+        ...(snapshot.capabilities.tools && policy && sideTools.length
+          ? { network: { tools: sideTools, policy, confirm: confirmSearch } }
+          : {})
+      })
+      this.tracePayload(root, 'output', answer)
+      this.traceEnd(root, signal.aborted ? 'cancelled' : answer.ok ? 'success' : 'error')
+      return answer
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : '旁路请求失败' }
+      this.traceEnd(root, signal.aborted ? 'cancelled' : 'error', error)
+      throw error
     }
   }
 

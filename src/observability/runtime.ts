@@ -4,7 +4,7 @@
 
 import type { TraceAttributes, TraceHandle, Tracer } from '../core/observability.js'
 import { TraceContext, type TraceBatch } from './context.js'
-import { OtlpExporter, REQUEST_TIMEOUT_MS, type Fetcher } from './exporter.js'
+import { OtlpExporter, REQUEST_TIMEOUT_MS, type Fetcher, type TraceBatchPayloads } from './exporter.js'
 
 /** 后台最多在途的批次数。 */
 export const MAX_INFLIGHT_BATCHES = 1
@@ -58,15 +58,24 @@ export function isValidBaseUrl(raw: string | undefined): boolean {
 /**
  * 追踪运行时。实现 Core 侧 Tracer 端口。
  */
+type ActiveTrace = {
+  context: TraceContext
+  rootId: string
+  turnId: string
+  handles: Set<string>
+  payloads: TraceBatchPayloads
+}
+
 export class TracingRuntime implements Tracer {
-  private readonly context = new TraceContext()
+  private readonly traces = new Map<string, ActiveTrace>()
+  private readonly byHandle = new Map<string, ActiveTrace>()
   private readonly exporter: OtlpExporter
   private readonly report?: ReceiptReporter
   private readonly baseUrl: string
   private readonly sessionId: string
 
   /** 待发送批次队列。 */
-  private pending: TraceBatch[] = []
+  private pending: { batch: TraceBatch; payloads: TraceBatchPayloads }[] = []
   /** 在途批次数。 */
   private inFlight = 0
   /** 已禁用。 */
@@ -75,11 +84,7 @@ export class TracingRuntime implements Tracer {
   private closed = false
   /** 是否启用。未启用时不创建任何观测。 */
   private readonly enabled: boolean
-  /** 本回合正文载荷。 */
-  private readonly payloads = new Map<string, { input?: unknown; output?: unknown }>()
-  /** 当前回合根观测句柄 ID 与回合标识。根收尾时封存整批。 */
-  private rootHandleId?: string
-  private currentTurnId = ''
+  private readonly captureContent: boolean
 
   constructor(options: {
     config: TracingConfig
@@ -92,7 +97,7 @@ export class TracingRuntime implements Tracer {
     this.baseUrl = (config.baseUrl || 'http://localhost:3000').replace(/\/$/, '')
     this.sessionId = options.sessionId
     this.report = options.report
-    this.context.captureContent = config.captureContent === true
+    this.captureContent = config.captureContent === true
     this.exporter = new OtlpExporter({
       baseUrl: this.baseUrl,
       publicKey: config.publicKey ?? '',
@@ -111,15 +116,28 @@ export class TracingRuntime implements Tracer {
   ): TraceHandle | undefined {
     if (!this.enabled || this.disabled || this.closed) return undefined
     try {
-      if (name === 'agent.run') {
+      if (name === 'agent.run' || name === 'agent.side_question') {
         const turnId = String(attributes?.['turn.id'] ?? '')
+        if (!turnId) return undefined
         const sessionId = String(attributes?.['session.id'] ?? this.sessionId)
-        const root = this.context.beginTurn(sessionId, turnId, attributes ?? {})
-        this.rootHandleId = root?.id
-        this.currentTurnId = turnId
+        this.discardTurn(turnId)
+        const context = new TraceContext()
+        const root = context.beginTurn(sessionId, turnId, attributes ?? {}, name)
+        if (!root) return undefined
+        const trace: ActiveTrace = {
+          context, rootId: root.id, turnId, handles: new Set([root.id]), payloads: new Map()
+        }
+        this.traces.set(turnId, trace)
+        this.byHandle.set(root.id, trace)
         return root
       }
-      return this.context.begin(name, attributes ?? {}, parent)
+      const trace = parent ? this.byHandle.get(parent.id) : [...this.traces.values()].at(-1)
+      const child = trace?.context.begin(name, attributes ?? {}, parent)
+      if (child && trace) {
+        this.byHandle.set(child.id, trace)
+        trace.handles.add(child.id)
+      }
+      return child
     } catch {
       return undefined
     }
@@ -129,13 +147,9 @@ export class TracingRuntime implements Tracer {
   end(handle: TraceHandle | undefined, outcome: 'success' | 'error' | 'cancelled' | 'blocked', error?: unknown): void {
     if (this.disabled || this.closed || !handle) return
     try {
-      this.context.end(handle, outcome, error)
-      if (handle.id === this.rootHandleId && this.currentTurnId) {
-        const turnId = this.currentTurnId
-        this.rootHandleId = undefined
-        this.currentTurnId = ''
-        this.sealTurn(turnId)
-      }
+      const trace = this.byHandle.get(handle.id)
+      trace?.context.end(handle, outcome, error)
+      if (trace?.rootId === handle.id) this.sealTurn(trace.turnId)
     } catch {
       /* 观测不得改变业务结果 */
     }
@@ -145,7 +159,7 @@ export class TracingRuntime implements Tracer {
   setAttributes(handle: TraceHandle | undefined, attributes: TraceAttributes): void {
     if (this.disabled || this.closed) return
     try {
-      this.context.setAttributes(handle, attributes)
+      if (handle) this.byHandle.get(handle.id)?.context.setAttributes(handle, attributes)
     } catch {
       /* 观测不得改变业务结果 */
     }
@@ -153,15 +167,13 @@ export class TracingRuntime implements Tracer {
 
   /** 写入正文。 */
   setPayload(handle: TraceHandle | undefined, key: 'input' | 'output', value: unknown): void {
-    if (this.disabled || this.closed) return
+    if (this.disabled || this.closed || !this.captureContent || !handle) return
     try {
-      if (handle) {
-        const existing = this.payloads.get(handle.id) ?? {}
-        if (key === 'input') existing.input = value
-        else existing.output = value
-        this.payloads.set(handle.id, existing)
-      }
-      this.context.setPayload(handle, key, value)
+      const trace = this.byHandle.get(handle.id)
+      if (!trace) return
+      const payload = trace.payloads.get(handle.id) ?? {}
+      payload[key] = value
+      trace.payloads.set(handle.id, payload)
     } catch {
       /* 观测不得改变业务结果 */
     }
@@ -174,9 +186,12 @@ export class TracingRuntime implements Tracer {
   sealTurn(turnId: string): void {
     if (this.disabled || this.closed) return
     try {
-      const batch = this.context.sealTurn(turnId)
+      const trace = this.traces.get(turnId)
+      if (!trace) return
+      const batch = trace.context.sealTurn(turnId)
+      this.releaseTrace(trace)
       if (!batch || !batch.spans.length) return
-      this.enqueue(batch)
+      this.enqueue(batch, trace.payloads)
     } catch {
       /* 观测不得改变业务结果 */
     }
@@ -185,20 +200,28 @@ export class TracingRuntime implements Tracer {
   /** 丢弃一个未完成回合的观测。 */
   discardTurn(turnId: string): void {
     try {
-      this.context.discardTurn(turnId)
+      const trace = this.traces.get(turnId)
+      if (!trace) return
+      trace.context.discardTurn(turnId)
+      this.releaseTrace(trace)
     } catch {
       /* 观测不得改变业务结果 */
     }
   }
 
+  private releaseTrace(trace: ActiveTrace): void {
+    for (const id of trace.handles) this.byHandle.delete(id)
+    this.traces.delete(trace.turnId)
+  }
+
   /** 入队一个批次并尝试后台发送。 */
-  private enqueue(batch: TraceBatch): void {
+  private enqueue(batch: TraceBatch, payloads: TraceBatchPayloads): void {
     if (this.pending.length >= MAX_PENDING_BATCHES) {
       // 队列满：丢弃新批并计数，不阻塞业务。
       this.pending = []
       return
     }
-    this.pending.push(batch)
+    this.pending.push({ batch, payloads })
     void this.drain()
   }
 
@@ -209,34 +232,18 @@ export class TracingRuntime implements Tracer {
       this.inFlight < MAX_INFLIGHT_BATCHES &&
       !this.closed
     ) {
-      const batch = this.pending.shift()
-      if (!batch) break
+      const entry = this.pending.shift()
+      if (!entry) break
       this.inFlight++
-      const payloads = this.payloadsFor(batch)
       void this.exporter
-        .sendBatch(batch, payloads)
-        .then((ok) => {
-          this.inFlight--
-          this.emitReceipt(batch, ok)
-        })
-        .catch(() => {
-          this.inFlight--
-        })
+        .sendBatch(entry.batch, entry.payloads)
+        .then((ok) => this.emitReceipt(entry.batch, ok))
+        .catch(() => this.emitReceipt(entry.batch, false))
         .finally(() => {
-          // 发送后清理正文载荷，避免无界增长。
-          for (const span of batch.spans) this.payloads.delete(span.spanId)
+          this.inFlight--
+          void this.drain()
         })
     }
-  }
-
-  /** 收集批次内各 span 的正文载荷。 */
-  private payloadsFor(batch: TraceBatch): Map<string, { input?: unknown; output?: unknown }> {
-    const payloads = new Map<string, { input?: unknown; output?: unknown }>()
-    for (const span of batch.spans) {
-      const payload = this.payloads.get(span.spanId)
-      if (payload) payloads.set(span.spanId, payload)
-    }
-    return payloads
   }
 
   /** 向宿主回执发送结果。 */
@@ -262,9 +269,8 @@ export class TracingRuntime implements Tracer {
     if (this.disabled) return
     this.disabled = true
     this.pending = []
-    this.rootHandleId = undefined
-    this.currentTurnId = ''
-    this.context.discardCurrent()
+    this.byHandle.clear()
+    this.traces.clear()
   }
 
   /**
@@ -282,6 +288,8 @@ export class TracingRuntime implements Tracer {
       await new Promise((resolve) => setTimeout(resolve, 20))
     }
     this.closed = true
+    this.byHandle.clear()
+    this.traces.clear()
   }
 }
 

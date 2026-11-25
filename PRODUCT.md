@@ -299,7 +299,7 @@ SP006 在 0.5.4 的命令面之上补齐终端骨架、扩展机制与无头入�
 | 命令 | 操作与结果 |
 | --- | --- |
 | `/init` | 生成项目指令模板（AGENTS.md）。已有文件时拒绝覆盖；实际写文件仍需审批。 |
-| `/btw <问题>` | 旁路提问。SP010 实施分支即时打开独立面板，主回合可继续。↑↓ 或 PgUp/PgDn 翻阅回答，←→ 浏览当前会话的旁路记录，C 复制，F 从所选问答创建会话分支，X 清空，Esc 关闭。旁路历史保存在内存，输入 `/btw` 可重新打开。 |
+| `/btw <问题>` | 旁路提问。SP010 实施分支即时打开独立面板，主回合可继续。支持工具调用的模型可各执行一次 WebSearch 和 WebFetch，读取公开来源后根据证据回答。按现有联网权限规则放行，需审批时分别展示搜索词和网页地址。↑↓ 或 PgUp/PgDn 翻阅回答，←→ 浏览当前会话的旁路记录，C 复制，F 从所选问答创建会话分支，X 清空，Esc 关闭。面板打开期间输入光标隐藏，关闭后恢复。旁路历史保存在内存，输入 `/btw` 可重新打开。 |
 | `/worktree [list\|create <名称>\|remove <路径或分支>]` | 列出、创建或删除隔离工作树。删除必须经宿主确认，并复用 SP004 的丢弃/未合并保护。 |
 | `/tasks` | 列出后台与未完成任务的状态、退出码和输出文件路径。 |
 | `/mcp` | 打开 MCP 服务器列表：名称、连接状态、工具数量。非交互模式输出文本。 |
@@ -473,7 +473,7 @@ budingx serve --transport ws --session my-session --port 0
 - 仓库与文档不包含真实密钥、真实会话与用户身份信息。
 - **扩展配置（SP006）**：键位、hooks、MCP 配置分别位于 `~/.budingx/keybindings.json`、`~/.budingx/hooks.json`、`~/.budingx/mcp.json`；导出文件默认写到 `~/.budingx/exports/`，后台任务日志写到 `~/.budingx/tasks/`。MCP 配置中的环境变量只保存 `${ENV_NAME}` 引用，不落明文密钥。
 - **会话与记忆（SP005）**：会话转录与记忆写在 `~/.budingx/sessions/` 与 `~/.budingx/memory/` 下，目录与文件只对当前用户可读写；写入采用原子方式，失败时保留原内容；损坏文件被隔离并保留备份而不是删除；程序不读取、不回退 `~/.claude`。恢复会话只装载历史，不重放工具调用，结果未知的调用标记为「需核对」。
-- **Langfuse 观测（仅开发环境，默认关闭，不面向普通用户）**：未显式设置 `BUDINGX_LANGFUSE_ENABLED=1` 时无任何 Langfuse 网络请求，启动也不再打印「Langfuse tracing: disabled」之类的内部诊断；启用后默认只采结构化元数据，正文须再显式开启并经脱敏与长度裁剪。凭据与验收报告只落 Git 忽略的开发目录。Windows 初始化通过系统返回的 SID 验证凭据目录与文件权限，支持内置管理员账户。启用方式见 [ops/langfuse/README.md](ops/langfuse/README.md)。模型观测会带上真实 token 用量，工具观测会带上输入参数与结果（受正文开关控制），因此可以直接在 Langfuse 里判断工具调用是否合适。
+- **Langfuse 观测（仅开发环境，默认关闭，不面向普通用户）**：未显式设置 `BUDINGX_LANGFUSE_ENABLED=1` 时无任何 Langfuse 网络请求，启动也不再打印「Langfuse tracing: disabled」之类的内部诊断；启用后默认只采结构化元数据，正文须再显式开启并经脱敏与长度裁剪。凭据与验收报告只落 Git 忽略的开发目录。Windows 初始化通过系统返回的 SID 验证凭据目录与文件权限，支持内置管理员账户。启用方式见 [ops/langfuse/README.md](ops/langfuse/README.md)。模型观测会带上真实 token 用量，工具观测会带上输入参数与结果（受正文开关控制），因此可以直接在 Langfuse 里判断工具调用是否合适。SP010 实施分支将 `/btw` 的模型请求、联网工具和终态放在独立的 `agent.side_question` trace，主会话继续使用自己的 `agent.run`。
 
 ---
 

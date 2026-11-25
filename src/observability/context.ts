@@ -76,13 +76,13 @@ export class TraceContext {
   private turnDropped = false
 
   /** 开始一个回合，返回根句柄。 */
-  beginTurn(sessionId: string, turnId: string, attributes: TraceAttributes): TraceHandle | undefined {
+  beginTurn(sessionId: string, turnId: string, attributes: TraceAttributes, name = 'agent.run'): TraceHandle | undefined {
     this.sessionId = sessionId
     this.turnId = turnId
     this.traceId = hexId(16)
     this.spans = []
     this.turnDropped = false
-    const root = this.observe('agent.run', attributes, undefined, this.traceId)
+    const root = this.observe(name, attributes, undefined, this.traceId)
     return root
   }
 

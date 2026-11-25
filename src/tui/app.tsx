@@ -364,21 +364,34 @@ export function App({
   const [sideScroll, setSideScroll] = useState(0)
   const [sideFeedback, setSideFeedback] = useState('')
   const sideRequest = useRef<AbortController | undefined>(undefined)
+  const [sideSearchPreview, setSideSearchPreview] = useState<{ tool: string; lines: readonly string[] }>()
+  const sideSearchReply = useRef<((approved: boolean) => void) | undefined>(undefined)
   const sideEntry = sideIndex === undefined ? undefined : sideEntries[sideIndex]
   const sideBody = sideEntry?.answer ?? sideEntry?.error ?? ''
   const sideLines = useMemo(
-    () => renderTextLines(stripVTControlCharacters(sideBody).replace(/\r\n/g, '\n'), Math.max(1, width - 4)),
-    [sideBody, width]
+    () => renderTextLines(stripVTControlCharacters(sideSearchPreview?.lines.join('\n') ?? sideBody).replace(/\r\n/g, '\n'), Math.max(1, width - 4)),
+    [sideBody, sideSearchPreview, width]
   )
   const sidePage = Math.max(1, Math.min(rows - 7, Math.floor(rows * 0.55)))
   const sideScrollLimit = Math.max(0, sideLines.length - sidePage)
   const sideStart = Math.min(sideScroll, sideScrollLimit)
   const scrollSide = (lines: number) => setSideScroll((offset) =>
     Math.max(0, Math.min(sideScrollLimit, offset + lines)))
-  useEffect(() => () => sideRequest.current?.abort(), [])
+  useEffect(() => () => {
+    sideRequest.current?.abort()
+    sideSearchReply.current?.(false)
+  }, [])
+  function resolveSideSearch(approved: boolean): void {
+    const reply = sideSearchReply.current
+    sideSearchReply.current = undefined
+    setSideSearchPreview(undefined)
+    if (reply) setSideScroll(0)
+    reply?.(approved)
+  }
   function dismissSideQuestion(clear = false): void {
     sideRequest.current?.abort()
     sideRequest.current = undefined
+    resolveSideSearch(false)
     setSideIndex(undefined)
     setSideEntries((entries) => clear ? [] : entries.filter((entry) => entry.answer !== undefined || entry.error !== undefined))
     setSideScroll(0)
@@ -397,6 +410,7 @@ export function App({
       return
     }
     sideRequest.current?.abort()
+    resolveSideSearch(false)
     const request = new AbortController()
     sideRequest.current = request
     const entries = sideEntries.filter((entry) => entry.answer !== undefined || entry.error !== undefined).slice(-19)
@@ -416,7 +430,15 @@ export function App({
         })
       }))
     }
-    void session.submitSideQuestion(question, request.signal).then(finish, () => finish({ ok: false }))
+    void session.submitSideQuestion(question, request.signal, (preview, tool) => {
+      if (request.signal.aborted) return Promise.resolve(false)
+      return new Promise<boolean>((resolve) => {
+        sideSearchReply.current = resolve
+        setSideIndex(index)
+        setSideScroll(0)
+        setSideSearchPreview({ tool, lines: preview })
+      })
+    }).then(finish, () => finish({ ok: false }))
   }
   const [overlayDismissed, setOverlayDismissed] = useState(false)
   const [completionIndex, setCompletionIndex] = useState(0)
@@ -538,7 +560,8 @@ export function App({
   const [cursorPosition, setPosition] = useState<{ x: number; y: number } | undefined>(
     undefined
   )
-  setCursorPosition(transcriptMode || search || foldedPaste ? undefined : cursorPosition)
+  const composerHidden = Boolean(commandOverlay || commandConfirm || sideEntry)
+  setCursorPosition(composerHidden || transcriptMode || search || foldedPaste ? undefined : cursorPosition)
   const commands = useRef<string[]>([])
   const [commandCount, setCommandCount] = useState(0)
   const queuePreviewRows = fullScreen ? Math.max(1, Math.min(3, Math.floor(rows / 12))) : frame.queue.length
@@ -1119,6 +1142,10 @@ export function App({
     ? Math.max(0, Math.min(draftLines.length - composerRows, cursorLines.length - composerRows))
     : 0
   useLayoutEffect(() => {
+    if (composerHidden) {
+      if (cursorPosition !== undefined) setPosition(undefined)
+      return
+    }
     if (!inputBox.current) return
     const box = measureElement(inputBox.current)
     const next = {
@@ -1143,6 +1170,8 @@ export function App({
     if (sideEntry && sideIndex !== undefined) {
       if (key.escape || key.return || text === ' ' || (key.ctrl && ['c', 'd'].includes(text))) {
         dismissSideQuestion()
+      } else if (sideSearchPreview && !(key.upArrow || key.downArrow || key.pageUp || key.pageDown)) {
+        if (/^[yn]$/i.test(text)) resolveSideSearch(text.toLowerCase() === 'y')
       } else if (key.leftArrow || key.rightArrow) {
         setSideIndex(Math.max(0, Math.min(sideEntries.length - 1, sideIndex + (key.leftArrow ? -1 : 1))))
         setSideScroll(0)
@@ -2236,15 +2265,27 @@ export function App({
             {stripVTControlCharacters(sideEntry.question).replace(/\s+/g, ' ')}
             <Text dimColor>{'  '}{sideIndex + 1}/{sideEntries.length}</Text>
           </Text>
-          {sideBody ? sideLines.slice(sideStart, sideStart + sidePage).map((line, index) => (
+          {sideSearchPreview ? (
+            <Box flexDirection="column">
+              <Text color="yellow">{sideSearchPreview.tool === 'WebFetch'
+                ? pick('待批准的网页读取', 'Web page approval')
+                : pick('待批准的联网搜索', 'Web search approval')}</Text>
+              {sideLines.slice(sideStart, sideStart + sidePage).map((line, index) => (
+                <Text key={index}>{line || ' '}</Text>
+              ))}
+              <Text dimColor>{pick('↑↓ 滚动 · Y 允许本次 · N 拒绝 · Esc 关闭', '↑↓ scroll · Y allow once · N deny · Esc close')}</Text>
+            </Box>
+          ) : sideBody ? sideLines.slice(sideStart, sideStart + sidePage).map((line, index) => (
             <Text key={index} color={sideEntry.error !== undefined ? 'red' : undefined}>{line || ' '}</Text>
           )) : <Text dimColor>{pick('正在旁路提问…', 'Asking on the side…')}</Text>}
           {sideFeedback && <Text wrap="truncate-end">{sideFeedback}</Text>}
-          <Text dimColor wrap="truncate-end">
-            {pick('↑↓ 滚动 · ←→ 浏览 · C 复制', '↑↓ scroll · ←→ browse · C copy')}
-            {commandContext.sessions?.fork ? pick(' · F 分支', ' · F fork') : ''}
-          </Text>
-          <Text dimColor wrap="truncate-end">{pick('X 清空 · Esc 关闭', 'X clear · Esc close')}</Text>
+          {!sideSearchPreview && <>
+            <Text dimColor wrap="truncate-end">
+              {pick('↑↓ 滚动 · ←→ 浏览 · C 复制', '↑↓ scroll · ←→ browse · C copy')}
+              {commandContext.sessions?.fork ? pick(' · F 分支', ' · F fork') : ''}
+            </Text>
+            <Text dimColor wrap="truncate-end">{pick('X 清空 · Esc 关闭', 'X clear · Esc close')}</Text>
+          </>}
         </Box>
       )}
       {!fullScreen && frame.error && <Text color="red">{frame.error}</Text>}
@@ -2294,7 +2335,7 @@ export function App({
           />
         )}
         <Box ref={inputBox}>
-          {commandOverlay || commandConfirm || sideEntry ? null : search ? (
+          {composerHidden ? null : search ? (
             <Box flexDirection="column">
               <Text color={ACCENT} wrap="truncate-end">
                 {transcriptMode ? pick('搜索会话', 'Search transcript') : pick('搜索输入历史', 'Search input history')}

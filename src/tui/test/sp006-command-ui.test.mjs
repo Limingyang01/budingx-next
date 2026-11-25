@@ -152,3 +152,78 @@ test('/btw 长回答可滚动到底部，并可把所选问答交给会话分支
   assert.deepEqual(forks, [{ id: ui.session.id, exchange: { question: 'long answer', answer: response } }])
   assert.equal(ui.session.history.length, 0)
 })
+
+
+for (const fullScreen of [false, true]) {
+  test('/btw 打开隐藏输入光标，关闭后恢复（' + (fullScreen ? '全屏' : '行内') + '）', async (t) => {
+    const ui = await mountTty(t, {
+      fullScreen, columns: 100, rows: 40, config: { model: 'fixture' },
+      provider: { async *stream() {
+        yield { type: 'text_delta', text: '三行测试答案' }
+        yield { type: 'message_completed', finishReason: 'stop' }
+      } }
+    })
+    t.after(() => rmSync(ui.root, { recursive: true, force: true }))
+    const visibility = () => ui.raw().match(/\x1b\[\?25[hl]/g)?.at(-1)
+    assert.equal(visibility(), '\x1b[?25h', '普通输入时的光标应可见')
+    await ui.send('/btw 光标测试\r')
+    await ui.waitFor((frame) => frame.includes('三行测试答案'))
+    assert.equal(visibility(), '\x1b[?25l', '面板打开时光标应隐藏')
+    await ui.send('\x1b')
+    await ui.waitFor((frame) => !frame.includes('三行测试答案') && visibility() === '\x1b[?25h')
+  })
+}
+
+test('/btw 网络审批在旁路面板展示搜索词，放行后显示带来源的答案', async (t) => {
+  const { workspace, policy, root } = (() => {
+    const root = mkdtempSync(join(tmpdir(), 'budingx-btw-approved-'))
+    return { ...policyFor(root), root }
+  })()
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  policy.setMode('workspace_edit')
+  let requests = 0
+  let searches = 0
+  const ui = await mountTty(t, {
+    fullScreen: true, rows: 38, columns: 106, config: { model: 'fixture' },
+    permissionPolicy: policy,
+    commandOverrides: { ...permissionOverrides(workspace, policy), cwd: root, home: root },
+    tools: [{
+      name: 'WebSearch',
+      capability: () => 'network',
+      describe: () => 'Search public web pages',
+      prepareApproval(input) {
+        return {
+          preview: [input.query],
+          execute: async ({ approved }) => {
+            assert.equal(approved, true)
+            searches++
+            return JSON.stringify({ sources: [{ title: '核验榜单', url: 'https://example.test/' }] })
+          }
+        }
+      },
+      execute: async () => assert.fail('expected prepared execution')
+    }],
+    provider: { async *stream(request) {
+      requests++
+      if (requests === 1) {
+        assert.deepEqual(request.tools.map((tool) => tool.name), ['WebSearch'])
+        yield { type: 'tool_call_delta', index: 0, callId: 'wt-search', nameDelta: 'WebSearch', argsDelta: '{"query":"微博热搜榜"}' }
+        yield { type: 'message_completed', finishReason: 'tool_calls' }
+      } else {
+        assert.equal(request.messages.at(-1).tool_call_id, 'wt-search')
+        yield { type: 'text_delta', text: '样例榜单来源 https://example.test/' }
+        yield { type: 'message_completed', finishReason: 'stop' }
+      }
+    } }
+  })
+  t.after(() => rmSync(ui.root, { recursive: true, force: true }))
+  await ui.send('/btw 查询现在的热搜\r')
+  const pending = await ui.waitFor((frame) => frame.includes('待批准的联网搜索') && frame.includes('微博热搜榜'))
+  assert.doesNotMatch(pending, /C 复制/)
+  assert.equal(searches, 0)
+  await ui.send('y')
+  await ui.waitFor((frame) => frame.includes('样例榜单来源 https://example.test/'))
+  assert.equal(searches, 1)
+  assert.equal(requests, 2)
+  assert.equal(ui.session.history.length, 0)
+})

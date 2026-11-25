@@ -34,7 +34,7 @@ export function summarizeTraces(observations) {
   }
   const summaries = []
   for (const [traceId, obs] of byTrace) {
-    const root = obs.find((o) => o.name === 'agent.run')
+    const root = obs.find((o) => o.name === 'agent.run' || o.name === 'agent.side_question')
     summaries.push({
       traceId,
       sessionId: root?.sessionId ?? obs[0]?.sessionId ?? '',

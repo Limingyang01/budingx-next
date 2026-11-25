@@ -294,11 +294,15 @@ export function createOpenAiProvider(options: ProviderOptions): ModelProvider {
       }
       context.retryAfter = parseRetryAfter(response.headers.get('retry-after'))
       const errorClass = responseErrorClass(response.status, payload)
+      const message = miniMax && response.status === 422 &&
+        payload?.error?.message === 'input new_sensitive (1026)'
+        ? 'Provider rejected the input under its content policy (MiniMax 1026)'
+        : `Provider HTTP ${response.status}; check credentials, model and endpoint`
       yield {
         type: 'failed',
         error: providerError(
           errorClass,
-          `Provider HTTP ${response.status}; check credentials, model and endpoint`,
+          message,
           { status: response.status, secrets }
         )
       }

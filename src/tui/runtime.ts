@@ -545,6 +545,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     resolveProvider: provider,
     approval: options.approval,
     tools,
+    sideQuestionFetch: createWebFetchTool(),
     planMode,
     ...(options.hooks ? { hooks: options.hooks } : {}),
     disposers,

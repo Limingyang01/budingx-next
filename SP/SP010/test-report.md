@@ -58,7 +58,7 @@
 | L1 既有回归 | `node --test src/tui/test/sp007-eval.test.mjs` | 22 通过 / 0 失败（既有评估器套件未回归） |
 | L2 真实进程与制品 | `node scripts/eval/tools/artifact-check.mjs` | 通过：隔离安装 + 已安装 CLI 定位题 + 数据根隔离 |
 | L2 真实 Provider | `node scripts/eval/live.mjs --set cp-v1 --repeats 1 --tasks CP-LOC-01` | **通过**（7 请求 / 19993 token / 12.99 s）；预算触顶后剩余条目按设计标 UNVERIFIED |
-| L3 真终端人工 | — | 未执行（本轮无新的交互面改动；Windows Terminal 人工体验仍 UNVERIFIED） |
+| L3 真终端人工 | Windows Terminal 旁路问答与退出恢复 | 用户截图证实旧版面板的光标错位。修复后的真实终端按键与选区复制仍 UNVERIFIED。见 §4.7 |
 | 门禁 | `npm run merge:gate` | 见 §5 |
 
 ## 4. Bug 闭环与本轮核对发现
@@ -144,6 +144,118 @@ v1.3 确立的两回合评分、媒体内容与 hook 判据在 v1.4 继续适用
 ### v1.4 验收取证
 
 v1.4 补充的取证字段（CAN 恢复回执与首回合消息匹配、媒体解析后的像素摘要、T7 逐行请求与终态）在本轮落地为 §4.1–§4.4 的逐条证据；未完成部分（真实模型长任务与正式题集）按 §1 的恢复条件标 UNVERIFIED。
+
+### 4.7 Windows Terminal 旁路问答与退出恢复复验
+
+2026-11-25，在 `feature/SP010/coding-parity-implementation@b774dcf` 构建 0.10.0。用真实 Windows Terminal 原生启动交互式 CLI，HOME、USERPROFILE 与工作区指向本次临时目录，模型指向本机回环 fixture。窗口标题为 `SP010 Terminal QA`，本地证据目录为 `artifacts/sp010-windows-terminal/20261125T014729272Z/`。电脑操作技能禁止自动操作终端窗口，交互步骤由用户在该窗口执行。
+
+| 检查项 | 断言 | 当前证据 |
+| --- | --- | --- |
+| 精确复制三行中文 | 按 C 后从真实系统剪贴板取回三行文本，只归一化 CRLF 与 LF | 行内与全屏 Ink 伪终端均触发实际 Windows 剪贴板写入，两份回执均确认字符、标点与换行一致。真实 Windows Terminal 中的按键到复制链路仍待复测 |
+| 旁路浏览与分支 | 左右键在两个问题间切换，F 从选中的问答创建分支。原会话无旁路内容，新分支含选中的问题和回答 | 伪终端的键盘浏览及分支触发通过，真实会话存储证明分支含问答且原会话保持独立。真终端按键仍 UNVERIFIED |
+| 退出提示与命令往返 | 退出显示中文提示，运行提示中的命令后恢复原 ID 与转录 | 真实 CLI 子进程往返通过。Windows Terminal 的选区复制与粘贴操作仍 UNVERIFIED |
+
+用户截图中的面板下方光标属于可复现缺陷。编辑区隐藏后渲染仍发布光标位置。新增行内与全屏 ANSI 测试，两项均先失败。共享 `composerHidden` 后，面板打开时发出隐藏光标指令，关闭后测量并显示输入光标，两项转绿。截图中的「本地验收模型已响应」是固定模型的默认回复。回环夹具已明确区分预设排版样例与非预设问题。三行中文仅用于复制核对，未知问题提示夹具不提供实时结果。联网行为验证见 §4.8。
+
+同期自动回归在仓库根执行 `npm run build` 和 `node --test --test-name-pattern "btw|旁路|交互退出输出" src/tui/test/sp006-command-ui.test.mjs src/tui/test/sp006-commands-extended.test.mjs src/tui/test/cli.test.mjs`，8/8 通过。另一次执行 `node --test src/tui/test/sp006-command-ui.test.mjs src/tui/test/app.test.mjs` 14/14 通过。伪终端图来自实际采集的测试帧，文件为 `artifacts/sp010-windows-terminal/20261125T014729272Z/btw-cursor-frame.png`，系统剪贴板与光标回执为 `inline-receipt.json` 和 `fullscreen-receipt.json`。该图属于 L1，真实系统剪贴板比对属于平台 API 证据，修复后的 Windows Terminal 选区复制仍未执行。
+
+### 4.8 /btw 行为对照与联网搜索
+
+参考仓 `b5c9be8` 的行为依据为 `src/commands/btw/index.ts:8`、`src/commands/btw/btw.tsx:60`、`src/commands/btw/btw.tsx:208` 与 `src/utils/sideQuestion.ts:53`。按行为独立实现，无参考源码或 AST 检测机制进入本仓。
+
+| 路径 | 参考 TUI 行为 | 本仓处理 |
+| --- | --- | --- |
+| 打开与交互 | 立即在独立面板提问，显示等待、回答或错误。方向键滚动，Esc、Enter 或空格可关面板 | 沿用独立面板及关闭行为。图示中的旁路记录浏览、复制与分支由本仓现有面板提供 |
+| 上下文与主回合 | 使用压缩边界后的当前对话，跳过未结束的助手消息，旁路结果不进入主转录；参考仓另复用模型缓存上下文 | 对会话当前已成形消息做本仓 API 归一化，旁路请求和结果存在临时数组；关闭面板只取消该请求 |
+| 工具与请求数 | 单回合，拒绝所有工具。参考仓的旁路不能搜索 | 用户于 2026-11-25 确认新增联网及一次公开来源读取。支持工具调用时可各执行一次 WebSearch 和 WebFetch，多个同名请求只执行一个并回填其余调用 ID |
+| 权限与失败 | 参考仓无联网审批 | 复用现有联网权限判定。需确认时旁路面板显示查询词，Y 仅允许本次，N 拒绝，Esc 取消。空结果和权限拒绝有明确反馈 |
+
+RED 复现旁路未声明搜索工具、无联网请求及面板缺少独立审批。GREEN 定向套件 26/26，通过的断言含工具白名单、拒绝与取消、权限规则拒绝、空来源、两次请求的同一调用 ID 以及旁路历史隔离。
+
+追加公共搜索冒烟。一次免密钥 Bing 工具调用返回 5 个公开来源。随后用真实 Ink 伪终端、受控模型和同一 Bing 后端验证完整侧问路径。问「查找微博热搜榜的公开来源」，面板显示搜索词，批准后返回 5 个来源，其中有 `https://s.weibo.com/top/summary`。两个模型请求均由脚本驱动，主会话历史为 0。证据见 `artifacts/sp010-windows-terminal/20261125T014729272Z/btw-search-receipt.json` 与 `btw-search-verified-frame.png`。本次确认了搜索往返与公开入口，真实模型综合质量和微博实时名次尚待验证。
+
+最终审批界面调整后重新构建，相关定向套件 24/24 通过，`spec:check` 通过。全量 `npm test` 的产品测试段为 1428 通过、1 失败、1 跳过。唯一失败是 `sp008-config-concurrency.test.mjs` 的 Windows 配置文件并发重命名 `EPERM`，本次未变更该存储实现；单独复跑该文件 2/2 通过。全量门禁仍待复验。
+
+### 4.9 真实模型微博热搜复验
+
+2026-11-25 在仓库根构建后，通过 Ink 伪终端执行 `/btw`，使用隔离 `.env.e2e.local` 的真实 **MiniMax-M3.1-Flash**，不读取用户会话或输出凭据。每次最多生成 128 token。本次累计 **6 次模型 HTTP 请求**，达到配置上限。费用以供应商账单为准。
+
+| 运行（新加坡时间） | 模型请求数 | 实测结果 |
+| --- | ---: | --- |
+| 10:20:38 原路径 | 1 | 模型选择联网工具，旁路在工具执行前拒绝了调用，主历史为 0 |
+| 10:21:20 诊断 | 1 | 按完整流片段组装出两条有效 WebSearch，分别为中英文查询。旧实现的单调用约束拒绝整批 |
+| 10:27:09 添加公开来源读取后 | 2 | 模型并行提出 WebSearch 和 WebFetch，分别批准并各执行一次。搜索摘要提供榜单入口和登录页；WebFetch 返回 HTTP 200、榜单时间与具体条目。原生工具结果综合请求返回 HTTP 422 |
+| 10:29:46 确认服务端错误原因 | 2 | 同样执行一次搜索和一次来源读取。文本资料综合请求仍返回 HTTP 422，供应商错误体明确为 `input new_sensitive (1026)`。模型未生成最终答案，主历史为 0 |
+
+**取证判定**：实际搜索、网页读取与榜单条目证据通过。真实模型输出三条及对应出处的端到端判据 **FAIL**，阻断在 MiniMax 的内容策略。两次综合请求使用了不同的消息形式，第二次记录了供应商的明确原因。保留现有原生工具调用与结果配对，追加安全明确的错误提示。对供应商拒绝不重试、不绕过。
+
+WebFetch 于 10:29 从[豚榜微博公开榜单镜像](https://www.tunbang.com/hot/weibo/)读到页面标注的 **2026-11-25 10:00（UTC+8）** 快照。以下是读取证据中的前三项
+
+| 名次 | 话题 | 页面热度 |
+| --- | --- | --- |
+| 1 | 巴基斯坦航天员手指国旗向镜头敬礼 | 197万 |
+| 2 | 演员好像忘记自己中箭了 | 170万 |
+| 3 | 一张网背后的中国经济底气 | 100万 |
+
+微博官方公开入口实测重定向访客认证，公开接口返回 HTTP 403。上表采用镜像标注的来源和时间。
+
+实现回归覆盖并行同名调用只执行一个、搜索和读取各一次且分别审批、主历史保持独立、MiniMax 1026 固定错误提示且不重试。重新构建通过，旁路、命令、网搜定向 **27/27 通过**。本轮的原始脱敏回执在 `artifacts/sp010-btw-live/`，包括 `run-1795573238268.json`、`run-1795573280705.json`、`run-1795573629680.json`、`run-1795573786114.json`。
+
+### 4.10 更换真实模型复验微博热搜
+
+2026-11-25 10:41（新加坡时间），用隔离测试账号重跑一次 `/btw`。该账号 `GET /models` 返回 HTTP 200，目录同时列出 `MiniMax-M3.1-Flash` 与 `MiniMax-M3`。本次在探针中选用 **MiniMax-M3**，沿用隔离配置中的 128 输出 token 上限，实际发出 2 次模型 HTTP 请求。未调整用户默认模型或隔离配置。
+
+| 检查 | 证据 | 判定 |
+| --- | --- | --- |
+| 工具调用能力与审批 | MiniMax-M3 首次响应 HTTP 200，输出 WebSearch 和 WebFetch 两个完整调用；逐项批准后各实际执行一次 | PASS |
+| 读取具体条目、榜单时间和来源 | WebFetch 返回 HTTP 200，读取[豚榜微博榜单](https://www.tunbang.com/hot/weibo/)页面标注的 2026-11-25 10:00（UTC+8）快照。实际读到前三条「巴基斯坦航天员手指国旗向镜头敬礼」「演员好像忘记自己中箭了」「一张网背后的中国经济底气」，页面热度分别为 197 万、170 万、100 万 | PASS |
+| 真实模型答出至少三条、更新时间和链接 | 第二次请求携带两个匹配调用 ID 的结果，服务端返回 HTTP 422 / `input new_sensitive (1026)`。客户端显示明确内容策略提示，未生成最终答案 | FAIL |
+| 旁路隔离 | 测试结束时主会话历史为 0 | PASS |
+
+仓库根执行 `npm run build` 后，使用 `node --env-file=.env.e2e.local artifacts/sp010-btw-live/alternate-model-probe.mjs 3 alternate-minimax-m3` 运行。证据为 `artifacts/sp010-btw-live/run-1795574462121.json`。该回执区分了页面实录与模型输出，未保存凭据。费用以供应商账单为准。本次是同一供应商下不同型号的真实验证，未重复生成或变换内容来规避供应商拒绝。
+
+同一模型追加复测。2026-11-25 10:45（新加坡时间）发起一轮 `/btw`，执行 `node --env-file=.env.e2e.local artifacts/sp010-btw-live/alternate-model-probe.mjs 3 repeat-once`。实际发出 **2 次**模型 HTTP 请求。首轮返回 HTTP 200，声明的 WebSearch 与 WebFetch 各获批并执行一次。WebFetch 读取[豚榜微博热搜](https://www.tunbang.com/hot/weibo/)的 10:00（UTC+8）快照，网页包含上一表对应的三个话题与来源。第二次请求的两个工具结果 ID 与首轮调用逐一匹配，供应商返回 HTTP 422 / `input new_sensitive (1026)`，模型未输出答案，主会话历史为 0。模型答复验收仍为 **FAIL**。脱敏回执见 `artifacts/sp010-btw-live/run-1795574713520.json`。
+
+Langfuse 回查。2026-11-25 使用本机运行的 `budingx-next-langfuse` 实例，健康接口 HTTP 200，v2 Observations API 查询 10:20:00–10:46:59（UTC+8）返回 0 个观测、0 条 trace。本项目最近一条观测的开始时间是 2026-11-19 07:55:40.785Z。实测探针在 `mountTty` 中直接构造 Session，未注入 tracer，且 `submitSideQuestion` 直接进入旁路请求，不走主回合的 `agent.run`。因此这批探针没有可供 Langfuse 回看的调用正文或 span。
+
+原因确认以四份本地请求回执为依据。首次模型调用与工具读取成功，模型综合请求在 MiniMax 输入审核阶段被拒。M3.1-Flash 的纯文本资料综合和 M3 的原生工具结果综合都在同一 MiniMax 端点返回 422 / `input new_sensitive (1026)`。供应商只给出整条输入的拒绝原因，未给出命中文本、字段或具体话题。[MiniMax API 错误码](https://platform.minimax.io/docs/api-reference/errorcode)
+
+### 4.11 旁路 Langfuse 追踪与真实微博热搜复验
+
+`/btw` 通过宿主 tracer 建立独立 `agent.side_question` 根观测。首次模型请求、WebSearch、WebFetch、最终综合请求均以该根为父观测。主回合与旁路回合各用独立缓冲；正文沿用显式采集开关及现有脱敏裁剪，并排除模型推理字段。并发根、调用关系、失败正文脱敏和既有观测回归的定向测试共 **57/57 通过**。
+
+2026-11-25 10:56（新加坡时间），以隔离配置的真实 MiniMax-M3 发起一轮 `/btw`，批准一次 WebSearch 和一次 WebFetch，实际使用 2 次模型 HTTP 请求。代码通过 `setupTracing` 接入本地 Langfuse，导出回执为 `sent: true`。按 trace ID 从本机 v2 Observations API 回查 **5 个观测**，4 个子节点的父 ID 和 trace ID 均一致，主历史为 0。
+
+| 观测 | Langfuse 或上游回执的证据 |
+| --- | --- |
+| 首次 model.request | 返回两条完整工具调用，模型 HTTP 200 |
+| tool.WebSearch | 输入 `微博热搜榜 实时 今日`，输出 5 条检索来源 |
+| tool.WebFetch | 输入 `https://www.tunbang.com/hot/weibo/`，输出 HTTP 200 和页面标注的 2026-11-25 10:00（UTC+8）榜单快照 |
+| 最终 model.request | Langfuse 输入含 system、user、assistant、tool、tool。两个 tool 消息的调用 ID 分别与真实搜索和读取相符，读取正文中包含榜单时间及前三条。Langfuse 输出为 `{"text":"","finish":"length","toolCalls":[]}`。上游 HTTP 200，回执显示输出 128 token，达到隔离配置上限 |
+| agent.side_question | 同一 trace 的根观测级别 ERROR，输出 `{"ok":false,"error":"模型没有返回内容"}` |
+
+**结果**：本轮取得了完整追踪和公开页面证据。模型综合没有可见正文，结束原因为 `length`，与此前 HTTP 422 / MiniMax 1026 的失败形式不同。真实模型答出三条及对应出处的端到端判据仍为 FAIL。Langfuse 保存的是脱敏后的请求消息和 Provider 适配器观测到的返回；本轮的 HTTP 状态和 token 用量另与实测回执核对。
+
+在仓库根执行 `node --env-file=.env.e2e.local artifacts/sp010-btw-live/trace-probe.mjs 3 langfuse-verified`，实测回执 `artifacts/sp010-btw-live/run-1795575386030.json`，Langfuse 观测证据 `artifacts/sp010-btw-live/langfuse-40a50fd79053bee3acd3e7b764a909a0.json`。 [Langfuse trace](http://localhost:3000/project/budingx-agent/traces/40a50fd79053bee3acd3e7b764a909a0)
+
+### 4.12 旁路 512 token 临时上限复验
+
+2026-11-25 使用 MiniMax-M3 和同一 `/btw` 探针。仅在 PowerShell 测试进程内以 `BUDINGX_E2E_MAX_TOKENS=512` 覆盖隔离配置，运行后恢复原环境。回执中的请求上限为 512，复查 `.env.e2e.local` 记录仍为 128，产品默认值沿用原配置。
+
+| 尝试（新加坡时间） | 模型请求数 | Langfuse 证据 | 结果 |
+| --- | ---: | --- | --- |
+| 10:59:48，512 上限 | 1 | [首次 trace](http://localhost:3000/project/budingx-agent/traces/c01e2dc5d89a2e70cb3c3193e85f50b6) 有 4 个节点。WebFetch 读取预定镜像失败，状态 `BUDINGX_WEB_NETWORK`，旁路根报错 | 尚未到达综合请求 |
+| 11:01:09，同范围补跑一次 | 2 | [成功 trace](http://localhost:3000/project/budingx-agent/traces/83c8a22235010675cb650b4b0551e591) 有同根 5 个节点。WebFetch 与 WebSearch 各获批执行一次，两个工具结果按实际调用 ID 回填，最终模型 HTTP 200、`finish: stop` | 三条、榜单时间、来源全部通过 |
+
+补跑前直连相同公开镜像返回 HTTP 200，页面标注 11:00 快照；随后复验的 Langfuse 综合输入也包含该快照与两个工具结果。综合调用输出 **418 token**，低于 512 上限。模型回答标注榜单时间 **2026-11-25 11:00（UTC+8）**，并直接给出[豚榜微博热搜榜](https://www.tunbang.com/hot/weibo/)链接。逐项比对 Langfuse 的模型输出与 WebFetch 来源正文
+
+| 名次 | 话题 | 页面与模型回答的热度 |
+| --- | --- | ---: |
+| 1 | 天霸 体坛 | 188 万 |
+| 2 | 可口可乐不再标生产日期 | 164 万 |
+| 3 | 神舟24发射圆满成功 | 162 万 |
+
+**真实模型细项验收 PASS。** 3 个具体话题、榜单更新时间、来源链接均在最终模型文本中出现，并与同 trace 的网页证据吻合；主会话历史始终为 0。两次尝试合计 3 次模型 HTTP 请求，费用仍以供应商账单为准。回执为 `artifacts/sp010-btw-live/run-1795575588717.json`、`run-1795575669853.json`，对照用 Langfuse 脱敏记录为 `langfuse-c01e2dc5d89a2e70cb3c3193e85f50b6.json` 和 `langfuse-83c8a22235010675cb650b4b0551e591.json`。
 
 ## 5. 交叉验证门禁
 
