@@ -1,6 +1,10 @@
 # 当前状态
 
+**0.10.0（SP010）已准备发布，npm `latest` 仍为 0.9.2。** 0.10.0 含中期编码效果检查的测量资产与口径、12 条保护用例的确定性验证、主循环逐路径判据，以及 TUI 正文连续性、单轮手动压缩、旁路问答面板与退出恢复提示的修复。发布由维护者在 GitHub 手动触发。 [0.10.0 发行说明](../release-notes/v0.10.0.md)
+
 **0.9.2（SP009）已发布，npm `latest` 指向 0.9.2。** 发布源码为 `74c5156`。Windows、Ubuntu 验证及 npm OIDC 发布作业均通过。已从官方 npm 独立安装，命令版本、签名及本地 HTTP 流式验证通过。 [0.9.2 发布回执](../release-notes/v0.9.2.md) · [Actions #35](https://github.com/Limingyang01/budingx-next/actions/runs/45345532000)
+
+2026-11-25，[SP010 中期编码效果检查](../SP/SP010/requirements-summary.md)的实施与测试收口已完成：任务集 `cp-v1`（30 题）落地并通过校验器与「未预先解出」自检；取消恢复整题评分、任务等权完成率与 95% 区间、运行身份续跑校验已实现；12 条保护用例确定性验证全部通过；主循环逐路径判据逐行取证，Stop hook 三个参考出口按 GAP 登记；[接入前置核查](../SP/SP010/core-reliability/readiness.md)确认 Core 侧无待修缺陷。候选制品在仓库外隔离安装后完成只读定位题核对，真实 Provider 冒烟 1 题通过；正式 30 题 × 3 次评测因本地请求预算上限（6 次）标 UNVERIFIED，并写明恢复条件。版本 0.10.0 已准备，合入 master 与推送待门禁与用户指示。
 
 2026-11-24，[SP009 0.9.2 的 12 项 TUI 差距优化与缺陷修复](../SP/SP009/tui-gap-optimizations/requirements.md)已实施并完成定向验收。#42 通过 3 次真实 Provider 子代理验证。集成及版本准备见 [0.9.2 状态](../SP/SP009/tui-gap-optimizations/STATUS.md)和[验证记录](../SP/SP009/tui-gap-optimizations/test-report.md)。团队交接及 P1 新入口分别进入 [SP011](../SP/SP011/requirements-summary.md)和 [SP015](../SP/SP015/requirements-summary.md)。
 

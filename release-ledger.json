@@ -344,6 +344,11 @@
       "verificationSource": "public-registry-provenance-and-independent-install",
       "ciArtifactDownloaded": false,
       "workflowConclusion": "success"
+    },
+    {
+      "version": "0.10.0",
+      "iteration": "SP010",
+      "status": "prepared"
     }
   ]
 }

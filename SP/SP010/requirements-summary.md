@@ -1,6 +1,6 @@
 # SP010 · 中期编码效果检查
 
-状态：ACTIVE（实施阶段，v1.4 已自审）｜更新：2026-11-24｜输入基线：master `74c5156`｜SP009 0.9.2 已发布
+状态：READY-FOR-MERGE（实施与测试收口完成，版本 0.10.0 已准备）｜更新：2026-11-25｜输入基线：master `74c5156`｜SP009 0.9.2 已发布
 
 ## 本轮目标与边界
 
@@ -26,8 +26,8 @@ T0 已冻结两个基线。评估输入为 0.9.2 发布源码 `74c5156`；实施
 
 | 功能/优化目录 | 来源 / 身份 | 验收目标 | 责任范围 | 阶段 | 需求 / 设计 / 计划 / STATUS | 验证 | 集成状态 | 下一步 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `coding-parity-checkpoint` | 路线图 SP010 行；SP001 任务清单与统计纪律；USER_CONFIRMED 2026-11-24 指令 | CP-01…CP-10：任务集分母与快照、盲测纪律、预算与回合上限、真实执行、统计报告、保护用例全通过、长任务稳定性、npm 制品核对、仪器可信、中期报告口径 | 评估与测量资产（`scripts/eval`）、Core 契约、制品与文档 | ✅需求→✅设计（自审通过）→✅计划→[ ]实施→[ ]测试→[ ]交付 | [需求](coding-parity-checkpoint/requirements.md) · [设计](design/design.zh.md) · [计划](design/plan.zh.md) · [STATUS](coding-parity-checkpoint/STATUS.md) · [验证报告](test-report.md) | UNVERIFIED（文档阶段，未执行） | v1.3 已在 master（`46b9183`），v1.4 随本次 master 文档提交登记 | T1 题库及快照 → T2 CAN 评分 |
-| `core-reliability` | 路线图 SP010 行「修复影响高级能力接入的 Core 缺陷」；SP011–SP014 接入前置；USER_CONFIRMED 2026-11-24 指令 | CR-01…CR-06：接入前置核查与 GAP 归属、Core 缺陷修复（红绿）、评估回合上限不一致必修、无头审批语义归类、大输出与图片上限行为、交接文档 | Core（`src/core`）、评估资产、文档与交接 | ✅需求→✅设计（自审通过）→✅计划→[ ]实施→[ ]测试→[ ]交付 | [需求](core-reliability/requirements.md) · [设计](design/design.zh.md) · [计划](design/plan.zh.md) · [STATUS](core-reliability/STATUS.md) · [验证报告](test-report.md) | UNVERIFIED（文档阶段，未执行） | v1.3 已在 master（`46b9183`），v1.4 随本次 master 文档提交登记 | T9 接入前置核查 → T10 缺陷修复 |
+| `coding-parity-checkpoint` | 路线图 SP010 行；SP001 任务清单与统计纪律；USER_CONFIRMED 2026-11-24 指令 | CP-01…CP-10：任务集分母与快照、盲测纪律、预算与回合上限、真实执行、统计报告、保护用例全通过、长任务稳定性、npm 制品核对、仪器可信、中期报告口径 | 评估与测量资产（`scripts/eval`）、Core 契约、制品与文档 | ✅需求→✅设计（自审通过）→✅计划→✅实施→✅测试→[~]交付 | [需求](coding-parity-checkpoint/requirements.md) · [设计](design/design.zh.md) · [计划](design/plan.zh.md) · [STATUS](coding-parity-checkpoint/STATUS.md) · [验证报告](test-report.md) | 13 PASS / 3 部分 PASS（真实模型部分 UNVERIFIED） / 0 FAIL | 功能分支 `feature/SP010/coding-parity-implementation` 已推送；版本 0.10.0 已准备 | 提高请求预算后跑正式题集（≥90 次真实运行），再合入 master |
+| `core-reliability` | 路线图 SP010 行「修复影响高级能力接入的 Core 缺陷」；SP011–SP014 接入前置；USER_CONFIRMED 2026-11-24 指令 | CR-01…CR-06：接入前置核查与 GAP 归属、Core 缺陷修复（红绿）、评估回合上限不一致必修、无头审批语义归类、大输出与图片上限行为、交接文档 | Core（`src/core`）、评估资产、文档与交接 | ✅需求→✅设计（自审通过）→✅计划→✅实施→✅测试→[~]交付 | [需求](core-reliability/requirements.md) · [设计](design/design.zh.md) · [计划](design/plan.zh.md) · [STATUS](core-reliability/STATUS.md) · [readiness](core-reliability/readiness.md) · [验证报告](test-report.md) | 6 PASS（AC-CR-02 为「本轮无归因为 Core 的缺陷」） | 同上；本轮未修改 Core 产品代码 | SP011–SP014 接收 readiness 的 R-01…R-07 |
 
 SP010 的两项需求共用一份设计与计划（`SP/SP010/design/`）：它们共享同一测量基线、同一任务集与同一缺陷清单，拆成两份正本会产生互相矛盾的事实源。各项 AC 的证据分别登记在对应 STATUS 与 `test-report.md`。
 
@@ -39,9 +39,9 @@ SP010 的两项需求共用一份设计与计划（`SP/SP010/design/`）：它�
 | 事实、来源与边界 | ✅ | 已核对真实仓库：`scripts/eval` 现状、`src/core` 现状、SP001 任务清单与统计纪律、发布台账与 CI 事实 |
 | 正式设计 | ✅ | `design/design.zh.md` v1.4 自审通过 |
 | 实施计划 | ✅ | `design/plan.zh.md` v1.4，正式验收移至 T11 的最终候选 |
-| 实施 | ⬜ | T0 完成，T1 校验器已验证，题库与快照待齐备；T2 已修复评分及预算缺陷，CAN 评分待实现；0.9.2 正文断行与手动压缩定向回归通过 |
-| 测试收口 | ⬜ | 未开始 |
-| 交付 | ⬜ | 未开始（合入 master、推送与版本准备在交付阶段按 buding-merge 规程执行） |
+| 实施 | ✅ | T0–T10 全部完成：任务集 30 题与快照、预算与 CAN 整题评分、真实执行与权限审批、任务级统计、续跑身份、12 条保护用例、主循环逐路径判据、接入前置核查、工具结果消费端核对、候选制品核对 |
+| 测试收口 | ✅ | 四项 SP010 定向套件 65 通过 / 0 失败；既有 SP007 评估器套件 22/22；`npm test` 退出 0、零失败 |
+| 交付 | [~] | 版本 0.10.0 已准备（台账 prepared、发行说明、文档版本号同步）；报告、两项 STATUS、迭代汇总、当前状态与产品说明书已同步；功能分支已推送，**合入 master 待用户指示** |
 
 ## 自审记录（Agent 自审对象）
 
@@ -53,11 +53,11 @@ SP010 的两项需求共用一份设计与计划（`SP/SP010/design/`）：它�
 ## 验收与交接
 
 - 本轮出口门槛（路线图 SP010 行）：固定/盲测核对基本编码能力、长任务与 TUI npm 制品；修复影响高级能力接入的 Core 缺陷；交接稳定基线。**此轮只报告中期结果，不能称完整替代。**
-- 实际验收：16 条正式 AC 均为 UNVERIFIED。CAN 正反例和 T7 两种缺证路径已取得复审探针证据，0.9.2 正文断行及单轮手动压缩已在实施分支修复并完成定向回归。结果与正式验收恢复条件见[验证报告](test-report.md#v14-验收取证)。
-- 未完成/延期项：全部实施与测试阶段待执行。
-- 下一轮输入（SP011–SP014）：带最终候选 SHA、tarball 摘要与复验记录的中期报告，以及 Core 契约清单、GAP 归属、缺陷修复清单和新盲测批次登记。
+- 实际验收：16 条 AC 中 **13 条 PASS、3 条部分 PASS**（AC-CP-04、AC-CP-07、AC-CP-08 的真实模型部分 UNVERIFIED），0 FAIL。保护用例 12/12 通过；接入前置核查确认归因为 Core 的缺陷为 0。逐条依据见[验证报告](test-report.md#1-ac-逐条结论)。
+- 未完成/延期项：正式题集的真实模型运行（30 题 × 3 次 ≥90 次请求）因本地请求预算上限（6 次 / 5 美元）未执行；恢复条件是提高 `.env.e2e.local` 的 `BUDINGX_E2E_MAX_REQUESTS` 与 `BUDINGX_E2E_BUDGET_USD` 后重跑。Go/Rust/C# 三类题目的校验为契约式（评测环境只保证 Node 运行时），已在报告与 readiness 登记。
+- 下一轮输入（SP011–SP014）：[readiness](core-reliability/readiness.md) 的 R-01…R-07 缺口与归属、Core 契约清单、B1 盲测批次封版与 B2 预留位、候选制品摘要与复验记录。
 - 风险/回退：评估资产改动只影响测量口径，不改变产品运行时；产品缺陷修复按功能分支逐项回退；任务集与快照版本化后可回退到上一版分母。
-- Git/产品发布：首版文档**已合入 master 并推送**。源 `feature/SP010/mid-term-coding-checkpoint`（`7e8948c`）→ master 合并提交 `d09445a`；合入前门禁 GREEN（`artifacts/merge-gate/feature-SP010-mid-term-coding-checkpoint-2026-11-24T07-10-50-700Z.md`，outgoing 3 commits / 10 files），合入后 master 复核门禁 GREEN（`artifacts/merge-gate/master-2026-11-24T07-17-04-811Z.md`）；ancestry 证明源提交为 master 祖先。npm 发布、打标签与远端设置未执行。
+- Git/产品发布：功能分支 `feature/SP010/coding-parity-implementation` 已提交并推送远端；**本轮按用户指示不直接合入 master**（合入需先过交叉验证门禁 GREEN）。npm 发布、打标签与远端设置未执行。
 
 ## 变更记录
 
@@ -70,3 +70,4 @@ SP010 的两项需求共用一份设计与计划（`SP/SP010/design/`）：它�
 | 2026-11-24 | 文档修订为 v1.2 | 用户确认的七条审核意见 | 需求、设计、计划及验收证据已同步。逐项映射见[验证报告](test-report.md#4-bug-闭环与本轮核对发现)，实施待启动 |
 | 2026-11-24 | 文档修订为 v1.3 | 用户确认的三处复审意见 | CAN 的回合/整题评分、媒体引用内容校验、T7 逐路径判据已同步。见[验收取证](test-report.md#v13-验收取证) |
 | 2026-11-24 | 文档修订为 v1.4 | 用户复审意见及 0.9.2 截图 | CAN 须验证恢复回执和首回合历史，T7 缺证续跑分两条轨迹；另记正文被思考行拆开的显示问题。见[验收取证](test-report.md#v14-验收取证) |
+| 2026-11-25 | 实施与测试收口完成 | 用户 2026-11-25「/buding-sdd 看看 SP10 是否开发完成……没问题后提交并推送远端，先不要直接合入 master」 | T0–T10 全部完成；16 条 AC 中 13 PASS、3 部分 PASS（真实模型部分 UNVERIFIED）；保护用例 12/12；版本 0.10.0 已准备；功能分支已推送，**合入 master 待用户指示** |
